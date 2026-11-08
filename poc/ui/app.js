@@ -232,6 +232,8 @@
     selectedMachine: "dev",
     cpuHistory: [],
     cpuHistoryFor: null,
+    memHistory: [],
+    memHistoryFor: null,
     modalConfirm: null,
     statsTimer: null,
   };
@@ -457,12 +459,21 @@
         <div class="stat-card"><div class="stat-label">Rede (RX / TX)</div><div class="stat-value" data-stat="net">${c.net}</div><div class="stat-foot">eth0</div></div>
         <div class="stat-card"><div class="stat-label">Disco / PIDs</div><div class="stat-value" data-stat="disk">${c.disk}</div><div class="stat-foot"><span data-stat="pids">${c.pids}</span> processos</div></div>
       </div>
-      <div class="spark-wrap">
-        <div class="spark-head"><span>CPU (%) — últimas amostras</span><span data-stat="cpu-now">${c.cpu}</span></div>
-        <svg class="spark" id="spark" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true">
-          <polygon id="sparkArea" fill="rgba(34,211,238,.10)" points=""></polygon>
-          <polyline id="sparkLine" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" points=""></polyline>
-        </svg>
+      <div class="charts">
+        <div class="spark-wrap">
+          <div class="spark-head"><span>CPU (%) — últimas amostras</span><span data-stat="cpu-now">${c.cpu}</span></div>
+          <svg class="spark" id="spark" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true">
+            <polygon id="sparkArea" fill="rgba(34,211,238,.10)" points=""></polygon>
+            <polyline id="sparkLine" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" points=""></polyline>
+          </svg>
+        </div>
+        <div class="spark-wrap">
+          <div class="spark-head"><span>RAM (MB) — últimas amostras</span><span data-stat="mem-now">${c.mem}</span></div>
+          <svg class="spark" id="memSpark" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true">
+            <polygon id="memSparkArea" fill="rgba(129,140,248,.10)" points=""></polygon>
+            <polyline id="memSparkLine" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" points=""></polyline>
+          </svg>
+        </div>
       </div>`;
   }
 
@@ -946,17 +957,24 @@
   /* ------------------------------------------------------------------ stats */
   function resetHistory() {
     state.cpuHistory = Array.from({ length: 30 }, () => Math.random() * 3 + 0.4);
+    const base = parseFloat(selectedContainer()?.mem) || 64;
+    state.memHistory = Array.from({ length: 30 }, () => Math.max(4, base + (Math.random() - 0.5) * base * 0.06));
     state.cpuHistoryFor = state.selectedContainer;
+    state.memHistoryFor = state.selectedContainer;
   }
 
   function updateSpark() {
     const line = $("#sparkLine");
     const area = $("#sparkArea");
     if (!line || !area) return;
-    if (state.cpuHistoryFor !== state.selectedContainer || state.cpuHistory.length === 0) resetHistory();
-    const values = state.cpuHistory;
+    if (state.cpuHistoryFor !== state.selectedContainer
+        || state.memHistoryFor !== state.selectedContainer
+        || state.cpuHistory.length === 0) {
+      resetHistory();
+    }
     const w = 300;
     const h = 64;
+    const values = state.cpuHistory;
     const max = Math.max(5, ...values);
     const pts = values.map((v, i) => {
       const x = (i / (values.length - 1)) * w;
@@ -965,6 +983,21 @@
     });
     line.setAttribute("points", pts.join(" "));
     area.setAttribute("points", `0,${h} ${pts.join(" ")} ${w},${h}`);
+
+    const memLine = $("#memSparkLine");
+    const memArea = $("#memSparkArea");
+    if (!memLine || !memArea) return;
+    const memValues = state.memHistory;
+    const memMin = Math.min(...memValues) * 0.94;
+    const memMax = Math.max(...memValues) * 1.04;
+    const memRange = Math.max(1, memMax - memMin);
+    const memPts = memValues.map((v, i) => {
+      const x = (i / (memValues.length - 1)) * w;
+      const y = h - (((v - memMin) / memRange) * (h - 8) + 4);
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    });
+    memLine.setAttribute("points", memPts.join(" "));
+    memArea.setAttribute("points", `0,${h} ${memPts.join(" ")} ${w},${h}`);
   }
 
   function startStats() {
@@ -973,7 +1006,10 @@
       state.statsTimer = null;
     }
     if (state.view !== "containers" || state.inspectorTab !== "stats") return;
-    if (state.cpuHistoryFor !== state.selectedContainer) resetHistory();
+    if (state.cpuHistoryFor !== state.selectedContainer
+        || state.memHistoryFor !== state.selectedContainer) {
+      resetHistory();
+    }
     state.statsTimer = setInterval(() => {
       const c = selectedContainer();
       if (!c) return;
@@ -984,6 +1020,16 @@
       if (cpuEl) cpuEl.textContent = `${cpu.toFixed(1)}%`;
       const nowEl = $('[data-stat="cpu-now"]');
       if (nowEl) nowEl.textContent = `${cpu.toFixed(1)}%`;
+
+      const base = parseFloat(c.mem) || 64;
+      const mem = Math.max(4, base + (Math.random() - 0.5) * base * 0.08);
+      state.memHistory.push(mem);
+      if (state.memHistory.length > 30) state.memHistory.shift();
+      const memEl = $('[data-stat="mem"]');
+      if (memEl) memEl.textContent = `${Math.round(mem)} MB`;
+      const memNowEl = $('[data-stat="mem-now"]');
+      if (memNowEl) memNowEl.textContent = `${Math.round(mem)} MB`;
+
       updateSpark();
     }, 2000);
   }
