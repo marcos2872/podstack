@@ -33,6 +33,8 @@ QVariant ContainerListModel::data(const QModelIndex &index, int role) const
         return item.value(QStringLiteral("ports"));
     case IdRole:
         return item.value(QStringLiteral("id"));
+    case HealthRole:
+        return item.value(QStringLiteral("health"));
     default:
         return {};
     }
@@ -46,6 +48,7 @@ QHash<int, QByteArray> ContainerListModel::roleNames() const
         {ImageRole, QByteArrayLiteral("image")},
         {PortsRole, QByteArrayLiteral("ports")},
         {IdRole, QByteArrayLiteral("id")},
+        {HealthRole, QByteArrayLiteral("health")},
     };
 }
 
@@ -66,6 +69,8 @@ void ContainerListModel::setContainers(const QVariantList &items)
         m_items.append(item.toMap());
     }
     endResetModel();
+    ++m_revision;
+    emit revisionChanged();
     emit countChanged();
 }
 

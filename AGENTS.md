@@ -12,7 +12,7 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** **M1 em andamento** (lifecycle/inspect/filtros/rootful). M0: 6 testes, cobertura 84,7% com gate de 80%. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
+**Status atual:** **M1 concluído** (create, lifecycle, logs, stats, files, terminal nativo, batch, health, rename/duplicate, rootful). 7 testes, cobertura 82,5% com gate de 80%. Ressalvas (terminal embutido, upload, seleção fina) ficam para o M2. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
 
 ---
 
@@ -146,7 +146,7 @@ Ambiente de referência: **Fedora 43/44**, Podman ≥ 5.8, Qt ≥ 6.10, `/dev/kv
 sudo dnf install cmake ninja-build gcc-c++ \
   qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
   qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
-  qtermwidget-devel libcurl-devel sqlite-devel
+  qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel
 
 # build
 cmake --preset dev

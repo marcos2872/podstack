@@ -97,6 +97,8 @@
 | `docker inspect` | `inspect` | — | JSON bruto do container |
 | `docker exec` | `exec` | `-- <cmd...>` | Exec one-shot via hijack |
 
+> No M1, create/duplicate/rename/batch, logs/stats/files e terminal estão disponíveis na GUI; os equivalentes CLI entram no M2.
+
 ### 2.4 Configuração
 
 | `orb` | `podstack` | Flags | Notas |

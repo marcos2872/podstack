@@ -26,3 +26,8 @@ qt_add_executable(test_gui test_gui.cpp MockPodmanServer.cpp)
 target_link_libraries(test_gui PRIVATE podstack_gui_lib Qt6::Test Qt6::Network)
 add_dependencies(test_gui podstackd)
 add_test(NAME gui COMMAND test_gui)
+
+qt_add_executable(test_terminal test_terminal.cpp)
+target_link_libraries(test_terminal PRIVATE podstack_gui_lib Qt6::Test Qt6::Widgets)
+add_test(NAME terminal COMMAND test_terminal)
+set_tests_properties(terminal PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

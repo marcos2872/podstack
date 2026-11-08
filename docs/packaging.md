@@ -224,6 +224,7 @@ BuildRequires:  qt6-qtwayland-devel >= 6.10
 BuildRequires:  qt6-qt5compat-devel
 BuildRequires:  kf6-kstatusnotifieritem-devel
 BuildRequires:  qtermwidget-devel
+BuildRequires:  libarchive-devel
 BuildRequires:  libcurl-devel
 BuildRequires:  sqlite-devel
 Requires:       podman >= 5.8

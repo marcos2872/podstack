@@ -85,6 +85,23 @@ ApplicationWindow {
                     }
                 }
 
+                ActionButton {
+                    text: "Novo"
+                    onClicked: createDialog.open()
+                }
+
+                ActionButton {
+                    text: "Start all"
+                    accentColor: theme.success
+                    onClicked: backend.batchAll("start")
+                }
+
+                ActionButton {
+                    text: "Stop all"
+                    accentColor: theme.warning
+                    onClicked: backend.batchAll("stop")
+                }
+
                 Button {
                     id: refreshButton
                     text: "Atualizar"
@@ -231,6 +248,7 @@ ApplicationWindow {
                     ItemDelegate {
                         Layout.fillWidth: true
                         text: "Settings"
+                        onClicked: settingsDialog.open()
                         background: Rectangle {
                             color: "transparent"
                             radius: theme.radius
@@ -319,8 +337,11 @@ ApplicationWindow {
                                     width: 8
                                     height: 8
                                     radius: 4
-                                    color: model.state === "running" ? theme.success
-                                                                     : theme.textSecondary
+                                    color: model.state === "running"
+                                           ? (model.health === "unhealthy" ? theme.danger
+                                              : model.health === "starting" ? theme.warning
+                                                                             : theme.success)
+                                           : theme.textSecondary
                                 }
 
                                 ColumnLayout {
@@ -348,8 +369,11 @@ ApplicationWindow {
 
                                 Label {
                                     text: model.state
-                                    color: model.state === "running" ? theme.success
-                                                                     : theme.textSecondary
+                                    color: model.state === "running"
+                                           ? (model.health === "unhealthy" ? theme.danger
+                                              : model.health === "starting" ? theme.warning
+                                                                             : theme.success)
+                                           : theme.textSecondary
                                     font.pixelSize: 11
                                 }
                             }
@@ -371,170 +395,12 @@ ApplicationWindow {
                 }
             }
 
-            // Inspector
-            Rectangle {
+            Inspector {
                 SplitView.preferredWidth: 340
                 SplitView.minimumWidth: 280
-                color: theme.bgSurface
-
-                ColumnLayout {
-                    id: inspectorLayout
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 10
-
-                    property var selected: containerList.currentIndex >= 0
-                                           ? containerModel.get(containerList.currentIndex)
-                                           : null
-
-                    Label {
-                        text: inspectorLayout.selected ? inspectorLayout.selected.name : "Nenhum container selecionado"
-                        color: theme.textPrimary
-                        font.pixelSize: 16
-                        font.bold: true
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                    }
-
-                    Label {
-                        text: inspectorLayout.selected ? inspectorLayout.selected.image : ""
-                        color: theme.textSecondary
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
-                        color: theme.border
-                    }
-
-                    Label {
-                        text: "ID"
-                        color: theme.textSecondary
-                        font.pixelSize: 10
-                        font.bold: true
-                    }
-
-                    Label {
-                        text: inspectorLayout.selected ? inspectorLayout.selected.id : "—"
-                        color: theme.textPrimary
-                        font.pixelSize: 11
-                        wrapMode: Text.WrapAnywhere
-                        Layout.fillWidth: true
-                    }
-
-                    Label {
-                        text: "PORTAS"
-                        color: theme.textSecondary
-                        font.pixelSize: 10
-                        font.bold: true
-                    }
-
-                    Label {
-                        text: inspectorLayout.selected && inspectorLayout.selected.ports.length > 0
-                              ? inspectorLayout.selected.ports : "—"
-                        color: theme.textPrimary
-                        font.pixelSize: 11
-                        wrapMode: Text.WrapAnywhere
-                        Layout.fillWidth: true
-                    }
-
-                    Label {
-                        text: "ESTADO"
-                        color: theme.textSecondary
-                        font.pixelSize: 10
-                        font.bold: true
-                    }
-
-                    Label {
-                        text: inspectorLayout.selected ? inspectorLayout.selected.state : "—"
-                        color: theme.textPrimary
-                        font.pixelSize: 11
-                    }
-
-                    Label {
-                        text: "AÇÕES"
-                        color: theme.textSecondary
-                        font.pixelSize: 10
-                        font.bold: true
-                    }
-
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: 2
-                        columnSpacing: 6
-                        rowSpacing: 6
-
-                        ActionButton {
-                            Layout.fillWidth: true
-                            text: "Iniciar"
-                            enabled: inspectorLayout.selected !== null
-                            onClicked: backend.lifecycle("start", inspectorLayout.selected.id)
-                        }
-                        ActionButton {
-                            Layout.fillWidth: true
-                            text: "Parar"
-                            enabled: inspectorLayout.selected !== null
-                            onClicked: backend.lifecycle("stop", inspectorLayout.selected.id)
-                        }
-                        ActionButton {
-                            Layout.fillWidth: true
-                            text: "Reiniciar"
-                            enabled: inspectorLayout.selected !== null
-                            onClicked: backend.lifecycle("restart", inspectorLayout.selected.id)
-                        }
-                        ActionButton {
-                            Layout.fillWidth: true
-                            text: "Pausar"
-                            enabled: inspectorLayout.selected !== null
-                            onClicked: backend.lifecycle("pause", inspectorLayout.selected.id)
-                        }
-                        ActionButton {
-                            Layout.fillWidth: true
-                            text: "Despausar"
-                            enabled: inspectorLayout.selected !== null
-                            onClicked: backend.lifecycle("unpause", inspectorLayout.selected.id)
-                        }
-                        ActionButton {
-                            Layout.fillWidth: true
-                            text: "Matar"
-                            accentColor: theme.warning
-                            enabled: inspectorLayout.selected !== null
-                            onClicked: backend.lifecycle("kill", inspectorLayout.selected.id)
-                        }
-                        ActionButton {
-                            Layout.fillWidth: true
-                            text: "Remover"
-                            accentColor: theme.danger
-                            enabled: inspectorLayout.selected !== null
-                            onClicked: {
-                                removeDialog.containerId = inspectorLayout.selected.id
-                                removeDialog.open()
-                            }
-                        }
-                    }
-
-                    Label {
-                        text: backend.lastError
-                        visible: backend.lastError.length > 0
-                        color: theme.danger
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                    }
-
-                    Item { Layout.fillHeight: true }
-
-                    Label {
-                        text: "Terminal, files e stats chegam no próximo incremento do M1."
-                        color: theme.textSecondary
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                    }
-                }
+                selected: containerModel.revision >= 0 && containerList.currentIndex >= 0
+                          ? containerModel.get(containerList.currentIndex)
+                          : null
             }
         }
 
@@ -567,23 +433,174 @@ ApplicationWindow {
     }
 
     Dialog {
-        id: removeDialog
-        property string containerId
-        title: "Remover container?"
+        id: createDialog
+        title: "Novo container"
         modal: true
         anchors.centerIn: parent
-        standardButtons: Dialog.Yes | Dialog.No
+        width: 640
         background: Rectangle {
             color: theme.bgSurface
             radius: 10
             border.color: theme.border
         }
-        contentItem: Label {
-            text: "O container será removido permanentemente."
-            color: theme.textPrimary
-            wrapMode: Text.WordWrap
+        contentItem: ColumnLayout {
+            spacing: 8
+            GridLayout {
+                columns: 2
+                Layout.fillWidth: true
+                columnSpacing: 10
+                rowSpacing: 6
+
+                Label { text: "Imagem"; color: theme.textSecondary; font.pixelSize: 11 }
+                FormField {
+                    id: createImage
+                    Layout.fillWidth: true
+                    placeholderText: "nginx:alpine"
+                }
+
+                Label { text: "Nome"; color: theme.textSecondary; font.pixelSize: 11 }
+                FormField {
+                    id: createName
+                    Layout.fillWidth: true
+                    placeholderText: "opcional"
+                }
+
+                Label { text: "Comando"; color: theme.textSecondary; font.pixelSize: 11 }
+                FormField {
+                    id: createCommand
+                    Layout.fillWidth: true
+                    placeholderText: "opcional"
+                }
+
+                Label { text: "Portas"; color: theme.textSecondary; font.pixelSize: 11 }
+                FormField {
+                    id: createPorts
+                    Layout.fillWidth: true
+                    placeholderText: "8080:80, 127.0.0.1:8081:81"
+                }
+
+                Label { text: "Env"; color: theme.textSecondary; font.pixelSize: 11 }
+                FormField {
+                    id: createEnv
+                    Layout.fillWidth: true
+                    placeholderText: "A=B, C=D"
+                }
+
+                Label { text: "Volumes"; color: theme.textSecondary; font.pixelSize: 11 }
+                FormField {
+                    id: createMounts
+                    Layout.fillWidth: true
+                    placeholderText: "/host:/container, /tmp:/mnt"
+                }
+
+                Label { text: "Workdir"; color: theme.textSecondary; font.pixelSize: 11 }
+                FormField {
+                    id: createWorkDir
+                    Layout.fillWidth: true
+                    placeholderText: "opcional"
+                }
+
+                Label { text: "Usuário"; color: theme.textSecondary; font.pixelSize: 11 }
+                FormField {
+                    id: createUser
+                    Layout.fillWidth: true
+                    placeholderText: "opcional (uid:gid)"
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                FormCheck { id: createRemove; text: "Remover ao parar" }
+                FormCheck { id: createInit; text: "Init" }
+                FormCheck { id: createPrivileged; text: "Privileged" }
+                Item { Layout.fillWidth: true }
+            }
         }
-        onAccepted: backend.removeContainer(containerId, true, false)
+        footer: RowLayout {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: "Cancelar"
+                accentColor: theme.bgElevated
+                onClicked: createDialog.close()
+            }
+            ActionButton {
+                text: "Criar e iniciar"
+                onClicked: {
+                    backend.createContainer({
+                        image: createImage.text,
+                        name: createName.text,
+                        command: createCommand.text,
+                        portsText: createPorts.text,
+                        envText: createEnv.text,
+                        mountsText: createMounts.text,
+                        workDir: createWorkDir.text,
+                        user: createUser.text,
+                        remove: createRemove.checked,
+                        init: createInit.checked,
+                        privileged: createPrivileged.checked
+                    }, true)
+                    createDialog.close()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: settingsDialog
+        title: "Configurações"
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        background: Rectangle {
+            color: theme.bgSurface
+            radius: 10
+            border.color: theme.border
+        }
+        contentItem: ColumnLayout {
+            spacing: 10
+            Label {
+                text: "Modo do engine"
+                color: theme.textSecondary
+                font.pixelSize: 11
+                font.bold: true
+            }
+            ComboBox {
+                id: engineMode
+                model: ["rootless", "rootful"]
+                currentIndex: backend.settings().engineMode === "rootful" ? 1 : 0
+            }
+            Label {
+                text: "Alterar o modo exige reiniciar o podstackd:\n"
+                      + "systemctl --user restart podstack.service"
+                color: theme.textSecondary
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Label {
+                text: backend.lastError
+                visible: backend.lastError.length > 0
+                color: theme.danger
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+        }
+        footer: RowLayout {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: "Cancelar"
+                accentColor: theme.bgElevated
+                onClicked: settingsDialog.close()
+            }
+            ActionButton {
+                text: "Salvar"
+                onClicked: {
+                    backend.saveEngineMode(engineMode.currentText)
+                    settingsDialog.close()
+                }
+            }
+        }
     }
 
     Connections {

@@ -27,6 +27,7 @@ private slots:
     void backendSuccess();
     void backendError();
     void backendActions();
+    void backendStreams();
 
 private:
     QProcessEnvironment daemonEnvironment() const;
@@ -90,13 +91,14 @@ void GuiTest::containerListModel()
     item.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
     item.insert(QStringLiteral("ports"), QStringLiteral("8080->80/tcp"));
     item.insert(QStringLiteral("id"), QStringLiteral("abc123"));
+    item.insert(QStringLiteral("health"), QStringLiteral("healthy"));
 
     model.setContainers({item});
     QCOMPARE(model.count(), 1);
     QCOMPARE(countSpy.count(), 1);
     QCOMPARE(model.rowCount(), 1);
     QCOMPARE(model.rowCount(model.index(0, 0)), 0);
-    QCOMPARE(model.roleNames().size(), 5);
+    QCOMPARE(model.roleNames().size(), 6);
 
     const QModelIndex index = model.index(0, 0);
     QCOMPARE(model.data(index, PodStack::ContainerListModel::NameRole).toString(),
@@ -109,6 +111,8 @@ void GuiTest::containerListModel()
              QStringLiteral("8080->80/tcp"));
     QCOMPARE(model.data(index, PodStack::ContainerListModel::IdRole).toString(),
              QStringLiteral("abc123"));
+    QCOMPARE(model.data(index, PodStack::ContainerListModel::HealthRole).toString(),
+             QStringLiteral("healthy"));
     QVERIFY(model.data(index, Qt::DisplayRole).isNull());
     QVERIFY(model.data(QModelIndex(), PodStack::ContainerListModel::NameRole).isNull());
 
@@ -181,6 +185,57 @@ void GuiTest::backendActions()
 
     backend.lifecycle(QString(), QStringLiteral("abc123"));
     QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    QVariantMap spec;
+    spec.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    spec.insert(QStringLiteral("name"), QStringLiteral("created"));
+    spec.insert(QStringLiteral("portsText"), QStringLiteral("8080:80"));
+    spec.insert(QStringLiteral("envText"), QStringLiteral("A=B"));
+    spec.insert(QStringLiteral("mountsText"), QStringLiteral("/tmp:/mnt"));
+    backend.createContainer(spec, true);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+
+    QSignalSpy containersSpy(&backend, &PodStack::Backend::containersChanged);
+    backend.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(containersSpy.count() > 0, 5000);
+
+    backend.batchAll(QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 5, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+
+    backend.batchAll(QStringLiteral("invalid"));
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    backend.renameContainer(QStringLiteral("abc123"), QStringLiteral("renamed"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 7, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+
+    backend.duplicateContainer(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 8, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+}
+
+void GuiTest::backendStreams()
+{
+    PodStack::Backend backend;
+
+    backend.subscribeLogs(QStringLiteral("abc123"), 10, false);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.logLines().size() >= 2, 5000);
+    backend.unsubscribeLogs();
+
+    backend.subscribeStats(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        backend.stats().value(QStringLiteral("cpu_percent")).toString().contains(
+            QStringLiteral("1.5")),
+        5000);
+    QCOMPARE(backend.cpuHistory().size(), 1);
+    backend.unsubscribeStats();
+
+    QSignalSpy filesSpy(&backend, &PodStack::Backend::filesChanged);
+    backend.listFiles(QStringLiteral("abc123"), QStringLiteral("/"));
+    QTRY_VERIFY_WITH_TIMEOUT(filesSpy.count() > 0, 5000);
+    QCOMPARE(backend.files().size(), 2);
 }
 
 } // namespace
