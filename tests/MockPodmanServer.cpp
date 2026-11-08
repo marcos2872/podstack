@@ -269,7 +269,8 @@ void MockPodmanServer::handleClient(int clientFd)
             R"({"Error":null,"Stats":[{"AvgCPU":0.5,"ContainerID":"rawstats","Name":"raw","MemUsage":1024,"MemLimit":2048,"MemPerc":50.0,"Network":{"eth0":{"RxBytes":10,"TxBytes":20}},"BlockInput":30,"BlockOutput":40,"PIDs":7}]})");
     } else if (pathOnly.contains(QStringLiteral("/stats"))) {
         const QByteArray statsPayload = QByteArrayLiteral(
-            "{\"cpu_percent\":\"1.5%\",\"mem_usage\":\"1MB / 1GB\","
+            "{\"cpu_percent\":\"1.5%\",\"mem_percent\":\"50.0%\","
+            "\"mem_usage\":\"1MB / 1GB\","
             "\"net_io\":\"0B / 0B\",\"block_io\":\"0B / 0B\",\"pids\":\"1\"}\n");
         response = httpResponse(200, "OK", statsPayload);
     } else if (pathOnly.contains(QStringLiteral("/logs"))) {

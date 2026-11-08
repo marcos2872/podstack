@@ -914,7 +914,12 @@ void Backend::saveTheme(const QString &theme)
     if (!config.save(&error)) {
         m_lastError = error;
         emit lastErrorChanged();
+        return;
     }
+
+    m_lastError.clear();
+    emit lastErrorChanged();
+    emit actionFinished(true, {});
 }
 
 void Backend::openTerminal(const QString &id)

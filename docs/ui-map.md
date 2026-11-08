@@ -130,7 +130,7 @@ Abas por tipo (estado do M2):
 | **Terminal** | janela nativa | planejado | — | — | QTermWidget; embutir no inspector no M3 |
 | **Inspect** | CLI `podstack inspect` | — | — | — | aba GUI no M2 |
 
-Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod, mostra progresso/steps e mantém histórico em SQLite. **Eventos globais** aparecem como toasts no topo. A barra de status mostra o uso de disco (`system.df`). Machines, Services e Devices permanecem desabilitados até os marcos seguintes.
+Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod, mostra progresso/steps e mantém histórico em SQLite. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes e a licença. Machines, Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 
@@ -303,47 +303,36 @@ Janela separada, aberta no primeiro uso, por `podstack setup` ou Settings → �
 ```
 qml/
 ├── Main.qml
-├── MainWindow.qml
-├── Sidebar.qml
-├── SidebarItem.qml
-├── ContentHeader.qml
-├── ListView.qml
-├── ListRow.qml
-├── EmptyState.qml
-├── ErrorState.qml
-├── LoadingState.qml
-├── SearchField.qml
-├── FilterChips.qml
-├── StatusDot.qml
-├── Badge.qml
-├── ToolbarButton.qml
-├── Inspector/
-│   ├── Inspector.qml
-│   ├── InfoTab.qml
-│   ├── StatsTab.qml
-│   ├── LogsTab.qml
-│   ├── TerminalTab.qml
-│   ├── FilesTab.qml
-│   └── InspectTab.qml
-├── Dialogs/
-│   ├── CreateContainer.qml
-│   ├── CreateNetwork.qml
-│   ├── CreateMachine.qml
-│   ├── CloneMachine.qml
-│   ├── ImportMachine.qml
-│   ├── ConfirmDialog.qml
-│   └── SettingsWindow.qml
-├── Setup/
-│   ├── SetupWindow.qml
-│   ├── SetupRail.qml
-│   ├── SetupStep.qml
-│   ├── SetupCheckRow.qml
-│   ├── SetupProgress.qml
-│   ├── SetupLog.qml
-│   └── SetupDone.qml
-└── Theme/
-    ├── Theme.qml
-    └── Icons.qml
+├── Theme.qml            # singleton de tokens
+├── NavItem.qml
+├── ViewHeader.qml
+├── CatalogList.qml
+├── AppIcon.qml
+├── AppBadge.qml
+├── ActionButton.qml
+├── FormField.qml
+├── FormCheck.qml
+├── ContainersPage.qml
+├── Inspector.qml
+├── LogsView.qml
+├── StatsView.qml
+├── Sparkline.qml
+├── FilesView.qml
+├── ImagesView.qml
+├── VolumesView.qml
+├── NetworksView.qml
+├── PodsView.qml
+├── ComposeView.qml
+├── BuildsView.qml
+├── Toast.qml
+└── Setup/               # planejado (T7-07)
+    ├── SetupWindow.qml
+    ├── SetupRail.qml
+    ├── SetupStep.qml
+    ├── SetupCheckRow.qml
+    ├── SetupProgress.qml
+    ├── SetupLog.qml
+    └── SetupDone.qml
 ```
 
 - `qt_add_qml_module`; `qmllint` no CI.

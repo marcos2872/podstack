@@ -7,7 +7,7 @@ Flickable {
     id: statsView
 
     contentWidth: width
-    contentHeight: statsColumn.implicitHeight + 28
+    contentHeight: statsColumn.implicitHeight + 14
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     ScrollBar.vertical: ScrollBar {}
@@ -17,9 +17,9 @@ Flickable {
 
     ColumnLayout {
         id: statsColumn
-        x: 14
-        y: 14
-        width: statsView.width - 28
+        x: 0
+        y: 0
+        width: statsView.width
         spacing: 10
 
         GridLayout {

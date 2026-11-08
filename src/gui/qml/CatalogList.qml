@@ -15,6 +15,8 @@ Rectangle {
 
     signal activated(int index)
 
+    onItemsChanged: if (currentRow >= items.length) currentRow = -1
+
     color: Theme.bgSurface
     radius: Theme.radiusLg
     border.width: 1
@@ -81,6 +83,10 @@ Rectangle {
 
                 width: ListView.view.width
                 height: 44
+                leftPadding: 14
+                rightPadding: 14
+                topPadding: 0
+                bottomPadding: 0
                 hoverEnabled: true
                 Accessible.name: root.columns.length > 0 && rowData
                                  ? String(rowData[root.columns[0].key] || "") : ""

@@ -6,7 +6,6 @@ import PodStack
 ColumnLayout {
     id: logsView
 
-    Layout.margins: 14
     spacing: 8
 
     FormField {

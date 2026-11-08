@@ -8,7 +8,6 @@ ColumnLayout {
 
     property string containerId
 
-    Layout.margins: 14
     spacing: 8
 
     RowLayout {

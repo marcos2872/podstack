@@ -8,7 +8,7 @@ ApplicationWindow {
 
     width: 1240
     height: 780
-    minimumWidth: 960
+    minimumWidth: 1000
     minimumHeight: 600
     visible: true
     title: qsTr("PodStack")
@@ -22,9 +22,23 @@ ApplicationWindow {
     property string section: "containers"
     property string searchText: ""
 
-    onSectionChanged: refreshCurrent()
+    onSectionChanged: {
+        searchText = ""
+        searchField.text = ""
+        refreshCurrent()
+    }
 
-    Component.onCompleted: Theme.dark = backend.settings().theme !== "light"
+    function applyTheme(theme) {
+        if (theme === "light") {
+            Theme.dark = false
+        } else if (theme === "dark") {
+            Theme.dark = true
+        } else {
+            Theme.dark = Qt.styleHints.colorScheme !== Qt.ColorScheme.Light
+        }
+    }
+
+    Component.onCompleted: applyTheme(backend.settings().theme || "system")
 
     readonly property var sections: [
         { group: "Engine", items: [
@@ -311,6 +325,7 @@ ApplicationWindow {
 
                     // Busca
                     Rectangle {
+                        visible: window.section === "containers"
                         Layout.preferredWidth: 270
                         Layout.preferredHeight: 34
                         radius: Theme.radiusSm
@@ -556,7 +571,8 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "/"
+        sequence: StandardKey.Find
+        enabled: window.section === "containers"
         onActivated: searchField.forceActiveFocus()
     }
 

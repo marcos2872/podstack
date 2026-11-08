@@ -293,6 +293,7 @@ ColumnLayout {
                 text: qsTr("Remover volumes também")
             }
         }
+        onOpened: removeVolumes.checked = false
         onAccepted: {
             if (composeList.currentRow >= 0) {
                 backend.composeDown(backend.composeProjects[composeList.currentRow].workingDir,

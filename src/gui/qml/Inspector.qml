@@ -28,8 +28,24 @@ Rectangle {
     readonly property bool running: selected !== null && selected.state === "running"
 
     property int tabIndex: 0
+    property string activeContainerId: ""
 
-    onTabIndexChanged: syncStreams()
+    onTabIndexChanged: {
+        activeContainerId = selected ? (selected.id || "") : ""
+        syncStreams()
+    }
+
+    Timer {
+        id: selectionSync
+        interval: 100
+        onTriggered: {
+            const id = inspector.selected ? (inspector.selected.id || "") : ""
+            if (id !== inspector.activeContainerId) {
+                inspector.activeContainerId = id
+                inspector.syncStreams()
+            }
+        }
+    }
 
     function syncStreams() {
         if (!selected) {
@@ -53,8 +69,11 @@ Rectangle {
         }
     }
 
-    onSelectedChanged: syncStreams()
-    Component.onCompleted: syncStreams()
+    onSelectedChanged: selectionSync.restart()
+    Component.onCompleted: {
+        activeContainerId = selected ? (selected.id || "") : ""
+        syncStreams()
+    }
     Component.onDestruction: {
         backend.unsubscribeLogs()
         backend.unsubscribeStats()
@@ -498,20 +517,26 @@ Rectangle {
                 }
             }
 
-            LogsView {
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                LogsView { anchors.fill: parent; anchors.margins: 14 }
             }
 
-            StatsView {
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                StatsView { anchors.fill: parent; anchors.margins: 14 }
             }
 
-            FilesView {
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                containerId: inspector.selected ? inspector.selected.id : ""
+                FilesView {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    containerId: inspector.selected ? inspector.selected.id : ""
+                }
             }
         }
     }

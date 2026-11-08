@@ -106,8 +106,8 @@ Item {
         let changed = false
         for (const id in selectedIds) {
             let found = false
-            for (let i = 0; i < visibleItems.length; ++i) {
-                if (visibleItems[i].id === id) {
+            for (let i = 0; i < allItems.length; ++i) {
+                if (allItems[i].id === id) {
                     found = true
                     break
                 }
@@ -364,7 +364,7 @@ Item {
                         }
 
                         Text {
-                            text: qsTr("ordenados por nome")
+                            text: qsTr("ordem do engine")
                             color: Theme.textTertiary
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontMeta
@@ -429,8 +429,12 @@ Item {
                             width: ListView.view.width
                             height: Theme.rowHeight
                             Accessible.name: modelData.name
+                            Accessible.role: Accessible.ListItem
+                            Accessible.selected: containersPage.selectedIds[modelData.id] === true
 
-                            readonly property bool hovered: rowMouse.containsMouse
+                            readonly property bool hovered: rowHover.hovered
+
+                            HoverHandler { id: rowHover }
 
                             Rectangle {
                                 anchors.fill: parent
@@ -454,7 +458,6 @@ Item {
                             MouseArea {
                                 id: rowMouse
                                 anchors.fill: parent
-                                hoverEnabled: true
                                 onClicked: function(mouse) {
                                     containerList.currentIndex = index
                                     containersPage.currentId = modelData.id
