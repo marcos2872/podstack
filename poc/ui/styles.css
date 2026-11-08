@@ -373,38 +373,6 @@ body { background: #070a12; }
 .sidebar-foot { margin-top: auto; padding-top: 12px; display: grid; gap: 6px; }
 .sidebar-hr { height: 1px; background: var(--border); margin: 6px 4px; }
 
-.sidebar-theme {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-2);
-  font-size: 11px;
-}
-.theme-toggle {
-  width: 34px;
-  height: 20px;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface-3);
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  transition: background var(--dur) var(--ease);
-}
-.theme-toggle .knob {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
-  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
-}
-[data-theme="dark"] .theme-toggle .knob { transform: translateX(14px); background: #e7eaf0; }
-[data-theme="light"] .theme-toggle .knob { transform: translateX(0); background: #171a22; }
 
 /* ------------------------------------------------------------------ topbar */
 .topbar {

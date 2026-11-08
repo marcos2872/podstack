@@ -327,10 +327,6 @@
       <div class="sidebar-foot">
         <div class="sidebar-hr"></div>
         <div class="nav-item" data-action="settings" role="button" tabindex="0">${icon("settings", "nav-icon")}<span class="nav-text">Settings</span></div>
-        <div class="sidebar-theme">
-          <span style="display:inline-flex;align-items:center;gap:7px">${icon(state.theme === "dark" ? "moon" : "sun", "nav-icon")} ${state.theme === "dark" ? "Escuro" : "Claro"}</span>
-          <button class="theme-toggle" data-action="theme" aria-label="Alternar tema"><span class="knob"></span></button>
-        </div>
       </div>`;
   }
 
