@@ -31,6 +31,7 @@ private slots:
     void backendCatalog();
     void backendM3();
     void backendErrors();
+    void backendTheme();
 
 private:
     QProcessEnvironment daemonEnvironment() const;
@@ -69,6 +70,8 @@ void GuiTest::initTestCase()
                           .arg(QCoreApplication::applicationPid());
     QDir(m_testDataDir).removeRecursively();
     QDir().mkpath(m_testDataDir);
+    QDir().mkpath(m_testDataDir + QStringLiteral("/config"));
+    qputenv("XDG_CONFIG_HOME", (m_testDataDir + QStringLiteral("/config")).toUtf8());
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -272,6 +275,7 @@ void GuiTest::backendStreams()
             QStringLiteral("1.5")),
         5000);
     QCOMPARE(backend.cpuHistory().size(), 1);
+    QCOMPARE(backend.memHistory().size(), 1);
     backend.unsubscribeStats();
 
     QSignalSpy filesSpy(&backend, &PodStack::Backend::filesChanged);
@@ -478,6 +482,28 @@ void GuiTest::backendErrors()
 
     backend.saveEngineMode(QStringLiteral("bogus"));
     QVERIFY(!backend.lastError().isEmpty());
+}
+
+void GuiTest::backendTheme()
+{
+    PodStack::Backend backend;
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    backend.saveTheme(QStringLiteral("light"));
+    QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+             QStringLiteral("light"));
+
+    backend.saveTheme(QStringLiteral("system"));
+    QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+             QStringLiteral("system"));
+
+    backend.saveTheme(QStringLiteral("bogus"));
+    QVERIFY(!backend.lastError().isEmpty());
+    QVERIFY(errorSpy.count() > 0);
+    QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+             QStringLiteral("system"));
+    QVERIFY(actionSpy.count() >= 2);
 }
 
 } // namespace

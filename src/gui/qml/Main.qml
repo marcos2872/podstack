@@ -1,41 +1,143 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import PodStack
 
 ApplicationWindow {
     id: window
+
     width: 1240
     height: 780
-    minimumWidth: 960
+    minimumWidth: 900
     minimumHeight: 600
+
+    readonly property bool compactLayout: width < 1100 || preferredWidth < 1100
+    readonly property bool compactStatus: width < 860 || preferredWidth < 860
+
+    readonly property int preferredWidth: {
+        const available = Screen.desktopAvailableWidth
+        return Math.min(1240, Math.max(800, available > 0 ? available - 80 : 1240))
+    }
+    readonly property int preferredHeight: {
+        const available = Screen.desktopAvailableHeight
+        return Math.min(780, Math.max(560, available > 0 ? available - 80 : 780))
+    }
     visible: true
-    title: "PodStack"
-    color: theme.bgBase
+    title: qsTr("PodStack")
+    color: Theme.bgBase
+
+    FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-Regular.ttf" }
+    FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-Medium.ttf" }
+    FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-SemiBold.ttf" }
+    FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-Bold.ttf" }
 
     property string section: "containers"
+    property string searchText: ""
 
-    onSectionChanged: refreshCurrent()
+    onSectionChanged: {
+        searchText = ""
+        searchField.text = ""
+        refreshCurrent()
+    }
 
-    Theme { id: theme }
+    function applyTheme(theme) {
+        if (theme === "light") {
+            Theme.dark = false
+        } else if (theme === "dark") {
+            Theme.dark = true
+        } else {
+            Theme.dark = Qt.styleHints.colorScheme !== Qt.ColorScheme.Light
+        }
+    }
+
+    Component.onCompleted: {
+        width = preferredWidth
+        height = preferredHeight
+        minimumWidth = Math.min(900, preferredWidth)
+        minimumHeight = Math.min(600, preferredHeight)
+        applyTheme(backend.settings().theme || "system")
+    }
 
     readonly property var sections: [
-        { group: "DOCKER", items: [
-            { key: "containers", label: "Containers" },
-            { key: "images", label: "Images" },
-            { key: "volumes", label: "Volumes" },
-            { key: "networks", label: "Networks" },
-            { key: "compose", label: "Compose" },
-            { key: "builds", label: "Builds" }
+        { group: "Engine", items: [
+            { key: "containers", label: "Containers", icon: "containers" },
+            { key: "images", label: "Images", icon: "images" },
+            { key: "volumes", label: "Volumes", icon: "volumes" },
+            { key: "networks", label: "Networks", icon: "networks" },
+            { key: "compose", label: "Compose", icon: "compose" },
+            { key: "builds", label: "Builds", icon: "builds" },
+            { key: "pods", label: "Pods", icon: "pods" }
         ] },
-        { group: "KUBERNETES", items: [
-            { key: "pods", label: "Pods" }
-        ] },
-        { group: "LINUX", items: [
-            { key: "machines", label: "Machines", disabled: true },
-            { key: "devices", label: "Devices", disabled: true }
+        { group: "Linux", items: [
+            { key: "machines", label: "Machines", icon: "machines", disabled: true },
+            { key: "devices", label: "Devices", icon: "devices", disabled: true }
         ] }
     ]
+
+    readonly property string sectionTitle: {
+        for (let group = 0; group < sections.length; ++group) {
+            const items = sections[group].items
+            for (let item = 0; item < items.length; ++item) {
+                if (items[item].key === section) {
+                    return items[item].label
+                }
+            }
+        }
+        return "Containers"
+    }
+
+    readonly property string engineMode: {
+        const settings = backend.settings()
+        return settings.engineMode === "rootful" ? "rootful" : "rootless"
+    }
+
+    function countFor(key) {
+        if (key === "containers") {
+            return containersPage.containerCount
+        }
+        if (key === "images") {
+            return backend.images.length
+        }
+        if (key === "volumes") {
+            return backend.volumes.length
+        }
+        if (key === "networks") {
+            return backend.networks.length
+        }
+        if (key === "compose") {
+            return backend.composeProjects.length
+        }
+        if (key === "builds") {
+            return backend.builds.length
+        }
+        if (key === "pods") {
+            return backend.pods.length
+        }
+        return -1
+    }
+
+    function viewIndexFor(key) {
+        if (key === "images") {
+            return 1
+        }
+        if (key === "volumes") {
+            return 2
+        }
+        if (key === "networks") {
+            return 3
+        }
+        if (key === "compose") {
+            return 4
+        }
+        if (key === "builds") {
+            return 5
+        }
+        if (key === "pods") {
+            return 6
+        }
+        return 0
+    }
 
     function refreshCurrent() {
         if (section === "containers") {
@@ -55,281 +157,485 @@ ApplicationWindow {
         }
     }
 
-    function sectionIndex() {
-        if (section === "images") {
-            return 1
-        }
-        if (section === "volumes") {
-            return 2
-        }
-        if (section === "networks") {
-            return 3
-        }
-        if (section === "pods") {
-            return 4
-        }
-        return 0
-    }
-
-    ColumnLayout {
+    RowLayout {
         anchors.fill: parent
         spacing: 0
 
-        // Top bar
+        // Sidebar
         Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 56
-            color: theme.bgSurface
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 12
-
-                Rectangle {
-                    width: 34
-                    height: 22
-                    radius: 11
-                    color: theme.indigo700
-
-                    Rectangle {
-                        x: 8
-                        y: 6
-                        width: 8
-                        height: 10
-                        radius: 2
-                        color: theme.cyan
-                    }
-                    Rectangle {
-                        x: 19
-                        y: 6
-                        width: 8
-                        height: 10
-                        radius: 2
-                        color: theme.indigo500
-                    }
-                }
-
-                Label {
-                    text: "PodStack"
-                    color: theme.textPrimary
-                    font.pixelSize: 18
-                    font.bold: true
-                }
-
-                Label {
-                    text: "v" + backend.version
-                    color: theme.textSecondary
-                    font.pixelSize: 11
-                }
-
-                Item { Layout.fillWidth: true }
-
-                ActionButton {
-                    text: "Novo"
-                    visible: window.section === "containers"
-                    onClicked: containersPage.openCreate()
-                }
-
-                ActionButton {
-                    text: "Start all"
-                    visible: window.section === "containers"
-                    accentColor: theme.success
-                    onClicked: backend.batchAll("start")
-                }
-
-                ActionButton {
-                    text: "Stop all"
-                    visible: window.section === "containers"
-                    accentColor: theme.warning
-                    onClicked: backend.batchAll("stop")
-                }
-
-                Button {
-                    id: refreshButton
-                    text: "Atualizar"
-                    onClicked: window.refreshCurrent()
-                    background: Rectangle {
-                        color: theme.indigo500
-                        radius: theme.radius
-                    }
-                    contentItem: Text {
-                        text: refreshButton.text
-                        color: "#FFFFFF"
-                        font.pixelSize: 13
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                }
-            }
-        }
-
-        // Error banner
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: backend.error.length > 0 ? 34 : 0
-            visible: backend.error.length > 0
-            color: theme.danger
-
-            Label {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                verticalAlignment: Text.AlignVCenter
-                text: backend.error
-                color: "#FFFFFF"
-                font.pixelSize: 12
-                elide: Text.ElideRight
-            }
-        }
-
-        SplitView {
-            Layout.fillWidth: true
+            Layout.preferredWidth: window.compactLayout ? 196 : Theme.sidebarWidth
             Layout.fillHeight: true
+            color: Theme.bgSidebar
 
-            // Sidebar
             Rectangle {
-                SplitView.preferredWidth: 200
-                SplitView.minimumWidth: 170
-                color: theme.bgSurface
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 1
+                color: Theme.border
+            }
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 2
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                anchors.topMargin: 14
+                anchors.bottomMargin: 12
+                spacing: 2
 
-                    Repeater {
-                        model: window.sections
+                // Marca
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.bottomMargin: 14
+                    spacing: 10
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
+                    Image {
+                        source: "qrc:/qt/qml/PodStack/assets/podstack-icon.svg"
+                        sourceSize: Qt.size(80, 80)
+                        Layout.preferredWidth: 40
+                        Layout.preferredHeight: 40
+                        Layout.alignment: Qt.AlignVCenter
+                        fillMode: Image.PreserveAspectFit
+                    }
 
-                            Label {
-                                text: modelData.group
-                                color: theme.textSecondary
-                                font.pixelSize: 10
-                                font.bold: true
-                                Layout.leftMargin: 8
-                                Layout.topMargin: 10
-                                Layout.bottomMargin: 4
-                            }
+                    ColumnLayout {
+                        Layout.alignment: Qt.AlignVCenter
+                        spacing: 0
+                        Text {
+                            text: "PodStack"
+                            color: Theme.textPrimary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontTitle
+                            font.weight: Font.Bold
+                            font.letterSpacing: -0.3
+                        }
+                        Text {
+                            text: "v" + backend.version
+                            color: Theme.textTertiary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMeta
+                        }
+                    }
 
-                            Repeater {
-                                model: modelData.items
+                    Item { Layout.fillWidth: true }
+                }
 
-                                ItemDelegate {
-                                    Layout.fillWidth: true
-                                    text: modelData.label
-                                    enabled: !modelData.disabled
-                                    highlighted: window.section === modelData.key
-                                    onClicked: window.section = modelData.key
-                                    background: Rectangle {
-                                        color: parent.highlighted ? theme.bgElevated
-                                                                  : "transparent"
-                                        radius: theme.radius
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: parent.highlighted
-                                               ? theme.textPrimary : theme.textSecondary
-                                        font.pixelSize: 13
-                                        leftPadding: 8
-                                        verticalAlignment: Text.AlignVCenter
+                Flickable {
+                    id: navScroll
+
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    contentWidth: width
+                    contentHeight: navColumn.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {}
+
+                    ColumnLayout {
+                        id: navColumn
+
+                        width: navScroll.width
+                        spacing: 2
+
+                        Repeater {
+                            model: window.sections
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+
+                                Text {
+                                    Layout.leftMargin: 10
+                                    Layout.topMargin: 10
+                                    Layout.bottomMargin: 6
+                                    text: modelData.group
+                                    color: Theme.textTertiary
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontMeta
+                                    font.weight: Font.DemiBold
+                                    font.capitalization: Font.AllUppercase
+                                    font.letterSpacing: 0.9
+                                }
+
+                                Repeater {
+                                    model: modelData.items
+
+                                    NavItem {
+                                        Layout.fillWidth: true
+                                        iconName: modelData.icon
+                                        label: modelData.label
+                                        count: window.countFor(modelData.key)
+                                        current: window.section === modelData.key
+                                        available: modelData.disabled !== true
+                                        onClicked: window.section = modelData.key
                                     }
                                 }
                             }
                         }
                     }
+                }
 
-                    Item { Layout.fillHeight: true }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    Layout.leftMargin: 4
+                    Layout.rightMargin: 4
+                    Layout.bottomMargin: 4
+                    color: Theme.border
+                }
 
-                    ItemDelegate {
-                        Layout.fillWidth: true
-                        text: "Settings"
-                        onClicked: settingsDialog.open()
-                        background: Rectangle {
-                            color: "transparent"
-                            radius: theme.radius
+                NavItem {
+                    Layout.fillWidth: true
+                    iconName: "settings"
+                    label: "Settings"
+                    onClicked: settingsDialog.open()
+                }
+            }
+        }
+
+        // Workspace
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 0
+
+            // Topbar
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.topbarHeight
+                color: Theme.bgBase
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: Theme.border
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    spacing: 12
+
+                    Text {
+                        text: "PodStack"
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                    }
+                    Text {
+                        text: "/"
+                        color: Theme.textDisabled
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                    }
+                    Text {
+                        text: window.sectionTitle
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Font.DemiBold
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    // Busca
+                    Rectangle {
+                        visible: window.section === "containers"
+                        Layout.preferredWidth: window.compactLayout ? 200 : 270
+                        Layout.preferredHeight: 34
+                        radius: Theme.radiusSm
+                        color: Theme.bgSurface2
+                        border.width: 1
+                        border.color: searchField.activeFocus ? Theme.indigo500 : Theme.border
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            spacing: 7
+
+                            AppIcon {
+                                name: "search"
+                                size: 14
+                                color: Theme.textTertiary
+                            }
+
+                            TextField {
+                                id: searchField
+                                Layout.fillWidth: true
+                                placeholderText: qsTr("Buscar containers…")
+                                color: Theme.textPrimary
+                                placeholderTextColor: Theme.textTertiary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontBody
+                                leftPadding: 0
+                                rightPadding: 0
+                                verticalAlignment: TextInput.AlignVCenter
+                                background: null
+                                selectByMouse: true
+                                selectionColor: Theme.accentSoft
+                                selectedTextColor: Theme.textPrimary
+                                onTextChanged: window.searchText = text
+                            }
                         }
-                        contentItem: Text {
-                            text: parent.text
-                            color: theme.textSecondary
-                            font.pixelSize: 13
-                            leftPadding: 8
-                            verticalAlignment: Text.AlignVCenter
+                    }
+
+                    ActionButton {
+                        variant: "ghost"
+                        iconName: Theme.dark ? "sun" : "moon"
+                        onClicked: {
+                            Theme.dark = !Theme.dark
+                            backend.saveTheme(Theme.dark ? "dark" : "light")
+                        }
+                        Accessible.name: qsTr("Alternar tema")
+                    }
+
+                    // Engine pill
+                    Rectangle {
+                        implicitWidth: engineRow.implicitWidth + 20
+                        implicitHeight: 28
+                        radius: 999
+                        color: Theme.bgSurface2
+                        border.width: 1
+                        border.color: Theme.border
+
+                        RowLayout {
+                            id: engineRow
+                            anchors.centerIn: parent
+                            spacing: 7
+
+                            Rectangle {
+                                Layout.preferredWidth: 6
+                                Layout.preferredHeight: 6
+                                radius: 3
+                                color: backend.connected ? Theme.success : Theme.danger
+                            }
+
+                            Text {
+                                text: window.engineMode
+                                color: Theme.textSecondary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMeta
+                                font.weight: Font.Medium
+                            }
                         }
                     }
                 }
             }
 
+            // Error banner
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: backend.error.length > 0 ? 34 : 0
+                visible: backend.error.length > 0
+                color: Theme.dangerSoft
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 20
+                    spacing: 8
+
+                    AppIcon {
+                        name: "alert"
+                        size: 14
+                        color: Theme.danger
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: backend.error
+                        color: Theme.danger
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+
+            // Páginas
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: window.sectionIndex()
+                currentIndex: window.viewIndexFor(window.section)
 
-                ContainersPage {
-                    id: containersPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    ContainersPage {
+                        id: containersPage
+                        anchors.fill: parent
+                        filterText: window.searchText
+                        compact: window.compactLayout
+                    }
                 }
 
-                ImagesView {
-                    id: imagesPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    ImagesView {
+                        id: imagesPage
+                        anchors.fill: parent
+                    }
                 }
 
-                VolumesView {
-                    id: volumesPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    VolumesView {
+                        id: volumesPage
+                        anchors.fill: parent
+                    }
                 }
 
-                NetworksView {
-                    id: networksPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    NetworksView {
+                        id: networksPage
+                        anchors.fill: parent
+                    }
                 }
 
-                ComposeView {
-                    id: composePage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    ComposeView {
+                        id: composePage
+                        anchors.fill: parent
+                        compact: window.compactLayout
+                    }
                 }
 
-                BuildsView {
-                    id: buildsPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    BuildsView {
+                        id: buildsPage
+                        anchors.fill: parent
+                        compact: window.compactLayout
+                    }
                 }
 
-                PodsView {
-                    id: podsPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    PodsView {
+                        id: podsPage
+                        anchors.fill: parent
+                    }
                 }
             }
-        }
 
-        // Status bar
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 26
-            color: theme.bgSurface
+            // Statusbar
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.statusbarHeight
+                color: Theme.bgSidebar
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-
-                Label {
-                    text: backend.connected ? "podstackd conectado" : "podstackd desconectado"
-                    color: backend.connected ? theme.success : theme.danger
-                    font.pixelSize: 10
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: 1
+                    color: Theme.border
                 }
 
-                Item { Layout.fillWidth: true }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 20
+                    spacing: 8
 
-                Label {
-                    text: "imagens " + (backend.diskUsage.images || "—")
-                          + "  ·  volumes " + (backend.diskUsage.volumes || "—")
-                          + "  ·  containers " + (backend.diskUsage.containers || "—")
-                    color: theme.textSecondary
-                    font.pixelSize: 10
-                }
+                    Rectangle {
+                        Layout.preferredWidth: 6
+                        Layout.preferredHeight: 6
+                        radius: 3
+                        color: backend.connected ? Theme.success : Theme.danger
+                    }
 
-                Label {
-                    text: "GPL-3.0-or-later"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
+                    Text {
+                        text: backend.connected ? qsTr("podstackd conectado")
+                                                : qsTr("podstackd desconectado")
+                        color: backend.connected ? Theme.success : Theme.danger
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Text {
+                        text: containersPage.runningCount + "/" + containersPage.containerCount
+                              + qsTr(" containers")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Text {
+                        visible: !window.compactStatus
+                        text: "·"
+                        color: Theme.textDisabled
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Text {
+                        visible: !window.compactStatus
+                        text: backend.images.length + qsTr(" imagens")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Text {
+                        visible: !window.compactStatus
+                        text: "·"
+                        color: Theme.textDisabled
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Text {
+                        visible: !window.compactStatus
+                        text: backend.volumes.length + qsTr(" volumes")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Text {
+                        visible: !window.compactStatus
+                        text: "·"
+                        color: Theme.textDisabled
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Text {
+                        text: "GPL-3.0-or-later"
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
                 }
             }
         }
@@ -340,57 +646,89 @@ ApplicationWindow {
         kind: backend.eventKind
     }
 
-    Dialog {
+    Shortcut {
+        sequence: StandardKey.Find
+        enabled: window.section === "containers"
+        onActivated: searchField.forceActiveFocus()
+    }
+
+    AppDialog {
         id: settingsDialog
-        title: "Configurações"
+        title: qsTr("Configurações")
         modal: true
-        width: 440
+        width: 460
+        anchors.centerIn: parent
+        header: null
+        leftPadding: 18
+        rightPadding: 18
+        topPadding: 16
+        bottomPadding: 14
         background: Rectangle {
-            color: theme.bgSurface
-            radius: 10
-            border.color: theme.border
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 10
-            Label {
-                text: "Modo do engine"
-                color: theme.textSecondary
-                font.pixelSize: 11
-                font.bold: true
+
+            Text {
+                Layout.bottomMargin: 4
+                text: qsTr("Configurações")
+                color: Theme.textPrimary
+                font.family: Theme.fontFamily
+                font.pixelSize: 17
+                font.weight: Font.DemiBold
+                font.letterSpacing: -0.3
             }
-            ComboBox {
-                id: engineMode
+
+            Text {
+                text: qsTr("Modo do engine")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                font.weight: Font.DemiBold
+            }
+
+            AppSelect {
+                id: engineModeBox
+                Layout.fillWidth: true
                 model: ["rootless", "rootful"]
                 currentIndex: backend.settings().engineMode === "rootful" ? 1 : 0
             }
-            Label {
-                text: "Alterar o modo exige reiniciar o podstackd:\n"
-                      + "systemctl --user restart podstack.service"
-                color: theme.textSecondary
-                font.pixelSize: 10
+
+            Text {
+                text: qsTr("Alterar o modo exige reiniciar o podstackd:\n"
+                           + "systemctl --user restart podstack.service")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
             }
-            Label {
+
+            Text {
                 text: backend.lastError
                 visible: backend.lastError.length > 0
-                color: theme.danger
-                font.pixelSize: 10
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: "Cancelar"
-                accentColor: theme.bgElevated
+                text: qsTr("Cancelar")
+                variant: "secondary"
                 onClicked: settingsDialog.close()
             }
             ActionButton {
-                text: "Salvar"
+                text: qsTr("Salvar")
+                variant: "primary"
                 onClicked: {
-                    backend.saveEngineMode(engineMode.currentText)
+                    backend.saveEngineMode(engineModeBox.currentText)
                     settingsDialog.close()
                 }
             }

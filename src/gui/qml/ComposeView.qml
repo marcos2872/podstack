@@ -6,245 +6,260 @@ import PodStack
 ColumnLayout {
     id: composeView
 
-    Theme { id: theme }
-
     spacing: 0
 
-    Rectangle {
+    property bool compact: false
+
+    ViewHeader {
         Layout.fillWidth: true
-        Layout.preferredHeight: 52
-        color: theme.bgBase
+        Layout.leftMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 20 : 22
+        Layout.topMargin: 20
+        Layout.bottomMargin: 16
+        title: qsTr("Compose")
+        subtitle: backend.composeProjects.length + qsTr(" projetos")
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 8
-
-            Label {
-                text: "Compose"
-                color: theme.textPrimary
-                font.pixelSize: 15
-                font.bold: true
+        ActionButton {
+            text: qsTr("Up por diretório")
+            variant: "primary"
+            iconName: "play"
+            onClicked: {
+                upProjectPath.text = ""
+                upDialog.open()
             }
+        }
 
-            Label {
-                text: backend.composeProjects.length + " projetos"
-                color: theme.textSecondary
-                font.pixelSize: 11
-            }
-
-            Item { Layout.fillWidth: true }
-
-            ActionButton {
-                text: "Up"
-                enabled: composeList.currentRow >= 0
-                onClicked: backend.composeUp(backend.composeProjects[composeList.currentRow].workingDir)
-            }
-
-            ActionButton {
-                text: "Up por diretório"
-                onClicked: {
-                    upProjectPath.text = ""
-                    upDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Down"
-                accentColor: theme.warning
-                enabled: composeList.currentRow >= 0
-                onClicked: downDialog.open()
-            }
-
-            ActionButton {
-                text: "Restart"
-                accentColor: theme.indigo500
-                enabled: composeList.currentRow >= 0
-                onClicked: backend.composeRestart(
-                               backend.composeProjects[composeList.currentRow].workingDir, "")
-            }
-
-            ActionButton {
-                text: "Abrir YAML"
-                accentColor: theme.bgElevated
-                enabled: composeList.currentRow >= 0
-                onClicked: {
-                    const project = backend.composeProjects[composeList.currentRow]
-                    backend.openPath(project.configFile.length > 0
-                                     ? project.configFile : project.workingDir)
-                }
-            }
-
-            ActionButton {
-                text: "Abrir diretório"
-                accentColor: theme.bgElevated
-                enabled: composeList.currentRow >= 0
-                onClicked: backend.openPath(
-                               backend.composeProjects[composeList.currentRow].workingDir)
-            }
-
-            ActionButton {
-                text: "Atualizar"
-                accentColor: theme.bgElevated
-                onClicked: backend.refreshCompose()
-            }
+        ActionButton {
+            variant: "ghost"
+            iconName: "refresh"
+            onClicked: backend.refreshCompose()
+            Accessible.name: qsTr("Atualizar")
         }
     }
 
-    Rectangle {
+    RowLayout {
         Layout.fillWidth: true
-        Layout.preferredHeight: 1
-        color: theme.border
+        Layout.leftMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 20 : 22
+        Layout.bottomMargin: 14
+        spacing: 7
+
+        ActionButton {
+            text: qsTr("Up")
+            enabled: composeList.currentRow >= 0
+            onClicked: backend.composeUp(
+                           backend.composeProjects[composeList.currentRow].workingDir)
+        }
+
+        ActionButton {
+            text: qsTr("Down")
+            enabled: composeList.currentRow >= 0
+            onClicked: downDialog.open()
+        }
+
+        ActionButton {
+            text: qsTr("Restart")
+            enabled: composeList.currentRow >= 0
+            onClicked: backend.composeRestart(
+                           backend.composeProjects[composeList.currentRow].workingDir, "")
+        }
+
+        ActionButton {
+            text: qsTr("Abrir YAML")
+            iconName: "file"
+            enabled: composeList.currentRow >= 0
+            onClicked: {
+                const project = backend.composeProjects[composeList.currentRow]
+                backend.openPath(project.configFile.length > 0
+                                 ? project.configFile : project.workingDir)
+            }
+        }
+
+        ActionButton {
+            text: qsTr("Abrir diretório")
+            iconName: "folder"
+            enabled: composeList.currentRow >= 0
+            onClicked: backend.openPath(
+                           backend.composeProjects[composeList.currentRow].workingDir)
+        }
+
+        Item { Layout.fillWidth: true }
     }
 
-    SplitView {
+    RowLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
+        Layout.leftMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 20 : 22
+        Layout.bottomMargin: 20
+        spacing: compact ? 12 : 16
 
-        ColumnLayout {
-            SplitView.preferredWidth: 420
-            SplitView.minimumWidth: 320
-            spacing: 0
-
-            CatalogList {
-                id: composeList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                items: backend.composeProjects
-                columns: [
-                    { key: "name", label: "PROJETO", width: 0 },
-                    { key: "status", label: "STATUS", width: 80 },
-                    { key: "services", label: "SERVIÇOS", width: 150 }
-                ]
-            }
-
-            Label {
-                Layout.fillWidth: true
-                Layout.margins: 16
-                visible: backend.composeProjects.length === 0
-                text: "Nenhum projeto Compose em execução.\nUse a CLI: podstack compose up <diretório>."
-                color: theme.textSecondary
-                font.pixelSize: 11
-                wrapMode: Text.WordWrap
-            }
+        CatalogList {
+            id: composeList
+            Layout.preferredWidth: compact ? 280 : 480
+            Layout.minimumWidth: 280
+            Layout.fillHeight: true
+            emptyIcon: "compose"
+            emptyText: qsTr("Nenhum projeto Compose em execução.\n"
+                            + "Use a CLI: podstack compose up <diretório>.")
+            items: backend.composeProjects
+            columns: [
+                { key: "name", label: "PROJETO", width: 0 },
+                { key: "status", label: "STATUS", width: compact ? 58 : 80 },
+                { key: "services", label: "SERVIÇOS", width: compact ? 90 : 150 }
+            ]
         }
 
-        ColumnLayout {
-            SplitView.fillWidth: true
-            SplitView.minimumWidth: 320
-            spacing: 6
-            Layout.margins: 8
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.minimumWidth: compact ? 240 : 320
+            Layout.fillHeight: true
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+            clip: true
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
 
-                Label {
-                    text: "Logs"
-                    color: theme.textPrimary
-                    font.pixelSize: 12
-                    font.bold: true
-                }
-
-                FormField {
-                    id: logService
+                RowLayout {
                     Layout.fillWidth: true
-                    placeholderText: "serviço (vazio = todos)"
+                    Layout.preferredHeight: 48
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    spacing: 8
+
+                    Text {
+                        text: qsTr("Logs")
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Font.DemiBold
+                    }
+
+                    FormField {
+                        id: logService
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 60
+                        Layout.preferredHeight: 30
+                        placeholderText: qsTr("serviço (vazio = todos)")
+                    }
+
+                    ActionButton {
+                        text: qsTr("Assinar")
+                        size: "sm"
+                        enabled: composeList.currentRow >= 0
+                        onClicked: backend.subscribeComposeLogs(
+                                       backend.composeProjects[composeList.currentRow].name,
+                                       logService.text)
+                    }
+
+                    ActionButton {
+                        text: qsTr("Parar")
+                        variant: "ghost"
+                        size: "sm"
+                        onClicked: backend.unsubscribeComposeLogs()
+                    }
                 }
 
-                ActionButton {
-                    text: "Assinar"
-                    enabled: composeList.currentRow >= 0
-                    onClicked: backend.subscribeComposeLogs(
-                                   backend.composeProjects[composeList.currentRow].name,
-                                   logService.text)
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.border
                 }
 
-                ActionButton {
-                    text: "Parar"
-                    accentColor: theme.bgElevated
-                    onClicked: backend.unsubscribeComposeLogs()
-                }
-            }
+                ListView {
+                    id: composeLogs
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    model: backend.composeLogLines
+                    ScrollBar.vertical: ScrollBar {}
 
-            ListView {
-                id: composeLogs
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: backend.composeLogLines
-                ScrollBar.vertical: ScrollBar {}
+                    delegate: Text {
+                        width: ListView.view.width
+                        text: modelData
+                        color: Theme.textSecondary
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontMeta
+                        textFormat: Text.PlainText
+                        wrapMode: Text.WrapAnywhere
+                        padding: 10
+                    }
 
-                delegate: Text {
-                    width: composeLogs.width
-                    text: modelData
-                    color: theme.textSecondary
-                    font.family: "monospace"
-                    font.pixelSize: 10
-                    textFormat: Text.PlainText
-                    wrapMode: Text.WrapAnywhere
-                }
+                    Connections {
+                        target: backend
+                        function onComposeLogsChanged() {
+                            composeLogs.positionViewAtEnd()
+                        }
+                    }
 
-                Connections {
-                    target: backend
-                    function onComposeLogsChanged() {
-                        composeLogs.positionViewAtEnd()
+                    Text {
+                        anchors.centerIn: parent
+                        width: parent.width - 40
+                        horizontalAlignment: Text.AlignHCenter
+                        visible: composeLogs.count === 0
+                        text: qsTr("Selecione um projeto e assine os logs por serviço ou de todos.")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMeta
+                        wrapMode: Text.WordWrap
                     }
                 }
             }
-
-            Label {
-                Layout.fillWidth: true
-                visible: backend.composeLogLines.length === 0
-                text: "Selecione um projeto e assine os logs por serviço ou de todos."
-                color: theme.textSecondary
-                font.pixelSize: 10
-                wrapMode: Text.WordWrap
-            }
         }
     }
 
-    Dialog {
+    AppDialog {
         id: upDialog
-        title: "Subir projeto Compose"
+        title: qsTr("Subir projeto Compose")
         modal: true
         width: 460
+        anchors.centerIn: parent
         background: Rectangle {
-            color: theme.bgSurface
-            radius: 10
-            border.color: theme.border
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
-            Label {
-                text: "Diretório do projeto"
-                color: theme.textSecondary
-                font.pixelSize: 11
-                font.bold: true
+
+            Text {
+                text: qsTr("Diretório do projeto")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                font.weight: Font.DemiBold
             }
+
             FormField {
                 id: upProjectPath
                 Layout.fillWidth: true
                 placeholderText: "/home/usuario/projeto"
             }
-            Label {
-                text: "O Compose procura compose.yaml ou docker-compose.yml no diretório."
-                color: theme.textSecondary
-                font.pixelSize: 10
+
+            Text {
+                text: qsTr("O Compose procura compose.yaml ou docker-compose.yml no diretório.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: "Cancelar"
-                accentColor: theme.bgElevated
+                text: qsTr("Cancelar")
+                variant: "secondary"
                 onClicked: upDialog.close()
             }
             ActionButton {
-                text: "Subir"
+                text: qsTr("Subir")
+                variant: "primary"
                 enabled: upProjectPath.text.length > 0
                 onClicked: {
                     backend.composeUp(upProjectPath.text)
@@ -254,28 +269,36 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: downDialog
-        title: "Derrubar projeto?"
+        title: qsTr("Derrubar projeto?")
         modal: true
+        anchors.centerIn: parent
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
-            color: theme.bgSurface
-            radius: 10
-            border.color: theme.border
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
-            Label {
-                text: "Os containers e a rede do projeto serão removidos. Volumes são preservados."
-                color: theme.textPrimary
+
+            Text {
+                text: qsTr("Os containers e a rede do projeto serão removidos. "
+                           + "Volumes são preservados.")
+                color: Theme.textPrimary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
                 wrapMode: Text.WordWrap
             }
+
             FormCheck {
                 id: removeVolumes
-                text: "Remover volumes também"
+                text: qsTr("Remover volumes também")
             }
         }
+        onOpened: removeVolumes.checked = false
         onAccepted: {
             if (composeList.currentRow >= 0) {
                 backend.composeDown(backend.composeProjects[composeList.currentRow].workingDir,

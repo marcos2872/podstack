@@ -230,6 +230,7 @@ BuildRequires:  sqlite-devel
 Requires:       podman >= 5.8
 Requires:       systemd >= 257
 Requires:       qtermwidget
+Requires:       qt6-qtsvg
 
 %description
 PodStack is a desktop app for Podman: containers, images, volumes, networks,

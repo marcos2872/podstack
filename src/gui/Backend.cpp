@@ -79,6 +79,17 @@ Backend::Backend(QObject *parent)
                 m_cpuHistory.removeFirst();
             }
         }
+
+        QString memory = stats.value(QStringLiteral("mem_percent")).toString();
+        memory.remove(QLatin1Char('%'));
+        ok = false;
+        const double memoryValue = memory.toDouble(&ok);
+        if (ok) {
+            m_memHistory.append(memoryValue);
+            if (m_memHistory.size() > 60) {
+                m_memHistory.removeFirst();
+            }
+        }
         emit statsChanged();
     });
 
@@ -844,6 +855,7 @@ void Backend::subscribeStats(const QString &id)
 {
     m_stats.clear();
     m_cpuHistory.clear();
+    m_memHistory.clear();
     emit statsChanged();
     m_stream.subscribeStats(id);
 }
@@ -859,6 +871,8 @@ QVariantMap Backend::settings() const
     QVariantMap values;
     values.insert(QStringLiteral("engineMode"),
                   config.get(QStringLiteral("engine.mode")).toString());
+    values.insert(QStringLiteral("theme"),
+                  config.get(QStringLiteral("app.theme")).toString());
     return values;
 }
 
@@ -873,6 +887,29 @@ void Backend::saveEngineMode(const QString &mode)
     Config config = Config::load();
     config.set(QStringLiteral("engine.mode"), mode);
 
+    QString error;
+    if (!config.save(&error)) {
+        m_lastError = error;
+        emit lastErrorChanged();
+        return;
+    }
+
+    m_lastError.clear();
+    emit lastErrorChanged();
+    emit actionFinished(true, {});
+}
+
+void Backend::saveTheme(const QString &theme)
+{
+    if (theme != QStringLiteral("system") && theme != QStringLiteral("dark")
+        && theme != QStringLiteral("light")) {
+        m_lastError = QStringLiteral("Tema inválido.");
+        emit lastErrorChanged();
+        return;
+    }
+
+    Config config = Config::load();
+    config.set(QStringLiteral("app.theme"), theme);
     QString error;
     if (!config.save(&error)) {
         m_lastError = error;
