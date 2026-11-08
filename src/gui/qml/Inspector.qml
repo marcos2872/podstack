@@ -26,6 +26,7 @@ Rectangle {
 
     readonly property string health: selected ? (selected.health || "") : ""
     readonly property bool running: selected !== null && selected.state === "running"
+    readonly property bool compact: width < 340
 
     property int tabIndex: 0
     property string activeContainerId: ""
@@ -156,33 +157,37 @@ Rectangle {
 
                 ActionButton {
                     visible: inspector.running
-                    text: qsTr("Parar")
+                    text: inspector.compact ? "" : qsTr("Parar")
                     iconName: "stop"
                     size: "sm"
                     onClicked: backend.lifecycle("stop", inspector.selected.id)
+                    Accessible.name: qsTr("Parar")
                 }
 
                 ActionButton {
                     visible: !inspector.running
-                    text: qsTr("Iniciar")
+                    text: inspector.compact ? "" : qsTr("Iniciar")
                     iconName: "play"
                     size: "sm"
                     variant: "primary"
                     onClicked: backend.lifecycle("start", inspector.selected.id)
+                    Accessible.name: qsTr("Iniciar")
                 }
 
                 ActionButton {
-                    text: qsTr("Reiniciar")
+                    text: inspector.compact ? "" : qsTr("Reiniciar")
                     iconName: "rotate"
                     size: "sm"
                     onClicked: backend.lifecycle("restart", inspector.selected.id)
+                    Accessible.name: qsTr("Reiniciar")
                 }
 
                 ActionButton {
-                    text: qsTr("Terminal")
+                    text: inspector.compact ? "" : qsTr("Terminal")
                     iconName: "terminal"
                     size: "sm"
                     onClicked: backend.openTerminal(inspector.selected.id)
+                    Accessible.name: qsTr("Terminal")
                 }
 
                 Item { Layout.fillWidth: true }

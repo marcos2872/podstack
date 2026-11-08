@@ -26,6 +26,7 @@ Item {
     }
     readonly property int stoppedCount: containerCount - runningCount
     readonly property int selectedCount: Object.keys(selectedIds).length
+    readonly property bool compact: width < 800
 
     readonly property var filterTabs: [
         { key: "all", label: qsTr("Todos"), count: containerCount },
@@ -195,8 +196,8 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.leftMargin: 22
-        anchors.rightMargin: 22
+        anchors.leftMargin: containersPage.compact ? 14 : 22
+        anchors.rightMargin: containersPage.compact ? 14 : 22
         anchors.topMargin: 20
         anchors.bottomMargin: 20
         spacing: 0
@@ -241,15 +242,17 @@ Item {
             }
 
             ActionButton {
-                text: qsTr("Start all")
+                text: containersPage.compact ? "" : qsTr("Start all")
                 iconName: "play"
                 onClicked: backend.batchAll("start")
+                Accessible.name: qsTr("Start all")
             }
 
             ActionButton {
-                text: qsTr("Stop all")
+                text: containersPage.compact ? "" : qsTr("Stop all")
                 iconName: "stop"
                 onClicked: backend.batchAll("stop")
+                Accessible.name: qsTr("Stop all")
             }
 
             ActionButton {
@@ -331,13 +334,13 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 16
+            spacing: containersPage.compact ? 12 : 16
 
             Rectangle {
                 id: listPanel
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.minimumWidth: 380
+                Layout.minimumWidth: containersPage.compact ? 280 : 380
                 color: Theme.bgSurface
                 radius: Theme.radiusLg
                 border.width: 1
@@ -616,8 +619,8 @@ Item {
             }
 
             Inspector {
-                Layout.preferredWidth: 366
-                Layout.minimumWidth: 300
+                Layout.preferredWidth: containersPage.compact ? 300 : 366
+                Layout.minimumWidth: containersPage.compact ? 280 : 300
                 Layout.fillHeight: true
                 selected: containerList.currentIndex >= 0
                           && containerList.currentIndex < containersPage.visibleItems.length

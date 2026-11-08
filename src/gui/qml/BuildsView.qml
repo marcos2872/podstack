@@ -8,6 +8,8 @@ ColumnLayout {
 
     spacing: 0
 
+    readonly property bool compact: width < 800
+
     ViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: 22
@@ -68,12 +70,12 @@ ColumnLayout {
         Layout.leftMargin: 22
         Layout.rightMargin: 22
         Layout.bottomMargin: 20
-        spacing: 16
+        spacing: compact ? 12 : 16
 
         CatalogList {
             id: buildsList
-            Layout.preferredWidth: 460
-            Layout.minimumWidth: 340
+            Layout.preferredWidth: compact ? 300 : 460
+            Layout.minimumWidth: 280
             Layout.fillHeight: true
             emptyIcon: "builds"
             emptyText: qsTr("Nenhum build registrado.\n"
@@ -89,7 +91,7 @@ ColumnLayout {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.minimumWidth: 320
+            Layout.minimumWidth: compact ? 250 : 320
             Layout.fillHeight: true
             color: Theme.bgSurface
             radius: Theme.radiusLg

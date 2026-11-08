@@ -8,8 +8,11 @@ ApplicationWindow {
 
     width: 1240
     height: 780
-    minimumWidth: 1000
+    minimumWidth: 900
     minimumHeight: 600
+
+    readonly property bool compactLayout: width < 1000
+    readonly property bool compactStatus: width < 860
     visible: true
     title: qsTr("PodStack")
     color: Theme.bgBase
@@ -144,7 +147,7 @@ ApplicationWindow {
 
         // Sidebar
         Rectangle {
-            Layout.preferredWidth: Theme.sidebarWidth
+            Layout.preferredWidth: window.compactLayout ? 196 : Theme.sidebarWidth
             Layout.fillHeight: true
             color: Theme.bgSidebar
 
@@ -326,7 +329,7 @@ ApplicationWindow {
                     // Busca
                     Rectangle {
                         visible: window.section === "containers"
-                        Layout.preferredWidth: 270
+                        Layout.preferredWidth: window.compactLayout ? 200 : 270
                         Layout.preferredHeight: 34
                         radius: Theme.radiusSm
                         color: Theme.bgSurface2
@@ -520,6 +523,7 @@ ApplicationWindow {
                     }
 
                     Text {
+                        visible: !window.compactStatus
                         text: "·"
                         color: Theme.textDisabled
                         font.family: Theme.fontFamily
@@ -527,6 +531,7 @@ ApplicationWindow {
                     }
 
                     Text {
+                        visible: !window.compactStatus
                         text: backend.images.length + qsTr(" imagens")
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
@@ -534,6 +539,7 @@ ApplicationWindow {
                     }
 
                     Text {
+                        visible: !window.compactStatus
                         text: "·"
                         color: Theme.textDisabled
                         font.family: Theme.fontFamily
@@ -541,6 +547,7 @@ ApplicationWindow {
                     }
 
                     Text {
+                        visible: !window.compactStatus
                         text: backend.volumes.length + qsTr(" volumes")
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
@@ -548,6 +555,7 @@ ApplicationWindow {
                     }
 
                     Text {
+                        visible: !window.compactStatus
                         text: "·"
                         color: Theme.textDisabled
                         font.family: Theme.fontFamily
