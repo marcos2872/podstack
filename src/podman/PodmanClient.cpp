@@ -89,6 +89,101 @@ QJsonObject jsonFromLabels(const QMap<QString, QString> &labels)
     return object;
 }
 
+bool buildContextTar(const QString &contextPath, QByteArray *tar, Error *error)
+{
+    static constexpr qint64 kMaxContextBytes = 512LL * 1024 * 1024;
+    const QDir base(contextPath);
+    const auto skipped = [](const QString &relative) {
+        return relative == QStringLiteral(".git")
+               || relative.startsWith(QStringLiteral(".git/"))
+               || relative.contains(QStringLiteral("/.git/"));
+    };
+
+    qint64 estimated = 65536;
+    QDirIterator count(contextPath, QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot,
+                       QDirIterator::Subdirectories);
+    while (count.hasNext()) {
+        const QString path = count.next();
+        if (skipped(base.relativeFilePath(path))) {
+            continue;
+        }
+        const QFileInfo info(path);
+        estimated += info.isFile() ? info.size() + 1024 : 1024;
+    }
+
+    if (estimated > kMaxContextBytes) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_CONTEXT_TOO_LARGE"),
+                                 QStringLiteral("O contexto de build excede 512 MB."),
+                                 QString::number(estimated));
+        }
+        return false;
+    }
+
+    tar->resize(static_cast<int>(estimated));
+    size_t used = 0;
+    archive *writer = archive_write_new();
+    archive_write_set_format_pax_restricted(writer);
+    if (archive_write_open_memory(writer, tar->data(), static_cast<size_t>(tar->size()), &used)
+        != ARCHIVE_OK) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_ARCHIVE_ERROR"),
+                                 QStringLiteral("Falha ao montar o contexto de build."),
+                                 QString::fromUtf8(archive_error_string(writer)));
+        }
+        archive_write_free(writer);
+        return false;
+    }
+
+    QDirIterator it(contextPath, QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString path = it.next();
+        const QString relative = base.relativeFilePath(path);
+        if (skipped(relative)) {
+            continue;
+        }
+        const QFileInfo info(path);
+        if (info.isSymLink()) {
+            continue;
+        }
+
+        const QByteArray entryName = relative.toUtf8();
+        archive_entry *entry = archive_entry_new();
+        archive_entry_set_pathname(entry, entryName.constData());
+        archive_entry_set_perm(entry, info.isDir() ? 0755 : 0644);
+        archive_entry_set_mtime(entry, info.lastModified().toSecsSinceEpoch(), 0);
+        if (info.isDir()) {
+            archive_entry_set_filetype(entry, AE_IFDIR);
+            archive_entry_set_size(entry, 0);
+        } else {
+            archive_entry_set_filetype(entry, AE_IFREG);
+            archive_entry_set_size(entry, info.size());
+        }
+        archive_write_header(writer, entry);
+
+        if (info.isFile()) {
+            QFile file(path);
+            if (file.open(QIODevice::ReadOnly)) {
+                char buffer[8192];
+                while (true) {
+                    const qint64 bytes = file.read(buffer, sizeof(buffer));
+                    if (bytes <= 0) {
+                        break;
+                    }
+                    archive_write_data(writer, buffer, static_cast<size_t>(bytes));
+                }
+            }
+        }
+        archive_entry_free(entry);
+    }
+
+    archive_write_close(writer);
+    archive_write_free(writer);
+    tar->resize(static_cast<int>(used));
+    return true;
+}
+
 
 } // namespace
 
@@ -2196,6 +2291,126 @@ QJsonObject PodmanClient::systemDf(Error *error)
         return {};
     }
     return QJsonDocument::fromJson(response.body).object();
+}
+
+bool PodmanClient::buildImage(const QString &contextPath, const QString &dockerfile,
+                              const QString &tag, const QMap<QString, QString> &buildArgs,
+                              const QString &platform,
+                              const std::function<bool(const QByteArray &)> &onLine,
+                              std::atomic_bool *cancel, QString *imageId, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (imageId) {
+        imageId->clear();
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+
+    const QDir context(contextPath);
+    if (!context.exists()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Diretório de contexto inválido."), contextPath);
+        }
+        return false;
+    }
+    const QString dockerfilePath = context.absoluteFilePath(dockerfile);
+    if (!QFileInfo::exists(dockerfilePath)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Dockerfile não encontrado."), dockerfilePath);
+        }
+        return false;
+    }
+    if (tag.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe a tag da imagem."));
+        }
+        return false;
+    }
+
+    QByteArray tar;
+    if (!buildContextTar(contextPath, &tar, error)) {
+        return false;
+    }
+
+    QString suffix = QStringLiteral("/build?t=%1&dockerfile=%2&cache=true")
+                         .arg(encodeId(tag), encodeId(dockerfile));
+    if (!platform.isEmpty()) {
+        suffix += QStringLiteral("&platform=%1").arg(encodeId(platform));
+    }
+    if (!buildArgs.isEmpty()) {
+        QJsonObject argsObject;
+        for (auto it = buildArgs.constBegin(); it != buildArgs.constEnd(); ++it) {
+            argsObject.insert(it.key(), it.value());
+        }
+        suffix += QStringLiteral("&buildargs=%1")
+                      .arg(encodeId(QString::fromUtf8(
+                          QJsonDocument(argsObject).toJson(QJsonDocument::Compact))));
+    }
+
+    QByteArray buffer;
+    QString streamError;
+    QString capturedImage;
+
+    const auto onData = [&](const QByteArray &data) {
+        buffer.append(data);
+        int newline = -1;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+            const QByteArray line = buffer.left(newline).trimmed();
+            buffer.remove(0, newline + 1);
+            if (line.isEmpty()) {
+                continue;
+            }
+            const QJsonDocument document = QJsonDocument::fromJson(line);
+            if (document.isObject()) {
+                const QJsonObject object = document.object();
+                const QString message = object.value(QStringLiteral("error")).toString();
+                if (!message.isEmpty()) {
+                    streamError = message;
+                    return false;
+                }
+                const QString auxId = object.value(QStringLiteral("aux"))
+                                          .toObject()
+                                          .value(QStringLiteral("ID"))
+                                          .toString();
+                if (!auxId.isEmpty()) {
+                    capturedImage = auxId;
+                }
+            }
+            if (!onLine(line)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    QString streamFailure;
+    const bool ok = m_http.streamRequest(QByteArrayLiteral("POST"), this->path(suffix), tar,
+                                         QStringLiteral("application/x-tar"), onData, cancel,
+                                         &streamFailure);
+    if (!buffer.trimmed().isEmpty()) {
+        onLine(buffer.trimmed());
+    }
+    if (imageId) {
+        *imageId = capturedImage;
+    }
+    if (!streamError.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_BUILD_ERROR"),
+                                 QStringLiteral("Falha no build da imagem."), streamError);
+        }
+        return false;
+    }
+    if (!ok && error) {
+        *error = Error::make(QStringLiteral("PODSTACK_BUILD_ERROR"),
+                             QStringLiteral("Falha no build da imagem."), streamFailure);
+    }
+    return ok && streamError.isEmpty();
 }
 
 bool PodmanClient::uploadFile(const QString &id, const QString &path,

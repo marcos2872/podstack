@@ -1,6 +1,8 @@
 #pragma once
 
 #include "core/Error.h"
+#include "daemon/BuildStore.h"
+#include "daemon/ComposeManager.h"
 #include "podman/PodmanClient.h"
 
 #include <QHash>
@@ -69,6 +71,15 @@ private:
     QJsonObject podAction(const QString &method, const QJsonObject &params, Error *error);
     QJsonObject podRemove(const QJsonObject &params, Error *error);
     QJsonObject systemDf(Error *error);
+    QJsonObject composeProjects(Error *error);
+    QJsonObject composeAction(const QString &method, const QJsonObject &params, Error *error);
+    QJsonObject subscribeComposeLogs(const QJsonObject &params, const Notify &notify,
+                                     Error *error);
+    QJsonObject buildStart(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject buildCancel(const QJsonObject &params, Error *error);
+    QJsonObject buildsList(const QJsonObject &params, Error *error);
+    QJsonObject buildGet(const QJsonObject &params, Error *error);
+    QJsonObject buildRemove(const QJsonObject &params, Error *error);
     QJsonObject subscribeLogs(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeStats(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeEvents(const Notify &notify, Error *error);
@@ -79,9 +90,14 @@ private:
     void removeSubscription(const QString &id);
 
     PodmanClient m_podman;
+    ComposeManager m_compose;
+    BuildStore m_buildStore;
     std::mutex m_subscriptionsMutex;
     QHash<QString, std::shared_ptr<Subscription>> m_subscriptions;
+    std::mutex m_buildMutex;
+    QHash<QString, QString> m_buildSubscriptions;
     int m_nextSubscription = 1;
+    int m_nextBuild = 1;
 };
 
 } // namespace PodStack

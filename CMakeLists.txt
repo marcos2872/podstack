@@ -20,6 +20,7 @@ find_package(Qt6 6.10 REQUIRED COMPONENTS
 find_package(CURL REQUIRED)
 find_package(qtermwidget6 REQUIRED)
 find_package(LibArchive REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -54,8 +55,10 @@ add_executable(podstackd
     src/daemon/main.cpp
     src/daemon/Daemon.cpp
     src/daemon/RpcServer.cpp
+    src/daemon/BuildStore.cpp
+    src/daemon/ComposeManager.cpp
 )
-target_link_libraries(podstackd PRIVATE podstack_podman Qt6::Concurrent)
+target_link_libraries(podstackd PRIVATE podstack_podman Qt6::Concurrent SQLite::SQLite3)
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -108,6 +111,9 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/VolumesView.qml
         src/gui/qml/NetworksView.qml
         src/gui/qml/PodsView.qml
+        src/gui/qml/ComposeView.qml
+        src/gui/qml/BuildsView.qml
+        src/gui/qml/Toast.qml
 )
 
 target_link_libraries(podstack-gui PRIVATE

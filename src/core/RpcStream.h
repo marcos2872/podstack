@@ -18,7 +18,7 @@ public:
     explicit RpcStream(QString socketPath = {});
 
     bool run(const QString &method, const QJsonObject &params, const Event &onEvent,
-             Error *error, int timeoutMs = 0);
+             Error *error, int timeoutMs = 0, bool requireDone = true);
 
     QString socketPath() const { return m_socketPath; }
 

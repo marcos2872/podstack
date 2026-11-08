@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QTemporaryDir>
 #include <QStringList>
 #include <QTest>
 
@@ -25,6 +26,7 @@ private slots:
     void files();
     void catalog();
     void catalogErrors();
+    void buildContext();
     void errorMapping();
     void pingFailure();
 };
@@ -433,6 +435,52 @@ void ContractTest::catalog()
 
     QDir(sourceDir).removeRecursively();
     QDir(destinationDir).removeRecursively();
+}
+
+void ContractTest::buildContext()
+{
+    MockPodmanServer server;
+    PodStack::PodmanClient client(server.socketPath());
+    PodStack::Error error;
+
+    QTemporaryDir context;
+    QVERIFY(context.isValid());
+    QFile dockerfile(context.path() + QStringLiteral("/Dockerfile"));
+    QVERIFY(dockerfile.open(QIODevice::WriteOnly));
+    dockerfile.write("FROM alpine:3.20\n");
+    dockerfile.close();
+
+    QStringList lines;
+    QString imageId;
+    QVERIFY2(client.buildImage(
+                 context.path(), QStringLiteral("Dockerfile"),
+                 QStringLiteral("localhost/podstack-test:latest"), {}, QStringLiteral("linux/amd64"),
+                 [&lines](const QByteArray &line) {
+                     lines.append(QString::fromUtf8(line));
+                     return true;
+                 },
+                 nullptr, &imageId, &error),
+             qPrintable(error.message));
+    QCOMPARE(imageId, QStringLiteral("sha256:built123"));
+    QVERIFY(lines.size() >= 2);
+
+    QVERIFY(!client.buildImage(QStringLiteral("/nonexistent-context"),
+                               QStringLiteral("Dockerfile"),
+                               QStringLiteral("localhost/podstack-test:latest"), {}, {},
+                               [](const QByteArray &) { return true; }, nullptr, &imageId,
+                               &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.buildImage(context.path(), QStringLiteral("Missing.Dockerfile"),
+                               QStringLiteral("localhost/podstack-test:latest"), {}, {},
+                               [](const QByteArray &) { return true; }, nullptr, &imageId,
+                               &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.buildImage(context.path(), QStringLiteral("Dockerfile"), {}, {}, {},
+                               [](const QByteArray &) { return true; }, nullptr, &imageId,
+                               &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void ContractTest::catalogErrors()

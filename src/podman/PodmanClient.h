@@ -165,6 +165,11 @@ public:
                       Error *error = nullptr);
     bool uploadFile(const QString &id, const QString &path, const QString &sourcePath,
                     Error *error = nullptr);
+    bool buildImage(const QString &contextPath, const QString &dockerfile,
+                    const QString &tag, const QMap<QString, QString> &buildArgs,
+                    const QString &platform,
+                    const std::function<bool(const QByteArray &)> &onLine,
+                    std::atomic_bool *cancel, QString *imageId, Error *error = nullptr);
 
     bool execOnce(const QString &id, const QStringList &cmd, ExecResult *result,
                   Error *error = nullptr);

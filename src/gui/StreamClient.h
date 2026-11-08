@@ -18,6 +18,9 @@ public:
     void subscribeLogs(const QString &id, int tail, bool follow);
     void subscribeStats(const QString &id, int intervalSeconds = 1);
     void pullImage(const QString &reference, const QString &platform = {});
+    void subscribeComposeLogs(const QString &project, const QString &service = {});
+    void startBuild(const QJsonObject &params);
+    void subscribeEvents();
     void unsubscribe();
 
 signals:
@@ -25,6 +28,11 @@ signals:
     void stats(const QJsonObject &stats);
     void pullEvent(const QJsonObject &event);
     void pullFinished(bool ok, const QString &error);
+    void subscriptionReady(const QJsonObject &result);
+    void composeLog(const QString &service, const QString &line);
+    void buildEvent(const QJsonObject &event);
+    void buildFinished(const QJsonObject &result);
+    void eventReceived(const QJsonObject &event);
     void error(const QString &message);
 
 private:
@@ -41,6 +49,7 @@ private:
     QString m_kind;
     QString m_unsubscribeMethod;
     QJsonObject m_pending;
+    QJsonObject m_lastResult;
     bool m_pendingSend = false;
 };
 

@@ -95,18 +95,20 @@
 
 ## M3 — Compose, builds e eventos
 
+> **Status (2026-11-08): concluído com ressalvas.** Entregues: detecção de projetos Compose por labels, up/down/restart/stop/start via provider (`docker-compose`/`podman compose`), logs por serviço e agregados, abrir YAML/diretório, builds via Libpod (tar + steps/logs), histórico em SQLite, cancelar/remover registros e eventos globais na UI com toasts. Ressalvas: buildx multi-plataforma real (T3-08) e o stack Supabase (T3-09) ficam para o M4; o build aceita `platform` single-arch.
+
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T3-01 | P1 | Detectar projetos por labels e agrupar | T1-01 | Grupos corretos |
-| T3-02 | P1 | Start/stop/restart/down do projeto | T3-01 | Equivalente ao compose |
-| T3-03 | P1 | Logs por serviço e agregados | T1-05 | Filtro sem misturar |
-| T3-04 | P1 | Build via Libpod (tar + progresso/steps/logs) | T0-05 | Imagem criada |
-| T3-05 | P1 | Histórico de builds em SQLite | T3-04 | Lista/retém/filtra |
-| T3-06 | P1 | Abrir YAML/diretório do projeto | T3-01 | `xdg-open` |
-| T3-07 | P1 | Eventos globais na UI (toasts/notificações) | T0-06 | Sem duplicação |
-| T3-08 | P2 | Buildx multi-plataforma | T3-04 | Detecção + fallback |
-| T3-09 | P2 | Supabase stack | T3-01 | Start/stop |
-| T3-10 | P2 | Apagar registros de build | T3-05 | Só metadados |
+| T3-01 | P1 | Detectar projetos por labels e agrupar | T1-01 | ✅ `compose.projects.list` + GUI |
+| T3-02 | P1 | Start/stop/restart/down do projeto | T3-01 | ✅ provider Compose + GUI/CLI |
+| T3-03 | P1 | Logs por serviço e agregados | T1-05 | ✅ `compose.logs.subscribe` |
+| T3-04 | P1 | Build via Libpod (tar + progresso/steps/logs) | T0-05 | ✅ `builds.start` + GUI/CLI |
+| T3-05 | P1 | Histórico de builds em SQLite | T3-04 | ✅ `builds.list/get` + `build_steps` |
+| T3-06 | P1 | Abrir YAML/diretório do projeto | T3-01 | ✅ `openPath` (xdg-open) |
+| T3-07 | P1 | Eventos globais na UI (toasts/notificações) | T0-06 | ✅ `events.subscribe` + toast |
+| T3-08 | P2 | Buildx multi-plataforma | T3-04 | ◐ `platform` single-arch; manifest list no M4 |
+| T3-09 | P2 | Supabase stack | T3-01 | ⬜ M4 |
+| T3-10 | P2 | Apagar registros de build | T3-05 | ✅ `builds.remove` (metadados + log) |
 
 **Saída M3:** J1 completo (projeto Compose sobe e é acessível).
 

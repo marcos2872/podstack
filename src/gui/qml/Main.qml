@@ -15,6 +15,8 @@ ApplicationWindow {
 
     property string section: "containers"
 
+    onSectionChanged: refreshCurrent()
+
     Theme { id: theme }
 
     readonly property var sections: [
@@ -22,7 +24,9 @@ ApplicationWindow {
             { key: "containers", label: "Containers" },
             { key: "images", label: "Images" },
             { key: "volumes", label: "Volumes" },
-            { key: "networks", label: "Networks" }
+            { key: "networks", label: "Networks" },
+            { key: "compose", label: "Compose" },
+            { key: "builds", label: "Builds" }
         ] },
         { group: "KUBERNETES", items: [
             { key: "pods", label: "Pods" }
@@ -44,6 +48,10 @@ ApplicationWindow {
             backend.refreshNetworks()
         } else if (section === "pods") {
             backend.refreshPods()
+        } else if (section === "compose") {
+            backend.refreshCompose()
+        } else if (section === "builds") {
+            backend.refreshBuilds()
         }
     }
 
@@ -277,6 +285,14 @@ ApplicationWindow {
                     id: networksPage
                 }
 
+                ComposeView {
+                    id: composePage
+                }
+
+                BuildsView {
+                    id: buildsPage
+                }
+
                 PodsView {
                     id: podsPage
                 }
@@ -317,6 +333,11 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    Toast {
+        message: backend.eventMessage
+        kind: backend.eventKind
     }
 
     Dialog {

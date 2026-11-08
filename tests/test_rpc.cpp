@@ -27,6 +27,7 @@ private slots:
     void lifecycle();
     void subscriptions();
     void catalog();
+    void composeAndBuilds();
     void invalidRequests();
 
 private:
@@ -36,11 +37,35 @@ private:
     MockPodmanServer m_mock;
     QProcess m_daemon;
     QString m_controlSocket;
+    QString m_testDataDir;
+    QString m_fakeProvider;
 };
+
+namespace {
+void writeFakeProvider(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    file.write("#!/bin/sh\necho \"fake compose $@\"\nexit 0\n");
+    file.close();
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                        | QFileDevice::ExeOwner);
+}
+} // namespace
 
 void RpcTest::initTestCase()
 {
     QVERIFY(m_mock.isListening());
+
+    m_testDataDir = QDir::tempPath()
+                    + QStringLiteral("/podstack-rpc-data-%1")
+                          .arg(QCoreApplication::applicationPid());
+    QDir(m_testDataDir).removeRecursively();
+    QDir().mkpath(m_testDataDir);
+    m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
+    writeFakeProvider(m_fakeProvider);
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-rpc-%1.sock")
@@ -53,6 +78,13 @@ void RpcTest::initTestCase()
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     environment.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
+    environment.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    environment.insert(QStringLiteral("XDG_DATA_HOME"),
+                       m_testDataDir + QStringLiteral("/data"));
+    environment.insert(QStringLiteral("XDG_STATE_HOME"),
+                       m_testDataDir + QStringLiteral("/state"));
+    environment.insert(QStringLiteral("XDG_CONFIG_HOME"),
+                       m_testDataDir + QStringLiteral("/config"));
     m_daemon.setProcessEnvironment(environment);
     m_daemon.setProcessChannelMode(QProcess::ForwardedChannels);
     m_daemon.start(daemonPath, {QStringLiteral("--socket"), m_controlSocket});
@@ -83,6 +115,7 @@ void RpcTest::cleanupTestCase()
         m_daemon.waitForFinished(1000);
     }
     QFile::remove(m_controlSocket);
+    QDir(m_testDataDir).removeRecursively();
 }
 
 void RpcTest::lifecycle()
@@ -564,6 +597,174 @@ void RpcTest::catalog()
 
     QDir(sourceDir).removeRecursively();
     QDir(destinationDir).removeRecursively();
+}
+
+void RpcTest::composeAndBuilds()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject projects =
+        client.call(QStringLiteral("compose.projects.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonArray projectItems = projects.value(QStringLiteral("items")).toArray();
+    QCOMPARE(projectItems.size(), 1);
+    QCOMPARE(projectItems.first().toObject().value(QStringLiteral("name")).toString(),
+             QStringLiteral("mock-project"));
+
+    const QString projectDir = m_testDataDir + QStringLiteral("/project");
+    QDir().mkpath(projectDir);
+    QFile composeFile(projectDir + QStringLiteral("/compose.yaml"));
+    QVERIFY(composeFile.open(QIODevice::WriteOnly));
+    composeFile.write("services:\n  web:\n    image: alpine\n");
+    composeFile.close();
+    QFile dockerfile(projectDir + QStringLiteral("/Dockerfile"));
+    QVERIFY(dockerfile.open(QIODevice::WriteOnly));
+    dockerfile.write("FROM alpine:3.20\n");
+    dockerfile.close();
+
+    const QJsonObject up =
+        client.call(QStringLiteral("compose.up"),
+                    QJsonObject{{QStringLiteral("projectPath"), projectDir}},
+                    &error, 60000);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(up.value(QStringLiteral("ok")).toBool());
+
+    QVERIFY(client.call(QStringLiteral("compose.restart"),
+                        QJsonObject{{QStringLiteral("projectPath"), projectDir}},
+                        &error, 60000)
+                .value(QStringLiteral("ok"))
+                .toBool());
+    QVERIFY(client.call(QStringLiteral("compose.stop"),
+                        QJsonObject{{QStringLiteral("projectPath"), projectDir}},
+                        &error, 60000)
+                .value(QStringLiteral("ok"))
+                .toBool());
+    QVERIFY(client.call(QStringLiteral("compose.start"),
+                        QJsonObject{{QStringLiteral("projectPath"), projectDir}},
+                        &error, 60000)
+                .value(QStringLiteral("ok"))
+                .toBool());
+
+    PodStack::Error invalidProject;
+    client.call(QStringLiteral("compose.up"),
+                QJsonObject{{QStringLiteral("projectPath"),
+                             QStringLiteral("/nonexistent-project")}},
+                &invalidProject);
+    QCOMPARE(invalidProject.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error invalidBuild;
+    client.call(QStringLiteral("builds.start"),
+                QJsonObject{{QStringLiteral("contextPath"), projectDir}}, &invalidBuild);
+    QCOMPARE(invalidBuild.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QLocalSocket logsSocket;
+    logsSocket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(logsSocket.waitForConnected(5000));
+    QByteArray logsBuffer;
+    sendMessage(logsSocket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("compose.logs.subscribe")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("project"), QStringLiteral("mock-project")},
+                              {QStringLiteral("service"), QStringLiteral("web")}}}});
+    const QJsonObject logsResponse = readMessage(logsSocket, logsBuffer);
+    QVERIFY(!logsResponse.value(QStringLiteral("result"))
+                 .toObject()
+                 .value(QStringLiteral("subscriptionId"))
+                 .toString()
+                 .isEmpty());
+    int logDeltas = 0;
+    for (int i = 0; i < 20 && logDeltas < 2; ++i) {
+        const QJsonObject message = readMessage(logsSocket, logsBuffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("compose.logs.delta")) {
+            ++logDeltas;
+        }
+    }
+    QVERIFY(logDeltas >= 2);
+    logsSocket.disconnectFromServer();
+
+    QLocalSocket buildSocket;
+    buildSocket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(buildSocket.waitForConnected(5000));
+    QByteArray buildBuffer;
+    sendMessage(buildSocket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("builds.start")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                              {QStringLiteral("tag"), QStringLiteral("localhost/mock:1")},
+                              {QStringLiteral("dockerfile"), QStringLiteral("Dockerfile")}}}});
+    const QJsonObject buildResponse = readMessage(buildSocket, buildBuffer);
+    const QString buildId = buildResponse.value(QStringLiteral("result"))
+                                .toObject()
+                                .value(QStringLiteral("buildId"))
+                                .toString();
+    QVERIFY(!buildId.isEmpty());
+
+    int buildDeltas = 0;
+    QString finalStatus;
+    for (int i = 0; i < 30; ++i) {
+        const QJsonObject message = readMessage(buildSocket, buildBuffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        const QString method = message.value(QStringLiteral("method")).toString();
+        if (method == QStringLiteral("builds.delta")) {
+            ++buildDeltas;
+        } else if (method == QStringLiteral("builds.done")) {
+            finalStatus = message.value(QStringLiteral("params"))
+                              .toObject()
+                              .value(QStringLiteral("status"))
+                              .toString();
+            break;
+        }
+    }
+    QVERIFY(buildDeltas >= 2);
+    QCOMPARE(finalStatus, QStringLiteral("success"));
+    buildSocket.disconnectFromServer();
+
+    const QJsonObject list = client.call(QStringLiteral("builds.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(list.value(QStringLiteral("items")).toArray().size() >= 1);
+
+    const QJsonObject build =
+        client.call(QStringLiteral("builds.get"),
+                    QJsonObject{{QStringLiteral("id"), buildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(build.value(QStringLiteral("status")).toString(), QStringLiteral("success"));
+    QCOMPARE(build.value(QStringLiteral("imageRef")).toString(),
+             QStringLiteral("localhost/mock:1"));
+
+    const QJsonObject removed =
+        client.call(QStringLiteral("builds.remove"),
+                    QJsonObject{{QStringLiteral("id"), buildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(removed.value(QStringLiteral("removed")).toBool());
+
+    PodStack::Error cancelError;
+    client.call(QStringLiteral("builds.cancel"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing")}},
+                &cancelError);
+    QCOMPARE(cancelError.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::Error missingBuild;
+    client.call(QStringLiteral("builds.get"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing")}},
+                &missingBuild);
+    QCOMPARE(missingBuild.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QVERIFY(client.call(QStringLiteral("compose.down"),
+                        QJsonObject{{QStringLiteral("projectPath"), projectDir}},
+                        &error, 60000)
+                .value(QStringLiteral("ok"))
+                .toBool());
 }
 
 void RpcTest::invalidRequests()

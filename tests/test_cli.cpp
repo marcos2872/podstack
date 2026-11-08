@@ -30,6 +30,7 @@ private slots:
     void execAndDoctor();
     void lifecycleAndInspect();
     void catalog();
+    void composeAndBuild();
     void errorPaths();
 
 private:
@@ -41,6 +42,8 @@ private:
     MockPodmanServer m_mock;
     QProcess m_daemon;
     QString m_controlSocket;
+    QString m_testDataDir;
+    QString m_fakeProvider;
 };
 
 QString CliTest::cliPath() const
@@ -58,6 +61,10 @@ QProcessEnvironment CliTest::environment(const QString &controlSocket) const
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
+    env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    env.insert(QStringLiteral("XDG_DATA_HOME"), m_testDataDir + QStringLiteral("/data"));
+    env.insert(QStringLiteral("XDG_STATE_HOME"), m_testDataDir + QStringLiteral("/state"));
+    env.insert(QStringLiteral("XDG_CONFIG_HOME"), m_testDataDir + QStringLiteral("/config"));
     return env;
 }
 
@@ -83,6 +90,19 @@ CliResult CliTest::run(const QStringList &args, const QProcessEnvironment &env) 
 void CliTest::initTestCase()
 {
     QVERIFY(m_mock.isListening());
+
+    m_testDataDir = QDir::tempPath()
+                    + QStringLiteral("/podstack-cli-data-%1")
+                          .arg(QCoreApplication::applicationPid());
+    QDir(m_testDataDir).removeRecursively();
+    QDir().mkpath(m_testDataDir);
+    m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
+    QFile provider(m_fakeProvider);
+    QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    provider.write("#!/bin/sh\necho \"fake compose $@\"\nexit 0\n");
+    provider.close();
+    QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                    | QFileDevice::ExeOwner));
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-cli-%1.sock")
@@ -117,6 +137,7 @@ void CliTest::cleanupTestCase()
         m_daemon.waitForFinished(1000);
     }
     QFile::remove(m_controlSocket);
+    QDir(m_testDataDir).removeRecursively();
 }
 
 void CliTest::versionAndHelp()
@@ -392,6 +413,57 @@ void CliTest::catalog()
 
     QDir(sourceDir).removeRecursively();
     QDir(destinationDir).removeRecursively();
+}
+
+void CliTest::composeAndBuild()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("compose"), QStringLiteral("ls")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("mock-project")));
+
+    const QString projectDir = m_testDataDir + QStringLiteral("/project");
+    QDir().mkpath(projectDir);
+    QFile composeFile(projectDir + QStringLiteral("/compose.yaml"));
+    QVERIFY(composeFile.open(QIODevice::WriteOnly));
+    composeFile.write("services:\n  web:\n    image: alpine\n");
+    composeFile.close();
+    QFile dockerfile(projectDir + QStringLiteral("/Dockerfile"));
+    QVERIFY(dockerfile.open(QIODevice::WriteOnly));
+    dockerfile.write("FROM alpine:3.20\n");
+    dockerfile.close();
+
+    result = run({QStringLiteral("compose"), QStringLiteral("up"), projectDir}, env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("compose"), QStringLiteral("down"), projectDir}, env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("build"), projectDir, QStringLiteral("-t"),
+                  QStringLiteral("localhost/mock:1")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("STEP 1/1")));
+    QVERIFY(result.out.contains(QStringLiteral("concluído")));
+
+    result = run({QStringLiteral("builds")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("localhost/mock:1")));
+    QVERIFY(result.out.contains(QStringLiteral("success")));
+
+    QString buildId;
+    const QStringList lines = result.out.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        if (line.startsWith(QStringLiteral("build-"))) {
+            buildId = line.section(QLatin1Char(' '), 0, 0);
+            break;
+        }
+    }
+    QVERIFY(!buildId.isEmpty());
+
+    result = run({QStringLiteral("builds"), QStringLiteral("rm"), buildId}, env);
+    QCOMPARE(result.code, 0);
 }
 
 void CliTest::errorPaths()

@@ -223,7 +223,13 @@ void MockPodmanServer::handleClient(int clientFd)
             "Status": "Up 1 minute (healthy)",
             "Created": "2026-01-01T00:00:00Z",
             "Ports": [{"HostIp": "0.0.0.0", "HostPort": 8080, "ContainerPort": 80, "Protocol": "tcp"}],
-            "Labels": {"dev.podstack.test": "1"}
+            "Labels": {
+                "dev.podstack.test": "1",
+                "com.docker.compose.project": "mock-project",
+                "com.docker.compose.service": "web",
+                "com.docker.compose.project.working_dir": "/tmp/mock-project",
+                "com.docker.compose.project.config_files": "/tmp/mock-project/compose.yaml"
+            }
         }])JSON";
         response = httpResponse(200, "OK", payload);
     } else if (method == QStringLiteral("POST") && pathOnly.endsWith(QStringLiteral("/exec"))) {
@@ -271,6 +277,12 @@ void MockPodmanServer::handleClient(int clientFd)
             return out;
         };
         response = httpResponse(200, "OK", frame("line-one\n") + frame("line-two\n"));
+    } else if (pathOnly.contains(QStringLiteral("/libpod/build"))) {
+        response = httpResponse(
+            200, "OK",
+            QByteArrayLiteral("{\"stream\":\"STEP 1/1: FROM alpine:3.20\\n\"}\n"
+                              "{\"stream\":\"COMMIT mock-image\\n\"}\n"
+                              "{\"aux\":{\"ID\":\"sha256:built123\"}}\n"));
     } else if (pathOnly.contains(QStringLiteral("/events"))) {
         response = httpResponse(
             200, "OK",
