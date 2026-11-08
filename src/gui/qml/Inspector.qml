@@ -519,6 +519,8 @@ Rectangle {
                         font.pixelSize: Theme.fontMicro
                         wrapMode: Text.WordWrap
                     }
+
+                    Item { Layout.preferredHeight: 14 }
                 }
             }
 
