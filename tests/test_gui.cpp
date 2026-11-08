@@ -30,6 +30,7 @@ private slots:
     void backendStreams();
     void backendCatalog();
     void backendM3();
+    void backendErrors();
 
 private:
     QProcessEnvironment daemonEnvironment() const;
@@ -56,6 +57,12 @@ QProcessEnvironment GuiTest::daemonEnvironment() const
 void GuiTest::initTestCase()
 {
     QVERIFY(m_mock.isListening());
+    QDir().mkpath(QStringLiteral("/tmp/mock-project"));
+    QFile mockCompose(QStringLiteral("/tmp/mock-project/compose.yaml"));
+    if (mockCompose.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        mockCompose.write("services: {}\n");
+        mockCompose.close();
+    }
 
     m_testDataDir = QDir::tempPath()
                     + QStringLiteral("/podstack-gui-data-%1")
@@ -65,7 +72,7 @@ void GuiTest::initTestCase()
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    provider.write("#!/bin/sh\necho \"fake compose $@\"\nexit 0\n");
+    provider.write("#!/bin/sh\ncase \"$*\" in *fail*) echo \"fake failure\" >&2; exit 1;; esac\necho \"fake compose $@\"\nexit 0\n");
     provider.close();
     QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                     | QFileDevice::ExeOwner));
@@ -100,6 +107,7 @@ void GuiTest::cleanupTestCase()
     }
     QFile::remove(m_controlSocket);
     QDir(m_testDataDir).removeRecursively();
+    QDir(QStringLiteral("/tmp/mock-project")).removeRecursively();
 }
 
 void GuiTest::containerListModel()
@@ -441,6 +449,35 @@ void GuiTest::backendM3()
 
     backend.removeBuild(backend.activeBuildId());
     QTest::qWait(100);
+}
+
+void GuiTest::backendErrors()
+{
+    PodStack::Backend backend;
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    backend.pullImage(QString());
+    QVERIFY(errorSpy.count() > 0);
+
+    backend.startBuild({});
+    QVERIFY(!backend.lastError().isEmpty());
+
+    backend.uploadFile(QString(), QString(), QString());
+    QVERIFY(!backend.lastError().isEmpty());
+
+    backend.renameContainer(QString(), QString());
+    QVERIFY(actionSpy.count() > 0);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    backend.duplicateContainer(QString());
+    QVERIFY(!backend.lastError().isEmpty());
+
+    backend.openTerminal(QString());
+    QVERIFY(!backend.lastError().isEmpty());
+
+    backend.saveEngineMode(QStringLiteral("bogus"));
+    QVERIFY(!backend.lastError().isEmpty());
 }
 
 } // namespace

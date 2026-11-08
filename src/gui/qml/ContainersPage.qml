@@ -199,7 +199,7 @@ Item {
                         }
 
                         Label {
-                            text: model.status.length > 0 ? model.status : model.state
+                            text: (model.status || "").length > 0 ? model.status : model.state
                             color: model.state === "running"
                                    ? (model.health === "unhealthy" ? theme.danger
                                       : model.health === "starting" ? theme.warning

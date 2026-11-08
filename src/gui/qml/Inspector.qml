@@ -157,7 +157,7 @@ Rectangle {
                     visible: inspector.selected !== null
                              && inspector.selected.status.length > 0
                              && inspector.selected.status !== inspector.selected.state
-                    text: inspector.selected.status
+                    text: inspector.selected !== null ? inspector.selected.status : ""
                     color: theme.textPrimary
                     font.pixelSize: 11
                     wrapMode: Text.WrapAnywhere

@@ -227,8 +227,7 @@ void MockPodmanServer::handleClient(int clientFd)
                 "dev.podstack.test": "1",
                 "com.docker.compose.project": "mock-project",
                 "com.docker.compose.service": "web",
-                "com.docker.compose.project.working_dir": "/tmp/mock-project",
-                "com.docker.compose.project.config_files": "/tmp/mock-project/compose.yaml"
+                "com.docker.compose.project.working_dir": "/tmp/mock-project"
             }
         }])JSON";
         response = httpResponse(200, "OK", payload);
@@ -258,6 +257,16 @@ void MockPodmanServer::handleClient(int clientFd)
         response = httpResponse(200, "OK", {});
     } else if (pathOnly.contains(QStringLiteral("/archive"))) {
         response = httpResponse(200, "OK", mockTar());
+    } else if (pathOnly.contains(QStringLiteral("/containers/stats"))
+               && path.contains(QStringLiteral("containers=rawcgroup"))) {
+        response = httpResponse(
+            200, "OK",
+            R"({"Id":"rawcgroup","name":"raw","cpu_stats":{"cpu_usage":{"total_usage":2000},"system_cpu_usage":4000,"online_cpus":2},"precpu_stats":{"cpu_usage":{"total_usage":1000},"system_cpu_usage":2000},"memory_stats":{"usage":1024,"limit":2048},"networks":{"eth0":{"rx_bytes":10,"tx_bytes":20}},"blkio_stats":{"io_service_bytes_recursive":[{"op":"read","value":30},{"op":"write","value":40}]},"pids_stats":{"current":7}})");
+    } else if (pathOnly.contains(QStringLiteral("/containers/stats"))
+               && path.contains(QStringLiteral("containers=rawstats"))) {
+        response = httpResponse(
+            200, "OK",
+            R"({"Error":null,"Stats":[{"AvgCPU":0.5,"ContainerID":"rawstats","Name":"raw","MemUsage":1024,"MemLimit":2048,"MemPerc":50.0,"Network":{"eth0":{"RxBytes":10,"TxBytes":20}},"BlockInput":30,"BlockOutput":40,"PIDs":7}]})");
     } else if (pathOnly.contains(QStringLiteral("/stats"))) {
         const QByteArray statsPayload = QByteArrayLiteral(
             "{\"cpu_percent\":\"1.5%\",\"mem_usage\":\"1MB / 1GB\","

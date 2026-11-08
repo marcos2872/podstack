@@ -167,6 +167,37 @@ void ContractTest::execLogsAndEvents()
     QVERIFY(!statsLines.isEmpty());
     QVERIFY(statsLines.first().contains(QStringLiteral("cpu_percent")));
 
+    QStringList rawStatsLines;
+    QVERIFY2(client.streamStats(
+                 QStringLiteral("rawstats"), 1,
+                 [&rawStatsLines](const QByteArray &line) {
+                     rawStatsLines.append(QString::fromUtf8(line));
+                     return true;
+                 },
+                 nullptr, &error),
+             qPrintable(error.message));
+    QVERIFY(!rawStatsLines.isEmpty());
+    QVERIFY(rawStatsLines.first().contains(QStringLiteral("mem_usage")));
+    QVERIFY(rawStatsLines.first().contains(QStringLiteral("net_io")));
+    QVERIFY(rawStatsLines.first().contains(QStringLiteral("block_io")));
+    QVERIFY(rawStatsLines.first().contains(QStringLiteral("pids")));
+
+    QStringList cgroupLines;
+    QVERIFY2(client.streamStats(
+                 QStringLiteral("rawcgroup"), 1,
+                 [&cgroupLines](const QByteArray &line) {
+                     cgroupLines.append(QString::fromUtf8(line));
+                     return true;
+                 },
+                 nullptr, &error),
+             qPrintable(error.message));
+    QVERIFY(!cgroupLines.isEmpty());
+    QVERIFY(cgroupLines.first().contains(QStringLiteral("mem_usage")));
+    QVERIFY(cgroupLines.first().contains(QStringLiteral("net_io")));
+    QVERIFY(cgroupLines.first().contains(QStringLiteral("block_io")));
+    QVERIFY(cgroupLines.first().contains(QStringLiteral("pids")));
+    QVERIFY(cgroupLines.first().contains(QStringLiteral("cpu_percent")));
+
     QStringList events;
     QVERIFY2(client.streamEvents(
                  [&events](const QByteArray &data) {

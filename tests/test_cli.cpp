@@ -90,6 +90,12 @@ CliResult CliTest::run(const QStringList &args, const QProcessEnvironment &env) 
 void CliTest::initTestCase()
 {
     QVERIFY(m_mock.isListening());
+    QDir().mkpath(QStringLiteral("/tmp/mock-project"));
+    QFile mockCompose(QStringLiteral("/tmp/mock-project/compose.yaml"));
+    if (mockCompose.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        mockCompose.write("services: {}\n");
+        mockCompose.close();
+    }
 
     m_testDataDir = QDir::tempPath()
                     + QStringLiteral("/podstack-cli-data-%1")
@@ -99,7 +105,7 @@ void CliTest::initTestCase()
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    provider.write("#!/bin/sh\necho \"fake compose $@\"\nexit 0\n");
+    provider.write("#!/bin/sh\ncase \"$*\" in *fail*) echo \"fake failure\" >&2; exit 1;; esac\necho \"fake compose $@\"\nexit 0\n");
     provider.close();
     QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                     | QFileDevice::ExeOwner));
@@ -138,6 +144,7 @@ void CliTest::cleanupTestCase()
     }
     QFile::remove(m_controlSocket);
     QDir(m_testDataDir).removeRecursively();
+    QDir(QStringLiteral("/tmp/mock-project")).removeRecursively();
 }
 
 void CliTest::versionAndHelp()
@@ -437,6 +444,15 @@ void CliTest::composeAndBuild()
     result = run({QStringLiteral("compose"), QStringLiteral("up"), projectDir}, env);
     QCOMPARE(result.code, 0);
 
+    result = run({QStringLiteral("compose"), QStringLiteral("restart"), projectDir}, env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("compose"), QStringLiteral("stop"), projectDir}, env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("compose"), QStringLiteral("start"), projectDir}, env);
+    QCOMPARE(result.code, 0);
+
     result = run({QStringLiteral("compose"), QStringLiteral("down"), projectDir}, env);
     QCOMPARE(result.code, 0);
 
@@ -501,6 +517,11 @@ void CliTest::errorPaths()
 
     result = run({QStringLiteral("doctor")}, offline);
     QCOMPARE(result.code, 7);
+    QCOMPARE(run({QStringLiteral("build")}, environment(m_controlSocket)).code, 2);
+    QCOMPARE(run({QStringLiteral("builds"), QStringLiteral("rm")},
+                 environment(m_controlSocket)).code, 2);
+    QCOMPARE(run({QStringLiteral("compose"), QStringLiteral("up")},
+                 environment(m_controlSocket)).code, 2);
 }
 
 } // namespace

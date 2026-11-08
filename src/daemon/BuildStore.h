@@ -50,7 +50,6 @@ public:
 
     bool open(Error *error = nullptr);
     bool insert(const BuildRecord &record, Error *error = nullptr);
-    bool update(const BuildRecord &record, Error *error = nullptr);
     bool finish(const QString &id, const QString &status, const QString &error,
                 int durationMs, Error *storeError = nullptr);
     bool addStep(const BuildStepRecord &step, Error *error = nullptr);
