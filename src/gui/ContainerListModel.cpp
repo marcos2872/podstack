@@ -35,6 +35,8 @@ QVariant ContainerListModel::data(const QModelIndex &index, int role) const
         return item.value(QStringLiteral("id"));
     case HealthRole:
         return item.value(QStringLiteral("health"));
+    case StatusRole:
+        return item.value(QStringLiteral("status"));
     default:
         return {};
     }
@@ -49,6 +51,7 @@ QHash<int, QByteArray> ContainerListModel::roleNames() const
         {PortsRole, QByteArrayLiteral("ports")},
         {IdRole, QByteArrayLiteral("id")},
         {HealthRole, QByteArrayLiteral("health")},
+        {StatusRole, QByteArrayLiteral("status")},
     };
 }
 

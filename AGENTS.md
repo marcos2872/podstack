@@ -12,7 +12,7 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** **M3 concluído** (Compose por labels + provider, logs por serviço/agregados, builds via Libpod com histórico SQLite, eventos globais em toasts) sobre o M2 (imagens/volumes/redes/pods) e o M1 (containers, logs, stats, files, terminal, batch, health, rootful). 7 testes, cobertura 80,7% com gate de 80%. Ressalvas para o M4: buildx multi-plataforma real, stack Supabase, T2-15/T2-16 (LAN/proxy), terminal embutido e prévia de prune. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
+**Status atual:** **M3 concluído** (Compose por labels + provider, logs por serviço/agregados, builds via Libpod com histórico SQLite, eventos globais em toasts) sobre o M2 (imagens/volumes/redes/pods) e o M1 (containers, logs, stats, files, terminal, batch, health, rootful). 7 testes, cobertura 82,5% com gate de 80%. Ressalvas para o M4: buildx multi-plataforma real, stack Supabase, T2-15/T2-16 (LAN/proxy), terminal embutido e prévia de prune. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
 
 ---
 

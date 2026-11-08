@@ -40,6 +40,11 @@ jobs:
       - name: Testes
         run: ctest --preset coverage --output-on-failure
 
+      # O .gcda do podstackd é sobrescrito pelo último teste que o inicia.
+      # Rodar o rpc por último preserva a cobertura mais ampla do Daemon.
+      - name: Testes (rpc para cobertura do daemon)
+        run: ctest --preset coverage -R rpc --output-on-failure
+
       - name: Cobertura (relatório)
         run: |
           mkdir -p coverage

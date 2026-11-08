@@ -21,7 +21,7 @@
   Alternativa Linux ao OrbStack, com Qt 6/QML, daemon de usuário e CLI scriptable.
 </p>
 
-> **Status:** **M3 concluído** — Compose (detecção por labels, up/down/restart/stop/start, logs por serviço/agregados), builds via Libpod com histórico SQLite e eventos globais em toasts. Somam-se ao M2 (imagens, volumes, redes e pods) e ao M1 (containers, logs, stats, files, terminal, batch, health e rootful). **7 testes**, cobertura **80,7%** (gate 80%). Próximo: M4 (machines).
+> **Status:** **M3 concluído** — Compose (detecção por labels, up/down/restart/stop/start, logs por serviço/agregados), builds via Libpod com histórico SQLite e eventos globais em toasts. Somam-se ao M2 (imagens, volumes, redes e pods) e ao M1 (containers, logs, stats, files, terminal, batch, health e rootful). **7 testes**, cobertura **82,5%** (gate 80%). Próximo: M4 (machines).
 > **Ressalvas M1:** terminal abre em janela nativa (embutir no inspector fica no M2); upload de arquivos e seleção múltipla fina também ficam no M2.
 > **Plataforma:** Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10.
 > **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).

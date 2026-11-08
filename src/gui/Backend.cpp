@@ -694,6 +694,7 @@ void Backend::onRefreshFinished()
         item.insert(QStringLiteral("state"), object.value(QStringLiteral("state")).toString());
         item.insert(QStringLiteral("image"), object.value(QStringLiteral("image")).toString());
         item.insert(QStringLiteral("health"), object.value(QStringLiteral("health")).toString());
+        item.insert(QStringLiteral("status"), object.value(QStringLiteral("status")).toString());
 
         QStringList ports;
         const QJsonArray portArray = object.value(QStringLiteral("ports")).toArray();

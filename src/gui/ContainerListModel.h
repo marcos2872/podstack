@@ -21,6 +21,7 @@ public:
         PortsRole,
         IdRole,
         HealthRole,
+        StatusRole,
     };
 
     explicit ContainerListModel(QObject *parent = nullptr);
