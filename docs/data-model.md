@@ -151,12 +151,28 @@ Derivado dos containers; não persistido (ou cache).
 
 ### 2.13 Job / JobEvent
 
-`jobs`: `id`, `type` (`pull`, `build`, `export`, `import`, `machine-create`, `k8s-enable`), `state`, `progress` (0..100), `message`, `payload` (JSON), `createdAt`, `updatedAt`, `error`.
+`jobs`: `id`, `type` (`pull`, `build`, `export`, `import`, `machine-create`, `k8s-enable`, `setup`), `state`, `progress` (0..100), `message`, `payload` (JSON), `createdAt`, `updatedAt`, `error`.
 `job_events`: `id`, `jobId`, `seq`, `at`, `level`, `message`, `data` (JSON).
 
 ### 2.14 Setting
 
 `settings`: `key` (PK), `value` (JSON), `updatedAt`, `schemaVersion`.
+
+### 2.15 Setup (persistido em `config.json`; checks transientes)
+
+| Campo | Tipo | Default | Notas |
+|---|---|---|---|
+| `completed` | bool | `false` | onboarding concluído |
+| `completedAt` | timestamp? | `null` | |
+| `dockerPolicy` | enum `keep\|removed` | `keep` | `removed` só após confirmação explícita |
+| `podmanVersion` | string? | `null` | versão detectada na última validação |
+| `qemuInstalled` / `kvmAvailable` | bool | `false` | |
+| `components` | string[] | `[]` | `caddy`, `k3s` |
+| `lastValidation` | timestamp? | `null` | |
+
+- `SetupCheck` é transiente: `id`, `status` (`ok|warn|missing|optional`), `version`, `detail`, `remediation`.
+- Jobs de setup usam `jobs.type = "setup"`; o log fica em `job_events`.
+- A remoção do Docker exige `confirm: true` e grava `dockerPolicy = "removed"` apenas após a ação allowlisted.
 
 ---
 

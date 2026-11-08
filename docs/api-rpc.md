@@ -275,6 +275,24 @@ interface Subscription { subscriptionId: string }
 | `events.subscribe` | `{types?}` | `Subscription` |
 | `events.unsubscribe` | `{subscriptionId}` | `{}` |
 
+### 4.12 `setup.*` (proposto)
+
+> Ainda não implementado; contrato proposto para o onboarding/setup. Só entra em `apiVersion` quando o daemon implementar.
+
+| Método | Params | Result |
+|---|---|---|
+| `setup.status` | `{}` | `{completed, completedAt, dockerPolicy, checks: SetupCheck[], summary}` |
+| `setup.check` | `{deep?:bool}` | `{checks: SetupCheck[]}` |
+| `setup.apply` | `{actions:[{type:"install-podman"\|"upgrade-podman"\|"install-qemu"\|"install-components", options?}]}` | `JobRef` |
+| `setup.removeDocker` | `{confirm:true, export?:bool}` | `JobRef` |
+| `setup.cancel` | `{jobId}` | `{}` |
+| `setup.validate` | `{}` | `{checks: SetupCheck[], ok, warnings}` |
+
+- `SetupCheck`: `{id, status:"ok"|"warn"|"missing"|"optional", version?, detail?, remediation?}`.
+- `setup.apply` **não** remove o Docker; `setup.removeDocker` é separado, opt-in e exige `confirm:true`.
+- Progresso via `job.delta`/`job.done` (ou `setup.delta`/`setup.done`); o job continua no daemon se a janela fechar.
+- Ações privilegiadas passam pelo helper allowlisted; o daemon nunca executa shell.
+
 ---
 
 ## 5. Notificações de stream
@@ -344,6 +362,7 @@ Todas usam `method: "<canal>.delta"` e `params.subscriptionId`.
 | -32008 | `PODSTACK_API_MISMATCH` | 426 | versão de API incompatível |
 | -32009 | `PODSTACK_HELPER_REQUIRED` | 409 | operação exige helper |
 | -32010 | `PODSTACK_UNSUPPORTED` | 501 | recurso não suportado no ambiente |
+| -32011 | `PODSTACK_CONSENT_REQUIRED` | 409 | ação destrutiva exige confirmação explícita |
 
 Regras:
 

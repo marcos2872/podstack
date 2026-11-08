@@ -278,6 +278,9 @@ Detalhes em [`docs/security.md`](docs/security.md).
 | Q5 | **Resolvida:** `*.podstack.local` via helper; `*.localhost` é o padrão | — | PRD §13 |
 | Q6 | **Resolvida:** telemetria opt-in por categoria, off por padrão | — | PRD §13 |
 | Q7 | **Resolvida:** pt-BR e en-US, extensível depois | — | PRD §13 |
+| Q8 | **Resolvida:** Docker e Podman coexistem; a remoção do Docker é opt-in | — | PRD §13, ADR-0008 |
+| Q9 | **Resolvida:** onboarding/setup em 7 etapas, não destrutivo, via helper allowlisted | — | PRD §13, spec §2.6 |
+| Q10 | **Resolvida:** Pods do Podman no grupo Engine; Kubernetes só para k3s | — | PRD §13, ui-map §3 |
 
 **Decisões acima ratificadas em 2026-11-08.** Novas decisões: registre a proposta e peça confirmação.
 
@@ -303,7 +306,7 @@ Uma tarefa só está concluída quando:
 
 **Engenharia:** [`docs/architecture.md`](docs/architecture.md) · [`docs/data-model.md`](docs/data-model.md) · [`docs/api-rpc.md`](docs/api-rpc.md) · [`docs/ui-map.md`](docs/ui-map.md) · [`docs/branding.md`](docs/branding.md) · [`docs/cli-parity.md`](docs/cli-parity.md) · [`docs/settings.md`](docs/settings.md) · [`docs/security.md`](docs/security.md) · [`docs/packaging.md`](docs/packaging.md) · [`docs/roadmap.md`](docs/roadmap.md)
 
-**ADRs:** [`0001`](docs/adr/0001-daemon-json-rpc.md) · [`0002`](docs/adr/0002-libpod-libcurl.md) · [`0003`](docs/adr/0003-machines-qemu-kvm.md) · [`0004`](docs/adr/0004-domains-localhost-helper.md) · [`0005`](docs/adr/0005-terminal-backend.md) · [`0006`](docs/adr/0006-rpm-first.md) · [`0007`](docs/adr/0007-compose-provider.md)
+**ADRs:** [`0001`](docs/adr/0001-daemon-json-rpc.md) · [`0002`](docs/adr/0002-libpod-libcurl.md) · [`0003`](docs/adr/0003-machines-qemu-kvm.md) · [`0004`](docs/adr/0004-domains-localhost-helper.md) · [`0005`](docs/adr/0005-terminal-backend.md) · [`0006`](docs/adr/0006-rpm-first.md) · [`0007`](docs/adr/0007-compose-provider.md) · [`0008`](docs/adr/0008-docker-coexistence-setup.md)
 
 **Referência OrbStack:** [`análise do DMG`](docs/reference/orbstack-2.2.5.md) · [`notas oficiais`](docs/reference/orbstack-2.2.5-official-notes.md) · [`árvore do CLI`](docs/reference/cli-tree.json) · [`árvore legível`](docs/reference/cli-tree.md) · [`arquivos Swift`](docs/reference/swift-files.txt) · [`settings keys`](docs/reference/settings-keys.txt)
 

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <title>PodStack — UI Concept</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=19" />
+</head>
+<body>
+  <div class="desktop">
+    <header class="desktop-bar" id="desktopBar"></header>
+    <main class="desktop-area">
+      <div class="window" id="appWindow">
+        <div class="window-titlebar" id="titlebar"></div>
+        <div class="app">
+          <aside class="sidebar" id="sidebar" aria-label="Navegação principal"></aside>
+          <div class="workspace">
+            <header class="topbar" id="topbar"></header>
+            <main class="main" id="main"></main>
+            <footer class="statusbar" id="statusbar"></footer>
+          </div>
+        </div>
+      </div>
+    </main>
+    <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+    <div id="setupRoot"></div>
+    <div id="modalRoot"></div>
+    <nav class="dock" id="dock" aria-label="Dock"></nav>
+  </div>
+  <script src="app.js?v=19"></script>
+</body>
+</html>

@@ -92,8 +92,12 @@ flowchart TB
 | `UntrustCa` | `{fingerprint}` | Remove CA |
 | `AddUdevRule` | `{vid,pid,action}` | Regra para USB (P2) |
 | `SetSysctl` | `{key,value}` | Apenas allowlist (`ip_unprivileged_port_start`) |
+| `InstallPackages` | `{packages:[...], reason}` | Instala pacotes **allowlisted** (podman, qemu-kvm, virtiofsd, …) |
+| `RemovePackages` | `{packages:[...], reason}` | Remove pacotes **allowlisted** (ex.: docker-ce) |
 
-**Proibido:** `Exec`, `Shell`, caminho arbitrário, escrita fora de paths allowlisted, instalação de pacotes.
+**Proibido:** `Exec`, `Shell`, caminho arbitrário, escrita fora de paths allowlisted; instalação/remoção de pacotes só via `InstallPackages`/`RemovePackages`, com allowlist e consentimento.
+
+> `podman.socket` é habilitado no **systemd do usuário** pelo daemon; não requer root nem helper.
 
 ### 4.3 Rootful
 
@@ -101,6 +105,14 @@ flowchart TB
 - **Suportado no v1** com paridade de features, como opt-in explícito.
 - A GUI mostra badge "rootful" e aviso na primeira ativação.
 - O daemon **não** escala privilégios; apenas usa o socket que o usuário já pode acessar.
+
+### 4.4 Setup e coexistência com o Docker
+
+- A detecção do setup é **read-only** (`podman --version`, `podman info`, socket, `/dev/kvm`, binários); não altera o sistema.
+- Instalar/atualizar Podman, instalar QEMU/KVM/componentes e remover Docker passam pelo helper allowlisted; **nunca** `sudo`/shell na GUI.
+- Remover o Docker é **opt-in**: exige `confirm: true`, lista containers/imagens/redes/volumes afetados e avisa que não há migração automática. O padrão é coexistência (`dockerPolicy: keep`).
+- `DOCKER_HOST` apontando para o socket do Podman é uma configuração do usuário, não uma operação privilegiada; não confundir com remoção.
+- Logs do setup não incluem tokens/senhas; a auditoria registra uid, método, parâmetros allowlisted e resultado.
 
 ---
 

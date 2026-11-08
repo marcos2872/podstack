@@ -142,6 +142,18 @@ Campos desconhecidos são preservados na escrita. Config inválida → backup + 
 | `advanced.buildLogRetentionDays` | int | `30` | não | Retenção de logs de build |
 | `advanced.cloudImageCacheBytes` | int64 | `21474836480` | não | Cache de imagens cloud |
 
+### 2.11 Setup
+
+| Chave | Tipo | Default | Reinício | Descrição |
+|---|---|---|---|---|
+| `setup.completed` | bool | `false` | não | Onboarding/setup concluído |
+| `setup.completedAt` | timestamp? | `null` | não | Quando o setup foi concluído |
+| `setup.dockerPolicy` | enum `keep\|removed` | `keep` | não | `keep` = coexistência com Docker; `removed` só após ação opt-in confirmada |
+| `setup.components` | string[] | `[]` | não | Componentes opcionais instalados (`caddy`, `k3s`) |
+| `setup.lastValidation` | timestamp? | `null` | não | Última validação do ambiente |
+
+> O Docker **não** é removido por padrão. `setup.dockerPolicy=removed` só é gravado depois de confirmação explícita e da ação allowlisted do helper; não há migração automática de dados do Docker.
+
 ---
 
 ## 3. Mapeamento GUI ↔ CLI ↔ OrbStack
@@ -162,6 +174,8 @@ Campos desconhecidos são preservados na escrita. Config inválida → backup + 
 | kubeconfig por domínio | `kubernetes.kubeconfigUseDomain` | `k8s.kubeconfig_use_domain` |
 | SANs do API server | `kubernetes.tlsSan` | `k8s.tls_san` |
 | SSH na LAN | `ssh.exposePort` | `ssh.expose_port` |
+| Setup concluído | `setup.completed` | — |
+| Política do Docker | `setup.dockerPolicy` | — |
 
 > O PodStack usa **camelCase** no JSON e **dot.camelCase** no CLI para consistência com a UI; o mapeamento acima preserva a semântica do OrbStack.
 

@@ -91,6 +91,38 @@ Formato único:
 - Timeout padrão de RPC: 30 s; operações longas usam job + notificações.
 - Cancelamento não deixa recurso parcial sem registro; limpeza é idempotente.
 
+### 2.6 Primeira execução e setup
+
+**Entrada:** primeiro uso (setup incompleto), `podstack setup` ou Settings → “Executar configuração novamente”.
+
+**Fluxo (7 etapas):**
+
+1. **Boas-vindas** — explica o que será feito; nada é alterado.
+2. **Diagnóstico** — checks read-only: Docker, Podman, QEMU/KVM, `/dev/kvm`, virtiofsd, systemd de usuário, SQLite, Caddy e k3s.
+3. **Podman** — instala/atualiza o Podman e ativa `podman.socket` rootless. **O Docker não é removido por padrão**; a remoção é uma ação separada, opt-in, com confirmação e aviso de perda.
+4. **QEMU/KVM** — instala QEMU, OVMF, virtiofsd e libvirt opcional; sem `/dev/kvm`, avisa e permite TCG.
+5. **Componentes** — socket/rootless/SQLite obrigatórios; Caddy e k3s opcionais (k3s desmarcado).
+6. **Validação** — checklist final; obrigatórios vs. opcionais; permite abrir com avisos.
+7. **Pronto** — resumo e abertura do app; persiste `setup.completed`.
+
+**Regras:**
+
+- A detecção é **read-only**; nenhuma alteração sem confirmação explícita.
+- Instalar/remover pacotes e remover Docker passam pelo **helper allowlisted**; habilitar `podman.socket` é uma operação do systemd do usuário; a GUI nunca executa `sudo`/shell.
+- Docker e Podman **coexistem** (sockets diferentes); o PodStack usa Podman e não exige a remoção do Docker.
+- A remoção do Docker exige `confirm: true`, lista o impacto e não migra dados automaticamente; pode ser ignorada.
+- Jobs de setup têm progresso, log, cancelamento e retry; o estado é persistido (`setup.completed`, `dockerPolicy`).
+- O setup é reexecutável; o app pode abrir com avisos (ex.: KVM ausente, Caddy opcional).
+
+**Critérios de aceite:**
+
+- [ ] Com Docker presente e Podman ausente, o setup instala o Podman e mantém o Docker.
+- [ ] A matriz Docker (presente/ausente) × Podman (ausente/desatualizado/atualizado) exibe a ação correta.
+- [ ] Remover o Docker só ocorre após confirmação explícita; cancelar não altera o sistema.
+- [ ] Sem `/dev/kvm`, o setup avisa e permite TCG; machines ficam marcadas como lentas.
+- [ ] A validação distingue obrigatórios de opcionais e permite “abrir mesmo assim”.
+- [ ] O setup pode ser reexecutado por Settings/CLI e não repete ações já aplicadas.
+
 ---
 
 ## 3. Containers
