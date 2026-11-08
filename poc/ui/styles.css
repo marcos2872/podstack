@@ -1001,6 +1001,7 @@ body { background: #070a12; }
 }
 .setup-note svg { width: 13px; height: 13px; color: var(--success); }
 .setup-checks { display: grid; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface-2); }
+.setup-card + .setup-checks { margin-top: 12px; }
 .setup-check { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); }
 .setup-check:last-child { border-bottom: 0; }
 .setup-check-icon {
