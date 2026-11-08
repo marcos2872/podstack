@@ -13,7 +13,7 @@ ColumnLayout {
     ViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: compact ? 14 : 22
-        Layout.rightMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 20 : 22
         Layout.topMargin: 20
         Layout.bottomMargin: 16
         title: qsTr("Compose")
@@ -40,7 +40,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         Layout.leftMargin: compact ? 14 : 22
-        Layout.rightMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 20 : 22
         Layout.bottomMargin: 14
         spacing: 7
 
@@ -90,13 +90,13 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.leftMargin: compact ? 14 : 22
-        Layout.rightMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 20 : 22
         Layout.bottomMargin: 20
         spacing: compact ? 12 : 16
 
         CatalogList {
             id: composeList
-            Layout.preferredWidth: compact ? 300 : 480
+            Layout.preferredWidth: compact ? 280 : 480
             Layout.minimumWidth: 280
             Layout.fillHeight: true
             emptyIcon: "compose"
@@ -112,7 +112,7 @@ ColumnLayout {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.minimumWidth: compact ? 250 : 320
+            Layout.minimumWidth: compact ? 240 : 320
             Layout.fillHeight: true
             color: Theme.bgSurface
             radius: Theme.radiusLg

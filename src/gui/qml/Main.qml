@@ -437,7 +437,7 @@ ApplicationWindow {
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 16
-                    anchors.rightMargin: 16
+                    anchors.rightMargin: 20
                     spacing: 8
 
                     AppIcon {
@@ -562,7 +562,7 @@ ApplicationWindow {
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 16
-                    anchors.rightMargin: 16
+                    anchors.rightMargin: 20
                     spacing: 8
 
                     Rectangle {
