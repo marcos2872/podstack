@@ -1,0 +1,20 @@
+[Unit]
+Description=PodStack privileged helper (allowlisted setup actions)
+Documentation=https://github.com/marcos2872/podstack
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=dbus
+BusName=dev.podstack.Helper1
+ExecStart=/usr/libexec/podstack/podstack-helper
+User=root
+Group=root
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

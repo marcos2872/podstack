@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QTest>
@@ -24,6 +25,8 @@ private slots:
     void configNestedSet();
     void configDefaults();
     void configSaveLoad();
+    void configMergePreservesDefaults();
+    void configSetupDefaults();
     void configInvalidFallsBack();
     void pathOverrides();
     void rpcClientUnavailable();
@@ -96,6 +99,50 @@ void CoreTest::configSaveLoad()
     QCOMPARE(loaded.get(QStringLiteral("app.theme")).toString(), QStringLiteral("dark"));
     QCOMPARE(loaded.get(QStringLiteral("network.subnet4")).toString(),
              QStringLiteral("10.1.0.0/16"));
+}
+
+void CoreTest::configMergePreservesDefaults()
+{
+    QDir(PodStack::Paths::configDir()).removeRecursively();
+    QDir().mkpath(PodStack::Paths::configDir());
+    const QString path = PodStack::Paths::configDir() + QStringLiteral("/config.json");
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(R"({"app":{"theme":"dark"}})");
+    file.close();
+
+    const PodStack::Config loaded = PodStack::Config::load();
+    QCOMPARE(loaded.get(QStringLiteral("app.theme")).toString(), QStringLiteral("dark"));
+    QCOMPARE(loaded.get(QStringLiteral("app.language")).toString(), QStringLiteral("pt-BR"));
+    QCOMPARE(loaded.get(QStringLiteral("app.showOnboarding")).toBool(), true);
+    QCOMPARE(loaded.get(QStringLiteral("setup.completed")).toBool(), false);
+    QCOMPARE(loaded.get(QStringLiteral("engine.mode")).toString(), QStringLiteral("rootless"));
+
+    QDir(PodStack::Paths::configDir()).removeRecursively();
+}
+
+void CoreTest::configSetupDefaults()
+{
+    PodStack::Config config;
+    QCOMPARE(config.get(QStringLiteral("app.showOnboarding")).toBool(), true);
+    QCOMPARE(config.get(QStringLiteral("setup.completed")).toBool(), false);
+    QCOMPARE(config.get(QStringLiteral("setup.dockerPolicy")).toString(), QStringLiteral("keep"));
+    QVERIFY(config.get(QStringLiteral("setup.completedAt")).isNull());
+    QVERIFY(config.get(QStringLiteral("setup.lastValidation")).isNull());
+    QCOMPARE(config.get(QStringLiteral("setup.components")).toArray().size(), 0);
+
+    config.set(QStringLiteral("setup.completed"), true);
+    config.set(QStringLiteral("setup.dockerPolicy"), QStringLiteral("removed"));
+    QString error;
+    QVERIFY2(config.save(&error), qPrintable(error));
+
+    const PodStack::Config loaded = PodStack::Config::load();
+    QCOMPARE(loaded.get(QStringLiteral("setup.completed")).toBool(), true);
+    QCOMPARE(loaded.get(QStringLiteral("setup.dockerPolicy")).toString(),
+             QStringLiteral("removed"));
+    QCOMPARE(loaded.get(QStringLiteral("app.theme")).toString(), QStringLiteral("system"));
+
+    QDir(PodStack::Paths::configDir()).removeRecursively();
 }
 
 void CoreTest::configInvalidFallsBack()

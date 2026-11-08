@@ -28,6 +28,7 @@ private slots:
     void subscriptions();
     void catalog();
     void composeAndBuilds();
+    void setupFlow();
     void invalidRequests();
 
 private:
@@ -866,6 +867,75 @@ void RpcTest::composeAndBuilds()
     PodStack::Error emptyRemove;
     client.call(QStringLiteral("builds.remove"), {}, &emptyRemove);
     QCOMPARE(emptyRemove.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void RpcTest::setupFlow()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject status = client.call(QStringLiteral("setup.status"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(status.contains(QStringLiteral("completed")));
+    QVERIFY(status.contains(QStringLiteral("showOnboarding")));
+    QVERIFY(status.contains(QStringLiteral("summary")));
+    QVERIFY(status.value(QStringLiteral("checks")).toArray().size() >= 8);
+
+    const QJsonObject check = client.call(QStringLiteral("setup.check"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonArray checks = check.value(QStringLiteral("checks")).toArray();
+    QVERIFY(checks.size() >= 8);
+    QStringList ids;
+    for (const QJsonValue &value : checks) {
+        const QJsonObject object = value.toObject();
+        ids.append(object.value(QStringLiteral("id")).toString());
+        QVERIFY(object.contains(QStringLiteral("status")));
+        QVERIFY(object.contains(QStringLiteral("detail")));
+    }
+    QVERIFY(ids.contains(QStringLiteral("podman")));
+    QVERIFY(ids.contains(QStringLiteral("docker")));
+    QVERIFY(ids.contains(QStringLiteral("kvm")));
+    QVERIFY(ids.contains(QStringLiteral("qemu")));
+    QVERIFY(ids.contains(QStringLiteral("sqlite")));
+
+    const QJsonObject validate = client.call(QStringLiteral("setup.validate"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(validate.contains(QStringLiteral("ok")));
+    QVERIFY(validate.contains(QStringLiteral("warnings")));
+
+    QJsonObject invalidAction;
+    invalidAction.insert(QStringLiteral("action"), QStringLiteral("nope"));
+    (void)client.call(QStringLiteral("setup.apply"), invalidAction, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    (void)client.call(QStringLiteral("setup.removeDocker"), {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFIRMATION_REQUIRED"));
+
+    error = {};
+    QJsonObject skipped;
+    skipped.insert(QStringLiteral("skipped"), true);
+    const QJsonObject skippedResult =
+        client.call(QStringLiteral("setup.complete"), skipped, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(skippedResult.value(QStringLiteral("skipped")).toBool(), true);
+
+    const QJsonObject afterSkip = client.call(QStringLiteral("setup.status"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(afterSkip.value(QStringLiteral("completed")).toBool(), false);
+    QCOMPARE(afterSkip.value(QStringLiteral("showOnboarding")).toBool(), false);
+
+    QJsonObject completed;
+    completed.insert(QStringLiteral("skipped"), false);
+    const QJsonObject completedResult =
+        client.call(QStringLiteral("setup.complete"), completed, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(completedResult.value(QStringLiteral("completed")).toBool(), true);
+
+    const QJsonObject afterComplete = client.call(QStringLiteral("setup.status"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(afterComplete.value(QStringLiteral("completed")).toBool(), true);
+    QVERIFY(!afterComplete.value(QStringLiteral("completedAt")).isNull());
 }
 
 void RpcTest::invalidRequests()

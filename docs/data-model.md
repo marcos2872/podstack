@@ -165,14 +165,14 @@ Derivado dos containers; não persistido (ou cache).
 | `completed` | bool | `false` | onboarding concluído |
 | `completedAt` | timestamp? | `null` | |
 | `dockerPolicy` | enum `keep\|removed` | `keep` | `removed` só após confirmação explícita |
-| `podmanVersion` | string? | `null` | versão detectada na última validação |
-| `qemuInstalled` / `kvmAvailable` | bool | `false` | |
 | `components` | string[] | `[]` | `caddy`, `k3s` |
 | `lastValidation` | timestamp? | `null` | |
 
 - `SetupCheck` é transiente: `id`, `status` (`ok|warn|missing|optional`), `version`, `detail`, `remediation`.
-- Jobs de setup usam `jobs.type = "setup"`; o log fica em `job_events`.
+- Versões e disponibilidade (Podman, QEMU, KVM etc.) vêm dos checks a cada execução; não são cacheadas no `config.json`.
+- Jobs de setup são mantidos em memória pelo `SetupManager` com progresso, log e cancelamento; o log não é persistido no v1.
 - A remoção do Docker exige `confirm: true` e grava `dockerPolicy = "removed"` apenas após a ação allowlisted.
+- `app.showOnboarding=false` registra que o usuário optou por continuar sem concluir o setup.
 
 ---
 
