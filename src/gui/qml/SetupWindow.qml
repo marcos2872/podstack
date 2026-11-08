@@ -262,7 +262,9 @@ Window {
                 ScrollView {
                     id: welcomePage
                     contentWidth: availableWidth
+                    bottomPadding: 0
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                     ColumnLayout {
                         width: welcomePage.availableWidth - 48
@@ -353,6 +355,8 @@ Window {
                                 }
                             }
                         }
+
+                        Item { Layout.preferredHeight: 24 }
                     }
                 }
 
@@ -360,7 +364,9 @@ Window {
                 ScrollView {
                     id: diagnosisPage
                     contentWidth: availableWidth
+                    bottomPadding: 0
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                     ColumnLayout {
                         width: diagnosisPage.availableWidth - 48
@@ -399,6 +405,8 @@ Window {
                                 font.pixelSize: Theme.fontMicro
                             }
                         }
+
+                        Item { Layout.preferredHeight: 24 }
                     }
                 }
 
@@ -406,7 +414,9 @@ Window {
                 ScrollView {
                     id: podmanPage
                     contentWidth: availableWidth
+                    bottomPadding: 0
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                     ColumnLayout {
                         width: podmanPage.availableWidth - 48
@@ -479,6 +489,8 @@ Window {
                                                               ? "upgrade-podman" : "install-podman")
                             }
                         }
+
+                        Item { Layout.preferredHeight: 24 }
                     }
                 }
 
@@ -486,7 +498,9 @@ Window {
                 ScrollView {
                     id: qemuPage
                     contentWidth: availableWidth
+                    bottomPadding: 0
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                     ColumnLayout {
                         width: qemuPage.availableWidth - 48
@@ -540,6 +554,8 @@ Window {
                                          || setupWindow.virtiofsdCheck.status === "missing")
                             onClicked: backend.setupApply("install-qemu")
                         }
+
+                        Item { Layout.preferredHeight: 24 }
                     }
                 }
 
@@ -547,7 +563,9 @@ Window {
                 ScrollView {
                     id: componentsPage
                     contentWidth: availableWidth
+                    bottomPadding: 0
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                     ColumnLayout {
                         width: componentsPage.availableWidth - 48
@@ -617,9 +635,20 @@ Window {
                             }
 
                             FormCheck {
-                                text: qsTr("k3s — Kubernetes local (disponível no M4)")
+                                text: qsTr("k3s — Kubernetes em VM (M4)")
                                 checked: setupWindow.installK3s
                                 enabled: false
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: true
+                                text: qsTr("O k3s do PodStack roda em uma VM dedicada, não no host; "
+                                           + "por isso ele não é instalado por este assistente.")
+                                color: Theme.textTertiary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMicro
+                                wrapMode: Text.WordWrap
                             }
 
                             ActionButton {
@@ -632,6 +661,8 @@ Window {
                                 }
                             }
                         }
+
+                        Item { Layout.preferredHeight: 24 }
                     }
                 }
 
@@ -639,7 +670,9 @@ Window {
                 ScrollView {
                     id: validationPage
                     contentWidth: availableWidth
+                    bottomPadding: 0
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                     ColumnLayout {
                         width: validationPage.availableWidth - 48
@@ -697,6 +730,8 @@ Window {
                             enabled: !backend.setupBusy && !setupWindow.jobActive
                             onClicked: backend.setupValidate()
                         }
+
+                        Item { Layout.preferredHeight: 28 }
                     }
                 }
 
@@ -704,7 +739,9 @@ Window {
                 ScrollView {
                     id: donePage
                     contentWidth: availableWidth
+                    bottomPadding: 0
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                     ColumnLayout {
                         width: donePage.availableWidth - 48
@@ -792,6 +829,8 @@ Window {
                             iconName: "refresh"
                             onClicked: setupWindow.step = 1
                         }
+
+                        Item { Layout.preferredHeight: 24 }
                     }
                 }
             }
@@ -901,6 +940,7 @@ Window {
 
                 Text {
                     Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
                     text: backend.setupError.length > 0 ? backend.setupError
                                                         : qsTr("Etapa %1 de 7").arg(setupWindow.step + 1)
                     color: backend.setupError.length > 0 ? Theme.danger : Theme.textTertiary
@@ -911,6 +951,7 @@ Window {
 
                 ActionButton {
                     visible: setupWindow.jobActive
+                    Layout.alignment: Qt.AlignVCenter
                     text: qsTr("Cancelar")
                     variant: "danger"
                     onClicked: backend.setupCancel()
@@ -918,14 +959,15 @@ Window {
 
                 ActionButton {
                     visible: setupWindow.step > 0 && !setupWindow.jobActive
+                    Layout.alignment: Qt.AlignVCenter
                     text: qsTr("Voltar")
                     onClicked: setupWindow.step -= 1
                 }
 
                 ActionButton {
                     visible: setupWindow.step < 6
+                    Layout.alignment: Qt.AlignVCenter
                     text: setupWindow.step === 0 ? qsTr("Começar") : qsTr("Continuar")
-                    iconName: setupWindow.step === 0 ? "arrowRight" : ""
                     variant: "primary"
                     enabled: !setupWindow.jobActive
                     onClicked: setupWindow.next()
@@ -933,6 +975,7 @@ Window {
 
                 ActionButton {
                     visible: setupWindow.step === 6
+                    Layout.alignment: Qt.AlignVCenter
                     text: qsTr("Abrir PodStack")
                     iconName: "check"
                     variant: "primary"
