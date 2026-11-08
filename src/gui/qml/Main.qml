@@ -378,6 +378,7 @@ ApplicationWindow {
                 color: theme.bgSurface
 
                 ColumnLayout {
+                    id: inspectorLayout
                     anchors.fill: parent
                     anchors.margins: 16
                     spacing: 10
@@ -387,7 +388,7 @@ ApplicationWindow {
                                            : null
 
                     Label {
-                        text: parent.selected ? parent.selected.name : "Nenhum container selecionado"
+                        text: inspectorLayout.selected ? inspectorLayout.selected.name : "Nenhum container selecionado"
                         color: theme.textPrimary
                         font.pixelSize: 16
                         font.bold: true
@@ -396,7 +397,7 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: parent.selected ? parent.selected.image : ""
+                        text: inspectorLayout.selected ? inspectorLayout.selected.image : ""
                         color: theme.textSecondary
                         font.pixelSize: 11
                         elide: Text.ElideRight
@@ -417,7 +418,7 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: parent.selected ? parent.selected.id : "—"
+                        text: inspectorLayout.selected ? inspectorLayout.selected.id : "—"
                         color: theme.textPrimary
                         font.pixelSize: 11
                         wrapMode: Text.WrapAnywhere
@@ -432,8 +433,8 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: parent.selected && parent.selected.ports.length > 0
-                              ? parent.selected.ports : "—"
+                        text: inspectorLayout.selected && inspectorLayout.selected.ports.length > 0
+                              ? inspectorLayout.selected.ports : "—"
                         color: theme.textPrimary
                         font.pixelSize: 11
                         wrapMode: Text.WrapAnywhere
@@ -448,15 +449,86 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: parent.selected ? parent.selected.state : "—"
+                        text: inspectorLayout.selected ? inspectorLayout.selected.state : "—"
                         color: theme.textPrimary
                         font.pixelSize: 11
+                    }
+
+                    Label {
+                        text: "AÇÕES"
+                        color: theme.textSecondary
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: 6
+                        rowSpacing: 6
+
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: "Iniciar"
+                            enabled: inspectorLayout.selected !== null
+                            onClicked: backend.lifecycle("start", inspectorLayout.selected.id)
+                        }
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: "Parar"
+                            enabled: inspectorLayout.selected !== null
+                            onClicked: backend.lifecycle("stop", inspectorLayout.selected.id)
+                        }
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: "Reiniciar"
+                            enabled: inspectorLayout.selected !== null
+                            onClicked: backend.lifecycle("restart", inspectorLayout.selected.id)
+                        }
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: "Pausar"
+                            enabled: inspectorLayout.selected !== null
+                            onClicked: backend.lifecycle("pause", inspectorLayout.selected.id)
+                        }
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: "Despausar"
+                            enabled: inspectorLayout.selected !== null
+                            onClicked: backend.lifecycle("unpause", inspectorLayout.selected.id)
+                        }
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: "Matar"
+                            accentColor: theme.warning
+                            enabled: inspectorLayout.selected !== null
+                            onClicked: backend.lifecycle("kill", inspectorLayout.selected.id)
+                        }
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: "Remover"
+                            accentColor: theme.danger
+                            enabled: inspectorLayout.selected !== null
+                            onClicked: {
+                                removeDialog.containerId = inspectorLayout.selected.id
+                                removeDialog.open()
+                            }
+                        }
+                    }
+
+                    Label {
+                        text: backend.lastError
+                        visible: backend.lastError.length > 0
+                        color: theme.danger
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
                     }
 
                     Item { Layout.fillHeight: true }
 
                     Label {
-                        text: "Inspector completo (logs, terminal, files, stats) chega no M1."
+                        text: "Terminal, files e stats chegam no próximo incremento do M1."
                         color: theme.textSecondary
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
@@ -492,6 +564,26 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    Dialog {
+        id: removeDialog
+        property string containerId
+        title: "Remover container?"
+        modal: true
+        anchors.centerIn: parent
+        standardButtons: Dialog.Yes | Dialog.No
+        background: Rectangle {
+            color: theme.bgSurface
+            radius: 10
+            border.color: theme.border
+        }
+        contentItem: Label {
+            text: "O container será removido permanentemente."
+            color: theme.textPrimary
+            wrapMode: Text.WordWrap
+        }
+        onAccepted: backend.removeContainer(containerId, true, false)
     }
 
     Connections {

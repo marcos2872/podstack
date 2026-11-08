@@ -34,6 +34,7 @@ private:
     QJsonObject containersList(const QJsonObject &params, Error *error);
     QJsonObject containerAction(const QString &method, const QJsonObject &params, Error *error);
     QJsonObject containerExec(const QJsonObject &params, Error *error);
+    QJsonObject containerInspect(const QJsonObject &params, Error *error);
     QJsonObject subscribeLogs(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeEvents(const Notify &notify, Error *error);
     QJsonObject unsubscribe(const QJsonObject &params);

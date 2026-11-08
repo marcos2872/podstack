@@ -126,6 +126,42 @@ void RpcTest::lifecycle()
                  .value(QStringLiteral("ok"))
                  .toBool(),
              qPrintable(error.message));
+    QVERIFY2(client.call(QStringLiteral("containers.pause"), idParams, &error)
+                 .value(QStringLiteral("ok"))
+                 .toBool(),
+             qPrintable(error.message));
+    QVERIFY2(client.call(QStringLiteral("containers.unpause"), idParams, &error)
+                 .value(QStringLiteral("ok"))
+                 .toBool(),
+             qPrintable(error.message));
+    QVERIFY2(client.call(QStringLiteral("containers.kill"), idParams, &error)
+                 .value(QStringLiteral("ok"))
+                 .toBool(),
+             qPrintable(error.message));
+
+    const QJsonObject inspect = client.call(QStringLiteral("containers.inspect"), idParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(inspect.value(QStringLiteral("json"))
+                 .toObject()
+                 .value(QStringLiteral("Id"))
+                 .toString(),
+             QStringLiteral("abc123"));
+
+    QJsonObject runningParams;
+    runningParams.insert(QStringLiteral("all"), true);
+    runningParams.insert(QStringLiteral("state"), QStringLiteral("running"));
+    QCOMPARE(client.call(QStringLiteral("containers.list"), runningParams, &error)
+                 .value(QStringLiteral("items"))
+                 .toArray()
+                 .size(),
+             1);
+
+    runningParams.insert(QStringLiteral("state"), QStringLiteral("stopped"));
+    QCOMPARE(client.call(QStringLiteral("containers.list"), runningParams, &error)
+                 .value(QStringLiteral("items"))
+                 .toArray()
+                 .size(),
+             0);
 
     QJsonObject execParams;
     execParams.insert(QStringLiteral("id"), QStringLiteral("abc123"));

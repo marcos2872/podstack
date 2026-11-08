@@ -114,23 +114,24 @@ interface Subscription { subscriptionId: string }
 
 | Método | Params | Result |
 |---|---|---|
-| `containers.list` | `{all?, running?, filter?, limit?, offset?}` | `{items: Container[], total}` |
+| `containers.list` | `{all?, state?: "running"\|"stopped"\|"paused", filter?, limit?, offset?}` | `{items: Container[], total}` |
 | `containers.get` | `{id}` | `Container` |
 | `containers.create` | `{image, name?, cmd?, entrypoint?, ports?, env?, volumes?, workdir?, user?, labels?, restart?, resources?, flags?}` | `Container` |
-| `containers.start` | `{id}` | `{id, state}` |
-| `containers.stop` | `{id, timeoutSeconds?}` | `{id, state}` |
-| `containers.restart` | `{id, timeoutSeconds?}` | `{id, state}` |
-| `containers.pause` / `unpause` | `{id}` | `{id, state}` |
-| `containers.kill` | `{id, signal?}` | `{id, state}` |
-| `containers.remove` | `{id, force?, volumes?}` | `{id, removed:true}` |
+| `containers.start` | `{id}` | `{id, ok:true}` |
+| `containers.stop` | `{id, timeoutSeconds?}` | `{id, ok:true}` |
+| `containers.restart` | `{id, timeoutSeconds?}` | `{id, ok:true}` |
+| `containers.pause` / `unpause` | `{id}` | `{id, ok:true}` |
+| `containers.kill` | `{id, signal?}` | `{id, ok:true}` |
+| `containers.remove` | `{id, force?, volumes?}` | `{id, ok:true}` |
 | `containers.rename` | `{id, name}` | `Container` |
-| `containers.inspect` | `{id}` | `{json: object}` |
+| `containers.inspect` | `{id}` | `{id, json: object}` |
 | `containers.top` | `{id}` | `{titles:[], processes:[][]}` |
 | `containers.changes` | `{id}` | `{changes:[{path,kind}]}` |
 | `containers.logs.subscribe` | `{id, tail?, follow?, timestamps?, since?}` | `Subscription` |
 | `containers.logs.unsubscribe` | `{subscriptionId}` | `{}` |
 | `containers.stats.subscribe` | `{ids?, intervalSeconds?}` | `Subscription` |
 | `containers.stats.unsubscribe` | `{subscriptionId}` | `{}` |
+| `containers.exec` | `{id, cmd: string[]}` | `{id, exitCode, stdout}` (one-shot; TTY/sessão via `exec.*` no M1) |
 | `containers.exec.create` | `{id, cmd, tty?, user?, workdir?, env?}` | `{sessionId, execId}` |
 | `containers.exec.write` | `{sessionId, dataBase64}` | `{}` |
 | `containers.exec.resize` | `{sessionId, rows, cols}` | `{}` |

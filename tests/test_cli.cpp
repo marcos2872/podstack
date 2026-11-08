@@ -28,6 +28,7 @@ private slots:
     void versionAndHelp();
     void statusAndPs();
     void execAndDoctor();
+    void lifecycleAndInspect();
     void errorPaths();
 
 private:
@@ -170,6 +171,47 @@ void CliTest::statusAndPs()
     result = run({QStringLiteral("ps"), QStringLiteral("--format=json")}, env);
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("\"items\"")));
+
+    result = run({QStringLiteral("ps"), QStringLiteral("--running")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("demo")));
+
+    result = run({QStringLiteral("ps"), QStringLiteral("--stopped")}, env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("ps"), QStringLiteral("--running"), QStringLiteral("--stopped")},
+                 env);
+    QCOMPARE(result.code, 2);
+}
+
+void CliTest::lifecycleAndInspect()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("pause"), QStringLiteral("abc123")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("ok")));
+
+    result = run({QStringLiteral("unpause"), QStringLiteral("abc123")}, env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("kill"), QStringLiteral("--signal"), QStringLiteral("SIGTERM"),
+                  QStringLiteral("abc123")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("inspect"), QStringLiteral("abc123")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("abc123")));
+
+    result = run({QStringLiteral("pause")}, env);
+    QCOMPARE(result.code, 2);
+
+    result = run({QStringLiteral("kill"), QStringLiteral("--signal")}, env);
+    QCOMPARE(result.code, 2);
+
+    result = run({QStringLiteral("inspect")}, env);
+    QCOMPARE(result.code, 2);
 }
 
 void CliTest::execAndDoctor()

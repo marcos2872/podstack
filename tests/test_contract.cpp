@@ -64,6 +64,14 @@ void ContractTest::pingListAndLifecycle()
              qPrintable(error.message));
     QVERIFY2(client.removeContainer(QStringLiteral("abc123"), true, true, &error),
              qPrintable(error.message));
+    QVERIFY2(client.pauseContainer(QStringLiteral("abc123"), &error), qPrintable(error.message));
+    QVERIFY2(client.unpauseContainer(QStringLiteral("abc123"), &error), qPrintable(error.message));
+    QVERIFY2(client.killContainer(QStringLiteral("abc123"), QStringLiteral("SIGTERM"), &error),
+             qPrintable(error.message));
+
+    const QJsonObject inspected = client.inspectContainer(QStringLiteral("abc123"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(inspected.value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
 }
 
 void ContractTest::execLogsAndEvents()
@@ -122,6 +130,9 @@ void ContractTest::errorMapping()
     PodStack::ExecResult exec;
     QVERIFY(!client.execOnce(QStringLiteral("abc123"), {}, &exec, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(client.inspectContainer(QStringLiteral("missing"), &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 }
 
 void ContractTest::pingFailure()

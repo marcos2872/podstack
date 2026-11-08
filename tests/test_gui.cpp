@@ -26,6 +26,7 @@ private slots:
     void containerListModel();
     void backendSuccess();
     void backendError();
+    void backendActions();
 
 private:
     QProcessEnvironment daemonEnvironment() const;
@@ -157,6 +158,29 @@ void GuiTest::backendError()
     QTRY_VERIFY_WITH_TIMEOUT(stateSpy.count() > 0, 5000);
     QVERIFY(!backend.connected());
     QVERIFY(!backend.error().isEmpty());
+}
+
+void GuiTest::backendActions()
+{
+    PodStack::Backend backend;
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    backend.lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    QVERIFY(backend.lastError().isEmpty());
+
+    backend.removeContainer(QStringLiteral("abc123"), true, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+
+    backend.lifecycle(QStringLiteral("does-not-exist"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QVERIFY(!backend.lastError().isEmpty());
+
+    backend.lifecycle(QString(), QStringLiteral("abc123"));
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
 }
 
 } // namespace

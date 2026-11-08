@@ -8,7 +8,7 @@
 
 ## M0 — Fundação
 
-> **Status (2026-11-08): concluído.** Evidências: `cmake --build --preset dev` sem warnings; `ctest --preset dev` **6/6** (core, contrato, RPC, Podman real, CLI e GUI); cobertura **84,3%** com gate de **80%**; CLI/daemon E2E (`status`, `ps`, `exec`); hijack de exec e demux de logs validados.
+> **Status (2026-11-08): concluído.** Evidências: `cmake --build --preset dev` sem warnings; `ctest --preset dev` **6/6** (core, contrato, RPC, Podman real, CLI e GUI); cobertura **84,7%** com gate de **80%**; CLI/daemon E2E (`status`, `ps`, `exec`); hijack de exec e demux de logs validados.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
@@ -36,6 +36,8 @@
 ---
 
 ## M1 — Containers
+
+> **Status (2026-11-08): em andamento.** Primeira fatia entregue: filtros de estado, pause/unpause/kill, inspect, rootful e ações na GUI. Pendentes: create, logs na UI, terminal, stats, files, batch e healthcheck visual.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|

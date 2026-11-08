@@ -87,6 +87,7 @@ qt_add_qml_module(podstack-gui
     QML_FILES
         src/gui/qml/Main.qml
         src/gui/qml/Theme.qml
+        src/gui/qml/ActionButton.qml
 )
 
 target_link_libraries(podstack-gui PRIVATE
