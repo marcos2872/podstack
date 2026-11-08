@@ -85,15 +85,9 @@ gantt
 
 ### M2 — Catálogo (3 semanas)
 
+**Status:** **concluído com ressalvas** — catálogo navegável, pull/push/tag/untag, remove/prune, history/digest, CRUD de volumes e redes, clone e export/import `.tar.zst`, import do host, pods e `system.df`. Pendências para o M3: LAN toggle, proxy global, seletor visual de plataforma e prévia detalhada de prune.
+
 **Objetivo:** imagens, volumes, redes e pods.
-
-**Entregáveis:**
-
-- Pull com progresso/cancelamento, remove/prune, history/digest.
-- Volumes: CRUD, clone, export/import `.tar.zst`.
-- Redes: CRUD, subnet, DNS, connect/disconnect.
-- Pods: CRUD e ciclo de vida.
-- LAN toggle e proxy global.
 
 **Critério de saída:**
 

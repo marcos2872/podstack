@@ -24,6 +24,13 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList cpuHistory READ cpuHistory NOTIFY statsChanged)
     Q_PROPERTY(QVariantList files READ files NOTIFY filesChanged)
     Q_PROPERTY(QString filesPath READ filesPath NOTIFY filesChanged)
+    Q_PROPERTY(QVariantList images READ images NOTIFY imagesChanged)
+    Q_PROPERTY(QVariantList volumes READ volumes NOTIFY volumesChanged)
+    Q_PROPERTY(QVariantList networks READ networks NOTIFY networksChanged)
+    Q_PROPERTY(QVariantList pods READ pods NOTIFY podsChanged)
+    Q_PROPERTY(bool pullActive READ pullActive NOTIFY pullStateChanged)
+    Q_PROPERTY(QString pullStatus READ pullStatus NOTIFY pullStateChanged)
+    Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -37,12 +44,46 @@ public:
     QVariantList cpuHistory() const { return m_cpuHistory; }
     QVariantList files() const { return m_files; }
     QString filesPath() const { return m_filesPath; }
+    QVariantList images() const { return m_images; }
+    QVariantList volumes() const { return m_volumes; }
+    QVariantList networks() const { return m_networks; }
+    QVariantList pods() const { return m_pods; }
+    bool pullActive() const { return m_pullActive; }
+    QString pullStatus() const { return m_pullStatus; }
+    QVariantMap diskUsage() const { return m_diskUsage; }
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void refreshCatalog();
+    Q_INVOKABLE void refreshImages();
+    Q_INVOKABLE void refreshVolumes();
+    Q_INVOKABLE void refreshNetworks();
+    Q_INVOKABLE void refreshPods();
+    Q_INVOKABLE void pullImage(const QString &reference, const QString &platform = {});
+    Q_INVOKABLE void cancelPull();
+    Q_INVOKABLE void removeImage(const QString &id, bool force);
+    Q_INVOKABLE void pruneImages(bool all);
+    Q_INVOKABLE void tagImage(const QString &id, const QString &repoTag);
+    Q_INVOKABLE void untagImage(const QString &id, const QString &repoTag);
+    Q_INVOKABLE void exportImage(const QString &id, const QString &path);
+    Q_INVOKABLE void loadImage(const QString &path);
+    Q_INVOKABLE void createVolume(const QString &name, const QString &driver);
+    Q_INVOKABLE void removeVolume(const QString &name, bool force);
+    Q_INVOKABLE void pruneVolumes();
+    Q_INVOKABLE void cloneVolume(const QString &source, const QString &destination);
+    Q_INVOKABLE void importHostPath(const QString &name, const QString &sourcePath);
+    Q_INVOKABLE void createNetwork(const QString &name, const QString &subnet,
+                                   const QString &gateway);
+    Q_INVOKABLE void removeNetwork(const QString &name, bool force);
+    Q_INVOKABLE void connectNetwork(const QString &name, const QString &containerId);
+    Q_INVOKABLE void disconnectNetwork(const QString &name, const QString &containerId);
+    Q_INVOKABLE void createPod(const QString &name);
+    Q_INVOKABLE void podAction(const QString &action, const QString &id);
+    Q_INVOKABLE void removePod(const QString &id, bool force);
     Q_INVOKABLE void lifecycle(const QString &action, const QString &id);
     Q_INVOKABLE void removeContainer(const QString &id, bool force, bool volumes);
     Q_INVOKABLE void createContainer(const QVariantMap &spec, bool start);
     Q_INVOKABLE void batchAll(const QString &action);
+    Q_INVOKABLE void batchIds(const QStringList &ids, const QString &action);
     Q_INVOKABLE void renameContainer(const QString &id, const QString &name);
     Q_INVOKABLE void duplicateContainer(const QString &id);
     Q_INVOKABLE void subscribeLogs(const QString &id, int tail, bool follow);
@@ -52,6 +93,7 @@ public:
     Q_INVOKABLE void unsubscribeStats();
     Q_INVOKABLE void listFiles(const QString &id, const QString &path);
     Q_INVOKABLE void downloadFile(const QString &id, const QString &path);
+    Q_INVOKABLE void uploadFile(const QString &id, const QString &path, const QString &sourcePath);
     Q_INVOKABLE QVariantMap settings() const;
     Q_INVOKABLE void saveEngineMode(const QString &mode);
     Q_INVOKABLE void openTerminal(const QString &id);
@@ -64,17 +106,30 @@ signals:
     void logsChanged();
     void statsChanged();
     void filesChanged();
+    void imagesChanged();
+    void volumesChanged();
+    void networksChanged();
+    void podsChanged();
+    void pullStateChanged();
+    void diskUsageChanged();
 
 private:
     void onRefreshFinished();
     void onActionFinished();
     void onFilesFinished();
+    void onCatalogFinished();
+    void refreshSection(const QString &section);
+    void startNextCatalog();
     void runAction(const QString &method, const QJsonObject &params);
 
     QFutureWatcher<QJsonObject> m_watcher;
     QFutureWatcher<QJsonObject> m_actionWatcher;
     QFutureWatcher<QJsonObject> m_filesWatcher;
+    QFutureWatcher<QJsonObject> m_catalogWatcher;
+    QString m_catalogSection;
+    QStringList m_catalogQueue;
     StreamClient m_stream;
+    StreamClient m_pullStream;
     QTimer m_logsTimer;
     bool m_logsPending = false;
     bool m_connected = false;
@@ -86,6 +141,13 @@ private:
     QVariantList m_files;
     QString m_filesPath = QStringLiteral("/");
     QVariantList m_containers;
+    QVariantList m_images;
+    QVariantList m_volumes;
+    QVariantList m_networks;
+    QVariantList m_pods;
+    bool m_pullActive = false;
+    QString m_pullStatus;
+    QVariantMap m_diskUsage;
 };
 
 } // namespace PodStack

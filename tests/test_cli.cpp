@@ -29,6 +29,7 @@ private slots:
     void statusAndPs();
     void execAndDoctor();
     void lifecycleAndInspect();
+    void catalog();
     void errorPaths();
 
 private:
@@ -227,6 +228,170 @@ void CliTest::execAndDoctor()
     result = run({QStringLiteral("doctor")}, env);
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("[ok]")));
+}
+
+void CliTest::catalog()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("images")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("alpine")));
+
+    result = run({QStringLiteral("images"), QStringLiteral("pull"), QStringLiteral("alpine")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("Downloading"))
+            || result.out.contains(QStringLiteral("concluído")));
+
+    result = run({QStringLiteral("images"), QStringLiteral("pull"), QStringLiteral("fail")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("pull failed")));
+
+    result = run({QStringLiteral("images"), QStringLiteral("history"),
+                  QStringLiteral("img1234567890")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("COPY /app")));
+
+    result = run({QStringLiteral("images"), QStringLiteral("tag"),
+                  QStringLiteral("img1234567890"), QStringLiteral("repo:v1")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("images"), QStringLiteral("untag"),
+                  QStringLiteral("img1234567890"), QStringLiteral("repo:v1")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    const QString imageArchive =
+        QDir::tempPath() + QStringLiteral("/podstack-cli-image-%1.tar")
+                               .arg(QCoreApplication::applicationPid());
+    QFile::remove(imageArchive);
+    result = run({QStringLiteral("images"), QStringLiteral("export"),
+                  QStringLiteral("img1234567890"), imageArchive},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(QFileInfo(imageArchive).size() > 0);
+
+    result = run({QStringLiteral("images"), QStringLiteral("load"), imageArchive}, env);
+    QCOMPARE(result.code, 0);
+    QFile::remove(imageArchive);
+
+    result = run({QStringLiteral("volumes")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("vol1")));
+
+    const QString sourceDir = QStringLiteral("/tmp/podstack-mock-volume");
+    const QString destinationDir = QStringLiteral("/tmp/podstack-mock-volume2");
+    QDir(sourceDir).removeRecursively();
+    QDir(destinationDir).removeRecursively();
+    QDir().mkpath(sourceDir);
+    QFile sourceFile(sourceDir + QStringLiteral("/a.txt"));
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write("hello");
+    sourceFile.close();
+
+    result = run({QStringLiteral("volumes"), QStringLiteral("create"), QStringLiteral("vol2")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("volumes"), QStringLiteral("clone"), QStringLiteral("vol1"),
+                  QStringLiteral("vol2")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    const QString volumeArchive =
+        QDir::tempPath() + QStringLiteral("/podstack-cli-volume-%1.tar.zst")
+                               .arg(QCoreApplication::applicationPid());
+    QFile::remove(volumeArchive);
+    result = run({QStringLiteral("volumes"), QStringLiteral("export"),
+                  QStringLiteral("vol1"), volumeArchive},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(QFileInfo(volumeArchive).size() > 0);
+
+    result = run({QStringLiteral("volumes"), QStringLiteral("import"),
+                  QStringLiteral("vol2"), volumeArchive, QStringLiteral("--force")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QFile::remove(volumeArchive);
+
+    const QString hostDir = QStringLiteral("/tmp/podstack-host-src");
+    QDir(hostDir).removeRecursively();
+    QDir().mkpath(hostDir);
+    QFile hostFile(hostDir + QStringLiteral("/b.txt"));
+    QVERIFY(hostFile.open(QIODevice::WriteOnly));
+    hostFile.write("host-content");
+    hostFile.close();
+    result = run({QStringLiteral("volumes"), QStringLiteral("import-host"),
+                  QStringLiteral("vol2"), hostDir},
+                 env);
+    QCOMPARE(result.code, 0);
+    QDir(hostDir).removeRecursively();
+
+    result = run({QStringLiteral("volumes"), QStringLiteral("prune")}, env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("networks")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("mock-net")));
+
+    result = run({QStringLiteral("networks"), QStringLiteral("create"),
+                  QStringLiteral("mock-net"), QStringLiteral("--subnet"),
+                  QStringLiteral("10.90.0.0/24")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("networks"), QStringLiteral("connect"),
+                  QStringLiteral("mock-net"), QStringLiteral("abc123")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("networks"), QStringLiteral("disconnect"),
+                  QStringLiteral("mock-net"), QStringLiteral("abc123")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("pods")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("demo-pod")));
+
+    result = run({QStringLiteral("pods"), QStringLiteral("create"),
+                  QStringLiteral("demo-pod")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("pods"), QStringLiteral("start"),
+                  QStringLiteral("pod123")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("images"), QStringLiteral("prune")}, env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("images"), QStringLiteral("rm"),
+                  QStringLiteral("img1234567890")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("volumes"), QStringLiteral("rm"),
+                  QStringLiteral("vol1")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("networks"), QStringLiteral("rm"),
+                  QStringLiteral("mock-net")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("pods"), QStringLiteral("rm"), QStringLiteral("pod123")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    QDir(sourceDir).removeRecursively();
+    QDir(destinationDir).removeRecursively();
 }
 
 void CliTest::errorPaths()

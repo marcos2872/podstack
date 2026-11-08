@@ -26,10 +26,30 @@ ColumnLayout {
         }
 
         ActionButton {
+            text: "Enviar"
+            accentColor: theme.indigo500
+            enabled: filesView.containerId !== "" && uploadPath.text.length > 0
+            onClicked: {
+                backend.uploadFile(filesView.containerId, backend.filesPath, uploadPath.text)
+            }
+        }
+
+        ActionButton {
             text: "Atualizar"
             accentColor: theme.bgElevated
             enabled: filesView.containerId !== ""
             onClicked: backend.listFiles(filesView.containerId, backend.filesPath)
+        }
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 6
+
+        FormField {
+            id: uploadPath
+            Layout.fillWidth: true
+            placeholderText: "Arquivo local para enviar ao container..."
         }
     }
 

@@ -17,11 +17,14 @@ public:
 
     void subscribeLogs(const QString &id, int tail, bool follow);
     void subscribeStats(const QString &id, int intervalSeconds = 1);
+    void pullImage(const QString &reference, const QString &platform = {});
     void unsubscribe();
 
 signals:
     void logLine(const QString &line);
     void stats(const QJsonObject &stats);
+    void pullEvent(const QJsonObject &event);
+    void pullFinished(bool ok, const QString &error);
     void error(const QString &message);
 
 private:
@@ -36,6 +39,7 @@ private:
     QByteArray m_buffer;
     QString m_subscriptionId;
     QString m_kind;
+    QString m_unsubscribeMethod;
     QJsonObject m_pending;
     bool m_pendingSend = false;
 };

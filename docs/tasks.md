@@ -66,26 +66,28 @@
 
 ## M2 — Imagens, volumes, redes, pods
 
+> **Status (2026-11-08): concluído com ressalvas.** Entregues: catálogo navegável (imagens, volumes, redes e pods), pull com progresso e cancelamento, push/tag/untag, remover/prune, histórico/digest, CRUD de volumes e redes, clone e export/import `.tar.zst`, import do host, conexão de containers em redes e lifecycle de pods. `system.df` alimenta a barra de status. Ressalvas: T2-15 (expor portas na LAN), T2-16 (proxy global) e o seletor visual de plataforma (T2-17) ficam para o M3; a validação de CIDR é delegada ao Podman.
+
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T2-01 | P0 | Listar imagens (repo, tag, digest, tamanho, uso) | T0-05 | Consistente com `podman images` |
-| T2-02 | P0 | Pull com progresso/cancelamento + auth | T2-01 | Progresso por camada |
-| T2-03 | P0 | Remover/prune com prévia | T2-01 | Bloqueia em uso |
-| T2-04 | P0 | Info/histórico/digest | T2-01 | Digest copiável |
-| T2-05 | P0 | Listar volumes (driver, mountpoint, tamanho, uso) | T0-05 | Consistente |
-| T2-06 | P0 | Criar/remover/prune volumes | T2-05 | Em uso exige confirmação |
-| T2-07 | P0 | Listar/criar/remover redes (subnet, gateway) | T0-05 | Validação de CIDR |
-| T2-08 | P0 | Conectar/desconectar containers + aliases | T2-07 | DNS interno resolve |
-| T2-09 | P0 | Pods: listar/criar/start/stop/remove | T0-05 | Consistente com `podman pod` |
-| T2-10 | P1 | Push/tag/untag | T2-01 | Credenciais seguras |
-| T2-11 | P1 | Import/export tar de imagens | T2-01 | Arquivo válido |
-| T2-12 | P1 | Volume clone (reflink/fallback) | T2-05 | Conteúdo idêntico |
-| T2-13 | P1 | Volume export/import `.tar.zst` | T2-05 | Progresso; paths seguros |
-| T2-14 | P1 | Volume import do host | T2-05 | Validação |
-| T2-15 | P1 | Expor portas na LAN | T2-08 | Toggle + aviso |
-| T2-16 | P1 | Proxy global e exclusões | T2-08 | Aplicado a novos containers |
-| T2-17 | P2 | Multi-arch/platform selection | T2-02 | Pull da plataforma |
-| T2-18 | P2 | Prune avançado (system df) | T2-03 | Prévia |
+| T2-01 | P0 | Listar imagens (repo, tag, digest, tamanho, uso) | T0-05 | ✅ `images.list` + GUI/CLI |
+| T2-02 | P0 | Pull com progresso/cancelamento + auth | T2-01 | ✅ stream por camada; credenciais do Podman |
+| T2-03 | P0 | Remover/prune com prévia | T2-01 | ✅ confirmação na GUI; bloqueio em uso no engine |
+| T2-04 | P0 | Info/histórico/digest | T2-01 | ✅ `images.get`/`images.history` + CLI |
+| T2-05 | P0 | Listar volumes (driver, mountpoint, tamanho, uso) | T0-05 | ✅ `volumes.list` + `system.df` |
+| T2-06 | P0 | Criar/remover/prune volumes | T2-05 | ✅ GUI/CLI |
+| T2-07 | P0 | Listar/criar/remover redes (subnet, gateway) | T0-05 | ✅ GUI/CLI; CIDR validado pelo Podman |
+| T2-08 | P0 | Conectar/desconectar containers + aliases | T2-07 | ✅ API/CLI com aliases; GUI sem aliases |
+| T2-09 | P0 | Pods: listar/criar/start/stop/remove | T0-05 | ✅ GUI/CLI |
+| T2-10 | P1 | Push/tag/untag | T2-01 | ✅ stream de push; tag/untag |
+| T2-11 | P1 | Import/export tar de imagens | T2-01 | ✅ `images.export/load` |
+| T2-12 | P1 | Volume clone (reflink/fallback) | T2-05 | ✅ `cp -a --reflink=auto` |
+| T2-13 | P1 | Volume export/import `.tar.zst` | T2-05 | ✅ libarchive; paths validados |
+| T2-14 | P1 | Volume import do host | T2-05 | ✅ `volumes.importHostPath` |
+| T2-15 | P1 | Expor portas na LAN | T2-08 | ⬜ M3 (helper/firewall) |
+| T2-16 | P1 | Proxy global e exclusões | T2-08 | ⬜ M3 |
+| T2-17 | P2 | Multi-arch/platform selection | T2-02 | ◐ pull aceita `platform`; seletor visual no M3 |
+| T2-18 | P2 | Prune avançado (system df) | T2-03 | ◐ `system.df` + prune; prévia detalhada no M3 |
 
 **Saída M2:** catálogo completo navegável e operável.
 

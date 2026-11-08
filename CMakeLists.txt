@@ -32,6 +32,7 @@ add_library(podstack_core STATIC
     src/core/Config.cpp
     src/core/Logging.cpp
     src/core/RpcClient.cpp
+    src/core/RpcStream.cpp
 )
 target_include_directories(podstack_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_core PUBLIC Qt6::Core Qt6::Network)
@@ -101,6 +102,12 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/StatsView.qml
         src/gui/qml/Inspector.qml
         src/gui/qml/FilesView.qml
+        src/gui/qml/CatalogList.qml
+        src/gui/qml/ContainersPage.qml
+        src/gui/qml/ImagesView.qml
+        src/gui/qml/VolumesView.qml
+        src/gui/qml/NetworksView.qml
+        src/gui/qml/PodsView.qml
 )
 
 target_link_libraries(podstack-gui PRIVATE

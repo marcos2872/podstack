@@ -108,6 +108,7 @@ interface Subscription { subscriptionId: string }
 | `system.status` | `{}` | `{state, engine, mode, version, uptimeSeconds, counts, warnings[]}` |
 | `system.doctor` | `{deep?:bool}` | `{checks:[{id,status,detail,remediation}]}` |
 | `system.report` | `{includeLogs?:bool}` | `{path, bytes, sha256}` |
+| `system.df` | `{}` | `{json:{ImagesSize,Images:[],Containers:[],Volumes:[]}}` |
 | `system.shutdown` | `{stopContainers?:bool}` | `{}` |
 
 ### 4.2 `containers.*`
@@ -139,7 +140,7 @@ interface Subscription { subscriptionId: string }
 | `containers.exec.close` | `{sessionId}` | `{exitCode?}` |
 | `containers.files.list` | `{id, path}` | `{path, entries:[{name,size,directory,mode,modified}]}` |
 | `containers.files.download` | `{id, path, destination}` | `{path, destination}` |
-| `containers.files.upload` | `{id, path, sourcePath}` | `JobRef` (planejado M2) |
+| `containers.files.upload` | `{id, path, sourcePath}` | `{path, sourcePath, ok:true}` |
 | `containers.export` | `{id, path}` | `JobRef` |
 | `containers.commit` | `{id, repo, tag?, message?}` | `{imageId}` |
 
@@ -147,42 +148,43 @@ interface Subscription { subscriptionId: string }
 
 | Método | Params | Result |
 |---|---|---|
-| `images.list` | `{all?, filter?}` | `{items: Image[]}` |
-| `images.get` | `{id}` | `Image` |
-| `images.pull` | `{reference, platform?}` | `JobRef` |
-| `images.push` | `{reference, platform?}` | `JobRef` |
-| `images.tag` / `untag` | `{id, repo}` | `{}` |
-| `images.remove` | `{id, force?}` | `{removed:true}` |
-| `images.prune` | `{all?, dryRun?}` | `{reclaimedBytes, items}` |
-| `images.history` | `{id}` | `{items:[{id,created,createdBy,size,comment}]}` |
-| `images.export` / `load` | `{id?, path?}` | `JobRef` |
+| `images.list` | `{all?}` | `{items: Image[], total}` |
+| `images.get` / `inspect` | `{id}` | `{id, json}` |
+| `images.pull` | `{reference, platform?}` | `{subscriptionId, reference}` + `images.pull.delta/done/error` |
+| `images.push` | `{id, destination}` | `{subscriptionId, destination}` + `images.push.delta/done/error` |
+| `images.tag` / `untag` | `{id, repo, tag?}` | `{id, repo, ok:true}` |
+| `images.remove` | `{id, force?}` | `{id, removed:true}` |
+| `images.prune` | `{all?}` | `{reclaimedBytes}` |
+| `images.history` | `{id}` | `{id, items:[{id,created,createdBy,size,comment}]}` |
+| `images.export` | `{id, path}` | `{id, path}` |
+| `images.load` | `{path}` | `{path, ok:true}` |
 
 ### 4.4 `volumes.*`
 
 | Método | Params | Result |
 |---|---|---|
-| `volumes.list` | `{}` | `{items: Volume[]}` |
+| `volumes.list` | `{}` | `{items: Volume[], total}` |
 | `volumes.create` | `{name?, driver?, options?, labels?}` | `Volume` |
-| `volumes.remove` | `{name, force?}` | `{removed:true}` |
-| `volumes.prune` | `{dryRun?}` | `{reclaimedBytes, items}` |
-| `volumes.clone` | `{source, destination}` | `JobRef` |
-| `volumes.export` | `{name, path}` | `JobRef` |
-| `volumes.import` | `{name, path, force?}` | `JobRef` |
-| `volumes.importHostPath` | `{name, sourcePath}` | `JobRef` |
+| `volumes.remove` | `{name, force?}` | `{name, removed:true}` |
+| `volumes.prune` | `{}` | `{reclaimedBytes}` |
+| `volumes.clone` | `{source, destination}` | `{source, destination, ok:true}` |
+| `volumes.export` | `{name, path}` | `{name, path}` (tar.zst) |
+| `volumes.import` | `{name, path, force?}` | `{name, path, ok:true}` |
+| `volumes.importHostPath` | `{name, sourcePath}` | `{name, sourcePath, ok:true}` |
 
 ### 4.5 `networks.*` e `pods.*`
 
 | Método | Params | Result |
 |---|---|---|
-| `networks.list` | `{}` | `{items: Network[]}` |
-| `networks.create` | `{name, driver?, subnet4?, gateway4?, ipv6?, labels?}` | `Network` |
-| `networks.remove` | `{name, force?}` | `{removed:true}` |
-| `networks.connect` | `{name, containerId, aliases?}` | `{}` |
-| `networks.disconnect` | `{name, containerId}` | `{}` |
-| `pods.list` | `{}` | `{items: Pod[]}` |
+| `networks.list` | `{}` | `{items: Network[], total}` |
+| `networks.create` | `{name, driver?, subnet?, gateway?, ipv6?, labels?}` | `Network` |
+| `networks.remove` | `{name, force?}` | `{name, removed:true}` |
+| `networks.connect` | `{name, containerId, aliases?}` | `{name, containerId, ok:true}` |
+| `networks.disconnect` | `{name, containerId}` | `{name, containerId, ok:true}` |
+| `pods.list` | `{}` | `{items: Pod[], total}` |
 | `pods.create` | `{name, labels?}` | `Pod` |
-| `pods.start` / `stop` / `restart` | `{id}` | `Pod` |
-| `pods.remove` | `{id, force?}` | `{removed:true}` |
+| `pods.start` / `stop` / `restart` | `{id}` | `{id, action, ok:true}` |
+| `pods.remove` | `{id, force?}` | `{id, removed:true}` |
 
 ### 4.6 `machines.*`
 

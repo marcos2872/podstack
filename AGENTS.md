@@ -12,7 +12,7 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** **M1 concluído** (create, lifecycle, logs, stats, files, terminal nativo, batch, health, rename/duplicate, rootful). 7 testes, cobertura 82,5% com gate de 80%. Ressalvas (terminal embutido, upload, seleção fina) ficam para o M2. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
+**Status atual:** **M2 concluído** (catálogo de imagens/volumes/redes/pods, pull/push/tag/untag, clone e export/import de volumes, import do host, multi-seleção e upload) sobre o M1 (create, lifecycle, logs, stats, files, terminal nativo, batch, health, rename/duplicate, rootful). 7 testes, cobertura 81,1% com gate de 80%. Ressalvas para o M3: T2-15/T2-16 (LAN/proxy), seletor visual de plataforma, terminal embutido e prévia detalhada de prune. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
 
 ---
 

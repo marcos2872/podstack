@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QStringList>
 #include <QTest>
 
@@ -22,6 +23,8 @@ private slots:
     void createContainer();
     void execLogsAndEvents();
     void files();
+    void catalog();
+    void catalogErrors();
     void errorMapping();
     void pingFailure();
 };
@@ -217,6 +220,292 @@ void ContractTest::files()
 
     QVERIFY(!client.downloadFile(QStringLiteral("abc123"), QStringLiteral("/missing.txt"),
                                  destination, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    const QString uploadSource = QDir::tempPath()
+                                 + QStringLiteral("/podstack-upload-%1.txt")
+                                       .arg(QCoreApplication::applicationPid());
+    QFile uploadFile(uploadSource);
+    QVERIFY(uploadFile.open(QIODevice::WriteOnly));
+    uploadFile.write("upload-content");
+    uploadFile.close();
+
+    QVERIFY2(client.uploadFile(QStringLiteral("abc123"), QStringLiteral("/tmp"),
+                               uploadSource, &error),
+             qPrintable(error.message));
+    QVERIFY(server.lastBody().contains("upload-content"));
+    QFile::remove(uploadSource);
+
+    QVERIFY(!client.uploadFile(QStringLiteral("abc123"), QStringLiteral("/tmp"),
+                               QStringLiteral("/tmp/does-not-exist.txt"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void ContractTest::catalog()
+{
+    MockPodmanServer server;
+    PodStack::PodmanClient client(server.socketPath());
+    PodStack::Error error;
+
+    const QVector<PodStack::ImageInfo> images = client.listImages(false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(images.size(), 2);
+    QCOMPARE(images.first().repoTags.first(),
+             QStringLiteral("docker.io/library/alpine:3.20"));
+    QVERIFY(!images.first().dangling);
+    QVERIFY(images.at(1).dangling);
+    QCOMPARE(images.first().size, 7000000);
+
+    const QJsonObject image = client.inspectImage(QStringLiteral("img1234567890"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(image.value(QStringLiteral("Digest")).toString(),
+             QStringLiteral("sha256:deadbeef"));
+
+    const QVector<PodStack::ImageHistoryEntry> history =
+        client.imageHistory(QStringLiteral("img1234567890"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(history.size(), 1);
+    QCOMPARE(history.first().size, 123);
+
+    QStringList pushLines;
+    QVERIFY2(client.pushImage(
+                 QStringLiteral("img1234567890"), QStringLiteral("repo"),
+                 [&pushLines](const QByteArray &line) {
+                     pushLines.append(QString::fromUtf8(line));
+                     return true;
+                 },
+                 nullptr, &error),
+             qPrintable(error.message));
+    QVERIFY(pushLines.size() >= 2);
+
+    QStringList pullLines;
+    QVERIFY2(client.pullImage(
+                 QStringLiteral("alpine:3.20"), {},
+                 [&pullLines](const QByteArray &line) {
+                     pullLines.append(QString::fromUtf8(line));
+                     return true;
+                 },
+                 nullptr, &error),
+             qPrintable(error.message));
+    QVERIFY(pullLines.size() >= 3);
+
+    QVERIFY(!client.pullImage(
+        QStringLiteral("fail"), {},
+        [](const QByteArray &) { return true; }, nullptr, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_ENGINE_ERROR"));
+
+    QVERIFY(client.imageHistory(QStringLiteral("missing"), &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::ExecResult execResult;
+    QVERIFY(!client.execOnce(QStringLiteral("missing"), {QStringLiteral("true")},
+                             &execResult, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QVERIFY2(client.tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo"),
+                             QStringLiteral("v1"), &error),
+             qPrintable(error.message));
+    QVERIFY2(client.untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo"),
+                               QStringLiteral("v1"), &error),
+             qPrintable(error.message));
+    QVERIFY(!client.untagImage(QStringLiteral("img1234567890"), QString(), QString(), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY2(client.removeImage(QStringLiteral("img1234567890"), false, &error),
+             qPrintable(error.message));
+
+    qint64 reclaimed = 0;
+    QVERIFY2(client.pruneImages(false, &reclaimed, &error), qPrintable(error.message));
+    QCOMPARE(reclaimed, 12345);
+
+    const QVector<PodStack::VolumeInfo> volumes = client.listVolumes(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(volumes.size(), 1);
+    QCOMPARE(volumes.first().name, QStringLiteral("vol1"));
+    QCOMPARE(volumes.first().size, 2048);
+    QCOMPARE(volumes.first().links, 1);
+
+    const QJsonObject createdVolume =
+        client.createVolume(QStringLiteral("vol2"), QStringLiteral("local"), {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(createdVolume.value(QStringLiteral("Name")).toString(), QStringLiteral("vol2"));
+
+    QVERIFY2(client.removeVolume(QStringLiteral("vol1"), false, &error),
+             qPrintable(error.message));
+    qint64 volumeReclaimed = 0;
+    QVERIFY2(client.pruneVolumes(&volumeReclaimed, &error), qPrintable(error.message));
+    QCOMPARE(volumeReclaimed, 456);
+
+    const QString sourceDir = QStringLiteral("/tmp/podstack-mock-volume");
+    const QString destinationDir = QStringLiteral("/tmp/podstack-mock-volume2");
+    QDir(sourceDir).removeRecursively();
+    QDir(destinationDir).removeRecursively();
+    QDir().mkpath(sourceDir);
+    QFile sourceFile(sourceDir + QStringLiteral("/a.txt"));
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write("hello");
+    sourceFile.close();
+
+    QVERIFY2(client.cloneVolume(QStringLiteral("vol1"), QStringLiteral("vol2"), &error),
+             qPrintable(error.message));
+    QFile cloned(destinationDir + QStringLiteral("/a.txt"));
+    QVERIFY(cloned.open(QIODevice::ReadOnly));
+    QCOMPARE(cloned.readAll(), QByteArrayLiteral("hello"));
+    cloned.close();
+
+    const QString archivePath = QDir::tempPath()
+                                + QStringLiteral("/podstack-volume-%1.tar.zst")
+                                      .arg(QCoreApplication::applicationPid());
+    QFile::remove(archivePath);
+    QVERIFY2(client.exportVolume(QStringLiteral("vol1"), archivePath, &error),
+             qPrintable(error.message));
+    QVERIFY(QFileInfo(archivePath).size() > 0);
+
+    QDir(destinationDir).removeRecursively();
+    QDir().mkpath(destinationDir);
+    QVERIFY2(client.importVolume(QStringLiteral("vol2"), archivePath, true, &error),
+             qPrintable(error.message));
+    QFile restored(destinationDir + QStringLiteral("/a.txt"));
+    QVERIFY(restored.open(QIODevice::ReadOnly));
+    QCOMPARE(restored.readAll(), QByteArrayLiteral("hello"));
+    restored.close();
+    QFile::remove(archivePath);
+
+    const QString hostDir = QStringLiteral("/tmp/podstack-host-src");
+    QDir(hostDir).removeRecursively();
+    QDir().mkpath(hostDir);
+    QFile hostFile(hostDir + QStringLiteral("/b.txt"));
+    QVERIFY(hostFile.open(QIODevice::WriteOnly));
+    hostFile.write("host-content");
+    hostFile.close();
+    QVERIFY2(client.importHostPath(QStringLiteral("vol2"), hostDir, &error),
+             qPrintable(error.message));
+    QFile imported(destinationDir + QStringLiteral("/b.txt"));
+    QVERIFY(imported.open(QIODevice::ReadOnly));
+    QCOMPARE(imported.readAll(), QByteArrayLiteral("host-content"));
+    imported.close();
+    QDir(hostDir).removeRecursively();
+
+    const QVector<PodStack::NetworkInfo> networks = client.listNetworks(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(networks.size(), 1);
+    QCOMPARE(networks.first().name, QStringLiteral("mock-net"));
+    QCOMPARE(networks.first().subnet, QStringLiteral("10.89.0.0/24"));
+    QCOMPARE(networks.first().containers, 1);
+
+    const QJsonObject network =
+        client.createNetwork(QStringLiteral("mock-net"), QStringLiteral("bridge"),
+                             QStringLiteral("10.90.0.0/24"), QStringLiteral("10.90.0.1"),
+                             false, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(network.value(QStringLiteral("name")).toString(), QStringLiteral("mock-net"));
+
+    QVERIFY2(client.connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"),
+                                   {QStringLiteral("api")}, &error),
+             qPrintable(error.message));
+    QVERIFY2(client.disconnectNetwork(QStringLiteral("mock-net"),
+                                      QStringLiteral("abc123"), &error),
+             qPrintable(error.message));
+    QVERIFY2(client.removeNetwork(QStringLiteral("mock-net"), false, &error),
+             qPrintable(error.message));
+
+    const QVector<PodStack::PodInfo> pods = client.listPods(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(pods.size(), 1);
+    QCOMPARE(pods.first().name, QStringLiteral("demo-pod"));
+    QCOMPARE(pods.first().containers, 2);
+
+    const QJsonObject pod =
+        client.createPod(QStringLiteral("demo-pod"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(pod.value(QStringLiteral("Id")).toString(), QStringLiteral("pod123"));
+    QVERIFY2(client.podAction(QStringLiteral("pod123"), QStringLiteral("start"), &error),
+             qPrintable(error.message));
+    QVERIFY2(client.removePod(QStringLiteral("pod123"), true, &error),
+             qPrintable(error.message));
+
+    QVERIFY(!client.podAction(QStringLiteral("pod123"), QStringLiteral("invalid"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QJsonObject df = client.systemDf(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(static_cast<qint64>(df.value(QStringLiteral("ImagesSize")).toDouble()),
+             7001000);
+
+    QDir(sourceDir).removeRecursively();
+    QDir(destinationDir).removeRecursively();
+}
+
+void ContractTest::catalogErrors()
+{
+    MockPodmanServer server;
+    PodStack::PodmanClient client(server.socketPath());
+    PodStack::Error error;
+
+    QVERIFY(client.inspectImage(QStringLiteral("missing"), &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QVERIFY(!client.pullImage(QString(), {}, [](const QByteArray &) { return true; },
+                              nullptr, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.pushImage(QStringLiteral("img"), QString(),
+                              [](const QByteArray &) { return true; }, nullptr, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.exportImage(QStringLiteral("img"), QString(), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.exportImage(QStringLiteral("img1234567890"),
+                                QStringLiteral("/nonexistent/dir/image.tar"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(!client.loadImage(QStringLiteral("/nonexistent/file.tar"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(client.inspectVolume(QStringLiteral("missing"), &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QVERIFY(!client.cloneVolume(QString(), QString(), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.cloneVolume(QStringLiteral("missing"), QStringLiteral("x"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    const QString archive = QDir::tempPath()
+                            + QStringLiteral("/podstack-err-volume.tar.zst");
+    QVERIFY(!client.exportVolume(QStringLiteral("missing"), archive, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QVERIFY(!client.exportVolume(QStringLiteral("vol1"),
+                                 QStringLiteral("/nonexistent/dir/x.tar.zst"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_ARCHIVE_ERROR"));
+
+    QVERIFY(!client.importVolume(QString(), QString(), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.importVolume(QStringLiteral("vol1"),
+                                 QStringLiteral("/nonexistent/file.tar.zst"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    QVERIFY(!client.importHostPath(QString(), QString(), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.importHostPath(QStringLiteral("vol1"),
+                                   QStringLiteral("/nonexistent/dir"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(client.createNetwork(QString(), QStringLiteral("bridge"), QString(), QString(),
+                                 false, {}, &error)
+                .isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.removeNetwork(QStringLiteral("missing"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QVERIFY(client.createPod(QString(), {}, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.removePod(QStringLiteral("missing"), true, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 }
 
