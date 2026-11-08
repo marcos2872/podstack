@@ -132,6 +132,8 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 
 > O `docker`/`podman` continua disponível para paridade; os comandos acima são o caminho nativo do PodStack.
 
+> O `docker`/`podman` continua disponível para paridade; os comandos acima são o caminho nativo do PodStack.
+
 ### 2.3.3 Compose e builds (M3)
 
 | Comando | Flags | Notas |
@@ -145,6 +147,14 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 | `podstack builds [ls|rm <id>]` | | Histórico SQLite |
 
 > O provider Compose é detectado em `docker-compose`, `podman compose` ou `docker compose`; `PODSTACK_COMPOSE_PROVIDER` força um binário.
+
+### 2.3.4 Setup (proposto)
+
+| Comando | Flags | Notas |
+|---|---|---|
+| `podstack setup` | `--check`, `--apply`, `--validate`, `--remove-docker`, `--yes` | Setup/onboarding; `--check` é read-only; Docker só é removido com `--remove-docker` + confirmação |
+
+> O fluxo principal instala/atualiza o Podman e **não remove o Docker**; a GUI usa a mesma API `setup.*`.
 
 ### 2.4 Configuração
 

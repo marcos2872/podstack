@@ -359,7 +359,7 @@ Checklist final:
 - O fluxo principal **nunca** remove o Docker: `install-podman`/`upgrade-podman` apenas instalam/atualizam e ativam o socket. `setup.removeDocker` é uma ação separada, opt-in, que exige `confirm: true`, aviso de perda de dados e auditoria.
 - Ações destrutivas exigem confirmação no cliente e no daemon (parâmetro explícito `confirm: true`), com auditoria no log.
 - Jobs com `job.*`/subscription `setup.delta`, `setup.done`; progresso/passos.
-- O helper privilegiado só aceita métodos allowlisted (`InstallPackages`, `RemovePackages`, `EnableUserSocket`, …), nunca `Exec`/shell.
+- O helper privilegiado só aceita métodos allowlisted (`InstallPackages`, `RemovePackages`, …), nunca `Exec`/shell; `podman.socket` é habilitado no systemd do usuário, sem root.
 
 ---
 

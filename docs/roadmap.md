@@ -192,7 +192,7 @@ gantt
 
 - Settings GUI/CLI completo, tema, escala, atalhos, acessibilidade.
 - Tray SNI, Activity Monitor, notificações.
-- Updates assinados, onboarding, diagnóstico/report.
+- Updates assinados, **onboarding/setup** (detecção, Podman, coexistência Docker, QEMU/KVM, componentes, validação), diagnóstico/report.
 - RPM + systemd + polkit + SELinux; documentação de usuário.
 - Matriz de compatibilidade e performance.
 
@@ -200,6 +200,8 @@ gantt
 
 - [ ] Critérios de release do PRD (§14) atendidos.
 - [ ] `podstack doctor` verde em instalação limpa.
+- [ ] Docker presente não bloqueia o setup; a remoção é opt-in e confirmada.
+- [ ] Setup reexecutável com jobs persistentes e validação de obrigatórios/opcionais.
 - [ ] Benchmarks dentro das metas.
 - [ ] Auditoria de segurança concluída.
 - [ ] Pacote RPM assinado instalável em Fedora 43/44.
@@ -211,7 +213,7 @@ gantt
 - USB/serial, áudio, X11/Wayland.
 - Snapshots de máquina.
 - CRIU/gVisor.
-- Migração de Docker/Podman existente.
+- Migração **opcional** de dados de Docker/Podman.
 - Avaliar Flatpak sob demanda (não no v1).
 - i18n adicional, temas, plugins (avaliar).
 

@@ -3,6 +3,7 @@
 **PodStack** é uma alternativa Linux ao OrbStack: um app desktop para gerenciar containers, imagens, volumes, redes, builds, Compose, máquinas Linux (VMs), Kubernetes e domínios locais sobre o **Podman Engine** nativo.
 
 > **Status:** **M3 concluído** (Compose, builds com histórico SQLite e eventos globais) sobre o M2 (imagens/volumes/redes/pods) e o M1. Ressalvas para o M4: buildx multi-plataforma, Supabase, LAN/proxy, terminal embutido e prévia de prune.
+> **UI Concept:** POC navegável em [`../poc/ui/`](../poc/ui/README.md) — referência visual para o redesign; **não** é o app.
 > **Licença:** GPL-3.0-or-later.
 > **Baseline funcional:** OrbStack 2.2.5 (build 21124), analisado estaticamente. Ver [`reference/orbstack-2.2.5.md`](reference/orbstack-2.2.5.md).
 > **Nome/branding:** PodStack é um projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado.
@@ -47,6 +48,7 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 | [`security.md`](security.md) | Modelo de ameaças, privilégios, helper, polkit e segredos |
 | [`packaging.md`](packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
 | [`roadmap.md`](roadmap.md) | Marcos M0–M8, entregáveis e critérios de saída |
+| [UI Concept (POC)](../poc/ui/README.md) | Referência visual navegável (HTML/CSS/JS) para o redesign; **não** é o app |
 
 ## Decisões arquiteturais (ADRs)
 
@@ -59,6 +61,7 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 | [`adr/0005-terminal-backend.md`](adr/0005-terminal-backend.md) | QTermWidget (GPL-2.0-or-later, compatível com GPL-3.0-or-later) |
 | [`adr/0006-rpm-first.md`](adr/0006-rpm-first.md) | RPM como formato primário |
 | [`adr/0007-compose-provider.md`](adr/0007-compose-provider.md) | Compose via provider Docker Compose + labels |
+| [`adr/0008-docker-coexistence-setup.md`](adr/0008-docker-coexistence-setup.md) | Docker e Podman coexistem; setup não destrutivo e remoção opt-in |
 
 ## Referência
 

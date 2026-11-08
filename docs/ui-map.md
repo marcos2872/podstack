@@ -23,21 +23,23 @@
 ├───────────────┬──────────────────────────────────────┬─────────────────────┤
 │ Sidebar (220) │ Lista (flex)                         │ Inspector (360)     │
 │               │                                      │                     │
-│ DOCKER        │ Tabs: Todos | Rodando | Parados      │ [Info][Stats][Logs] │
+│ ENGINE        │ Tabs: Todos | Rodando | Parados      │ [Info][Stats][Logs] │
 │  Containers 12│ Filtro: [todos ▾]  Ordenar: [nome ▾] │ [Terminal][Files]   │
 │  Images     8 │ ┌──────────────────────────────────┐ │                     │
 │  Volumes    5 │ │ ● api        running   nginx  80 │ │  api                │
-│  Builds     3 │ │ ● db         running   pg     5432│ │  nginx:alpine       │
-│  Networks   4 │ │ ○ worker     stopped   node       │ │  ...                │
-│ KUBERNETES    │ └──────────────────────────────────┘ │                     │
-│  Pods       6 │                                      │                     │
+│  Networks   4 │ │ ● db         running   pg     5432│ │  nginx:alpine       │
+│  Compose    3 │ │ ○ worker     stopped   node       │ │  ...                │
+│  Builds     3 │ └──────────────────────────────────┘ │                     │
+│  Pods       2 │                                      │                     │
+│ KUBERNETES    │                                      │                     │
 │  Services   2 │                                      │                     │
+│  Contextos    │                                      │                     │
 │ LINUX         │                                      │                     │
 │  Machines   2 │                                      │                     │
+│  Devices    5 │                                      │                     │
 │ GENERAL       │                                      │                     │
 │  Activity     │                                      │                     │
 │  Commands     │                                      │                     │
-│  Devices      │                                      │                     │
 │               │                                      │                     │
 │ [Settings]    │                                      │                     │
 ├───────────────┴──────────────────────────────────────┴─────────────────────┤
@@ -55,19 +57,23 @@
 
 | Grupo | Item | Contador | Ação primária |
 |---|---|---|---|
-| **Docker** | Containers | running/total | criar container |
+| **Engine** | Containers | running/total | criar container |
 | | Images | total | pull/importar |
 | | Volumes | total | criar/importar |
-| | Builds | ativos/histórico | novo build |
 | | Networks | total | criar rede |
-| **Kubernetes** | Pods | running/total | habilitar cluster |
-| | Services | total | — |
+| | Compose | projetos/ativos | up por diretório |
+| | Builds | ativos/histórico | novo build |
+| | Pods | running/total | criar pod |
+| **Kubernetes** (M5) | Services | total | — |
+| | Contextos | atual | trocar/gerar kubeconfig |
 | **Linux** | Machines | running/total | criar máquina |
+| | Devices | conectados | anexar/desanexar |
 | **General** | Activity Monitor | — | abrir |
 | | Commands | — | abrir referência |
-| | Devices | conectados | gerenciar USB/serial |
 | **Rodapé** | Settings | — | abrir preferências |
 
+- **Pods do Podman ficam em Engine**; K8s Pods aparecem no contexto do cluster (M5), não como o mesmo item.
+- **Seleção usa fundo `accent.soft`**, sem barra vertical ou outline de acento.
 - Grupos colapsáveis; estado persistido.
 - Badge de erro/atenção agregado no grupo.
 - Modo rootful indicado por badge "root" no rodapé.
@@ -94,10 +100,10 @@
 | Images | repositório:tag, digest, tamanho, uso | pull, importar, tag, untag, prune, remover |
 | Volumes | nome, driver, tamanho, links | criar, clone, importar do host, prune, remover |
 | Networks | nome, driver, subnet, containers | criar, conectar, desconectar, remover |
-| Pods | nome, status, containers, ID | criar, start, stop, restart, remover |
+| Pods (Podman) | nome, status, containers, ID | criar, start, stop, restart, remover |
 | Compose | projeto, status, serviços, diretório | up, down, restart, logs, abrir YAML/diretório |
 | Builds | imagem, status, duração, origem | novo build, cancelar, remover, log |
-| Services | planejado (K8s) | — |
+| Services (K8s) | planejado (M5) | — |
 | Machines | planejado (M4) | — |
 | Devices | tipo, nome, VID:PID, status | attach/detach |
 
@@ -191,6 +197,7 @@ Janela separada (⌘, / `Ctrl+,`), sidebar de categorias:
 |---|---|
 | **Geral** | iniciar no login, tema, idioma, tray, manter rodando |
 | **Engine** | rootless/rootful, socket, versão, reiniciar engine |
+| **Setup** | executar novamente, status do Podman/Docker, componentes |
 | **Docker** | expor portas na LAN, containerd image store, daemon.json |
 | **Rede** | HTTPS, proxy, exclusões, subnet, bridge, LAN |
 | **Máquinas** | portas na LAN, forward, limites default, SSH agent |
@@ -203,16 +210,22 @@ Cada setting: label, descrição curta, controle, badge "requer reinício" quand
 
 ---
 
-## 8. Onboarding
+## 8. Onboarding / setup
 
-1. **Boas-vindas**: o que é o PodStack, o que será instalado, requisitos.
-2. **Engine**: detectar Podman; oferecer habilitar `podman.socket`.
-3. **Modo**: rootless (recomendado) ou rootful (aviso).
-4. **Primeiros passos**: criar container de exemplo OU importar Compose OU criar máquina.
-5. **Privacidade**: telemetria opt-in por categoria, off por padrão; diagnóstico opt-in.
-6. **Pronto**: atalhos e dica de CLI.
+Janela separada, aberta no primeiro uso, por `podstack setup` ou Settings → “Executar configuração novamente”.
 
-Pode ser pulado; reexecutável em Settings → Geral.
+1. **Boas-vindas**: o que é o PodStack, o que será feito; nada é alterado.
+2. **Diagnóstico**: checks read-only de Docker, Podman, QEMU/KVM, `/dev/kvm`, virtiofsd, systemd de usuário, SQLite, Caddy e k3s.
+3. **Podman**: instalar/atualizar e ativar `podman.socket` rootless; **o Docker não é removido por padrão**. A remoção é uma ação separada, opt-in, com confirmação e aviso de perda.
+4. **QEMU/KVM**: instalar QEMU, OVMF, virtiofsd e libvirt opcional; sem `/dev/kvm`, avisar e permitir TCG.
+5. **Componentes**: socket/rootless/SQLite obrigatórios; Caddy e k3s opcionais (k3s desmarcado).
+6. **Validação**: checklist final; obrigatórios vs. opcionais; permite abrir com avisos.
+7. **Pronto**: resumo e abertura do app.
+
+- Pode ser pulado; reexecutável em Settings → Setup.
+- O setup nunca executa `sudo`/shell na GUI; ações privilegiadas passam pelo helper allowlisted.
+- Detecção é read-only; toda alteração exige consentimento.
+- Docker e Podman coexistem (sockets diferentes); o PodStack usa Podman.
 
 ---
 
@@ -255,15 +268,19 @@ Pode ser pulado; reexecutável em Settings → Geral.
 
 > Paleta de marca, logo e regras de uso: [`branding.md`](branding.md). O ciano não deve ser usado como texto pequeno sobre fundo claro.
 
+- **Seleção:** fundo `accent.soft` + texto normal; sem barra vertical ou outline de acento.
+
 ### 10.2 Cores (light)
 
 `bg.base #F6F8FA`, `bg.surface #FFFFFF`, `border #D0D7DE`, `text.primary #1F2328`, `text.secondary #57606A`. Acento `#3730A3` (texto/botão) e `#6366F1` (hover); sucesso/atenção/erro com contraste AA. Cyan `#22D3EE` apenas como indicador gráfico, nunca texto.
 
 ### 10.3 Tipografia
 
-- UI: `Inter`/`Noto Sans` (fallback system-ui), 13 px base, 1.4 line-height.
-- Monoespaçada: `JetBrains Mono`/`Noto Sans Mono`, 12 px (terminal/logs).
-- Escala: 11, 12, 13, 15, 18, 24 px.
+- UI: `Inter`/`Noto Sans` (fallback system-ui), 13 px base, 1.45 line-height.
+- Monoespaçada: `JetBrains Mono`/`Noto Sans Mono`, 11 px (terminal/logs).
+- Escala: 10.5, 11, 12, 13, 15, 19, 23, 24 px.
+- **Piso de legibilidade:** 11 px para metadados; 10.5 px só para rótulos decorativos; nunca usar 9–10 px para informação necessária.
+- Títulos: 650–700 com letter-spacing -0.02 a -0.03em; labels em caixa alta com +0.08em.
 - Respeitar escala do sistema (não fixar px absolutos no QML; usar `pointSize`/`fontMetrics`).
 
 ### 10.4 Espaçamento e raio
@@ -316,10 +333,14 @@ qml/
 │   ├── ImportMachine.qml
 │   ├── ConfirmDialog.qml
 │   └── SettingsWindow.qml
-├── Onboarding/
-│   ├── Welcome.qml
-│   ├── EngineSetup.qml
-│   └── FirstSteps.qml
+├── Setup/
+│   ├── SetupWindow.qml
+│   ├── SetupRail.qml
+│   ├── SetupStep.qml
+│   ├── SetupCheckRow.qml
+│   ├── SetupProgress.qml
+│   ├── SetupLog.qml
+│   └── SetupDone.qml
 └── Theme/
     ├── Theme.qml
     └── Icons.qml

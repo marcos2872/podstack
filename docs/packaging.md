@@ -340,11 +340,12 @@ rpmbuild -ba podstack.spec
 
 1. `dnf install podstack` em Fedora 43 limpo.
 2. `systemctl --user status podstack.socket` ativo.
-3. Abrir GUI → onboarding → engine detectado.
-4. Criar container → acessar.
-5. Criar máquina → SSH.
-6. `podstack doctor` verde.
-7. Desinstalar → `dnf remove podstack` remove units; dados do usuário preservados (documentar).
+3. Abrir GUI → setup → diagnóstico; instalar/atualizar Podman; Docker preservado (se presente); validar.
+4. Repetir em máquina com Docker instalado; confirmar coexistência e que a remoção é opt-in.
+5. Criar container → acessar.
+6. Criar máquina → SSH.
+7. `podstack doctor` verde.
+8. Desinstalar → `dnf remove podstack` remove units; dados do usuário preservados (documentar).
 
 ---
 

@@ -92,6 +92,20 @@
 - `t.Cleanup`/RAII remove recursos mesmo em falha.
 - Nunca tocar em recursos do usuário (filtrar por label).
 
+### 3.4 Setup e coexistência
+
+| Teste | Verificação |
+|---|---|
+| Detecção | Docker/Podman/QEMU/KVM/virtiofsd/SQLite/Caddy/k3s com fixtures de `--version`/`info` |
+| Matriz de estados | Docker presente/ausente × Podman ausente/desatualizado/atualizado → ação correta |
+| Coexistência | Docker presente não bloqueia; Podman instalado; Docker preservado |
+| Remoção opt-in | só após `confirm: true`; cancelar não altera; sem migração automática |
+| Helper | `InstallPackages`/`RemovePackages` allowlisted; sem `Exec`/shell |
+| KVM ausente | aviso TCG; machines marcadas como lentas |
+| Componentes | Caddy/k3s só com seleção; k3s desmarcado por padrão |
+| Validação | obrigatórios vs. opcionais; “abrir mesmo assim” |
+| Jobs | progresso/log/cancelamento/retry; job sobrevive ao fechar a janela |
+
 ---
 
 ## 4. Machines (QEMU)
@@ -146,7 +160,8 @@
   1. abrir app → listar containers;
   2. criar container → start → logs → terminal → stop → remove;
   3. criar máquina → SSH → push/pull → delete;
-  4. habilitar K8s → ver pods/services.
+  4. abrir setup → detectar → instalar Podman mantendo Docker → validar → abrir app;
+  5. habilitar K8s → ver pods/services.
 - Screenshots de referência (golden) para regressão visual leve (não pixel-perfect).
 - Acessibilidade: navegação por teclado e labels.
 
@@ -173,6 +188,7 @@ Benchmarks rodam no CI noturno; regressão > 20% falha o job.
 |---|---|
 | Socket | permissões, UID errado rejeitado |
 | Helper | métodos allowlisted; sem exec; polkit |
+| Setup | detecção read-only; remoção do Docker exige consentimento; sem shell |
 | Redaction | fixtures com tokens/senhas/chaves |
 | Path traversal | `..`, symlink, archive malicioso |
 | Update | assinatura inválida rejeitada |

@@ -54,6 +54,18 @@ Falta um produto Linux que una, em uma única experiência:
 - QEMU/KVM + virtiofs + cloud-init estão disponíveis e estáveis em todas as distros relevantes.
 - O OrbStack provou que a categoria "app integrado de dev environments" tem demanda, mas segue exclusivo do macOS.
 
+### 2.4 Posicionamento e diferenciais
+
+No macOS, o valor do OrbStack vem da VM rápida, do file sharing e da rede. No Linux, o Podman já roda nativo; o PodStack **não precisa de uma VM para containers**. O diferencial é a experiência integrada:
+
+- **App nativo em Qt 6/QML**, leve e sem Electron, sobre o Podman nativo.
+- **Machines QEMU/KVM** com cloud-init, SSH e mounts no mesmo app.
+- **Domínios locais** (`*.localhost`) com HTTPS via Caddy.
+- **Densidade + paridade de CLI**: a GUI cobre o dia a dia sem esconder o Podman.
+- **Rootless-first**, com rootful opt-in e helper allowlisted.
+
+O concorrente direto é o **Podman Desktop**; a referência de polimento é o OrbStack. O PodStack aposta em um app nativo, denso e com machines integradas, em vez de uma experiência fragmentada. **Docker e Podman coexistem**: o PodStack usa Podman, mas não exige remover o Docker.
+
 ---
 
 ## 3. Objetivos e não-objetivos
@@ -209,7 +221,7 @@ Falta um produto Linux que una, em uma única experiência:
 | ID | Requisito | Prioridade | Critério de aceite |
 |---|---|---|---|
 | FR-UI-001 | Janela principal com sidebar, lista e inspector redimensionáveis. | P0 | Layout persiste entre sessões; mínimo 1024×640. |
-| FR-UI-002 | Sidebar com Containers, Images, Volumes, Networks, Builds, Machines, Kubernetes (Pods/Services), Activity Monitor, Commands, Devices e Settings. | P0 | Todas as seções navegáveis; contadores corretos. |
+| FR-UI-002 | Sidebar organizada em **Engine** (Containers, Images, Volumes, Networks, Compose, Builds, Pods), **Linux** (Machines, Devices), **Kubernetes** (Services/contextos, quando habilitado), **General** (Activity Monitor, Commands) e Settings. | P0 | Todas as seções navegáveis; contadores corretos; Pods do Podman não se confundem com K8s. |
 | FR-UI-003 | Busca global e por seção, com filtros e ordenação. | P0 | Resultados em < 200 ms para 1.000 itens. |
 | FR-UI-004 | Inspector com abas Info, Stats, Logs, Terminal e Files (conforme o tipo). | P0 | Abas disponíveis conforme o tipo do item. |
 | FR-UI-005 | Inspect JSON como aba adicional (diferencial PodStack; não existe no OrbStack). | P1 | JSON com busca/cópia/exportação. |
@@ -398,7 +410,20 @@ Falta um produto Linux que una, em uma única experiência:
 | FR-UPD-002 | Canal stable/beta configurável. | P2 | Troca de canal com aviso. |
 | FR-UPD-003 | Relatório de diagnóstico com prévia e redaction. | P1 | Usuário revisa antes de enviar. |
 | FR-UPD-004 | Licença/conta opcional (sem bloquear recursos básicos). | P2 | App funciona offline sem conta. |
-| FR-UPD-005 | Migração de Docker/Podman existente (imagens, volumes). | P2 | Prévia e rollback. |
+| FR-UPD-005 | Migração **opcional** de dados de Docker/Podman existente (imagens, volumes). | P2 | Prévia e rollback; não é pré-requisito para usar o PodStack. |
+
+### 7.18 Primeira execução e setup (`FR-SETUP`)
+
+| ID | Requisito | Prioridade | Critério de aceite |
+|---|---|---|---|
+| FR-SETUP-001 | Primeira execução com diagnóstico **read-only** de Docker, Podman, QEMU/KVM, `/dev/kvm`, virtiofsd, systemd de usuário, SQLite, Caddy e k3s. | P0 | Nenhuma alteração sem confirmação; cada check tem status, versão, detalhe e remediação. |
+| FR-SETUP-002 | Instalar/atualizar Podman e ativar `podman.socket` rootless com consentimento. | P0 | Podman atual e socket ativo ao final; nenhuma remoção de Docker. |
+| FR-SETUP-003 | Docker e Podman **coexistem**; a remoção do Docker é opt-in, com confirmação explícita e aviso de perda de containers/imagens/redes/volumes. | P0 | Docker presente não bloqueia o setup; remoção só com `confirm: true`; sem migração automática. |
+| FR-SETUP-004 | Preparar QEMU/KVM, OVMF, virtiofsd e libvirt opcional; avisar e permitir TCG quando `/dev/kvm` não estiver disponível. | P0 | Machines funcionam com KVM; sem KVM, o modo TCG é explícito e marcado como lento. |
+| FR-SETUP-005 | Componentes obrigatórios (socket/rootless/SQLite) e opcionais (Caddy, k3s) com escolha explícita; k3s desmarcado por padrão. | P1 | Caddy/k3s não são instalados sem seleção; o resumo lista o que foi instalado. |
+| FR-SETUP-006 | Validação final com obrigatórios vs. opcionais e opção de abrir o app com avisos. | P0 | Obrigatórios ausentes são destacados; o usuário pode corrigir ou continuar. |
+| FR-SETUP-007 | Setup reexecutável por Settings e `podstack setup`; jobs com progresso, log, cancelamento e retry. | P1 | Fechar a janela não perde o job; reexecutar não repete ações já aplicadas. |
+| FR-SETUP-008 | Nenhuma operação privilegiada pela GUI: instalar/remover pacotes e remover Docker passam pelo helper allowlisted; o socket de usuário é habilitado pelo daemon. | P0 | Nenhum `sudo`/shell na GUI; cada operação tem consentimento e auditoria. |
 
 ---
 
@@ -508,6 +533,8 @@ Design tokens e componentes em [`ui-map.md`](ui-map.md).
 | QTermWidget GPL | Resolvido | — | Projeto GPL-3.0-or-later; QTermWidget compatível (ADR-0005) |
 | SELinux bloquear helper/DNS/portas | Média | Alto | Política desde o M0; testes em enforcing |
 | Compose provider ausente | Média | Médio | Empacotar/declarar dependência; fallback `podman-compose` com aviso |
+| Coexistência Docker/Podman confunde o usuário | Média | Médio | Badge "Podman", status do engine, diagnóstico e docs; Docker é opcional |
+| Setup instalar/remover pacotes | Média | Alto | Helper allowlisted, polkit, confirmação e auditoria; v1 focado em Fedora |
 | API Podman 6.x mudar comportamento | Média | Médio | Testar 5.8 e 6.x; camada de adaptação |
 | Escopo "paridade total" estourar | Alta | Alto | Marcos M0–M7 com critérios de saída; P2 explicitamente pós-v1 |
 | Flatpak não suportar o produto | Alta | Baixo | Não é alvo v1; RPM primeiro |
@@ -553,6 +580,9 @@ Design tokens e componentes em [`ui-map.md`](ui-map.md).
 | Q5 | **Resolvida:** `*.podstack.local` via helper opt-in; `*.localhost` é o padrão sem privilégio | — | Produto | resolvido em 2026-11-08 |
 | Q6 | **Resolvida:** telemetria **opt-in por categoria** (crash, uso, performance, erros), desligada por padrão | — | Produto | resolvido em 2026-11-08 |
 | Q7 | **Resolvida:** pt-BR e en-US, com estrutura extensível para novos idiomas | — | Produto | resolvido em 2026-11-08 |
+| Q8 | **Resolvida:** Docker e Podman coexistem; o Docker é opcional e a remoção é opt-in, com confirmação e helper allowlisted | — | Arquitetura | resolvido em 2026-11-08 |
+| Q9 | **Resolvida:** onboarding/setup em janela separada, 7 etapas, reexecutável; detecção read-only e ações privilegiadas via helper | — | Produto | resolvido em 2026-11-08 |
+| Q10 | **Resolvida:** Pods do Podman ficam no grupo **Engine**; o grupo **Kubernetes** é reservado para k3s/clusters (M5) | — | Produto | resolvido em 2026-11-08 |
 
 ---
 
@@ -569,6 +599,7 @@ Design tokens e componentes em [`ui-map.md`](ui-map.md).
 9. `podstack doctor` verde em instalação limpa.
 10. Critérios de aceite das jornadas J1–J4 atendidos.
 11. Licença GPL-3.0-or-later aplicada: `LICENSE`, cabeçalhos SPDX nos fontes e metadados do RPM.
+12. Setup completo em instalação limpa, com e sem Docker; o Docker é preservado por padrão e a remoção é opt-in.
 
 ---
 
@@ -578,5 +609,6 @@ Design tokens e componentes em [`ui-map.md`](ui-map.md).
 - [`spec.md`](spec.md) — especificação detalhada e critérios de aceite por fluxo.
 - [`plan.md`](plan.md) — plano técnico.
 - [`tasks.md`](tasks.md) — tarefas por marco.
+- [`../poc/ui/README.md`](../poc/ui/README.md) — UI Concept e guia de implementação QML (referência visual; não é o app).
 - [`architecture.md`](architecture.md) — diagramas e componentes.
 - [`api-rpc.md`](api-rpc.md) — contrato do daemon.

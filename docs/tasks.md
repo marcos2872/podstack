@@ -185,12 +185,14 @@
 | T7-04 | P1 | Activity Monitor (gráficos + `podstack top`) | T1-07 | Dados corretos |
 | T7-05 | P1 | Notificações (OOM, falha, update, disco) | T3-07 | Respeita DND |
 | T7-06 | P1 | Check de updates assinado + canal | T7-01 | Assinatura validada |
-| T7-07 | P1 | Onboarding (boas-vindas, escolha, create) | T0-11 | Fluxo completo |
+| T7-07 | P0 | Onboarding e setup da máquina (diagnóstico, Podman, coexistência Docker, QEMU/KVM, componentes, validação) | T0-11 | Fluxo completo; reexecutável |
 | T7-08 | P1 | Diagnóstico/report com redaction | T0-15 | Revisão antes de enviar |
 | T7-09 | P1 | Janelas/abas múltiplas + restauração | T0-11 | Estado persiste |
 | T7-10 | P1 | Atalhos e acessibilidade | T0-11 | Teclado completo |
-| T7-11 | P2 | Migração de Docker/Podman existente | T2-05 | Prévia/rollback |
+| T7-11 | P2 | Migração **opcional** de dados de Docker/Podman | T2-05 | Prévia/rollback; não é pré-requisito |
 | T7-12 | P2 | Licença/conta (opcional) | T7-01 | Offline funciona |
+| T7-13 | P1 | Coexistência Docker/Podman e remoção opt-in com confirmação | T7-07 | Docker presente não bloqueia; remoção exige confirmação |
+| T7-14 | P0 | Helper allowlisted para setup (pacotes e remoção) | T7-07 | Sem shell/sudo na GUI; auditoria |
 
 **Saída M7:** paridade de desktop; v1.0.
 

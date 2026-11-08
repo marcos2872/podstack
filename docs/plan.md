@@ -141,6 +141,7 @@ PodmanClient
 - Streams (logs/stats/events) e fan-out para múltiplos clientes.
 - Proxy HTTP/HTTPS e DNS userspace.
 - Orquestração de QEMU/KVM e k3s.
+- Setup/detecção do ambiente (Podman, Docker, QEMU/KVM, componentes) e jobs de setup.
 - Settings, SQLite, logs, diagnóstico.
 
 ### 5.2 Estrutura de código
@@ -194,12 +195,13 @@ src/
 - `NavModel` (seções, contadores, seleção).
 - `ContainerListModel`, `ImageListModel`, `VolumeListModel`, `NetworkListModel`, `MachineListModel`, `PodListModel`, `ServiceListModel`, `BuildListModel`.
 - `LogModel` (ring buffer + filtro), `StatsModel` (séries temporais), `FileModel`.
+- `SetupModel` (checks, etapa, progresso, logs do setup).
 
 ### 6.3 QML
 
 - `MainWindow.qml`: `SplitView` (Sidebar | List | Inspector), toolbar, status bar.
 - `Sidebar.qml`, `ListView.qml`, `Inspector.qml`, `LogsView.qml`, `TerminalView.qml`, `FilesView.qml`, `StatsView.qml`.
-- `SettingsWindow.qml`, `CreateContainerDialog.qml`, `CreateMachineDialog.qml`, `Onboarding.qml`.
+- `SettingsWindow.qml`, `CreateContainerDialog.qml`, `CreateMachineDialog.qml`, `Setup/SetupWindow.qml` (+ `SetupRail`, `SetupCheckRow`, `SetupProgress`, `SetupLog`).
 - `Theme.qml`, `Components/` (Button, Badge, StatusDot, EmptyState, Toast).
 - `qt_add_qml_module` + `qmllint`; sem lógica de negócio em QML.
 
