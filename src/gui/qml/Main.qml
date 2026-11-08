@@ -12,7 +12,7 @@ ApplicationWindow {
     minimumWidth: 900
     minimumHeight: 600
 
-    readonly property bool compactLayout: width < 1000 || preferredWidth < 1000
+    readonly property bool compactLayout: width < 1100 || preferredWidth < 1100
     readonly property bool compactStatus: width < 860 || preferredWidth < 860
 
     readonly property int preferredWidth: {
