@@ -30,3 +30,9 @@ ui_*.h
 opencode.jsonc
 .env
 .env.*
+
+# Coverage
+/coverage/
+/coverage.xml
+/coverage-summary.txt
+/coverage-gate.txt

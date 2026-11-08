@@ -79,8 +79,13 @@ QJsonObject RpcClient::call(const QString &method, const QJsonObject &params, Er
                 if (error) {
                     const QJsonObject data =
                         errorObject.value(QStringLiteral("data")).toObject();
-                    error->code = data.value(QStringLiteral("code"))
-                                      .toString(errorObject.value(QStringLiteral("code")).toString());
+                    const QJsonValue codeValue = errorObject.value(QStringLiteral("code"));
+                    error->code = data.value(QStringLiteral("code")).toString();
+                    if (error->code.isEmpty()) {
+                        error->code = codeValue.isDouble()
+                                          ? QString::number(codeValue.toInt())
+                                          : codeValue.toString();
+                    }
                     error->message = errorObject.value(QStringLiteral("message")).toString();
                     error->detail = data.value(QStringLiteral("detail")).toString();
                     error->remediation = data.value(QStringLiteral("remediation")).toString();

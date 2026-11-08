@@ -143,6 +143,7 @@ void MockPodmanServer::handleClient(int clientFd)
     const QList<QByteArray> parts = requestLine.split(' ');
     const QString method = parts.size() > 0 ? QString::fromLatin1(parts.at(0)) : QString();
     const QString path = parts.size() > 1 ? QString::fromLatin1(parts.at(1)) : QString();
+    const QString pathOnly = path.section(QLatin1Char('?'), 0, 0);
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -151,10 +152,16 @@ void MockPodmanServer::handleClient(int clientFd)
     }
 
     QByteArray response;
-    if (path == QStringLiteral("/_ping")) {
+    if (pathOnly == QStringLiteral("/_ping")) {
         response = httpResponse(200, "OK", "OK",
                                 "Libpod-Api-Version: 5.8.9\r\nApi-Version: 1.44\r\n");
-    } else if (path.contains(QStringLiteral("/libpod/containers/json"))) {
+    } else if (pathOnly.contains(QStringLiteral("/containers/fail/"))) {
+        response = httpResponse(500, "Internal Server Error",
+                                R"({"message":"forced failure","cause":"mock"})");
+    } else if (pathOnly.contains(QStringLiteral("/containers/missing/"))) {
+        response = httpResponse(404, "Not Found",
+                                R"({"message":"no such container","cause":"mock"})");
+    } else if (pathOnly.contains(QStringLiteral("/libpod/containers/json"))) {
         const QByteArray payload = R"([{
             "Id": "abc123",
             "Names": ["/demo"],
@@ -166,7 +173,43 @@ void MockPodmanServer::handleClient(int clientFd)
             "Labels": {"dev.podstack.test": "1"}
         }])";
         response = httpResponse(200, "OK", payload);
-    } else if (method == QStringLiteral("POST") && path.endsWith(QStringLiteral("/start"))) {
+    } else if (method == QStringLiteral("POST") && pathOnly.endsWith(QStringLiteral("/exec"))) {
+        response = httpResponse(201, "Created", R"({"Id":"exec-1"})");
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.endsWith(QStringLiteral("/exec/exec-1/start"))) {
+        response = QByteArrayLiteral("HTTP/1.1 101 UPGRADED\r\n"
+                                     "Content-Type: application/vnd.docker.raw-stream\r\n"
+                                     "Connection: Upgrade\r\n"
+                                     "Upgrade: tcp\r\n\r\n"
+                                     "mock-exec-output\r\n");
+    } else if (pathOnly.endsWith(QStringLiteral("/exec/exec-1/json"))) {
+        response = httpResponse(200, "OK", R"({"ExitCode":0})");
+    } else if (pathOnly.contains(QStringLiteral("/logs"))) {
+        const auto frame = [](const QByteArray &payload) {
+            QByteArray out;
+            out.append(char(1));
+            out.append(3, '\0');
+            const quint32 length = static_cast<quint32>(payload.size());
+            out.append(char((length >> 24) & 0xff));
+            out.append(char((length >> 16) & 0xff));
+            out.append(char((length >> 8) & 0xff));
+            out.append(char(length & 0xff));
+            out.append(payload);
+            return out;
+        };
+        response = httpResponse(200, "OK", frame("line-one\n") + frame("line-two\n"));
+    } else if (pathOnly.contains(QStringLiteral("/events"))) {
+        response = httpResponse(
+            200, "OK",
+            QByteArrayLiteral(R"({"Type":"container","Action":"start","Actor":{"ID":"abc123"}})"
+                              "\n"));
+    } else if (method == QStringLiteral("POST")
+               && (pathOnly.endsWith(QStringLiteral("/stop"))
+                   || pathOnly.endsWith(QStringLiteral("/restart"))
+                   || pathOnly.endsWith(QStringLiteral("/start")))) {
+        response = httpResponse(204, "No Content", {});
+    } else if (method == QStringLiteral("DELETE")
+               && pathOnly.contains(QStringLiteral("/containers/"))) {
         response = httpResponse(204, "No Content", {});
     } else {
         response = httpResponse(404, "Not Found",

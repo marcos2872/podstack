@@ -11,11 +11,17 @@
 <h1 align="center">PodStack</h1>
 
 <p align="center">
+  <a href="https://github.com/marcos2872/podstack/actions/workflows/ci.yml">
+    <img src="https://github.com/marcos2872/podstack/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+</p>
+
+<p align="center">
   <strong>Containers, Compose, VMs Linux, Kubernetes e domínios locais em um único app — sobre o Podman Engine nativo.</strong><br>
   Alternativa Linux ao OrbStack, com Qt 6/QML, daemon de usuário e CLI scriptable.
 </p>
 
-> **Status:** **M0 concluído** — CMake, daemon JSON-RPC, cliente Libpod (logs/events/exec hijack), CLI (`version/status/ps/exec/doctor`) e shell QML funcionando. Próximo: M1 (containers completos).
+> **Status:** **M0 concluído** — CMake, daemon JSON-RPC, cliente Libpod (logs/events/exec hijack), CLI (`version/status/ps/exec/doctor`) e shell QML. **6 testes** e **cobertura 84,3%** com gate de 80%. Próximo: M1 (containers completos).
 > **Plataforma:** Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10.
 > **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).
 

@@ -1,28 +1,69 @@
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  ci:
+    name: ci
     runs-on: ubuntu-latest
     container: fedora:44
+
     steps:
+      - name: Instalar git (necessário para o checkout)
+        run: dnf install -y git
+
       - uses: actions/checkout@v4
 
       - name: Dependências
         run: |
-          dnf install -y git cmake ninja-build gcc-c++ \
+          dnf install -y cmake ninja-build gcc-c++ gcovr \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
-            qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
-            qtermwidget-devel libcurl-devel
+            libcurl-devel
 
-      - name: Configurar
-        run: cmake --preset dev
+      - name: Configurar (coverage)
+        run: cmake --preset coverage
 
       - name: Compilar
-        run: cmake --build --preset dev
+        run: cmake --build --preset coverage
 
-      - name: Testar
-        run: ctest --preset dev
+      - name: Testes
+        run: ctest --preset coverage --output-on-failure
+
+      - name: Cobertura (relatório)
+        run: |
+          mkdir -p coverage
+          gcovr -r . --filter 'src/' \
+            --xml coverage.xml \
+            --html-details coverage/index.html \
+            --txt-metric line --print-summary | tee coverage-summary.txt
+          cat coverage-summary.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cobertura (gate 80%)
+        run: |
+          gcovr -r . --filter 'src/' \
+            --txt-metric line --print-summary --fail-under-line 80 \
+            | tee coverage-gate.txt
+          cat coverage-gate.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.xml
+            coverage/
+            coverage-summary.txt
+            coverage-gate.txt
+          if-no-files-found: warn

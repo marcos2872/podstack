@@ -65,10 +65,20 @@ target_link_libraries(podstack PRIVATE podstack_core Qt6::Network)
 # ---------------------------------------------------------------------------
 # GUI
 # ---------------------------------------------------------------------------
-qt_add_executable(podstack-gui
-    src/gui/main.cpp
+add_library(podstack_gui_lib STATIC
     src/gui/Backend.cpp
     src/gui/ContainerListModel.cpp
+)
+target_include_directories(podstack_gui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(podstack_gui_lib PUBLIC
+    podstack_core
+    Qt6::Core
+    Qt6::Network
+    Qt6::Concurrent
+)
+
+qt_add_executable(podstack-gui
+    src/gui/main.cpp
 )
 
 qt_add_qml_module(podstack-gui
@@ -80,14 +90,12 @@ qt_add_qml_module(podstack-gui
 )
 
 target_link_libraries(podstack-gui PRIVATE
-    podstack_core
+    podstack_gui_lib
     Qt6::Core
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
-    Qt6::Network
-    Qt6::Concurrent
 )
 
 set_target_properties(podstack-gui PROPERTIES

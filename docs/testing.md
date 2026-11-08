@@ -218,29 +218,41 @@ CI cobre o subconjunto P0; matriz completa no release candidate.
 
 ## 12. CI
 
-| Estágio | Conteúdo | Bloqueia merge |
-|---|---|---|
-| `lint` | clang-format, clang-tidy, qmllint, shellcheck | ✅ |
-| `build` | Fedora 43/44, presets dev/release | ✅ |
-| `unit` | Qt Test + contract | ✅ |
-| `integration` | Podman real (rootless) | ✅ |
-| `e2e` | GUI/CLI fluxos P0 | ✅ |
-| `security` | socket/traversal/redaction | ✅ |
-| `perf` | benchmarks (noturno) | ⚠️ regressão > 20% |
-| `packaging` | rpmbuild + instalação limpa | ✅ no release |
+Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em **toda pull request** e em push para `main`.
 
-- Cache: ccache + imagens Podman.
-- Artefatos: JUnit XML, cobertura (gcov/lcov), logs.
+| Etapa | Conteúdo | Bloqueia merge |
+|---|---|---|
+| `ci` (job único) | checkout + deps Fedora 44, build com `coverage`, testes, gcovr | ✅ |
+| Cobertura | relatório `src/` (XML/HTML) + gate de **80%** de linhas | ✅ |
+| Artefato | `coverage.xml`, `coverage/`, resumos | — |
+| Futuro | lint (`clang-format`/`clang-tidy`/`qmllint`), E2E GUI/CLI, segurança, performance, RPM | planejado |
+
+- Container: `fedora:44` com Qt 6.11, CMake/Ninja, libcurl e gcovr.
+- O teste de integração com Podman roda quando há socket disponível; caso contrário, é `QSKIP` (o contrato e o RPC cobrem o caminho sem engine).
+- Cache: ccache e imagens Podman (quando o runner permitir).
 - Flaky tests: quarentena com issue e prazo; não podem ficar > 2 semanas.
 
 ---
 
 ## 13. Cobertura e qualidade
 
-- Core/podman/RPC: **≥ 70%** de linhas; caminhos críticos ≥ 85%.
+- **M0 (atual):** **84,3%** de linhas no total (`src/`) e **82,2%** no núcleo (`core/podman/daemon`); gate do CI em **80%** sobre `src/`.
+- **Meta v1.0:** manter ≥ 80% e buscar ≥ 85% em caminhos críticos; CLI/GUI já entram na medição (testes de subprocesso e modelos QML).
 - Nenhum merge com teste vermelho.
 - Bug corrigido → teste de regressão obrigatório.
 - Código novo sem teste exige justificativa no PR.
+
+Comandos locais:
+
+```bash
+cmake --preset coverage
+cmake --build --preset coverage
+ctest --preset coverage --output-on-failure
+mkdir -p coverage
+gcovr -r . --filter 'src/' --xml coverage.xml \
+  --html-details coverage/index.html --txt-metric line --print-summary
+gcovr -r . --filter 'src/' --txt-metric line --print-summary --fail-under-line 80
+```
 
 ---
 

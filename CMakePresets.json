@@ -17,6 +17,17 @@
       }
     },
     {
+      "name": "coverage",
+      "displayName": "Coverage (Debug + gcov)",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "--coverage -O0",
+        "CMAKE_EXE_LINKER_FLAGS": "--coverage"
+      }
+    },
+    {
       "name": "release",
       "displayName": "Release (RelWithDebInfo)",
       "generator": "Ninja",
@@ -32,6 +43,10 @@
       "configurePreset": "dev"
     },
     {
+      "name": "coverage",
+      "configurePreset": "coverage"
+    },
+    {
       "name": "release",
       "configurePreset": "release"
     }
@@ -40,6 +55,13 @@
     {
       "name": "dev",
       "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
       "output": {
         "outputOnFailure": true
       }
