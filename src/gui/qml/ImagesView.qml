@@ -6,119 +6,101 @@ import PodStack
 ColumnLayout {
     id: imagesView
 
-    Theme { id: theme }
 
     spacing: 0
 
-    Rectangle {
+    ViewHeader {
         Layout.fillWidth: true
-        Layout.preferredHeight: 52
-        color: theme.bgBase
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.topMargin: 20
+        Layout.bottomMargin: 16
+        title: qsTr("Images")
+        subtitle: backend.images.length + qsTr(" imagens")
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 8
+        Text {
+            visible: backend.pullStatus.length > 0
+            text: backend.pullStatus
+            color: backend.pullActive ? Theme.cyan : Theme.textTertiary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMicro
+            elide: Text.ElideRight
+            Layout.maximumWidth: 260
+        }
 
-            Label {
-                text: "Images"
-                color: theme.textPrimary
-                font.pixelSize: 15
-                font.bold: true
-            }
-
-            Label {
-                text: backend.images.length + " itens"
-                color: theme.textSecondary
-                font.pixelSize: 11
-            }
-
-            Item { Layout.fillWidth: true }
-
-            Label {
-                text: backend.pullStatus
-                visible: backend.pullStatus.length > 0
-                color: backend.pullActive ? theme.cyan : theme.textSecondary
-                font.pixelSize: 10
-                elide: Text.ElideRight
-                Layout.maximumWidth: 280
-            }
-
-            ActionButton {
-                text: "Pull"
-                onClicked: {
-                    pullReference.text = ""
-                    pullDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Importar"
-                accentColor: theme.bgElevated
-                onClicked: {
-                    importPath.text = ""
-                    importDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Prune"
-                accentColor: theme.warning
-                onClicked: pruneDialog.open()
-            }
-
-            ActionButton {
-                text: "Tag"
-                accentColor: theme.indigo500
-                enabled: imagesList.currentRow >= 0
-                onClicked: {
-                    const image = backend.images[imagesList.currentRow]
-                    tagName.text = image.name
-                    tagId.text = image.id
-                    tagRepo.text = image.name
-                    tagDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Untag"
-                accentColor: theme.bgElevated
-                enabled: imagesList.currentRow >= 0
-                onClicked: {
-                    const image = backend.images[imagesList.currentRow]
-                    tagName.text = image.name
-                    tagId.text = image.id
-                    tagRepo.text = image.name
-                    tagDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Remover"
-                accentColor: theme.danger
-                enabled: imagesList.currentRow >= 0
-                onClicked: removeDialog.open()
-            }
-
-            ActionButton {
-                text: "Atualizar"
-                accentColor: theme.bgElevated
-                onClicked: backend.refreshImages()
+        ActionButton {
+            text: qsTr("Pull")
+            variant: "primary"
+            iconName: "download"
+            onClicked: {
+                pullReference.text = ""
+                pullDialog.open()
             }
         }
-    }
 
-    Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 1
-        color: theme.border
+        ActionButton {
+            text: qsTr("Importar")
+            iconName: "upload"
+            onClicked: {
+                importPath.text = ""
+                importDialog.open()
+            }
+        }
+
+        ActionButton {
+            text: qsTr("Prune")
+            iconName: "trash"
+            onClicked: pruneDialog.open()
+        }
+
+        ActionButton {
+            text: qsTr("Tag")
+            enabled: imagesList.currentRow >= 0
+            onClicked: {
+                const image = backend.images[imagesList.currentRow]
+                tagName.text = image.name
+                tagId.text = image.id
+                tagRepo.text = image.name
+                tagDialog.open()
+            }
+        }
+
+        ActionButton {
+            text: qsTr("Untag")
+            enabled: imagesList.currentRow >= 0
+            onClicked: {
+                const image = backend.images[imagesList.currentRow]
+                tagName.text = image.name
+                tagId.text = image.id
+                tagRepo.text = image.name
+                tagDialog.open()
+            }
+        }
+
+        ActionButton {
+            text: qsTr("Remover")
+            variant: "danger"
+            enabled: imagesList.currentRow >= 0
+            onClicked: removeDialog.open()
+        }
+
+        ActionButton {
+            variant: "ghost"
+            iconName: "refresh"
+            onClicked: backend.refreshImages()
+            Accessible.name: qsTr("Atualizar")
+        }
     }
 
     CatalogList {
         id: imagesList
         Layout.fillWidth: true
         Layout.fillHeight: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 20
+        emptyIcon: "images"
+            emptyText: qsTr("Nenhuma imagem.\nUse Pull para baixar uma imagem.")
         items: backend.images
         columns: [
             { key: "name", label: "REPOSITORY:TAG", width: 0 },
@@ -132,33 +114,22 @@ ColumnLayout {
         }
     }
 
-    Label {
-        Layout.fillWidth: true
-        Layout.margins: 24
-        visible: backend.images.length === 0
-        horizontalAlignment: Text.AlignHCenter
-        text: "Nenhuma imagem.\nUse Pull para baixar uma imagem."
-        color: theme.textSecondary
-        font.pixelSize: 12
-        wrapMode: Text.WordWrap
-    }
-
     Dialog {
         id: pullDialog
         title: "Pull de imagem"
         modal: true
         width: 460
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
 
             Label {
                 text: "Imagem"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -179,7 +150,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 visible: backend.pullActive || backend.pullStatus.length > 0
                 text: backend.pullStatus
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 10
                 wrapMode: Text.WordWrap
             }
@@ -196,7 +167,7 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: backend.pullActive ? "Cancelar" : "Fechar"
-                accentColor: theme.bgElevated
+                variant: "secondary"
                 onClicked: {
                     if (backend.pullActive) {
                         backend.cancelPull()
@@ -220,15 +191,15 @@ ColumnLayout {
         modal: true
         width: 460
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
             Label {
                 text: "Arquivo tar"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -242,7 +213,7 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
-                accentColor: theme.bgElevated
+                variant: "secondary"
                 onClicked: importDialog.close()
             }
             ActionButton {
@@ -262,13 +233,13 @@ ColumnLayout {
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: Label {
             text: "A imagem será removida. Containers em uso bloqueiam a remoção."
-            color: theme.textPrimary
+            color: Theme.textPrimary
             wrapMode: Text.WordWrap
         }
         onAccepted: {
@@ -284,13 +255,13 @@ ColumnLayout {
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: Label {
             text: "Remove imagens sem uso (dangling). Containers existentes não são afetados."
-            color: theme.textPrimary
+            color: Theme.textPrimary
             wrapMode: Text.WordWrap
         }
         onAccepted: backend.pruneImages(false)
@@ -302,23 +273,23 @@ ColumnLayout {
         modal: true
         width: 460
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
             Label {
                 id: tagName
                 text: ""
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 elide: Text.ElideMiddle
                 Layout.fillWidth: true
             }
             Label {
                 text: "Nova referência"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -337,12 +308,12 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
-                accentColor: theme.bgElevated
+                variant: "secondary"
                 onClicked: tagDialog.close()
             }
             ActionButton {
                 text: "Remover tag"
-                accentColor: theme.warning
+                variant: "danger"
                 enabled: tagRepo.text.length > 0
                 onClicked: {
                     backend.untagImage(tagId.text, tagRepo.text)

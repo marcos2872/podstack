@@ -8,84 +8,233 @@ Rectangle {
 
     property var selected: null
 
-    Theme { id: theme }
+    color: Theme.bgSurface
+    radius: Theme.radiusLg
+    border.width: 1
+    border.color: Theme.border
+    clip: true
 
-    color: theme.bgSurface
+    readonly property string portsText: {
+        if (!selected || !selected.ports) {
+            return ""
+        }
+        if (Array.isArray(selected.ports)) {
+            return selected.ports.join(", ")
+        }
+        return String(selected.ports)
+    }
+
+    readonly property string health: selected ? (selected.health || "") : ""
+    readonly property bool running: selected !== null && selected.state === "running"
+
+    property int tabIndex: 0
+
+    onTabIndexChanged: syncStreams()
+
+    function syncStreams() {
+        if (!selected) {
+            backend.unsubscribeLogs()
+            backend.unsubscribeStats()
+            return
+        }
+        if (inspector.tabIndex === 1) {
+            backend.unsubscribeStats()
+            backend.subscribeLogs(selected.id, 200, true)
+        } else if (inspector.tabIndex === 2) {
+            backend.unsubscribeLogs()
+            backend.subscribeStats(selected.id)
+        } else if (inspector.tabIndex === 3) {
+            backend.unsubscribeLogs()
+            backend.unsubscribeStats()
+            backend.listFiles(selected.id, "/")
+        } else {
+            backend.unsubscribeLogs()
+            backend.unsubscribeStats()
+        }
+    }
+
+    onSelectedChanged: syncStreams()
+    Component.onCompleted: syncStreams()
+    Component.onDestruction: {
+        backend.unsubscribeLogs()
+        backend.unsubscribeStats()
+    }
+
+    // Estado vazio
+    ColumnLayout {
+        anchors.centerIn: parent
+        width: parent.width - 40
+        visible: inspector.selected === null
+        spacing: 6
+
+        AppIcon {
+            Layout.alignment: Qt.AlignHCenter
+            name: "containers"
+            size: 24
+            color: Theme.textTertiary
+        }
+
+        Text {
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+            text: qsTr("Nenhum container selecionado")
+            color: Theme.textSecondary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontBody
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 10
+        visible: inspector.selected !== null
+        spacing: 0
 
-        Label {
-            text: inspector.selected ? inspector.selected.name : "Nenhum container selecionado"
-            color: theme.textPrimary
-            font.pixelSize: 16
-            font.bold: true
-            elide: Text.ElideRight
+        // Cabeçalho
+        ColumnLayout {
             Layout.fillWidth: true
+            Layout.leftMargin: 14
+            Layout.rightMargin: 14
+            Layout.topMargin: 13
+            Layout.bottomMargin: 11
+            spacing: 4
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Text {
+                    Layout.fillWidth: true
+                    text: inspector.selected ? inspector.selected.name : ""
+                    color: Theme.textPrimary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontTitle
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: -0.3
+                    elide: Text.ElideRight
+                }
+
+                AppBadge {
+                    text: inspector.selected ? inspector.selected.state : ""
+                    tone: inspector.running ? "success"
+                                            : inspector.selected && inspector.selected.state === "paused"
+                                              ? "warning" : "muted"
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: inspector.selected ? inspector.selected.image : ""
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                elide: Text.ElideRight
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                spacing: 5
+
+                ActionButton {
+                    visible: inspector.running
+                    text: qsTr("Parar")
+                    iconName: "stop"
+                    size: "sm"
+                    onClicked: backend.lifecycle("stop", inspector.selected.id)
+                }
+
+                ActionButton {
+                    visible: !inspector.running
+                    text: qsTr("Iniciar")
+                    iconName: "play"
+                    size: "sm"
+                    variant: "primary"
+                    onClicked: backend.lifecycle("start", inspector.selected.id)
+                }
+
+                ActionButton {
+                    text: qsTr("Reiniciar")
+                    iconName: "rotate"
+                    size: "sm"
+                    onClicked: backend.lifecycle("restart", inspector.selected.id)
+                }
+
+                ActionButton {
+                    text: qsTr("Terminal")
+                    iconName: "terminal"
+                    size: "sm"
+                    onClicked: backend.openTerminal(inspector.selected.id)
+                }
+
+                Item { Layout.fillWidth: true }
+
+                ActionButton {
+                    variant: "danger"
+                    iconName: "trash"
+                    size: "sm"
+                    onClicked: {
+                        removeDialog.containerId = inspector.selected.id
+                        removeDialog.open()
+                    }
+                    Accessible.name: qsTr("Remover")
+                }
+            }
         }
 
-        Label {
-            text: inspector.selected ? inspector.selected.image : ""
-            color: theme.textSecondary
-            font.pixelSize: 11
-            elide: Text.ElideRight
+        Rectangle {
             Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            color: Theme.border
         }
 
-        TabBar {
-            id: inspectorTabs
+        // Abas segmentadas
+        Rectangle {
             Layout.fillWidth: true
-            background: Rectangle { color: "transparent" }
-            onCurrentIndexChanged: inspector.syncStreams()
+            Layout.preferredHeight: 32
+            Layout.leftMargin: 14
+            Layout.rightMargin: 14
+            Layout.topMargin: 10
+            radius: Theme.radiusSm
+            color: Theme.bgSurface2
+            border.width: 1
+            border.color: Theme.border
 
-            TabButton {
-                id: infoTab
-                text: "Info"
-                contentItem: Text {
-                    text: infoTab.text
-                    color: inspectorTabs.currentIndex === 0 ? theme.textPrimary
-                                                            : theme.textSecondary
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-            TabButton {
-                id: logsTab
-                text: "Logs"
-                contentItem: Text {
-                    text: logsTab.text
-                    color: inspectorTabs.currentIndex === 1 ? theme.textPrimary
-                                                            : theme.textSecondary
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-            TabButton {
-                id: statsTab
-                text: "Stats"
-                contentItem: Text {
-                    text: statsTab.text
-                    color: inspectorTabs.currentIndex === 2 ? theme.textPrimary
-                                                            : theme.textSecondary
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-            TabButton {
-                id: filesTab
-                text: "Files"
-                contentItem: Text {
-                    text: filesTab.text
-                    color: inspectorTabs.currentIndex === 3 ? theme.textPrimary
-                                                            : theme.textSecondary
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 3
+                spacing: 2
+
+                Repeater {
+                    model: [qsTr("Info"), qsTr("Logs"), qsTr("Stats"), qsTr("Files")]
+
+                    ItemDelegate {
+                        id: inspectorTab
+                        readonly property bool active: inspector.tabIndex === index
+
+                        Layout.fillWidth: true
+                        implicitHeight: 24
+                        hoverEnabled: true
+                        Accessible.name: modelData
+
+                        background: Rectangle {
+                            radius: Theme.radiusXs
+                            color: inspectorTab.active ? Theme.bgElevated
+                                                       : inspectorTab.hovered ? Theme.bgHover
+                                                                              : "transparent"
+                        }
+
+                        contentItem: Text {
+                            text: modelData
+                            color: inspectorTab.active ? Theme.textPrimary : Theme.textTertiary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMeta
+                            font.weight: Font.Medium
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        onClicked: inspector.tabIndex = index
+                    }
                 }
             }
         }
@@ -93,204 +242,260 @@ Rectangle {
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: inspectorTabs.currentIndex
+            Layout.topMargin: 10
+            currentIndex: inspector.tabIndex
 
             // Info
-            ColumnLayout {
-                spacing: 8
+            ScrollView {
+                id: infoScroll
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                clip: true
 
-                Label {
-                    text: "ID"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
-                    font.bold: true
-                }
+                ColumnLayout {
+                    width: infoScroll.availableWidth
+                    spacing: 0
 
-                Label {
-                    text: inspector.selected ? inspector.selected.id : "—"
-                    color: theme.textPrimary
-                    font.pixelSize: 11
-                    wrapMode: Text.WrapAnywhere
-                    Layout.fillWidth: true
-                }
-
-                Label {
-                    text: "PORTAS"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
-                    font.bold: true
-                }
-
-                Label {
-                    text: inspector.selected && inspector.selected.ports.length > 0
-                          ? inspector.selected.ports : "—"
-                    color: theme.textPrimary
-                    font.pixelSize: 11
-                    wrapMode: Text.WrapAnywhere
-                    Layout.fillWidth: true
-                }
-
-                Label {
-                    text: "ESTADO"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
-                    font.bold: true
-                }
-
-                Label {
-                    text: inspector.selected ? inspector.selected.state : "—"
-                    color: theme.textPrimary
-                    font.pixelSize: 11
-                }
-
-                Label {
-                    visible: inspector.selected !== null
-                             && inspector.selected.status.length > 0
-                             && inspector.selected.status !== inspector.selected.state
-                    text: "STATUS"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
-                    font.bold: true
-                }
-
-                Label {
-                    visible: inspector.selected !== null
-                             && inspector.selected.status.length > 0
-                             && inspector.selected.status !== inspector.selected.state
-                    text: inspector.selected !== null ? inspector.selected.status : ""
-                    color: theme.textPrimary
-                    font.pixelSize: 11
-                    wrapMode: Text.WrapAnywhere
-                    Layout.fillWidth: true
-                }
-
-                Label {
-                    text: "SAÚDE"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
-                    font.bold: true
-                }
-
-                Label {
-                    text: inspector.selected && inspector.selected.health
-                          ? inspector.selected.health : "—"
-                    color: inspector.selected && inspector.selected.health === "unhealthy"
-                           ? theme.danger
-                           : inspector.selected && inspector.selected.health === "starting"
-                             ? theme.warning : theme.textPrimary
-                    font.pixelSize: 11
-                }
-
-                Label {
-                    text: "AÇÕES"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
-                    font.bold: true
-                }
-
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: 2
-                    columnSpacing: 6
-                    rowSpacing: 6
-
-                    ActionButton {
+                    GridLayout {
                         Layout.fillWidth: true
-                        text: "Iniciar"
-                        enabled: inspector.selected !== null
-                        onClicked: backend.lifecycle("start", inspector.selected.id)
-                    }
-                    ActionButton {
-                        Layout.fillWidth: true
-                        text: "Parar"
-                        enabled: inspector.selected !== null
-                        onClicked: backend.lifecycle("stop", inspector.selected.id)
-                    }
-                    ActionButton {
-                        Layout.fillWidth: true
-                        text: "Reiniciar"
-                        enabled: inspector.selected !== null
-                        onClicked: backend.lifecycle("restart", inspector.selected.id)
-                    }
-                    ActionButton {
-                        Layout.fillWidth: true
-                        text: "Pausar"
-                        enabled: inspector.selected !== null
-                        onClicked: backend.lifecycle("pause", inspector.selected.id)
-                    }
-                    ActionButton {
-                        Layout.fillWidth: true
-                        text: "Despausar"
-                        enabled: inspector.selected !== null
-                        onClicked: backend.lifecycle("unpause", inspector.selected.id)
-                    }
-                    ActionButton {
-                        Layout.fillWidth: true
-                        text: "Matar"
-                        accentColor: theme.warning
-                        enabled: inspector.selected !== null
-                        onClicked: backend.lifecycle("kill", inspector.selected.id)
-                    }
-                    ActionButton {
-                        Layout.fillWidth: true
-                        text: "Terminal"
-                        accentColor: theme.indigo700
-                        enabled: inspector.selected !== null
-                        onClicked: backend.openTerminal(inspector.selected.id)
-                    }
-                    ActionButton {
-                        Layout.fillWidth: true
-                        text: "Abrir porta"
-                        accentColor: theme.indigo500
-                        enabled: inspector.selected !== null
-                                 && inspector.selected.ports.length > 0
-                        onClicked: {
-                            const match = inspector.selected.ports.match(/(\d+)->/)
-                            if (match) {
-                                Qt.openUrlExternally("http://localhost:" + match[1])
+                        Layout.leftMargin: 14
+                        Layout.rightMargin: 14
+                        columns: 2
+                        columnSpacing: 12
+                        rowSpacing: 10
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Text {
+                                text: qsTr("ID")
+                                color: Theme.textTertiary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMicro
+                                font.weight: Font.DemiBold
+                                font.capitalization: Font.AllUppercase
+                                font.letterSpacing: 0.8
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: inspector.selected ? inspector.selected.id : "—"
+                                color: Theme.textPrimary
+                                font.family: Theme.monoFamily
+                                font.pixelSize: Theme.fontMeta
+                                wrapMode: Text.WrapAnywhere
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Text {
+                                text: qsTr("PORTAS")
+                                color: Theme.textTertiary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMicro
+                                font.weight: Font.DemiBold
+                                font.capitalization: Font.AllUppercase
+                                font.letterSpacing: 0.8
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: inspector.portsText.length > 0 ? inspector.portsText : "—"
+                                color: Theme.textPrimary
+                                font.family: Theme.monoFamily
+                                font.pixelSize: Theme.fontMeta
+                                wrapMode: Text.WrapAnywhere
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Text {
+                                text: qsTr("ESTADO")
+                                color: Theme.textTertiary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMicro
+                                font.weight: Font.DemiBold
+                                font.capitalization: Font.AllUppercase
+                                font.letterSpacing: 0.8
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: inspector.selected ? inspector.selected.state : "—"
+                                color: Theme.textPrimary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMeta
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Text {
+                                text: qsTr("CRIADO")
+                                color: Theme.textTertiary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMicro
+                                font.weight: Font.DemiBold
+                                font.capitalization: Font.AllUppercase
+                                font.letterSpacing: 0.8
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: inspector.selected && inspector.selected.created
+                                      ? inspector.selected.created : "—"
+                                color: Theme.textPrimary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMeta
+                                elide: Text.ElideRight
                             }
                         }
                     }
-                    ActionButton {
-                        Layout.fillWidth: true
-                        text: "Renomear"
-                        accentColor: theme.bgElevated
-                        enabled: inspector.selected !== null
-                        onClicked: {
-                            renameDialog.containerId = inspector.selected.id
-                            renameName.text = inspector.selected.name
-                            renameDialog.open()
+
+                    Text {
+                        Layout.leftMargin: 14
+                        Layout.rightMargin: 14
+                        Layout.topMargin: 14
+                        Layout.bottomMargin: 6
+                        text: qsTr("SAÚDE")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.8
+                    }
+
+                    RowLayout {
+                        Layout.leftMargin: 14
+                        Layout.rightMargin: 14
+                        spacing: 5
+
+                        AppBadge {
+                            visible: inspector.health === "healthy"
+                            text: qsTr("healthy")
+                            tone: "success"
+                        }
+
+                        AppBadge {
+                            visible: inspector.health === "unhealthy"
+                            text: qsTr("unhealthy")
+                            tone: "danger"
+                        }
+
+                        AppBadge {
+                            visible: inspector.health === "starting"
+                            text: qsTr("starting")
+                            tone: "warning"
+                        }
+
+                        AppBadge {
+                            visible: inspector.health.length === 0 || inspector.health === "none"
+                            text: qsTr("sem healthcheck")
+                            tone: "muted"
                         }
                     }
-                    ActionButton {
-                        Layout.fillWidth: true
-                        text: "Duplicar"
-                        accentColor: theme.indigo500
-                        enabled: inspector.selected !== null
-                        onClicked: backend.duplicateContainer(inspector.selected.id)
+
+                    Text {
+                        Layout.leftMargin: 14
+                        Layout.rightMargin: 14
+                        Layout.topMargin: 14
+                        Layout.bottomMargin: 6
+                        text: qsTr("AÇÕES")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.8
                     }
-                    ActionButton {
+
+                    GridLayout {
                         Layout.fillWidth: true
-                        text: "Remover"
-                        accentColor: theme.danger
-                        enabled: inspector.selected !== null
-                        onClicked: {
-                            removeDialog.containerId = inspector.selected.id
-                            removeDialog.open()
+                        Layout.leftMargin: 14
+                        Layout.rightMargin: 14
+                        columns: 2
+                        columnSpacing: 6
+                        rowSpacing: 6
+
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: qsTr("Pausar")
+                            size: "sm"
+                            onClicked: backend.lifecycle("pause", inspector.selected.id)
+                        }
+
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: qsTr("Despausar")
+                            size: "sm"
+                            onClicked: backend.lifecycle("unpause", inspector.selected.id)
+                        }
+
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: qsTr("Matar")
+                            size: "sm"
+                            variant: "danger"
+                            onClicked: backend.lifecycle("kill", inspector.selected.id)
+                        }
+
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: qsTr("Abrir porta")
+                            size: "sm"
+                            enabled: inspector.portsText.length > 0
+                            onClicked: {
+                                const match = inspector.portsText.match(/(\d+)->/)
+                                if (match) {
+                                    Qt.openUrlExternally("http://localhost:" + match[1])
+                                }
+                            }
+                        }
+
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: qsTr("Renomear")
+                            size: "sm"
+                            onClicked: {
+                                renameDialog.containerId = inspector.selected.id
+                                renameName.text = inspector.selected.name
+                                renameDialog.open()
+                            }
+                        }
+
+                        ActionButton {
+                            Layout.fillWidth: true
+                            text: qsTr("Duplicar")
+                            size: "sm"
+                            onClicked: backend.duplicateContainer(inspector.selected.id)
                         }
                     }
-                }
 
-                Label {
-                    text: backend.lastError
-                    visible: backend.lastError.length > 0
-                    color: theme.danger
-                    font.pixelSize: 10
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
+                    Text {
+                        Layout.leftMargin: 14
+                        Layout.rightMargin: 14
+                        Layout.topMargin: 10
+                        Layout.bottomMargin: 14
+                        Layout.fillWidth: true
+                        visible: backend.lastError.length > 0
+                        text: backend.lastError
+                        color: Theme.danger
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        wrapMode: Text.WordWrap
+                    }
                 }
-
-                Item { Layout.fillHeight: true }
             }
 
             LogsView {
@@ -314,17 +519,21 @@ Rectangle {
     Dialog {
         id: removeDialog
         property string containerId
-        title: "Remover container?"
+        title: qsTr("Remover container?")
         modal: true
+        anchors.centerIn: parent
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
-            color: theme.bgSurface
-            radius: 10
-            border.color: theme.border
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
         }
-        contentItem: Label {
-            text: "O container será removido permanentemente."
-            color: theme.textPrimary
+        contentItem: Text {
+            text: qsTr("O container será removido permanentemente.")
+            color: Theme.textPrimary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontBody
             wrapMode: Text.WordWrap
         }
         onAccepted: backend.removeContainer(containerId, true, false)
@@ -333,22 +542,27 @@ Rectangle {
     Dialog {
         id: renameDialog
         property string containerId
-        title: "Renomear container"
+        title: qsTr("Renomear container")
         modal: true
         width: 420
+        anchors.centerIn: parent
         background: Rectangle {
-            color: theme.bgSurface
-            radius: 10
-            border.color: theme.border
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
-            Label {
-                text: "Novo nome"
-                color: theme.textSecondary
-                font.pixelSize: 11
-                font.bold: true
+
+            Text {
+                text: qsTr("Novo nome")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                font.weight: Font.DemiBold
             }
+
             FormField {
                 id: renameName
                 Layout.fillWidth: true
@@ -357,46 +571,18 @@ Rectangle {
         footer: RowLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: "Cancelar"
-                accentColor: theme.bgElevated
+                text: qsTr("Cancelar")
+                variant: "secondary"
                 onClicked: renameDialog.close()
             }
             ActionButton {
-                text: "Salvar"
+                text: qsTr("Salvar")
+                variant: "primary"
                 onClicked: {
                     backend.renameContainer(renameDialog.containerId, renameName.text)
                     renameDialog.close()
                 }
             }
         }
-    }
-
-    function syncStreams() {
-        if (!selected) {
-            backend.unsubscribeLogs()
-            backend.unsubscribeStats()
-            return
-        }
-        if (inspectorTabs.currentIndex === 1) {
-            backend.unsubscribeStats()
-            backend.subscribeLogs(selected.id, 200, true)
-        } else if (inspectorTabs.currentIndex === 2) {
-            backend.unsubscribeLogs()
-            backend.subscribeStats(selected.id)
-        } else if (inspectorTabs.currentIndex === 3) {
-            backend.unsubscribeLogs()
-            backend.unsubscribeStats()
-            backend.listFiles(selected.id, "/")
-        } else {
-            backend.unsubscribeLogs()
-            backend.unsubscribeStats()
-        }
-    }
-
-    onSelectedChanged: syncStreams()
-    Component.onCompleted: syncStreams()
-    Component.onDestruction: {
-        backend.unsubscribeLogs()
-        backend.unsubscribeStats()
     }
 }

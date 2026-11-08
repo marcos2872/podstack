@@ -23,6 +23,7 @@ class Backend : public QObject {
     Q_PROPERTY(QStringList logLines READ logLines NOTIFY logsChanged)
     Q_PROPERTY(QVariantMap stats READ stats NOTIFY statsChanged)
     Q_PROPERTY(QVariantList cpuHistory READ cpuHistory NOTIFY statsChanged)
+    Q_PROPERTY(QVariantList memHistory READ memHistory NOTIFY statsChanged)
     Q_PROPERTY(QVariantList files READ files NOTIFY filesChanged)
     Q_PROPERTY(QString filesPath READ filesPath NOTIFY filesChanged)
     Q_PROPERTY(QVariantList images READ images NOTIFY imagesChanged)
@@ -52,6 +53,7 @@ public:
     const QStringList &logLines() const { return m_logLines; }
     QVariantMap stats() const { return m_stats; }
     QVariantList cpuHistory() const { return m_cpuHistory; }
+    QVariantList memHistory() const { return m_memHistory; }
     QVariantList files() const { return m_files; }
     QString filesPath() const { return m_filesPath; }
     QVariantList images() const { return m_images; }
@@ -128,6 +130,7 @@ public:
     Q_INVOKABLE void uploadFile(const QString &id, const QString &path, const QString &sourcePath);
     Q_INVOKABLE QVariantMap settings() const;
     Q_INVOKABLE void saveEngineMode(const QString &mode);
+    Q_INVOKABLE void saveTheme(const QString &theme);
     Q_INVOKABLE void openTerminal(const QString &id);
 
 signals:
@@ -181,6 +184,7 @@ private:
     QStringList m_logLines;
     QVariantMap m_stats;
     QVariantList m_cpuHistory;
+    QVariantList m_memHistory;
     QVariantList m_files;
     QString m_filesPath = QStringLiteral("/");
     QVariantList m_containers;

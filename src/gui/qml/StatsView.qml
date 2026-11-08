@@ -3,148 +3,280 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import PodStack
 
-ColumnLayout {
+Flickable {
     id: statsView
 
-    Theme { id: theme }
+    contentWidth: width
+    contentHeight: statsColumn.implicitHeight + 28
+    clip: true
+    boundsBehavior: Flickable.StopAtBounds
+    ScrollBar.vertical: ScrollBar {}
 
-    spacing: 8
+    readonly property var cpuValues: backend.cpuHistory.slice(Math.max(0, backend.cpuHistory.length - 30))
+    readonly property var memValues: backend.memHistory.slice(Math.max(0, backend.memHistory.length - 30))
 
-    GridLayout {
-        Layout.fillWidth: true
-        columns: 2
-        columnSpacing: 8
-        rowSpacing: 8
+    ColumnLayout {
+        id: statsColumn
+        x: 14
+        y: 14
+        width: statsView.width - 28
+        spacing: 10
 
-        Rectangle {
+        GridLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 54
-            color: theme.bgElevated
-            radius: 6
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 8
-                Label {
-                    text: "CPU"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
+            columns: 2
+            columnSpacing: 10
+            rowSpacing: 10
+
+            // CPU
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 62
+                color: Theme.bgSurface2
+                radius: Theme.radiusSm
+                border.width: 1
+                border.color: Theme.border
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 2
+
+                    Text {
+                        text: qsTr("CPU")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.8
+                    }
+
+                    Text {
+                        text: backend.stats.cpu_percent || "—"
+                        color: Theme.cyan
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontTitle
+                        font.weight: Font.DemiBold
+                    }
                 }
-                Label {
-                    text: backend.stats.cpu_percent || "—"
-                    color: theme.cyan
-                    font.pixelSize: 15
-                    font.bold: true
+            }
+
+            // Memória
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 62
+                color: Theme.bgSurface2
+                radius: Theme.radiusSm
+                border.width: 1
+                border.color: Theme.border
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 2
+
+                    Text {
+                        text: qsTr("MEMÓRIA")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.8
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: backend.stats.mem_usage || "—"
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        visible: (backend.stats.mem_percent || "").length > 0
+                        text: backend.stats.mem_percent
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+                }
+            }
+
+            // Rede
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 62
+                color: Theme.bgSurface2
+                radius: Theme.radiusSm
+                border.width: 1
+                border.color: Theme.border
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 2
+
+                    Text {
+                        text: qsTr("REDE (RX / TX)")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.8
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: backend.stats.net_io || "—"
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+
+            // Disco / PIDs
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 62
+                color: Theme.bgSurface2
+                radius: Theme.radiusSm
+                border.width: 1
+                border.color: Theme.border
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 2
+
+                    Text {
+                        text: qsTr("DISCO / PIDS")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.8
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: (backend.stats.block_io || "—") + "  ·  "
+                              + (backend.stats.pids !== undefined ? backend.stats.pids : "—")
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
                 }
             }
         }
 
+        // CPU
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 54
-            color: theme.bgElevated
-            radius: 6
+            Layout.preferredHeight: 92
+            color: Theme.bgSurface2
+            radius: Theme.radiusSm
+            border.width: 1
+            border.color: Theme.border
+
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 8
-                Label {
-                    text: "MEMÓRIA"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
+                anchors.margins: 10
+                spacing: 2
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: qsTr("CPU (%)")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.8
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Text {
+                        text: statsView.cpuValues.length > 0
+                              ? statsView.cpuValues[statsView.cpuValues.length - 1].toFixed(1) + "%"
+                              : ""
+                        color: Theme.cyan
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
                 }
-                Label {
-                    text: backend.stats.mem_usage || "—"
-                    color: theme.textPrimary
-                    font.pixelSize: 13
+
+                Sparkline {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    values: statsView.cpuValues
+                    lineColor: Theme.cyan
+                    maxValue: 100
                 }
             }
         }
 
+        // RAM
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 54
-            color: theme.bgElevated
-            radius: 6
+            Layout.preferredHeight: 92
+            color: Theme.bgSurface2
+            radius: Theme.radiusSm
+            border.width: 1
+            border.color: Theme.border
+
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 8
-                Label {
-                    text: "REDE (RX / TX)"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
+                anchors.margins: 10
+                spacing: 2
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: qsTr("RAM (%)")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.8
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Text {
+                        text: statsView.memValues.length > 0
+                              ? statsView.memValues[statsView.memValues.length - 1].toFixed(1) + "%"
+                              : ""
+                        color: Theme.indigo400
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
                 }
-                Label {
-                    text: backend.stats.net_io || "—"
-                    color: theme.textPrimary
-                    font.pixelSize: 13
+
+                Sparkline {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    values: statsView.memValues
+                    lineColor: Theme.indigo400
+                    autoScale: true
                 }
             }
         }
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 54
-            color: theme.bgElevated
-            radius: 6
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 8
-                Label {
-                    text: "DISCO / PIDS"
-                    color: theme.textSecondary
-                    font.pixelSize: 10
-                }
-                Label {
-                    text: (backend.stats.block_io || "—") + "  ·  " + (backend.stats.pids || "—")
-                    color: theme.textPrimary
-                    font.pixelSize: 13
-                }
-            }
-        }
     }
-
-    Canvas {
-        id: chart
-        Layout.fillWidth: true
-        Layout.preferredHeight: 120
-
-        onPaint: {
-            const ctx = getContext("2d")
-            ctx.reset()
-            ctx.clearRect(0, 0, width, height)
-
-            const history = backend.cpuHistory
-            if (history.length < 2) {
-                return
-            }
-
-            ctx.strokeStyle = theme.cyan
-            ctx.lineWidth = 2
-            ctx.beginPath()
-            for (let i = 0; i < history.length; ++i) {
-                const x = (i / (history.length - 1)) * width
-                const y = height - (Math.min(history[i], 100) / 100) * height
-                if (i === 0) {
-                    ctx.moveTo(x, y)
-                } else {
-                    ctx.lineTo(x, y)
-                }
-            }
-            ctx.stroke()
-        }
-
-        Connections {
-            target: backend
-            function onStatsChanged() {
-                chart.requestPaint()
-            }
-        }
-    }
-
-    Label {
-        text: "CPU (%) — últimas amostras"
-        color: theme.textSecondary
-        font.pixelSize: 10
-    }
-
-    Item { Layout.fillHeight: true }
 }

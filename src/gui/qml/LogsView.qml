@@ -6,69 +6,94 @@ import PodStack
 ColumnLayout {
     id: logsView
 
-    Theme { id: theme }
+    Layout.margins: 14
+    spacing: 8
 
-    spacing: 6
+    FormField {
+        id: search
+        Layout.fillWidth: true
+        Layout.preferredHeight: 30
+        placeholderText: qsTr("Filtrar logs…")
+        onTextChanged: logsView.rebuild()
+    }
 
     RowLayout {
         Layout.fillWidth: true
         spacing: 6
 
-        FormField {
-            id: search
-            Layout.fillWidth: true
-            placeholderText: "Filtrar logs..."
-            onTextChanged: logsView.rebuild()
-        }
-
         FormCheck {
             id: follow
-            text: "Seguir"
+            text: qsTr("Seguir")
             checked: true
         }
 
         FormCheck {
             id: wrapLines
-            text: "Wrap"
+            text: qsTr("Wrap")
             checked: true
         }
 
         FormCheck {
             id: timestamps
-            text: "Timestamp"
+            text: qsTr("Timestamp")
             checked: true
         }
 
+        Item { Layout.fillWidth: true }
+
         ActionButton {
-            text: "Limpar"
-            accentColor: theme.bgElevated
+            text: qsTr("Limpar")
+            variant: "secondary"
+            size: "sm"
             onClicked: backend.clearLogs()
         }
     }
 
-    ListView {
-        id: logsList
+    Rectangle {
         Layout.fillWidth: true
         Layout.fillHeight: true
+        color: Theme.terminalBg
+        radius: Theme.radiusSm
+        border.width: 1
+        border.color: Theme.border
         clip: true
-        model: ListModel { id: logModel }
-        ScrollBar.vertical: ScrollBar {}
 
-        delegate: Text {
-            width: logsList.width
-            text: {
-                const line = model.line
-                if (timestamps.checked) {
-                    return line
+        ListView {
+            id: logsList
+            anchors.fill: parent
+            clip: true
+            model: ListModel { id: logModel }
+            ScrollBar.vertical: ScrollBar {}
+
+            delegate: Text {
+                width: logsList.width
+                text: {
+                    const line = model.line
+                    if (timestamps.checked) {
+                        return line
+                    }
+                    const space = line.indexOf(" ")
+                    return space > 0 ? line.substring(space + 1) : line
                 }
-                const space = line.indexOf(" ")
-                return space > 0 ? line.substring(space + 1) : line
+                color: Theme.textSecondary
+                font.family: Theme.monoFamily
+                font.pixelSize: Theme.fontMeta
+                textFormat: Text.PlainText
+                wrapMode: wrapLines.checked ? Text.WrapAnywhere : Text.NoWrap
+                padding: 10
             }
-            color: theme.textSecondary
-            font.family: "monospace"
-            font.pixelSize: 10
-            textFormat: Text.PlainText
-            wrapMode: wrapLines.checked ? Text.WrapAnywhere : Text.NoWrap
+
+            Text {
+                anchors.centerIn: parent
+                width: parent.width - 32
+                visible: logsList.count === 0
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("Sem logs. Assine os logs do container para acompanhar a saída.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                wrapMode: Text.WordWrap
+            }
         }
     }
 

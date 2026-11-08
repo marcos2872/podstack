@@ -6,93 +6,74 @@ import PodStack
 ColumnLayout {
     id: networksView
 
-    Theme { id: theme }
 
     spacing: 0
 
-    Rectangle {
+    ViewHeader {
         Layout.fillWidth: true
-        Layout.preferredHeight: 52
-        color: theme.bgBase
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.topMargin: 20
+        Layout.bottomMargin: 16
+        title: qsTr("Networks")
+        subtitle: backend.networks.length + qsTr(" redes")
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 8
-
-            Label {
-                text: "Networks"
-                color: theme.textPrimary
-                font.pixelSize: 15
-                font.bold: true
-            }
-
-            Label {
-                text: backend.networks.length + " itens"
-                color: theme.textSecondary
-                font.pixelSize: 11
-            }
-
-            Item { Layout.fillWidth: true }
-
-            ActionButton {
-                text: "Criar"
-                onClicked: {
-                    networkName.text = ""
-                    networkSubnet.text = ""
-                    networkGateway.text = ""
-                    createDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Conectar"
-                accentColor: theme.indigo500
-                enabled: networksList.currentRow >= 0
-                onClicked: {
-                    connectNetworkName.text = backend.networks[networksList.currentRow].name
-                    connectContainer.text = ""
-                    connectDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Desconectar"
-                accentColor: theme.bgElevated
-                enabled: networksList.currentRow >= 0
-                onClicked: {
-                    disconnectNetworkName.text = backend.networks[networksList.currentRow].name
-                    disconnectContainer.text = ""
-                    disconnectDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Remover"
-                accentColor: theme.danger
-                enabled: networksList.currentRow >= 0
-                onClicked: removeDialog.open()
-            }
-
-            ActionButton {
-                text: "Atualizar"
-                accentColor: theme.bgElevated
-                onClicked: backend.refreshNetworks()
+        ActionButton {
+            text: qsTr("Criar")
+            variant: "primary"
+            iconName: "plus"
+            onClicked: {
+                networkName.text = ""
+                networkSubnet.text = ""
+                networkGateway.text = ""
+                createDialog.open()
             }
         }
-    }
 
-    Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 1
-        color: theme.border
+        ActionButton {
+            text: qsTr("Conectar")
+            enabled: networksList.currentRow >= 0
+            onClicked: {
+                connectNetworkName.text = backend.networks[networksList.currentRow].name
+                connectContainer.text = ""
+                connectDialog.open()
+            }
+        }
+
+        ActionButton {
+            text: qsTr("Desconectar")
+            enabled: networksList.currentRow >= 0
+            onClicked: {
+                disconnectNetworkName.text = backend.networks[networksList.currentRow].name
+                disconnectContainer.text = ""
+                disconnectDialog.open()
+            }
+        }
+
+        ActionButton {
+            text: qsTr("Remover")
+            variant: "danger"
+            enabled: networksList.currentRow >= 0
+            onClicked: removeDialog.open()
+        }
+
+        ActionButton {
+            variant: "ghost"
+            iconName: "refresh"
+            onClicked: backend.refreshNetworks()
+            Accessible.name: qsTr("Atualizar")
+        }
     }
 
     CatalogList {
         id: networksList
         Layout.fillWidth: true
         Layout.fillHeight: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 20
+        emptyIcon: "networks"
+            emptyText: qsTr("Nenhuma rede.\nCrie uma rede bridge para isolar containers.")
         items: backend.networks
         columns: [
             { key: "name", label: "NAME", width: 0 },
@@ -102,32 +83,21 @@ ColumnLayout {
         ]
     }
 
-    Label {
-        Layout.fillWidth: true
-        Layout.margins: 24
-        visible: backend.networks.length === 0
-        horizontalAlignment: Text.AlignHCenter
-        text: "Nenhuma rede.\nCrie uma rede bridge para isolar containers."
-        color: theme.textSecondary
-        font.pixelSize: 12
-        wrapMode: Text.WordWrap
-    }
-
     Dialog {
         id: createDialog
         title: "Nova rede"
         modal: true
         width: 460
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
             Label {
                 text: "Nome"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -138,7 +108,7 @@ ColumnLayout {
             }
             Label {
                 text: "Subnet (CIDR, opcional)"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -149,7 +119,7 @@ ColumnLayout {
             }
             Label {
                 text: "Gateway (opcional)"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -163,7 +133,7 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
-                accentColor: theme.bgElevated
+                variant: "secondary"
                 onClicked: createDialog.close()
             }
             ActionButton {
@@ -184,15 +154,15 @@ ColumnLayout {
         modal: true
         width: 440
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
             Label {
                 text: "Rede"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -203,7 +173,7 @@ ColumnLayout {
             }
             Label {
                 text: "Container (ID ou nome)"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -216,7 +186,7 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
-                accentColor: theme.bgElevated
+                variant: "secondary"
                 onClicked: connectDialog.close()
             }
             ActionButton {
@@ -236,15 +206,15 @@ ColumnLayout {
         modal: true
         width: 440
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
             Label {
                 text: "Rede"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -255,7 +225,7 @@ ColumnLayout {
             }
             Label {
                 text: "Container (ID ou nome)"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -268,7 +238,7 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
-                accentColor: theme.bgElevated
+                variant: "secondary"
                 onClicked: disconnectDialog.close()
             }
             ActionButton {
@@ -289,13 +259,13 @@ ColumnLayout {
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: Label {
             text: "Containers conectados bloqueiam a remoção."
-            color: theme.textPrimary
+            color: Theme.textPrimary
             wrapMode: Text.WordWrap
         }
         onAccepted: {

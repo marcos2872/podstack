@@ -8,26 +8,27 @@ ColumnLayout {
 
     property string containerId
 
-    Theme { id: theme }
-
-    spacing: 6
+    Layout.margins: 14
+    spacing: 8
 
     RowLayout {
         Layout.fillWidth: true
         spacing: 6
 
-        Label {
+        Text {
             Layout.fillWidth: true
             text: backend.filesPath
-            color: theme.textSecondary
-            font.family: "monospace"
-            font.pixelSize: 10
+            color: Theme.textSecondary
+            font.family: Theme.monoFamily
+            font.pixelSize: Theme.fontMeta
             elide: Text.ElideMiddle
         }
 
         ActionButton {
-            text: "Enviar"
-            accentColor: theme.indigo500
+            text: qsTr("Enviar")
+            variant: "primary"
+            size: "sm"
+            iconName: "upload"
             enabled: filesView.containerId !== "" && uploadPath.text.length > 0
             onClicked: {
                 backend.uploadFile(filesView.containerId, backend.filesPath, uploadPath.text)
@@ -35,80 +36,99 @@ ColumnLayout {
         }
 
         ActionButton {
-            text: "Atualizar"
-            accentColor: theme.bgElevated
+            variant: "ghost"
+            iconName: "refresh"
+            size: "sm"
             enabled: filesView.containerId !== ""
             onClicked: backend.listFiles(filesView.containerId, backend.filesPath)
+            Accessible.name: qsTr("Atualizar")
         }
     }
 
-    RowLayout {
+    FormField {
+        id: uploadPath
         Layout.fillWidth: true
-        spacing: 6
-
-        FormField {
-            id: uploadPath
-            Layout.fillWidth: true
-            placeholderText: "Arquivo local para enviar ao container..."
-        }
+        Layout.preferredHeight: 30
+        placeholderText: qsTr("Arquivo local para enviar ao container…")
     }
 
-    ListView {
-        id: filesList
+    Rectangle {
         Layout.fillWidth: true
         Layout.fillHeight: true
+        color: Theme.bgSurface2
+        radius: Theme.radiusSm
+        border.width: 1
+        border.color: Theme.border
         clip: true
-        model: backend.files
-        ScrollBar.vertical: ScrollBar {}
 
-        delegate: ItemDelegate {
-            width: filesList.width
-            height: 32
-            onClicked: {
-                if (model.directory) {
-                    return
+        ListView {
+            id: filesList
+            anchors.fill: parent
+            clip: true
+            model: backend.files
+            ScrollBar.vertical: ScrollBar {}
+
+            delegate: ItemDelegate {
+                id: fileRow
+                width: filesList.width
+                height: 34
+                hoverEnabled: true
+
+                onClicked: {
+                    if (modelData.directory) {
+                        return
+                    }
+                    const base = backend.filesPath.endsWith("/") ? backend.filesPath
+                                                                 : backend.filesPath + "/"
+                    backend.downloadFile(filesView.containerId, base + modelData.name)
                 }
-                const base = backend.filesPath.endsWith("/") ? backend.filesPath
-                                                             : backend.filesPath + "/"
-                backend.downloadFile(filesView.containerId, base + model.name)
+
+                background: Rectangle {
+                    color: fileRow.hovered
+                           ? Qt.rgba(Theme.textPrimary.r, Theme.textPrimary.g,
+                                     Theme.textPrimary.b, 0.04)
+                           : "transparent"
+                }
+
+                contentItem: RowLayout {
+                    spacing: 8
+
+                    AppIcon {
+                        name: modelData.directory ? "folder" : "file"
+                        size: 14
+                        color: modelData.directory ? Theme.indigo400 : Theme.textTertiary
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: modelData.name
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideMiddle
+                    }
+
+                    Text {
+                        text: modelData.directory ? qsTr("dir") : filesView.formatSize(modelData.size)
+                        color: Theme.textTertiary
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontMeta
+                    }
+                }
             }
-            background: Rectangle {
-                color: "transparent"
-            }
-            contentItem: RowLayout {
-                spacing: 8
 
-                Rectangle {
-                    width: 14
-                    height: 14
-                    radius: 3
-                    color: model.directory ? theme.indigo700 : theme.bgElevated
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    text: model.name
-                    color: theme.textPrimary
-                    font.pixelSize: 11
-                    elide: Text.ElideMiddle
-                }
-
-                Label {
-                    text: model.directory ? "dir" : filesView.formatSize(model.size)
-                    color: theme.textSecondary
-                    font.pixelSize: 10
-                }
+            Text {
+                anchors.centerIn: parent
+                width: parent.width - 32
+                visible: filesList.count === 0
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("Selecione um container e atualize para listar os arquivos.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                wrapMode: Text.WordWrap
             }
         }
-    }
-
-    Label {
-        Layout.fillWidth: true
-        visible: backend.files.length === 0
-        text: "Selecione um container e atualize para listar os arquivos."
-        color: theme.textSecondary
-        font.pixelSize: 10
-        wrapMode: Text.WordWrap
     }
 
     function formatSize(bytes) {

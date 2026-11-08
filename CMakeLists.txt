@@ -92,12 +92,24 @@ qt_add_executable(podstack-gui
     src/gui/main.cpp
 )
 
+set_source_files_properties(src/gui/qml/Theme.qml
+    PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
+file(GLOB PODSTACK_UI_ICONS CONFIGURE_DEPENDS
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    assets/icons/*.svg)
+
 qt_add_qml_module(podstack-gui
     URI PodStack
     VERSION 1.0
     QML_FILES
         src/gui/qml/Main.qml
         src/gui/qml/Theme.qml
+        src/gui/qml/AppIcon.qml
+        src/gui/qml/AppBadge.qml
+        src/gui/qml/NavItem.qml
+        src/gui/qml/Sparkline.qml
+        src/gui/qml/ViewHeader.qml
         src/gui/qml/ActionButton.qml
         src/gui/qml/FormField.qml
         src/gui/qml/FormCheck.qml
@@ -114,6 +126,14 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/ComposeView.qml
         src/gui/qml/BuildsView.qml
         src/gui/qml/Toast.qml
+    RESOURCES
+        assets/fonts/Inter-Regular.ttf
+        assets/fonts/Inter-Medium.ttf
+        assets/fonts/Inter-SemiBold.ttf
+        assets/fonts/Inter-Bold.ttf
+        assets/podstack-capsule.svg
+        assets/podstack-capsule-mark.svg
+        ${PODSTACK_UI_ICONS}
 )
 
 target_link_libraries(podstack-gui PRIVATE

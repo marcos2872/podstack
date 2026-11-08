@@ -6,97 +6,78 @@ import PodStack
 ColumnLayout {
     id: volumesView
 
-    Theme { id: theme }
 
     spacing: 0
 
-    Rectangle {
+    ViewHeader {
         Layout.fillWidth: true
-        Layout.preferredHeight: 52
-        color: theme.bgBase
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.topMargin: 20
+        Layout.bottomMargin: 16
+        title: qsTr("Volumes")
+        subtitle: backend.volumes.length + qsTr(" volumes")
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 8
-
-            Label {
-                text: "Volumes"
-                color: theme.textPrimary
-                font.pixelSize: 15
-                font.bold: true
-            }
-
-            Label {
-                text: backend.volumes.length + " itens"
-                color: theme.textSecondary
-                font.pixelSize: 11
-            }
-
-            Item { Layout.fillWidth: true }
-
-            ActionButton {
-                text: "Criar"
-                onClicked: {
-                    volumeName.text = ""
-                    createDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Clone"
-                accentColor: theme.indigo500
-                enabled: volumesList.currentRow >= 0
-                onClicked: {
-                    cloneSource.text = backend.volumes[volumesList.currentRow].name
-                    cloneDestination.text = cloneSource.text + "-copy"
-                    cloneDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Importar"
-                accentColor: theme.indigo500
-                enabled: volumesList.currentRow >= 0
-                onClicked: {
-                    importVolumeName.text = backend.volumes[volumesList.currentRow].name
-                    importHostSource.text = ""
-                    importHostDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: "Prune"
-                accentColor: theme.warning
-                onClicked: pruneDialog.open()
-            }
-
-            ActionButton {
-                text: "Remover"
-                accentColor: theme.danger
-                enabled: volumesList.currentRow >= 0
-                onClicked: removeDialog.open()
-            }
-
-            ActionButton {
-                text: "Atualizar"
-                accentColor: theme.bgElevated
-                onClicked: backend.refreshVolumes()
+        ActionButton {
+            text: qsTr("Criar")
+            variant: "primary"
+            iconName: "plus"
+            onClicked: {
+                volumeName.text = ""
+                createDialog.open()
             }
         }
-    }
 
-    Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 1
-        color: theme.border
+        ActionButton {
+            text: qsTr("Clone")
+            enabled: volumesList.currentRow >= 0
+            onClicked: {
+                cloneSource.text = backend.volumes[volumesList.currentRow].name
+                cloneDestination.text = cloneSource.text + "-copy"
+                cloneDialog.open()
+            }
+        }
+
+        ActionButton {
+            text: qsTr("Importar")
+            enabled: volumesList.currentRow >= 0
+            onClicked: {
+                importVolumeName.text = backend.volumes[volumesList.currentRow].name
+                importHostSource.text = ""
+                importHostDialog.open()
+            }
+        }
+
+        ActionButton {
+            text: qsTr("Prune")
+            iconName: "trash"
+            onClicked: pruneDialog.open()
+        }
+
+        ActionButton {
+            text: qsTr("Remover")
+            variant: "danger"
+            enabled: volumesList.currentRow >= 0
+            onClicked: removeDialog.open()
+        }
+
+        ActionButton {
+            variant: "ghost"
+            iconName: "refresh"
+            onClicked: backend.refreshVolumes()
+            Accessible.name: qsTr("Atualizar")
+        }
     }
 
     CatalogList {
         id: volumesList
         Layout.fillWidth: true
         Layout.fillHeight: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 20
+        emptyIcon: "volumes"
+            emptyText: qsTr("Nenhum volume.\nCrie um volume para persistir dados.")
         items: backend.volumes
         columns: [
             { key: "name", label: "NAME", width: 0 },
@@ -106,32 +87,21 @@ ColumnLayout {
         ]
     }
 
-    Label {
-        Layout.fillWidth: true
-        Layout.margins: 24
-        visible: backend.volumes.length === 0
-        horizontalAlignment: Text.AlignHCenter
-        text: "Nenhum volume.\nCrie um volume para persistir dados."
-        color: theme.textSecondary
-        font.pixelSize: 12
-        wrapMode: Text.WordWrap
-    }
-
     Dialog {
         id: createDialog
         title: "Novo volume"
         modal: true
         width: 440
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
             Label {
                 text: "Nome"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -142,7 +112,7 @@ ColumnLayout {
             }
             Label {
                 text: "Driver"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -156,7 +126,7 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
-                accentColor: theme.bgElevated
+                variant: "secondary"
                 onClicked: createDialog.close()
             }
             ActionButton {
@@ -176,15 +146,15 @@ ColumnLayout {
         modal: true
         width: 440
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
             Label {
                 text: "Origem"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -195,7 +165,7 @@ ColumnLayout {
             }
             Label {
                 text: "Destino (novo volume)"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -209,7 +179,7 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
-                accentColor: theme.bgElevated
+                variant: "secondary"
                 onClicked: cloneDialog.close()
             }
             ActionButton {
@@ -229,15 +199,15 @@ ColumnLayout {
         modal: true
         width: 460
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
             Label {
                 text: "Volume"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -248,7 +218,7 @@ ColumnLayout {
             }
             Label {
                 text: "Diretório de origem"
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -259,7 +229,7 @@ ColumnLayout {
             }
             Label {
                 text: "O conteúdo será copiado para o volume (aditivo)."
-                color: theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: 10
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
@@ -269,7 +239,7 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
-                accentColor: theme.bgElevated
+                variant: "secondary"
                 onClicked: importHostDialog.close()
             }
             ActionButton {
@@ -289,13 +259,13 @@ ColumnLayout {
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: Label {
             text: "O volume e seus dados serão removidos permanentemente."
-            color: theme.textPrimary
+            color: Theme.textPrimary
             wrapMode: Text.WordWrap
         }
         onAccepted: {
@@ -311,13 +281,13 @@ ColumnLayout {
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
-            color: theme.bgSurface
+            color: Theme.bgSurface
             radius: 10
-            border.color: theme.border
+            border.color: Theme.border
         }
         contentItem: Label {
             text: "Remove volumes sem containers usando. Os dados desses volumes serão perdidos."
-            color: theme.textPrimary
+            color: Theme.textPrimary
             wrapMode: Text.WordWrap
         }
         onAccepted: backend.pruneVolumes()

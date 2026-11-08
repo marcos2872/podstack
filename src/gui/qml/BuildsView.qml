@@ -6,92 +6,77 @@ import PodStack
 ColumnLayout {
     id: buildsView
 
-    Theme { id: theme }
-
     spacing: 0
 
-    Rectangle {
+    ViewHeader {
         Layout.fillWidth: true
-        Layout.preferredHeight: 52
-        color: theme.bgBase
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.topMargin: 20
+        Layout.bottomMargin: 16
+        title: qsTr("Builds")
+        subtitle: backend.builds.length + qsTr(" registros")
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 8
+        Text {
+            visible: backend.buildStatus.length > 0
+            text: backend.buildStatus
+            color: backend.buildActive ? Theme.cyan : Theme.textTertiary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMicro
+            elide: Text.ElideRight
+            Layout.maximumWidth: 260
+        }
 
-            Label {
-                text: "Builds"
-                color: theme.textPrimary
-                font.pixelSize: 15
-                font.bold: true
-            }
-
-            Label {
-                text: backend.builds.length + " registros"
-                color: theme.textSecondary
-                font.pixelSize: 11
-            }
-
-            Item { Layout.fillWidth: true }
-
-            Label {
-                text: backend.buildStatus
-                visible: backend.buildStatus.length > 0
-                color: backend.buildActive ? theme.cyan : theme.textSecondary
-                font.pixelSize: 10
-                elide: Text.ElideRight
-                Layout.maximumWidth: 260
-            }
-
-            ActionButton {
-                text: "Novo build"
-                onClicked: {
-                    buildContext.text = ""
-                    buildDockerfile.text = "Dockerfile"
-                    buildTag.text = ""
-                    buildArgs.text = ""
-                    buildPlatform.text = ""
-                    buildDialog.open()
-                }
-            }
-
-            ActionButton {
-                text: backend.buildActive ? "Cancelar" : "Remover"
-                accentColor: backend.buildActive ? theme.warning : theme.danger
-                enabled: backend.buildActive || buildsList.currentRow >= 0
-                onClicked: {
-                    if (backend.buildActive) {
-                        backend.cancelBuild()
-                    } else if (buildsList.currentRow >= 0) {
-                        backend.removeBuild(backend.builds[buildsList.currentRow].id)
-                    }
-                }
-            }
-
-            ActionButton {
-                text: "Atualizar"
-                accentColor: theme.bgElevated
-                onClicked: backend.refreshBuilds()
+        ActionButton {
+            text: qsTr("Novo build")
+            variant: "primary"
+            iconName: "plus"
+            onClicked: {
+                buildContext.text = ""
+                buildDockerfile.text = "Dockerfile"
+                buildTag.text = ""
+                buildArgs.text = ""
+                buildPlatform.text = ""
+                buildDialog.open()
             }
         }
-    }
 
-    Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 1
-        color: theme.border
+        ActionButton {
+            text: backend.buildActive ? qsTr("Cancelar") : qsTr("Remover")
+            variant: backend.buildActive ? "secondary" : "danger"
+            enabled: backend.buildActive || buildsList.currentRow >= 0
+            onClicked: {
+                if (backend.buildActive) {
+                    backend.cancelBuild()
+                } else if (buildsList.currentRow >= 0) {
+                    backend.removeBuild(backend.builds[buildsList.currentRow].id)
+                }
+            }
+        }
+
+        ActionButton {
+            variant: "ghost"
+            iconName: "refresh"
+            onClicked: backend.refreshBuilds()
+            Accessible.name: qsTr("Atualizar")
+        }
     }
 
     SplitView {
         Layout.fillWidth: true
         Layout.fillHeight: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 20
+        spacing: 16
 
         CatalogList {
             id: buildsList
             SplitView.preferredWidth: 460
             SplitView.minimumWidth: 340
+            emptyIcon: "builds"
+            emptyText: qsTr("Nenhum build registrado.\n"
+                            + "Inicie um build informando contexto, Dockerfile e tag.")
             items: backend.builds
             columns: [
                 { key: "imageRef", label: "IMAGEM", width: 0 },
@@ -101,140 +86,168 @@ ColumnLayout {
             ]
         }
 
-        ColumnLayout {
+        Rectangle {
             SplitView.fillWidth: true
             SplitView.minimumWidth: 320
-            spacing: 6
-            Layout.margins: 8
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+            clip: true
 
-            RowLayout {
-                Layout.fillWidth: true
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
 
-                Label {
+                RowLayout {
                     Layout.fillWidth: true
-                    text: backend.activeBuildId.length > 0
-                          ? backend.activeBuildId : "Log do build"
-                    color: theme.textPrimary
-                    font.pixelSize: 12
-                    font.bold: true
-                    elide: Text.ElideMiddle
-                }
+                    Layout.preferredHeight: 44
+                    Layout.leftMargin: 14
+                    Layout.rightMargin: 14
+                    spacing: 8
 
-                Label {
-                    text: backend.buildActive ? "em execução" : ""
-                    color: theme.cyan
-                    font.pixelSize: 10
-                }
-            }
+                    Text {
+                        Layout.fillWidth: true
+                        text: backend.activeBuildId.length > 0
+                              ? backend.activeBuildId : qsTr("Log do build")
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideMiddle
+                    }
 
-            ListView {
-                id: buildLogView
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: backend.buildLog
-                ScrollBar.vertical: ScrollBar {}
-
-                delegate: Text {
-                    width: buildLogView.width
-                    text: modelData
-                    color: theme.textSecondary
-                    font.family: "monospace"
-                    font.pixelSize: 10
-                    textFormat: Text.PlainText
-                    wrapMode: Text.WrapAnywhere
-                }
-
-                Connections {
-                    target: backend
-                    function onBuildLogChanged() {
-                        buildLogView.positionViewAtEnd()
+                    AppBadge {
+                        visible: backend.buildActive
+                        text: qsTr("em execução")
+                        tone: "accent"
                     }
                 }
-            }
 
-            Label {
-                Layout.fillWidth: true
-                visible: backend.buildLog.length === 0
-                text: "Inicie um build informando contexto, Dockerfile e tag."
-                color: theme.textSecondary
-                font.pixelSize: 10
-                wrapMode: Text.WordWrap
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.border
+                }
+
+                ListView {
+                    id: buildLogView
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    model: backend.buildLog
+                    ScrollBar.vertical: ScrollBar {}
+
+                    delegate: Text {
+                        width: ListView.view.width
+                        text: modelData
+                        color: Theme.textSecondary
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontMeta
+                        textFormat: Text.PlainText
+                        wrapMode: Text.WrapAnywhere
+                        padding: 10
+                    }
+
+                    Connections {
+                        target: backend
+                        function onBuildLogChanged() {
+                            buildLogView.positionViewAtEnd()
+                        }
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        width: parent.width - 40
+                        horizontalAlignment: Text.AlignHCenter
+                        visible: buildLogView.count === 0
+                        text: qsTr("Inicie um build informando contexto, Dockerfile e tag.")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMeta
+                        wrapMode: Text.WordWrap
+                    }
+                }
             }
         }
     }
 
     Dialog {
         id: buildDialog
-        title: "Novo build"
+        title: qsTr("Novo build")
         modal: true
         width: 560
+        anchors.centerIn: parent
         background: Rectangle {
-            color: theme.bgSurface
-            radius: 10
-            border.color: theme.border
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
         }
         contentItem: ColumnLayout {
             spacing: 8
+
             GridLayout {
                 columns: 2
                 Layout.fillWidth: true
                 columnSpacing: 10
                 rowSpacing: 6
 
-                Label { text: "Contexto"; color: theme.textSecondary; font.pixelSize: 11 }
+                Text { text: qsTr("Contexto"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
                 FormField {
                     id: buildContext
                     Layout.fillWidth: true
                     placeholderText: "/home/usuario/projeto"
                 }
 
-                Label { text: "Dockerfile"; color: theme.textSecondary; font.pixelSize: 11 }
+                Text { text: qsTr("Dockerfile"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
                 FormField {
                     id: buildDockerfile
                     Layout.fillWidth: true
                     placeholderText: "Dockerfile"
                 }
 
-                Label { text: "Tag"; color: theme.textSecondary; font.pixelSize: 11 }
+                Text { text: qsTr("Tag"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
                 FormField {
                     id: buildTag
                     Layout.fillWidth: true
                     placeholderText: "minha-imagem:latest"
                 }
 
-                Label { text: "Build args"; color: theme.textSecondary; font.pixelSize: 11 }
+                Text { text: qsTr("Build args"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
                 FormField {
                     id: buildArgs
                     Layout.fillWidth: true
                     placeholderText: "A=B, C=D"
                 }
 
-                Label { text: "Plataforma"; color: theme.textSecondary; font.pixelSize: 11 }
+                Text { text: qsTr("Plataforma"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
                 FormField {
                     id: buildPlatform
                     Layout.fillWidth: true
-                    placeholderText: "linux/amd64 (opcional)"
+                    placeholderText: qsTr("linux/amd64 (opcional)")
                 }
             }
 
-            Label {
+            Text {
                 Layout.fillWidth: true
-                text: "O contexto é empacotado em tar (até 512 MB) e enviado via Libpod."
-                color: theme.textSecondary
-                font.pixelSize: 10
+                text: qsTr("O contexto é empacotado em tar (até 512 MB) e enviado via Libpod.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
                 wrapMode: Text.WordWrap
             }
         }
         footer: RowLayout {
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: "Cancelar"
-                accentColor: theme.bgElevated
+                text: qsTr("Cancelar")
+                variant: "secondary"
                 onClicked: buildDialog.close()
             }
             ActionButton {
-                text: "Buildar"
+                text: qsTr("Buildar")
+                variant: "primary"
                 enabled: buildContext.text.length > 0 && buildTag.text.length > 0
                          && !backend.buildActive
                 onClicked: {
