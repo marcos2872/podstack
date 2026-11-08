@@ -199,7 +199,7 @@ Item {
                         }
 
                         Label {
-                            text: model.state
+                            text: model.status.length > 0 ? model.status : model.state
                             color: model.state === "running"
                                    ? (model.health === "unhealthy" ? theme.danger
                                       : model.health === "starting" ? theme.warning
@@ -381,6 +381,9 @@ Item {
         }
         if (changed) {
             selectedIds = next
+        }
+        if (containerList.currentIndex < 0 && containerModel.count > 0) {
+            containerList.currentIndex = 0
         }
     }
 

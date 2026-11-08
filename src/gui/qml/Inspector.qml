@@ -144,6 +144,27 @@ Rectangle {
                 }
 
                 Label {
+                    visible: inspector.selected !== null
+                             && inspector.selected.status.length > 0
+                             && inspector.selected.status !== inspector.selected.state
+                    text: "STATUS"
+                    color: theme.textSecondary
+                    font.pixelSize: 10
+                    font.bold: true
+                }
+
+                Label {
+                    visible: inspector.selected !== null
+                             && inspector.selected.status.length > 0
+                             && inspector.selected.status !== inspector.selected.state
+                    text: inspector.selected.status
+                    color: theme.textPrimary
+                    font.pixelSize: 11
+                    wrapMode: Text.WrapAnywhere
+                    Layout.fillWidth: true
+                }
+
+                Label {
                     text: "SAÚDE"
                     color: theme.textSecondary
                     font.pixelSize: 10

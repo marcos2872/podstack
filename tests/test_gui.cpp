@@ -114,13 +114,14 @@ void GuiTest::containerListModel()
     item.insert(QStringLiteral("ports"), QStringLiteral("8080->80/tcp"));
     item.insert(QStringLiteral("id"), QStringLiteral("abc123"));
     item.insert(QStringLiteral("health"), QStringLiteral("healthy"));
+    item.insert(QStringLiteral("status"), QStringLiteral("Up 1 minute (healthy)"));
 
     model.setContainers({item});
     QCOMPARE(model.count(), 1);
     QCOMPARE(countSpy.count(), 1);
     QCOMPARE(model.rowCount(), 1);
     QCOMPARE(model.rowCount(model.index(0, 0)), 0);
-    QCOMPARE(model.roleNames().size(), 6);
+    QCOMPARE(model.roleNames().size(), 7);
 
     const QModelIndex index = model.index(0, 0);
     QCOMPARE(model.data(index, PodStack::ContainerListModel::NameRole).toString(),
@@ -135,6 +136,8 @@ void GuiTest::containerListModel()
              QStringLiteral("abc123"));
     QCOMPARE(model.data(index, PodStack::ContainerListModel::HealthRole).toString(),
              QStringLiteral("healthy"));
+    QCOMPARE(model.data(index, PodStack::ContainerListModel::StatusRole).toString(),
+             QStringLiteral("Up 1 minute (healthy)"));
     QVERIFY(model.data(index, Qt::DisplayRole).isNull());
     QVERIFY(model.data(QModelIndex(), PodStack::ContainerListModel::NameRole).isNull());
 
