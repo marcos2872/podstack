@@ -279,7 +279,7 @@
   const SETUP_STEPS = [
     { label: "Boas-vindas", hint: "visão geral" },
     { label: "Diagnóstico", hint: "o que já existe" },
-    { label: "Docker → Podman", hint: "sem conflito de engine" },
+    { label: "Podman", hint: "instalar ou atualizar" },
     { label: "QEMU/KVM", hint: "máquinas Linux" },
     { label: "Componentes", hint: "socket, Caddy, k3s" },
     { label: "Validação", hint: "checklist final" },
@@ -288,7 +288,7 @@
 
   const NAV = [
     {
-      label: "Docker",
+      label: "Engine",
       items: [
         { id: "containers", label: "Containers", icon: "containers", count: () => data.containers.length },
         { id: "images", label: "Images", icon: "images", count: () => data.images.length },
@@ -296,11 +296,8 @@
         { id: "networks", label: "Networks", icon: "networks", count: () => data.networks.length },
         { id: "compose", label: "Compose", icon: "compose", count: () => data.compose.length },
         { id: "builds", label: "Builds", icon: "builds", count: () => data.builds.length },
+        { id: "pods", label: "Pods", icon: "pods", count: () => data.pods.length },
       ],
-    },
-    {
-      label: "Kubernetes",
-      items: [{ id: "pods", label: "Pods", icon: "pods", count: () => data.pods.length }],
     },
     {
       label: "Linux",
@@ -767,11 +764,11 @@
     const rows = data.pods.filter((p) => matches(`${p.name} ${p.id}`));
     return `
       <div class="view-head">
-        <div><div class="view-title">Pods</div><div class="view-sub">${data.pods.length} pods · Kubernetes local</div></div>
+        <div><div class="view-title">Pods</div><div class="view-sub">${data.pods.length} pods · grupos de containers do Podman</div></div>
         <div class="view-actions"><button class="btn icon" data-action="refresh" title="Atualizar">${icon("refresh")}</button></div>
       </div>
       <section class="panel">
-        <div class="panel-head"><span class="panel-title">Pods</span><span class="panel-sub">infra containers e serviços</span></div>
+        <div class="panel-head"><span class="panel-title">Pods</span><span class="panel-sub">containers agrupados no mesmo namespace</span></div>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Nome</th><th>Status</th><th>Containers</th><th>IP</th><th>Idade</th></tr></thead>
           <tbody>${rows.map((p) => `
@@ -1034,12 +1031,12 @@
     return `<div class="setup-hero">
       <div class="setup-hero-logo"><span class="logo"></span></div>
       <h1>Vamos preparar sua máquina</h1>
-      <p class="setup-lead">O PodStack roda sobre o Podman nativo e usa QEMU/KVM para máquinas Linux. Vamos detectar o que já existe, remover conflitos e validar cada componente antes de abrir o app.</p>
+      <p class="setup-lead">O PodStack roda sobre o Podman nativo e usa QEMU/KVM para máquinas Linux. Vamos detectar o que já existe, instalar ou atualizar o Podman e validar cada componente antes de abrir o app. O Docker pode continuar instalado; removê-lo é opcional.</p>
       <div class="setup-feature-grid">
-        <div>${icon("containers")}<b>Podman nativo</b><span>Engine rootless, socket e CLI, sem Docker.</span></div>
+        <div>${icon("containers")}<b>Podman nativo</b><span>Engine rootless, socket e CLI, sem depender do Docker.</span></div>
         <div>${icon("machines")}<b>QEMU/KVM</b><span>Máquinas Linux com cloud-init e virtiofs.</span></div>
         <div>${icon("networks")}<b>Domínios locais</b><span>Caddy para HTTPS em *.localhost.</span></div>
-        <div>${icon("builds")}<b>Sem conflito</b><span>Docker é detectado e removido antes do Podman.</span></div>
+        <div>${icon("builds")}<b>Coexistência</b><span>Docker e Podman usam sockets diferentes; um não bloqueia o outro.</span></div>
       </div>
       <div class="setup-note">${icon("shield")}<span>Nada é alterado sem sua confirmação. Você pode pular etapas e revisar depois em Settings.</span></div>
     </div>`;
@@ -1048,9 +1045,9 @@
   function setupDiagnose() {
     const s = state.setup;
     return `<h2 class="setup-h2">Diagnóstico do sistema</h2>
-      <p class="setup-lead">Este é o estado atual da máquina. Docker é um conflito conhecido; Podman é obrigatório para o app.</p>
+      <p class="setup-lead">Este é o estado atual da máquina. O Docker pode coexistir com o Podman; o Podman é obrigatório para o app.</p>
       <div class="setup-checks">
-        ${setupCheckRow("Docker Engine", s.docker ? "warn" : "ok", s.docker ? "v27.3.1 · docker.socket ativo — será removido" : "não instalado")}
+        ${setupCheckRow("Docker Engine", s.docker ? "optional" : "ok", s.docker ? "v27.3.1 · docker.socket ativo — coexistência OK" : "não instalado")}
         ${setupCheckRow("Podman", !s.podman ? "missing" : s.podmanOutdated ? "warn" : "ok", !s.podman ? "ausente — instalação necessária" : s.podmanOutdated ? `v${s.podmanVersion} → ${s.podmanLatest} — atualização disponível` : `v${s.podmanVersion} · rootless · atualizado`)}
         ${setupCheckRow("QEMU/KVM", s.qemu ? "ok" : "missing", s.qemu ? "QEMU 9.0.2 · /dev/kvm disponível" : "ausente — necessário para machines")}
         ${setupCheckRow("/dev/kvm", s.kvm ? "ok" : "warn", s.kvm ? "disponível" : "indisponível — modo TCG (lento)")}
@@ -1067,6 +1064,7 @@
           <option value="outdated" ${s.podman && s.podmanOutdated ? "selected" : ""}>Podman 5.4.2 (atualizar)</option>
           <option value="current" ${s.podman && !s.podmanOutdated ? "selected" : ""}>Podman 5.8.9 (atualizado)</option>
         </select>
+        <label class="setup-scenario-docker"><input type="checkbox" data-setup-docker ${s.docker ? "checked" : ""} /> Docker instalado</label>
       </div>
       <div class="setup-actions">
         <button class="btn" data-action="setup-scan" ${s.scanning ? "disabled" : ""}>${icon("refresh")} ${s.scanning ? "Escaneando…" : "Escanear novamente"}</button>
@@ -1077,27 +1075,25 @@
     const s = state.setup;
     const podmanCurrent = s.podman && !s.podmanOutdated;
     const podmanOutdated = s.podman && s.podmanOutdated;
-    const noAction = !s.docker && podmanCurrent;
-    const label = s.docker
-      ? (!s.podman ? "Desinstalar Docker e instalar Podman" : podmanOutdated ? "Desinstalar Docker e atualizar Podman" : "Desinstalar Docker")
-      : (!s.podman ? "Instalar Podman" : podmanOutdated ? "Atualizar Podman" : "Verificar novamente");
-    return `<h2 class="setup-h2">Docker → Podman</h2>
-      <p class="setup-lead">O PodStack usa o Podman nativo. O Docker é desinstalado para evitar conflito de sockets, redes e containers; o Podman é instalado ou atualizado conforme a detecção.</p>
+    const noAction = podmanCurrent;
+    const label = !s.podman ? "Instalar Podman" : podmanOutdated ? "Atualizar Podman" : "Verificar novamente";
+    return `<h2 class="setup-h2">Podman</h2>
+      <p class="setup-lead">O PodStack usa o Podman nativo e rootless. O Docker pode continuar instalado: os sockets são diferentes e os dois engines coexistem. Remover o Docker é opcional e afeta apenas o ambiente Docker.</p>
       ${s.docker
-        ? `<div class="setup-card warn"><div class="setup-card-head">${icon("alert")}<div><b>Docker detectado</b><span>v27.3.1 · docker.socket ativo</span></div><span class="badge warning">conflito</span></div><p>Remover o Docker libera o socket, as redes e os containers para o Podman. Seus dados do Docker não são migrados automaticamente.</p></div>`
-        : `<div class="setup-card success"><div class="setup-card-head">${icon("check")}<div><b>Docker não instalado</b><span>nenhum conflito de engine</span></div><span class="badge success">OK</span></div></div>`}
+        ? `<div class="setup-card"><div class="setup-card-head">${icon("alert")}<div><b>Docker detectado</b><span>v27.3.1 · docker.socket ativo</span></div><span class="badge muted">opcional</span></div><p>O Docker não bloqueia o Podman. Se você quiser removê-lo, os containers, imagens, redes e volumes do Docker serão perdidos; não há migração automática.</p><div class="setup-actions"><button class="btn danger" data-action="setup-remove-docker" ${s.busy ? "disabled" : ""}>${icon("trash")} Remover Docker…</button></div></div>`
+        : `<div class="setup-card success"><div class="setup-card-head">${icon("check")}<div><b>Docker não instalado</b><span>nenhum conflito</span></div><span class="badge success">OK</span></div></div>`}
       <div class="setup-checks">
-        ${setupCheckRow("Docker Engine", s.docker ? "warn" : "ok", s.docker ? "v27.3.1 · docker.socket ativo — será desinstalado" : "não instalado")}
+        ${setupCheckRow("Docker Engine", s.docker ? "optional" : "ok", s.docker ? "v27.3.1 · coexistindo com o Podman" : "não instalado")}
         ${setupCheckRow("Podman", !s.podman ? "missing" : s.podmanOutdated ? "warn" : "ok", !s.podman ? "ausente — será instalado" : s.podmanOutdated ? `v${s.podmanVersion} → ${s.podmanLatest} — atualização disponível` : `v${s.podmanVersion} · rootless · atualizado`)}
       </div>
       ${!noAction
         ? `<div class="setup-card">
-            <div class="setup-card-head">${icon("download")}<div><b>${s.docker ? "Substituir o engine" : "Preparar o Podman"}</b><span>${s.docker ? "Desinstala o Docker e instala/atualiza o Podman." : "Instala/atualiza o Podman e ativa o socket de usuário."}</span></div></div>
+            <div class="setup-card-head">${icon("download")}<div><b>Preparar o Podman</b><span>Instala ou atualiza o Podman e ativa o socket de usuário; o Docker não é alterado.</span></div></div>
             <div class="setup-actions">
-              <button class="btn primary" data-action="setup-apply-engine" ${s.busy ? "disabled" : ""}>${icon(s.docker ? "trash" : "download")} ${label}</button>
+              <button class="btn primary" data-action="setup-apply-engine" ${s.busy ? "disabled" : ""}>${icon("download")} ${label}</button>
             </div>
           </div>`
-        : `<div class="setup-card success"><div class="setup-card-head">${icon("check")}<div><b>Engine pronto</b><span>Docker ausente · Podman ${s.podmanVersion}</span></div><span class="badge success">OK</span></div></div>`}
+        : `<div class="setup-card success"><div class="setup-card-head">${icon("check")}<div><b>Engine pronto</b><span>Podman ${s.podmanVersion}${s.docker ? " · Docker coexistindo" : ""}</span></div><span class="badge success">OK</span></div></div>`}
       ${setupInstallPanel()}`;
   }
 
@@ -1139,7 +1135,7 @@
       ["Podman", !s.podman ? "missing" : s.podmanOutdated ? "warn" : "ok", !s.podman ? "ausente" : s.podmanOutdated ? `v${s.podmanVersion} → ${s.podmanLatest}` : `v${s.podmanVersion} · atualizado`],
       ["Podman socket", s.socket ? "ok" : "missing", s.socket ? "ativo" : "inativo"],
       ["Rootless", s.rootless ? "ok" : "warn", s.rootless ? "configurado" : "pendente"],
-      ["Docker ausente", !s.docker ? "ok" : "warn", !s.docker ? "removido" : "ainda instalado"],
+      ["Docker", !s.docker ? "ok" : "optional", !s.docker ? "não instalado" : "instalado · coexistindo"],
       ["QEMU", s.qemu ? "ok" : "missing", s.qemu ? "instalado" : "ausente"],
       ["/dev/kvm", s.kvm ? "ok" : "warn", s.kvm ? "disponível" : "TCG (lento)"],
       ["virtiofsd", s.virtiofsd ? "ok" : "missing", s.virtiofsd ? "instalado" : "ausente"],
@@ -1165,7 +1161,7 @@
         <div><b>Podman</b><span>${s.podman ? `v${s.podmanVersion}${s.podmanOutdated ? " · atualização pendente" : " · rootless"}` : "pendente"}</span></div>
         <div><b>QEMU/KVM</b><span>${s.qemu ? (s.kvm ? "KVM ativo" : "TCG") : "pendente"}</span></div>
         <div><b>Socket</b><span>${s.socket ? "ativo" : "pendente"}</span></div>
-        <div><b>Docker</b><span>${s.docker ? "remover pendente" : "removido"}</span></div>
+        <div><b>Docker</b><span>${s.docker ? "coexistindo" : "não instalado"}</span></div>
         <div><b>Caddy</b><span>${s.caddy ? "ativo" : "opcional"}</span></div>
         <div><b>k3s</b><span>${s.k3s ? "ativo" : "opcional"}</span></div>
       </div>
@@ -1711,6 +1707,7 @@
         renderSetup();
         break;
       case "setup-close":
+        closeModal();
         state.setup.open = false;
         state.setup.busy = false;
         state.setup.scanning = false;
@@ -1753,14 +1750,9 @@
         break;
       case "setup-apply-engine": {
         const s = state.setup;
-        const hadDocker = s.docker;
         const wasMissing = !s.podman;
         const wasOutdated = s.podmanOutdated;
         const commands = [];
-        if (s.docker) {
-          commands.push("systemctl --user stop docker.socket docker.service");
-          commands.push("sudo dnf remove -y docker-ce docker-ce-cli containerd.io");
-        }
         if (!s.podman) {
           commands.push("sudo dnf install -y podman");
         } else if (s.podmanOutdated) {
@@ -1771,16 +1763,34 @@
         commands.push("systemctl --user enable --now podman.socket");
         commands.push("podman info --format '{{.Host.Security.Rootless}}'");
         runSetup(commands, () => {
-          s.docker = false;
           s.podman = true;
           s.podmanVersion = s.podmanLatest;
           s.podmanOutdated = false;
           s.socket = true;
           s.rootless = true;
-          toast(`${hadDocker ? "Docker desinstalado; " : ""}${wasMissing ? "Podman instalado" : wasOutdated ? "Podman atualizado" : "Podman OK"}`, "success");
+          toast(`${wasMissing ? "Podman instalado" : wasOutdated ? "Podman atualizado" : "Podman OK"}${s.docker ? " — Docker mantido" : ""}`, "success");
         });
         break;
       }
+      case "setup-remove-docker":
+        openModal({
+          title: "Remover o Docker?",
+          sub: "Containers, imagens, redes e volumes do Docker serão perdidos. O Podman não migra esses dados automaticamente.",
+          body: '<div class="hint">O Podman continua instalado. Esta ação não pode ser desfeita.</div>',
+          confirmLabel: "Remover Docker",
+          danger: true,
+          onConfirm: () => {
+            runSetup([
+              "sudo systemctl stop docker.socket docker.service",
+              "sudo dnf remove -y docker-ce docker-ce-cli containerd.io",
+              "docker --version || echo 'docker: removido'",
+            ], () => {
+              state.setup.docker = false;
+              toast(state.setup.podman ? "Docker removido; Podman mantido" : "Docker removido; Podman ainda pendente", "success");
+            });
+          },
+        });
+        break;
       case "setup-install-qemu":
         runSetup([
           "sudo dnf install -y qemu-kvm qemu-system-x86_64 qemu-system-aarch64",
@@ -2155,6 +2165,12 @@
   });
 
   document.addEventListener("change", (event) => {
+    const dockerToggle = event.target.closest("[data-setup-docker]");
+    if (dockerToggle) {
+      state.setup.docker = dockerToggle.checked;
+      renderSetup();
+      return;
+    }
     const select = event.target.closest("[data-setup-scenario]");
     if (!select) return;
     const s = state.setup;
@@ -2168,12 +2184,12 @@
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      if (state.setup.open) {
+      if ($("#modalRoot").innerHTML.trim()) {
+        closeModal();
+      } else if (state.setup.open) {
         state.setup.open = false;
         state.setup.busy = false;
         renderSetup();
-      } else {
-        closeModal();
       }
     }
     if (event.key === "/" && !event.target.matches("input, textarea, select")) {

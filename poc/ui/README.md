@@ -38,7 +38,7 @@ Não há build, dependências ou backend. A fonte **Inter** é carregada do Goog
 | **Pods** | Tabela de pods, status, containers, IP. |
 | **Machines** | Tabela + detalhe, recursos, SSH, mounts, portas, boot log, criar, start/stop/restart, terminal, remover. |
 | **Devices** | USB/serial, anexar/desanexar, escanear, erro e retry. |
-| **Onboarding** | Assistente de primeira execução em 7 etapas, fora da janela do app: diagnóstico, Docker → Podman; QEMU/KVM; componentes; validação. |
+| **Onboarding** | Assistente de primeira execução em 7 etapas, fora da janela do app: diagnóstico, Podman (coexistência com Docker); QEMU/KVM; componentes; validação. |
 | **Temas** | Escuro (padrão) e claro. |
 
 ---
@@ -67,7 +67,7 @@ poc/ui/
 |---|---|
 | [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) | for criar/alterar componentes, tokens, tipografia ou layout. |
 | [SCREENS.md](SCREENS.md) | for implementar uma tela, colunas, ações, estados ou inspector. |
-| [ONBOARDING.md](ONBOARDING.md) | for implementar o primeiro uso, o setup da máquina e o fluxo Docker → Podman. |
+| [ONBOARDING.md](ONBOARDING.md) | for implementar o primeiro uso, o setup da máquina e o fluxo do Podman com coexistência de Docker. |
 | [FLOWS.md](FLOWS.md) | precisar entender a navegação e as sequências de ação. |
 | [DATA-MODEL.md](DATA-MODEL.md) | precisar dos campos, exemplos e mapeamento para o RPC/daemon. |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | for traduzir a POC para QML, componentes, Backend e testes. |
@@ -81,24 +81,38 @@ poc/ui/
 3. Use o botão **Novo container**, `Start all`, os filtros e a busca.
 4. Troque para **Images**, **Volumes**, **Networks**, **Compose**, **Builds**, **Pods**, **Machines** e **Devices** na sidebar.
 5. Clique no botão **Configurar máquina** na barra do desktop (ou no ícone de setup na dock) para abrir o **onboarding**.
-6. No onboarding, percorra as 7 etapas; na etapa **Docker → Podman**, use o seletor **Cenário de demonstração** para alternar entre Podman ausente, desatualizado (5.4.2) e atualizado (5.8.9) e veja o rótulo/ação mudar.
+6. No onboarding, percorra as 7 etapas; na etapa **Podman**, use o seletor **Cenário de demonstração** para alternar entre Podman ausente, desatualizado (5.4.2) e atualizado (5.8.9), e o checkbox **Docker instalado** para ver a coexistência e o fluxo opcional de remoção.
 7. Use o botão sol/lua no header do app para alternar o tema.
 
 ---
 
-## 6. Limites da POC (importante)
+## 6. Posicionamento e diferenciais
+
+No macOS, o valor do OrbStack vem da VM rápida, do file sharing e da rede. No Linux, o Podman já roda nativo — o PodStack não precisa de uma VM para containers. O diferencial é a **experiência integrada**:
+
+- **App nativo em Qt 6/QML** (leve, sem Electron) sobre o Podman nativo.
+- **Machines QEMU/KVM** com cloud-init, SSH e mounts no mesmo app.
+- **Domínios locais** (`*.localhost`) com HTTPS via Caddy.
+- **Densidade + CLI parity**: a GUI cobre o dia a dia, mas não esconde o Podman.
+- **Rootless-first**, com rootful opt-in e helper allowlisted.
+
+O concorrente direto é o **Podman Desktop**; a aposta é um app nativo, denso e com machines integradas, em vez de uma experiência fragmentada. O OrbStack é referência de polimento, não de arquitetura.
+
+---
+
+## 7. Limites da POC (importante)
 
 - Todos os dados são **mock** e vivem em `app.js`; nada é persistido.
 - Todas as ações são **simuladas** (pull, build, instalar/remover pacotes, etc.); **nada altera o sistema**.
 - Não há daemon, RPC, SQLite, QEMU, Podman ou rede.
 - O **shell do desktop** (barra do GNOME, dock, wallpaper, controles da janela) é apenas uma moldura para visualizar o app aberto; **não implementar no app**.
-- O seletor **Cenário de demonstração** do onboarding existe só para validar os caminhos de instalação/atualização; **não deve existir no app real**.
+- O seletor **Cenário de demonstração** e o checkbox **Docker instalado** do onboarding existem só para validar os caminhos de instalação/atualização/coexistência; **não devem existir no app real**.
 - Os controles minimizar/maximizar/fechar são da moldura da demo; o app real usa a janela nativa do sistema.
 - O onboarding é uma simulação de UX; a implementação real precisa de detecção do sistema, consentimento, helper privilegiado e jobs com progresso/cancelamento.
 
 ---
 
-## 7. Clean-room e marca
+## 8. Clean-room e marca
 
 - A POC é **inspirada no estilo** do OrbStack (densidade, sidebar, listas, cartões, tipografia), sem copiar código, assets, ícones, textos ou layout pixel a pixel.
 - A marca é **PodStack** (cápsula + camadas). Use os assets de [`assets/`](../../assets/) e as regras de [`docs/branding.md`](../../docs/branding.md).
@@ -106,7 +120,7 @@ poc/ui/
 
 ---
 
-## 8. Relação com a especificação
+## 9. Relação com a especificação
 
 A POC é a **referência visual**. A fonte de verdade de comportamento continua sendo:
 

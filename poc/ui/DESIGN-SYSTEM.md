@@ -13,7 +13,7 @@
 4. **Superfícies em camadas.** Fundo → superfície → superfície elevada; bordas de 1 px em vez de sombras fortes.
 5. **Movimento discreto.** 160 ms para hover/seleção; 240 ms para janelas/modais; nada de animação decorativa longa.
 6. **Nada de barras de acento laterais.** Seleção é fundo suave (`accent-soft`), não um traço vertical.
-7. **Texto é interface.** Rótulos em caixa alta só para metadados (8–9 px); ações em sentence case.
+7. **Texto é interface.** Rótulos em caixa alta só para metadados (10–10.5 px); ações em sentence case.
 
 ---
 
@@ -98,16 +98,18 @@ No app: empacotar `Inter` em `assets/fonts/` (licença OFL) e carregar com `Font
 | Hero | 24 px | 650–700 | 1.15 | setup “Vamos preparar”, “Tudo pronto” | `.setup-hero h1`, `.setup-done h1` |
 | Título de tela | 23 px | 650 | 1.15 | “Containers”, “Images”, … | `.view-title` |
 | Título de seção | 19 px | 650 | 1.2 | etapas do setup | `.setup-h2` |
-| Título de painel | 12–14 px | 600–650 | 1.3 | inspector, painéis | `.panel-title`, `.inspector-title` |
+| Título de painel | 12.5–14 px | 600–650 | 1.3 | inspector, painéis | `.panel-title`, `.inspector-title` |
 | Corpo | 13 px | 400 | 1.45 | texto geral | `body` |
-| Nome de linha | 12.5 px | 600 | 1.3 | containers, tabelas | `.row-name`, `.repo` |
-| Botão | 11.5 px | 550 | 1.2 | ações | `.btn` |
-| Metadado | 10.5 px | 400 | 1.4 | imagem, portas, detalhes | `.row-meta`, `.meta-value` |
-| Rótulo | 8.5–9 px | 650 | 1.2 | caixa alta, letter-spacing .08em | `.meta-label`, `.section-label`, `th` |
-| Micro | 9–9.5 px | 400 | 1.4 | statusbar, hints | `.statusbar`, `.hint` |
-| Mono | 9.5–10 px | 400 | 1.7 | IDs, logs, comandos | `.mono`, `.terminal` |
+| Nome de linha | 13 px | 600 | 1.3 | containers, tabelas | `.row-name`, `.repo` |
+| Botão | 12 px | 550 | 1.2 | ações | `.btn` |
+| Metadado | 11 px | 400 | 1.4 | imagem, portas, detalhes | `.row-meta`, `.meta-value` |
+| Rótulo | 10.5 px | 650 | 1.2 | caixa alta, letter-spacing .08em | `.meta-label`, `.section-label`, `th` |
+| Micro | 10.5–11 px | 400 | 1.4 | statusbar, hints, gráficos | `.statusbar`, `.hint`, `.spark-head` |
+| Mono | 10.5–11 px | 400 | 1.7 | IDs, logs, comandos | `.mono`, `.terminal` |
 
 **Detalhes:** títulos com `letter-spacing: -0.02em` a `-0.03em`; labels com `+0.08em`; números em tabelas e métricas com `font-variant-numeric: tabular-nums` no app.
+
+**Piso de legibilidade:** em desktop, **11 px é o mínimo para metadados**; 10–10.5 px só para rótulos decorativos (não para informação necessária). A POC foi ajustada para esse piso; mantenha-o no QML e teste com escala fracionária (1,25/1,5).
 
 ---
 
@@ -151,10 +153,10 @@ No QML, prefira `MultiEffect` (shadow/blur) em vez de várias camadas de `Rectan
 └───────────────┴──────────────────────────────────────────────┘
 ```
 
-- Sidebar: 236 px; 196 px abaixo de 980 px; padding 14/12; grupos com label de 9 px.
+- Sidebar: 236 px; 196 px abaixo de 980 px; padding 14/12; grupos com label de 10 px.
 - Topbar: 58 px; breadcrumb + busca (270×34) + tema + engine pill.
 - Main: padding 20/22/30; `view-head` + `toolbar` + grid.
-- Statusbar: 30 px; 9.5 px; conexão + contagens + rootless + licença.
+- Statusbar: 30 px; 11 px; conexão + contagens + rootless + licença.
 - Containers: grid `minmax(0,1fr) 366px`; abaixo de 1120 px, inspector 330; abaixo de 980 px, coluna única.
 - Builds: grid `1fr 380px`; Machines: mesma lógica de containers.
 - Dialogs: 440–720 px; setup 1020×680.
@@ -187,72 +189,74 @@ A janela da demo tem 1240×820 (máx. 900), raio 12, borda `rgba(255,255,255,.10
 
 | Elemento | Especificação |
 |---|---|
-| Brand | cápsula 32×21, título 15/700, versão 9.5 `text-3`; padding 4/8/18 |
-| Grupo | label 9/650 caixa alta, `text-3`, padding 0/10/6 |
-| Item | 34 px; gap 10; padding 0/10; raio 8; ícone 16; texto 12.5/500; count pill 18×… |
+| Brand | cápsula 32×21, título 15/700, versão 11 `text-3`; padding 4/8/18 |
+| Grupo | label 10/650 caixa alta, `text-3`, padding 0/10/6 |
+| Item | 34 px; gap 10; padding 0/10; raio 8; ícone 16; texto 13/500; count pill 18×… |
 | Item ativo | fundo `accent-soft`; texto `text`; ícone `accent-2`; **sem** barra/outline |
 | Hover | `rgba(255,255,255,.05)` |
 | Rodapé | Settings; sem toggle de tema (o tema fica no header) |
 
+**Grupos:** **Engine** (Containers, Images, Volumes, Networks, Compose, Builds, Pods) e **Linux** (Machines, Devices). Pods do Podman são grupos de containers do engine, **não** Kubernetes; clusters/k3s ficam em um grupo próprio quando existirem.
+
 ### 6.2 Topbar
 
-- Breadcrumb 12 px: `PodStack / <Tela>`.
+- Breadcrumb 12.5 px: `PodStack / <Tela>`.
 - Busca: 270×34; raio 8; `surface-2`; borda; foco com borda accent + anel `accent-soft` 3 px.
 - Tema: botão ícone 32 (sol/lua), título “Alternar tema”.
-- Engine pill: 28 px; dot 6; texto 10.5/550; `surface-2` + borda.
+- Engine pill: 28 px; dot 6; texto 11/550; `surface-2` + borda.
 
 ### 6.3 Botões
 
 | Variante | Altura | Padding | Raio | Fonte | Cores |
 |---|---:|---:|---:|---|---|
-| Primário | 32 | 0 12 | 8 | 11.5/550 | gradiente indigo; texto branco; sombra accent |
-| Secundário | 32 | 0 12 | 8 | 11.5/550 | `surface-2`; borda; hover `surface-3` |
-| Ghost | 32 | 0 12 | 8 | 11.5/550 | transparente; hover `surface-2` |
-| Perigo | 32 | 0 12 | 8 | 11.5/550 | texto `danger`; hover `danger-soft` |
+| Primário | 32 | 0 12 | 8 | 12/550 | gradiente indigo; texto branco; sombra accent |
+| Secundário | 32 | 0 12 | 8 | 12/550 | `surface-2`; borda; hover `surface-3` |
+| Ghost | 32 | 0 12 | 8 | 12/550 | transparente; hover `surface-2` |
+| Perigo | 32 | 0 12 | 8 | 12/550 | texto `danger`; hover `danger-soft` |
 | Ícone | 32×32 | 0 | 8 | — | como secundário |
-| Pequeno | 27 | 0 9 | 6 | 10.5/550 | como secundário |
+| Pequeno | 27 | 0 9 | 6 | 11/550 | como secundário |
 | Pequeno ícone | 27×27 | 0 | 6 | — | — |
 
 Estados: hover (fundo + borda), active (`translateY(1px)`), disabled (opacidade .5, sem hover), foco (anel accent). Ícones 14 px.
 
 ### 6.4 Campos
 
-- Input/select: 33 px; raio 8; `surface-2`; borda; texto 11.5; placeholder `text-3`; foco accent + anel.
+- Input/select: 33 px; raio 8; `surface-2`; borda; texto 12; placeholder `text-3`; foco accent + anel.
 - Label: 9/650 caixa alta, `text-3`, gap 5.
-- Textarea: 72 px; mono 10.5.
-- Checkbox: `accent-color: accent`; label 10.5; opção com borda e padding 9/11.
+- Textarea: 72 px; mono 11.
+- Checkbox: `accent-color: accent`; label 11; opção com borda e padding 9/11.
 
 ### 6.5 Badges e status
 
-- Badge: 19 px; padding 0 6; raio 999; 9.5/600; borda ou fundo suave.
+- Badge: 19 px; padding 0 6; raio 999; 11/600; borda ou fundo suave.
   - `success` (verde), `warning` (âmbar), `danger` (vermelho), `accent` (índigo), `muted` (cinza).
 - Dot: 8 px; running/success com halo 3 px; stopped `text-3`; warning/danger com halo.
 - Sempre acompanhar o dot de um texto/badge.
 
 ### 6.6 Tabs e segmentado
 
-- Tabs (filtros): container `surface-2` + borda, padding 3, raio 8; botão 26 px, padding 0 10, raio 6, 10.5/550; ativo `surface-3` + texto; contagem 9.5.
+- Tabs (filtros): container `surface-2` + borda, padding 3, raio 8; botão 26 px, padding 0 10, raio 6, 11/550; ativo `surface-3` + texto; contagem 11.
 - Segmentado (inspector): 3 px; botão 24 px; 10/550; ativo `surface-3`.
 
 ### 6.7 Painéis
 
-- `surface`, borda 1, raio 14, `shadow-sm`; `panel-head` 10/14 + borda; título 12/600; sub 10/400 `text-3`.
-- `panel-body` 14; `panel-foot` 10/14, 10 px `text-3`.
+- `surface`, borda 1, raio 14, `shadow-sm`; `panel-head` 10/14 + borda; título 12.5/600; sub 11/400 `text-3`.
+- `panel-body` 14; `panel-foot` 10/14, 11 px `text-3`.
 - Listas: `max-height: calc(100vh - 260px)` e scroll interno na demo; no app, o `ListView` ocupa o espaço disponível.
 
 ### 6.8 Linhas de lista (Containers)
 
 - Grid: `10px minmax(0,1fr) auto`; gap 12; padding 10/14; altura ~56; borda inferior.
-- Nome 12.5/600 + badge de saúde + projeto; meta 10.5 `text-3` (imagem · portas).
-- Status à direita 10.5; ações (parar/iniciar/reiniciar) aparecem no hover (32 px; ícones 14).
+- Nome 13/600 + badge de saúde + projeto; meta 11 `text-3` (imagem · portas).
+- Status à direita 11; ações (parar/iniciar/reiniciar) aparecem no hover (32 px; ícones 14).
 - Hover `rgba(255,255,255,.03)`; selecionado `accent-soft`; **sem** barra lateral.
 - Ícone de status à esquerda; clique seleciona; duplo clique pode abrir terminal (ideia).
 
 ### 6.9 Tabelas
 
-- Header 8.5/650 caixa alta `text-3`; padding 9/14; borda inferior.
+- Header 10.5/650 caixa alta `text-3`; padding 9/14; borda inferior.
 - Células 11; padding 10/14; linha com borda inferior; hover 2.5% do texto.
-- Repositório 11.5/600; digest mono 9.5 `text-3`.
+- Repositório 12/600; digest mono 11 `text-3`.
 - Ações à direita, ocultas até hover (catálogo); **Devices** mantém ações sempre visíveis.
 - Seleção (Machines): fundo `accent-soft`, **sem** barra.
 - Colunas: ver [SCREENS.md](SCREENS.md).
@@ -260,10 +264,10 @@ Estados: hover (fundo + borda), active (`translateY(1px)`), disabled (opacidade 
 ### 6.10 Inspector (Containers)
 
 - Largura 366 (330 @1120); sticky no topo; `panel`.
-- Header 13/14: título 14/650 + badge de estado; sub 10 `text-3`; ações (Parar/Iniciar, Reiniciar, Terminal, Remover) em `btn sm`.
+- Header 13/14: título 14/650 + badge de estado; sub 11 `text-3`; ações (Parar/Iniciar, Reiniciar, Terminal, Remover) em `btn sm`.
 - Segmentado Info/Logs/Stats/Files.
 - Corpo 13/14.
-- **Info:** grid 2 colunas; labels 8.5 caixa alta; valores 10.5; seções (Saúde, Variáveis, Mounts) com 8.5 caixa alta; código em bloco `terminal-bg` mono 9.5.
+- **Info:** grid 2 colunas; labels 10.5 caixa alta; valores 11; seções (Saúde, Variáveis, Mounts) com 10.5 caixa alta; código em bloco `terminal-bg` mono 11.
 - **Logs:** toolbar (filtrar, seguir, limpar) + terminal 300 px.
 - **Stats:** 4 cards 2×2 (CPU, Memória, Rede RX/TX, Disco/PIDs); gráfico CPU + gráfico RAM (56 px cada); atualização 2 s; 30 amostras; detalhes em §6.11.
 - **Files:** breadcrumb `/`, botão Enviar, linhas com ícone/nome/tamanho/modo; 22 px ícone; hover.
@@ -272,14 +276,14 @@ Estados: hover (fundo + borda), active (`translateY(1px)`), disabled (opacidade 
 
 - Card: `surface-2`, borda, raio 8, padding 9/10; label 8 caixa alta; valor 13.5/600; foot 9 `text-3`; CPU em `cyan`.
 - `.charts`: grid gap 8; `.spark-wrap` com borda/raio 8, `surface-2`, padding 7/10/3.
-- Cabeçalho do gráfico: 8.5 caixa alta `text-3`, valor à direita.
+- Cabeçalho do gráfico: 10.5 caixa alta `text-3`, valor à direita.
 - Sparkline: SVG 300×56 (viewBox 300×64); CPU `#22d3ee`, RAM `#818cf8`; área 10%; 30 pontos; `preserveAspectRatio="none"`.
 - RAM usa escala dinâmica (`min*0.94`, `max*1.04`) para mostrar variação; CPU usa 0–max (mín. 5).
 - No app: `Sparkline.qml` com `Canvas` ou `Shape`; histórico no Backend/`StatsModel`; timer de 2 s.
 
 ### 6.12 Terminal / logs
 
-- `terminal-bg`, borda, raio 8; mono 9.5; altura 300 (inspector), 360 (modal), 140 (setup).
+- `terminal-bg`, borda, raio 8; mono 11; altura 300 (inspector), 360 (modal), 140 (setup).
 - Linha: timestamp `#596377`, nível 34 px (`INFO` ciano, `WARN` âmbar, `ERR` vermelho, `OK` verde), mensagem `#a7b0c2`.
 - Cursor 6×11 piscando; auto-scroll no fim.
 - Logs de build: mesmas cores; steps `STEP n/m`.
@@ -288,14 +292,14 @@ Estados: hover (fundo + borda), active (`translateY(1px)`), disabled (opacidade 
 ### 6.13 Files
 
 - Linha 22/1fr/auto/auto; padding 7/8; hover `surface-2`; borda inferior.
-- Ícone 16 `text-3`; nome 10.5; tamanho/modo mono 9.
+- Ícone 16 `text-3`; nome 11; tamanho/modo mono 10.5.
 - Clique em arquivo baixa; pasta navega (na POC, apenas toast).
 
 ### 6.14 Cards de Compose
 
 - Grid `repeat(auto-fill, minmax(320px,1fr))` gap 12; padding 14.
-- Nome 13.5/650 + dot de status; diretório mono 9.5 `text-3`.
-- Serviços em chips 21 px mono 9.5.
+- Nome 13.5/650 + dot de status; diretório mono 11 `text-3`.
+- Serviços em chips 21 px mono 10.5.
 - Ações Up/Restart/Logs + Down (danger) alinhadas; foot 9 `text-3`.
 
 ### 6.15 Builds
@@ -314,8 +318,8 @@ Estados: hover (fundo + borda), active (`translateY(1px)`), disabled (opacidade 
 ### 6.17 Modais / diálogos
 
 - Backdrop `rgba(4,6,10,.62)` + blur 8; centralizado; largura 540 (padrão) ou 720 (wide); raio 14; borda forte; sombra.
-- Head 16/18; título 15/650; sub 10.5 `text-3`; body 16/18; foot 12/18 com fundo `surface-2`.
-- Formulário: grid 2 colunas; labels 9 caixa alta; inputs 33; hint 9.5.
+- Head 16/18; título 15/650; sub 11 `text-3`; body 16/18; foot 12/18 com fundo `surface-2`.
+- Formulário: grid 2 colunas; labels 11 caixa alta; inputs 33; hint 11.
 - Ações: Ghost “Cancelar” + primária; confirmação destrutiva em vermelho.
 - Fechar por Esc, clique no backdrop e botão X.
 
@@ -324,8 +328,8 @@ Estados: hover (fundo + borda), active (`translateY(1px)`), disabled (opacidade 
 Detalhes completos em [ONBOARDING.md](ONBOARDING.md). Componentes:
 
 - Janela 1020×680, titlebar 38, rail 220, content com padding 24/28, footer 12/20.
-- Rail: passo 8/9, dot 24, label 11.5/600, hint 9.5; ativo `accent-soft`; concluído verde.
-- Checks: linha 9/12; ícone 22; label 11/600; detalhe 9.5; badge.
+- Rail: passo 10/11, dot 24, label 12/600, hint 11; ativo `accent-soft`; concluído verde.
+- Checks: linha 9/12; ícone 22; label 11.5/600; detalhe 11; badge.
 - Card: padding 14; borda; raio 10; warn/success.
 - Log: terminal 140 px; progresso 6 px.
 - Options: checkboxes; linha 9/11; badge.
@@ -368,7 +372,7 @@ Detalhes completos em [ONBOARDING.md](ONBOARDING.md). Componentes:
 
 ## 9. Acessibilidade
 
-- **Contraste**: corpo em `text`/`text-2`; `text-3` só para metadados não essenciais; não usar 8.5 px para informação crítica.
+- **Contraste**: corpo em `text`/`text-2`; `text-3` só para metadados não essenciais; não usar 10 px para informação crítica.
 - **Foco**: anel de 3 px `accent-soft` + borda accent; navegação por teclado; `Esc` fecha modal/setup; `/` foca a busca.
 - **Alvos**: mínimo 32×32; linhas inteiras clicáveis; ações de hover também acessíveis por menu/teclado.
 - **Semântica**: botões reais, labels associadas, `aria-label` na POC; no QML `Accessible.name`/`description`/`role`.

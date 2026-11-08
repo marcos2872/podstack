@@ -209,7 +209,8 @@ O `Backend` acrescenta `status` ao `ContainerListModel` (role) e mantém os grá
 | `busy` | bool | `false` | instalação |
 | `progress` | int | `0` | 0..100 |
 | `logs` | string[] | `[]` | comandos |
-| `docker` | bool | `true` | detectado |
+| `docker` | bool | `true` | detectado; coexistência por padrão |
+| `dockerPolicy` | `"keep"` \| `"removed"` | `"keep"` | app: decisão persistida; a POC usa só `docker` |
 | `podman` | bool | `false` | |
 | `podmanVersion` | string | `""` | `5.4.2` / `5.8.9` |
 | `podmanLatest` | string | `5.8.9` | |
@@ -220,7 +221,7 @@ O `Backend` acrescenta `status` ao `ContainerListModel` (role) e mantém os grá
 | `installK3s` | bool | `false` | opcional |
 | `scanning` / `validating` / `validated` | bool | `false` | |
 
-Persistência no app: `setup.completed`, `completedAt`, versões e componentes em Config/SQLite.
+Persistência no app: `setup.completed`, `completedAt`, `dockerPolicy`, versões e componentes em Config/SQLite. O Docker é opcional; a remoção é opt-in e não entra no fluxo principal.
 
 ---
 

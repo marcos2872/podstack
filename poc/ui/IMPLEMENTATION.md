@@ -163,7 +163,7 @@ Item {
 | `.input`, `.select`, `.textarea` | **`FormField.qml`** (evoluir) | 33 px, foco accent, label 9 caixa alta. |
 | `.setup-check` | **`SetupCheckRow.qml`** | status ok/warn/missing/optional. |
 | `.spark` | **`Sparkline.qml`** | Canvas/Shape; 30 pontos; CPU/RAM. |
-| `.terminal` | **`LogView.qml`** (ou `LogsView` atual) | mono 9.5; níveis; auto-scroll; 5k linhas. |
+| `.terminal` | **`LogView.qml`** (ou `LogsView` atual) | mono 11; níveis; auto-scroll; 5k linhas. |
 | `.toast` | **`Toast.qml`** (atual) | reposicionar/estilizar; topo do app. |
 | `.modal` | **`AppDialog.qml`** | backdrop, 540/720, footer. |
 | `.setup-window` | **`SetupWindow.qml`** | janela separada; ver §7. |
@@ -178,6 +178,7 @@ Item {
 
 - Manter `Main.qml` (ApplicationWindow) e a sidebar; trocar cores/tamanhos pelos tokens.
 - Itens: 34 px; ativo `accentSoft`, **sem** barra/outline; ícone 16; count pill.
+- Manter os grupos **Engine** (Containers, Images, Volumes, Networks, Compose, Builds, Pods) e **Linux** (Machines, Devices); Pods do Podman não são Kubernetes.
 - Adicionar Compose/Builds à sidebar (já existentes no M3) e Machines/Devices quando o backend M4 existir.
 - Topbar: 58 px; breadcrumb, busca 270×34, botão de tema (sol/lua) e engine pill.
 - A busca deve filtrar a **seção atual** (hoje a busca da GUI filtra containers); estender aos catálogos.
@@ -195,7 +196,7 @@ Item {
 
 - `ImagesView`, `VolumesView`, `NetworksView`, `PodsView`, `ComposeView`, `BuildsView` já existem; substituir `CatalogList`/layouts pelos componentes/tabelas da POC.
 - A POC usa tabelas; no QML, prefira **`TableView`** (Qt 6.5+) para colunas redimensionáveis/ordenação, ou `ListView` + `RowLayout` para listas simples (containers/machines).
-- Cabeçalho de tabela 8.5/650 caixa alta; células 11; hover 2.5%; seleção `accentSoft`; ações à direita (hover no catálogo; Devices sempre visíveis).
+- Cabeçalho de tabela 10.5/650 caixa alta; células 11.5; hover 2.5%; seleção `accentSoft`; ações à direita (hover no catálogo; Devices sempre visíveis).
 - Ações existentes que precisam continuar: tag/untag (Images), clone/import host/export/import (Volumes), conectar/desconectar (Networks), start/stop/restart (Pods), etc.
 
 ### 4.5 Machines/Devices (M4)
@@ -289,7 +290,7 @@ Canvas {
 
 ### 7.2 Controlador
 
-- **`SetupController`** (QObject, GUI/Backend): `step`, `busy`, `progress`, `logs`, `checks`, `docker`, `podman`, `podmanVersion`, `podmanOutdated`, `qemu`, `kvm`, `virtiofsd`, `libvirt`, `caddy`, `k3s`, `socket`, `rootless`, `validated`; sinais `changed`; métodos `open`, `close`, `next`, `back`, `scan`, `applyEngine`, `installQemu`, `installComponents`, `validate`, `finish`.
+- **`SetupController`** (QObject, GUI/Backend): `step`, `busy`, `progress`, `logs`, `checks`, `dockerPresent`, `dockerPolicy`, `podman`, `podmanVersion`, `podmanOutdated`, `qemu`, `kvm`, `virtiofsd`, `libvirt`, `caddy`, `k3s`, `socket`, `rootless`, `validated`; sinais `changed`; métodos `open`, `close`, `next`, `back`, `scan`, `applyEngine`, `removeDocker`, `installQemu`, `installComponents`, `validate`, `finish`.
 - **`SetupManager`** (daemon): `detect()` e `apply(action, job)`; usa `PodmanClient`/`QStandardPaths`/`/dev/kvm`/helper; devolve checks e progresso.
 - O QML **não** executa comandos; apenas chama o controller/RPC.
 
@@ -297,7 +298,8 @@ Canvas {
 
 Ver [ONBOARDING.md](ONBOARDING.md) §15:
 
-- `setup.status`, `setup.check`, `setup.apply {actions:[...], confirm:true}`, `setup.cancel`, `setup.validate`.
+- `setup.status`, `setup.check`, `setup.apply {actions:[...]}`, `setup.removeDocker {confirm:true}`, `setup.cancel`, `setup.validate`.
+- O fluxo principal (`setup.apply`) **não remove o Docker**; `setup.removeDocker` é opt-in, exige `confirm: true` e aviso de perda.
 - Jobs/subscriptions: `setup.delta {jobId, step, line, progress}`, `setup.done {jobId, status}`.
 - Ações destrutivas exigem `confirm: true` no daemon; auditoria.
 
@@ -312,14 +314,14 @@ Ver [ONBOARDING.md](ONBOARDING.md) §15:
 ### 7.5 Aplicação real
 
 - **Nunca** `sudo`/`dnf` diretamente na GUI. Helper systemd + polkit com métodos allowlisted (`InstallPackages`, `RemovePackages`, `EnableUserSocket`, …); nunca `Exec`/shell.
-- Docker: confirmação explícita; aviso de perda de containers/imagens/redes; sem migração automática; backup/exportação opcional.
+- Docker: **não remover por padrão**. A remoção é opt-in, com confirmação explícita, aviso de perda de containers/imagens/redes/volumes, sem migração automática e com backup/exportação opcional. O PodStack funciona com o Docker instalado; se o usuário quiser, ofereça `DOCKER_HOST` apontando para o socket do Podman.
 - Podman: instalar/atualizar; `systemctl --user enable --now podman.socket`; rootless; `loginctl enable-linger` se necessário.
 - QEMU/KVM: instalar pacotes; verificar `/dev/kvm`; TCG com aviso quando indisponível.
 - Caddy/k3s: opcionais; k3s em VM, não no host; não instalar sem ação explícita.
 - Progresso/cancelamento/retry; log com redaction; não logar tokens.
 - Persistir `setup.completed`/versões; reexecutar quando o usuário quiser.
 - **Sem seletor de cenário**; o estado vem da detecção.
-- A matriz Docker → Podman (6 estados) está em [ONBOARDING.md](ONBOARDING.md) §7.2.
+- A matriz Podman (6 estados, com Docker presente/ausente; a ação principal não remove o Docker) está em [ONBOARDING.md](ONBOARDING.md) §7.2.
 
 ### 7.6 QML
 
@@ -421,7 +423,7 @@ Ver [ONBOARDING.md](ONBOARDING.md) §15:
 ### Fase 5 — Setup
 
 1. `SetupManager` + `setup.*` + helper allowlisted.
-2. `SetupWindow`/componentes; 7 etapas; matriz Docker → Podman; validação.
+2. `SetupWindow`/componentes; 7 etapas; matriz Podman com coexistência de Docker; validação.
 3. Primeiro uso/CLI/Settings; persistência; testes de detecção/consentimento/erro.
 
 ### Fase 6 — Polimento
@@ -438,7 +440,7 @@ Ver [ONBOARDING.md](ONBOARDING.md) §15:
 - [ ] Containers: lista, inspector, Info/Logs/Stats/Files; CPU/RAM em gráficos; 2 s.
 - [ ] Catálogo: tabelas e ações equivalentes às atuais; nenhuma regressão de RPC.
 - [ ] Machines/Devices quando M4; seções desabilitadas até lá.
-- [ ] Onboarding separado, 7 etapas, matriz Docker → Podman, validação.
+- [ ] Onboarding separado, 7 etapas, matriz Podman (Docker pode coexistir), validação.
 - [ ] Tema claro/escuro; contraste; foco; atalhos; `qsTr()`.
 - [ ] `ctest --preset dev` 7/7; cobertura ≥80%; `qmllint`; GUI offscreen.
 - [ ] Docs atualizados (`docs/ui-map.md`, `docs/settings.md`, `docs/api-rpc.md` se RPC mudar).
@@ -452,7 +454,7 @@ Ver [ONBOARDING.md](ONBOARDING.md) §15:
 | Trocar o tema afeta todas as telas | Fase 1 isolada, screenshots antes/depois, revisão visual. |
 | Inter não está no sistema | Empacotar OFL; fallback; testar sem rede. |
 | Ícones coloridos no QML | `MultiEffect`/`ColorOverlay`; testar em ambos os temas. |
-| Setup remover Docker é destrutivo | Confirmação explícita, aviso de perda, helper allowlisted, logs, retry. |
+| Remoção opt-in do Docker é destrutiva | Confirmação explícita, aviso de perda, helper allowlisted, logs, retry; o fluxo principal nunca remove. |
 | Setup instalar pacotes | Helper/polkit; nunca shell; distro suportada; remediação manual. |
 | Machines/Devices não existem ainda | Implementar backend M4 antes das telas; manter desabilitado. |
 | Performance de tabelas/gráficos | `TableView`/`ListView` com delegates leves; `Canvas` só sob demanda; limite de históricos. |

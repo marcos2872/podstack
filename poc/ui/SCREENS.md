@@ -9,13 +9,13 @@
 
 | Rota (`state.view`) | Título | Grupo | Arquivo POC | Estado no app |
 |---|---|---|---|---|
-| `containers` | Containers | Docker | `app.js → containersView()` | ✅ M1 |
-| `images` | Images | Docker | `imagesView()` | ✅ M2 |
-| `volumes` | Volumes | Docker | `volumesView()` | ✅ M2 |
-| `networks` | Networks | Docker | `networksView()` | ✅ M2 |
-| `compose` | Compose | Docker | `composeView()` | ✅ M3 |
-| `builds` | Builds | Docker | `buildsView()` | ✅ M3 |
-| `pods` | Pods | Kubernetes | `podsView()` | ✅ M2 |
+| `containers` | Containers | Engine | `app.js → containersView()` | ✅ M1 |
+| `images` | Images | Engine | `imagesView()` | ✅ M2 |
+| `volumes` | Volumes | Engine | `volumesView()` | ✅ M2 |
+| `networks` | Networks | Engine | `networksView()` | ✅ M2 |
+| `compose` | Compose | Engine | `composeView()` | ✅ M3 |
+| `builds` | Builds | Engine | `buildsView()` | ✅ M3 |
+| `pods` | Pods | Engine | `podsView()` | ✅ M2 |
 | `machines` | Machines | Linux | `machinesView()` | ⏳ M4 |
 | `devices` | Devices | Linux | `devicesView()` | ⏳ M4 |
 | — | Settings | rodapé | `modalSettings()` | ✅ M1 |
@@ -33,7 +33,7 @@ Sidebar (236) │ Topbar 58 (breadcrumb + busca + tema + engine)
               │ Statusbar 30 (conexão, contagens, rootless, licença)
 ```
 
-- **view-head**: título 23/650 + subtítulo 11.5 `text-3`; ações à direita.
+- **view-head**: título 23/650 + subtítulo 12 `text-3`; ações à direita.
 - **toolbar**: tabs de filtro, contagem, ações secundárias.
 - **busca**: filtra a tela atual por nome/imagem/projeto/subnet/ID; em telas sem busca, o campo permanece no topbar (placeholder genérico).
 - **Atualizar**: recarrega a seção; ícone gira 650 ms e mostra toast.
@@ -72,8 +72,8 @@ Cada linha (~56 px):
 ```
 
 - Ponto de estado (running verde; stopped cinza; saúde unhealthy vermelho; starting âmbar).
-- Nome 12.5/600; badges de health/projeto.
-- Imagem + portas em 10.5 `text-3`.
+- Nome 13/600; badges de health/projeto.
+- Imagem + portas em 11 `text-3`.
 - Status à direita; ações de parar/iniciar/reiniciar aparecem no hover.
 - Clique seleciona; seleção = `accent-soft`, sem barra.
 - Vazio: “Nenhum resultado” + sugestão de filtro/busca.
@@ -143,8 +143,8 @@ Cada linha (~56 px):
 
 | Coluna | Conteúdo |
 |---|---|
-| Repositório:tag | nome 11.5/600 + tag `text-3`; badge `dangling` quando `<none>` |
-| Digest | `sha256:9f2c…a1b7` mono 9.5 |
+| Repositório:tag | nome 12/600 + tag `text-3`; badge `dangling` quando `<none>` |
+| Digest | `sha256:9f2c…a1b7` mono 11 |
 | Tamanho | 182 MB, 1.2 GB |
 | Criada | há 3 dias |
 | Uso | badge “1 container” ou “livre” |
@@ -272,12 +272,13 @@ Status: `success` verde, `failed` vermelho, `running` ciano, `cancelled` cinza.
 
 ### 9.1 Layout
 
-- Header: “Pods”; “N pods · Kubernetes local”; **Atualizar**. (No app: criar/start/stop/restart/remover.)
+- Header: “Pods”; “N pods · grupos de containers do Podman”; **Atualizar**. (No app: criar/start/stop/restart/remover.)
 - Tabela: Nome (+ ID), Status, Containers, IP, Idade; status Running verde, Degraded âmbar.
+- **Pods do Podman não são Kubernetes**: são grupos de containers no mesmo namespace. k3s/clusters ficam para o grupo Kubernetes (M4+), quando existirem.
 
 ### 9.2 Ações (app)
 
-- Criar pod; start/stop/restart; remover com force; abrir serviços/logs (quando K8s estiver habilitado).
+- Criar pod; start/stop/restart; remover com force; logs agregados dos containers do pod.
 - A POC mostra a tabela; os botões de lifecycle devem entrar no header/menu da linha no redesenho.
 
 ---
@@ -363,7 +364,8 @@ Fora da janela do app; detalhes completos em [ONBOARDING.md](ONBOARDING.md).
 
 - Entrada na POC: botão **Configurar máquina** na barra do desktop + ícone na dock.
 - No app real: primeiro uso, `podstack setup` e Settings → “Executar configuração novamente”.
-- 7 etapas: boas-vindas, diagnóstico, Docker → Podman, QEMU/KVM, componentes, validação, pronto.
+- 7 etapas: boas-vindas, diagnóstico, **Podman** (coexistência com o Docker), QEMU/KVM, componentes, validação, pronto.
+- **Docker e Podman coexistem** (sockets diferentes). Remover o Docker é uma ação opcional, destrutiva e com confirmação explícita; não é requisito para usar o PodStack.
 
 ---
 

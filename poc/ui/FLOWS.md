@@ -29,7 +29,7 @@ flowchart TD
     S[Desktop: Configurar máquina] --> T[Setup / Onboarding]
     T --> U[Boas-vindas]
     U --> V[Diagnóstico]
-    V --> W[Docker → Podman]
+    V --> W[Podman]
     W --> X[QEMU/KVM]
     X --> Y[Componentes]
     Y --> Z[Validação]
@@ -365,9 +365,9 @@ stateDiagram-v2
     [*] --> Welcome
     Welcome --> Diagnose: Começar
     Diagnose --> Diagnose: Escanear
-    Diagnose --> Docker: Continuar
-    Docker --> Docker: Aplicar engine (install/update/remove)
-    Docker --> Qemu: Continuar
+    Diagnose --> Podman: Continuar
+    Podman --> Podman: Instalar/atualizar (Docker mantido)
+    Podman --> Qemu: Continuar
     Qemu --> Qemu: Instalar virtualização
     Qemu --> Components: Continuar
     Components --> Components: Instalar componentes
@@ -378,29 +378,27 @@ stateDiagram-v2
     Done --> Diagnose: Rever diagnóstico
 ```
 
-### 12.3 Docker → Podman
+### 12.3 Podman (coexistência com o Docker)
 
 ```mermaid
 flowchart TD
-    A[Detectar] --> B{Docker?}
-    B -->|sim| C{Podman?}
-    B -->|não| D{Podman?}
-    C -->|ausente| E[Desinstalar Docker + instalar Podman]
-    C -->|desatualizado| F[Desinstalar Docker + atualizar Podman]
-    C -->|atualizado| G[Desinstalar Docker]
-    D -->|ausente| H[Instalar Podman]
-    D -->|desatualizado| I[Atualizar Podman]
-    D -->|atualizado| J[Engine pronto]
-    E --> K[Ativar socket/rootless]
-    F --> K
-    G --> K
-    H --> K
-    I --> K
-    J --> L[Validar]
+    A[Detectar] --> B{Podman?}
+    B -->|ausente| C[Instalar Podman]
+    B -->|desatualizado| D[Atualizar Podman]
+    B -->|atualizado| E[Engine pronto]
+    C --> F[Ativar socket/rootless]
+    D --> F
+    E --> F
+    F --> G{Docker instalado?}
+    G -->|sim| H[Coexistir — ação principal concluída]
+    G -->|não| I[Concluído]
+    H --> J[Opcional: Remover Docker…]
+    J -->|confirmar| K[Remover Docker + aviso de perda]
 ```
 
 - A matriz completa e os comandos estão em [ONBOARDING.md](ONBOARDING.md) §7.
-- O seletor “Cenário de demonstração” só existe na POC.
+- O Docker **não** é removido pela ação principal; a remoção é opt-in, com confirmação e aviso de perda.
+- O seletor “Cenário de demonstração” e o checkbox “Docker instalado” só existem na POC.
 
 ### 12.4 Validação e conclusão
 
@@ -418,7 +416,7 @@ flowchart TD
 | Daemon offline | Banner + statusbar; ações desabilitadas; mensagem com `systemctl --user start podstack.socket`. |
 | Podman offline | Erro do engine; ação “Iniciar Podman”/“Diagnóstico”. |
 | Provider Compose ausente | Erro com remediação “Instale docker-compose”. |
-| Docker presente no setup | Aviso de conflito; remoção só com confirmação; dados do Docker não migram. |
+| Docker presente no setup | Coexistência (sockets diferentes); a remoção é opt-in, com confirmação e aviso de perda; dados do Docker não migram. |
 | KVM ausente | Aviso; TCG opcional (lento); machines podem ser bloqueadas. |
 | Imagem em uso | Remoção bloqueada; `force` explícito. |
 | Volume em uso | Remoção bloqueada; force com confirmação. |
