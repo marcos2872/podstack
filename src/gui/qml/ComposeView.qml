@@ -8,12 +8,12 @@ ColumnLayout {
 
     spacing: 0
 
-    readonly property bool compact: width < 800
+    property bool compact: false
 
     ViewHeader {
         Layout.fillWidth: true
-        Layout.leftMargin: 22
-        Layout.rightMargin: 22
+        Layout.leftMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 14 : 22
         Layout.topMargin: 20
         Layout.bottomMargin: 16
         title: qsTr("Compose")
@@ -39,8 +39,8 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Layout.leftMargin: 22
-        Layout.rightMargin: 22
+        Layout.leftMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 14 : 22
         Layout.bottomMargin: 14
         spacing: 7
 
@@ -89,8 +89,8 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.leftMargin: 22
-        Layout.rightMargin: 22
+        Layout.leftMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 14 : 22
         Layout.bottomMargin: 20
         spacing: compact ? 12 : 16
 
@@ -105,8 +105,8 @@ ColumnLayout {
             items: backend.composeProjects
             columns: [
                 { key: "name", label: "PROJETO", width: 0 },
-                { key: "status", label: "STATUS", width: 80 },
-                { key: "services", label: "SERVIÇOS", width: 150 }
+                { key: "status", label: "STATUS", width: compact ? 58 : 80 },
+                { key: "services", label: "SERVIÇOS", width: compact ? 90 : 150 }
             ]
         }
 
@@ -142,6 +142,7 @@ ColumnLayout {
                     FormField {
                         id: logService
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 60
                         Layout.preferredHeight: 30
                         placeholderText: qsTr("serviço (vazio = todos)")
                     }

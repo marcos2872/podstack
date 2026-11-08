@@ -26,7 +26,7 @@ Item {
     }
     readonly property int stoppedCount: containerCount - runningCount
     readonly property int selectedCount: Object.keys(selectedIds).length
-    readonly property bool compact: width < 800
+    property bool compact: false
 
     readonly property var filterTabs: [
         { key: "all", label: qsTr("Todos"), count: containerCount },

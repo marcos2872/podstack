@@ -136,6 +136,7 @@ qt_add_qml_module(podstack-gui
         assets/fonts/Inter-Bold.ttf
         assets/podstack-capsule.svg
         assets/podstack-capsule-mark.svg
+        assets/podstack-icon.svg
         ${PODSTACK_UI_ICONS}
 )
 

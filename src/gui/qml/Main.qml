@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import PodStack
 
 ApplicationWindow {
@@ -11,8 +12,17 @@ ApplicationWindow {
     minimumWidth: 900
     minimumHeight: 600
 
-    readonly property bool compactLayout: width < 1000
-    readonly property bool compactStatus: width < 860
+    readonly property bool compactLayout: width < 1000 || preferredWidth < 1000
+    readonly property bool compactStatus: width < 860 || preferredWidth < 860
+
+    readonly property int preferredWidth: {
+        const available = Screen.desktopAvailableWidth
+        return Math.min(1240, Math.max(800, available > 0 ? available - 80 : 1240))
+    }
+    readonly property int preferredHeight: {
+        const available = Screen.desktopAvailableHeight
+        return Math.min(780, Math.max(560, available > 0 ? available - 80 : 780))
+    }
     visible: true
     title: qsTr("PodStack")
     color: Theme.bgBase
@@ -41,7 +51,13 @@ ApplicationWindow {
         }
     }
 
-    Component.onCompleted: applyTheme(backend.settings().theme || "system")
+    Component.onCompleted: {
+        width = preferredWidth
+        height = preferredHeight
+        minimumWidth = Math.min(900, preferredWidth)
+        minimumHeight = Math.min(600, preferredHeight)
+        applyTheme(backend.settings().theme || "system")
+    }
 
     readonly property var sections: [
         { group: "Engine", items: [
@@ -175,10 +191,10 @@ ApplicationWindow {
                     spacing: 10
 
                     Image {
-                        source: "qrc:/qt/qml/PodStack/assets/podstack-capsule-mark.svg"
-                        sourceSize: Qt.size(72, 44)
-                        Layout.preferredWidth: 36
-                        Layout.preferredHeight: 22
+                        source: "qrc:/qt/qml/PodStack/assets/podstack-icon.svg"
+                        sourceSize: Qt.size(80, 80)
+                        Layout.preferredWidth: 40
+                        Layout.preferredHeight: 40
                         Layout.alignment: Qt.AlignVCenter
                         fillMode: Image.PreserveAspectFit
                     }
@@ -447,33 +463,85 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 currentIndex: window.viewIndexFor(window.section)
 
-                ContainersPage {
-                    id: containersPage
-                    filterText: window.searchText
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    ContainersPage {
+                        id: containersPage
+                        anchors.fill: parent
+                        filterText: window.searchText
+                        compact: window.compactLayout
+                    }
                 }
 
-                ImagesView {
-                    id: imagesPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    ImagesView {
+                        id: imagesPage
+                        anchors.fill: parent
+                    }
                 }
 
-                VolumesView {
-                    id: volumesPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    VolumesView {
+                        id: volumesPage
+                        anchors.fill: parent
+                    }
                 }
 
-                NetworksView {
-                    id: networksPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    NetworksView {
+                        id: networksPage
+                        anchors.fill: parent
+                    }
                 }
 
-                ComposeView {
-                    id: composePage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    ComposeView {
+                        id: composePage
+                        anchors.fill: parent
+                        compact: window.compactLayout
+                    }
                 }
 
-                BuildsView {
-                    id: buildsPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    BuildsView {
+                        id: buildsPage
+                        anchors.fill: parent
+                        compact: window.compactLayout
+                    }
                 }
 
-                PodsView {
-                    id: podsPage
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    PodsView {
+                        id: podsPage
+                        anchors.fill: parent
+                    }
                 }
             }
 

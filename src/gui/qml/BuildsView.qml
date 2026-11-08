@@ -8,12 +8,12 @@ ColumnLayout {
 
     spacing: 0
 
-    readonly property bool compact: width < 800
+    property bool compact: false
 
     ViewHeader {
         Layout.fillWidth: true
-        Layout.leftMargin: 22
-        Layout.rightMargin: 22
+        Layout.leftMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 14 : 22
         Layout.topMargin: 20
         Layout.bottomMargin: 16
         title: qsTr("Builds")
@@ -67,8 +67,8 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.leftMargin: 22
-        Layout.rightMargin: 22
+        Layout.leftMargin: compact ? 14 : 22
+        Layout.rightMargin: compact ? 14 : 22
         Layout.bottomMargin: 20
         spacing: compact ? 12 : 16
 
@@ -83,9 +83,9 @@ ColumnLayout {
             items: backend.builds
             columns: [
                 { key: "imageRef", label: "IMAGEM", width: 0 },
-                { key: "status", label: "STATUS", width: 80 },
-                { key: "duration", label: "DURAÇÃO", width: 70 },
-                { key: "trigger", label: "ORIGEM", width: 60 }
+                { key: "status", label: "STATUS", width: compact ? 54 : 80 },
+                { key: "duration", label: "DURAÇÃO", width: compact ? 52 : 70 },
+                { key: "trigger", label: "ORIGEM", width: compact ? 50 : 60 }
             ]
         }
 
