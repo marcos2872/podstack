@@ -98,7 +98,7 @@ Flickable {
 
                     Text {
                         visible: (backend.stats.mem_percent || "").length > 0
-                        text: backend.stats.mem_percent
+                        text: backend.stats.mem_percent || "—"
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro

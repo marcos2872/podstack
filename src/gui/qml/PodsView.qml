@@ -79,14 +79,14 @@ ColumnLayout {
         ]
     }
 
-    Dialog {
+    AppDialog {
         id: createDialog
         title: "Novo pod"
         modal: true
         width: 440
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -103,7 +103,7 @@ ColumnLayout {
                 placeholderText: "app"
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
@@ -121,14 +121,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: removeDialog
         title: "Remover pod?"
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: Label {

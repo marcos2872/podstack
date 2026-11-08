@@ -83,14 +83,14 @@ ColumnLayout {
         ]
     }
 
-    Dialog {
+    AppDialog {
         id: createDialog
         title: "Nova rede"
         modal: true
         width: 460
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -129,7 +129,7 @@ ColumnLayout {
                 placeholderText: "10.89.0.1"
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
@@ -148,14 +148,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: connectDialog
         title: "Conectar container"
         modal: true
         width: 440
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -182,7 +182,7 @@ ColumnLayout {
                 Layout.fillWidth: true
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
@@ -200,14 +200,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: disconnectDialog
         title: "Desconectar container"
         modal: true
         width: 440
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -234,7 +234,7 @@ ColumnLayout {
                 Layout.fillWidth: true
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
@@ -253,14 +253,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: removeDialog
         title: "Remover rede?"
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: Label {

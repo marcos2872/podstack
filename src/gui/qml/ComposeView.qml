@@ -84,7 +84,7 @@ ColumnLayout {
         Item { Layout.fillWidth: true }
     }
 
-    SplitView {
+    RowLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.leftMargin: 22
@@ -94,8 +94,9 @@ ColumnLayout {
 
         CatalogList {
             id: composeList
-            SplitView.preferredWidth: 480
-            SplitView.minimumWidth: 340
+            Layout.preferredWidth: 480
+            Layout.minimumWidth: 340
+            Layout.fillHeight: true
             emptyIcon: "compose"
             emptyText: qsTr("Nenhum projeto Compose em execução.\n"
                             + "Use a CLI: podstack compose up <diretório>.")
@@ -108,8 +109,9 @@ ColumnLayout {
         }
 
         Rectangle {
-            SplitView.fillWidth: true
-            SplitView.minimumWidth: 320
+            Layout.fillWidth: true
+            Layout.minimumWidth: 320
+            Layout.fillHeight: true
             color: Theme.bgSurface
             radius: Theme.radiusLg
             border.width: 1
@@ -207,7 +209,7 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: upDialog
         title: qsTr("Subir projeto Compose")
         modal: true
@@ -245,7 +247,7 @@ ColumnLayout {
                 Layout.fillWidth: true
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: qsTr("Cancelar")
@@ -264,7 +266,7 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: downDialog
         title: qsTr("Derrubar projeto?")
         modal: true

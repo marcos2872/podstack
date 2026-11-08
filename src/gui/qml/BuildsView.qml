@@ -62,7 +62,7 @@ ColumnLayout {
         }
     }
 
-    SplitView {
+    RowLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.leftMargin: 22
@@ -72,8 +72,9 @@ ColumnLayout {
 
         CatalogList {
             id: buildsList
-            SplitView.preferredWidth: 460
-            SplitView.minimumWidth: 340
+            Layout.preferredWidth: 460
+            Layout.minimumWidth: 340
+            Layout.fillHeight: true
             emptyIcon: "builds"
             emptyText: qsTr("Nenhum build registrado.\n"
                             + "Inicie um build informando contexto, Dockerfile e tag.")
@@ -87,8 +88,9 @@ ColumnLayout {
         }
 
         Rectangle {
-            SplitView.fillWidth: true
-            SplitView.minimumWidth: 320
+            Layout.fillWidth: true
+            Layout.minimumWidth: 320
+            Layout.fillHeight: true
             color: Theme.bgSurface
             radius: Theme.radiusLg
             border.width: 1
@@ -172,7 +174,7 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: buildDialog
         title: qsTr("Novo build")
         modal: true
@@ -238,7 +240,7 @@ ColumnLayout {
                 wrapMode: Text.WordWrap
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: qsTr("Cancelar")

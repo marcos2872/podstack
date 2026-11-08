@@ -87,14 +87,14 @@ ColumnLayout {
         ]
     }
 
-    Dialog {
+    AppDialog {
         id: createDialog
         title: "Novo volume"
         modal: true
         width: 440
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -122,7 +122,7 @@ ColumnLayout {
                 placeholderText: "local (padrão)"
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
@@ -140,14 +140,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: cloneDialog
         title: "Clonar volume"
         modal: true
         width: 440
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -175,7 +175,7 @@ ColumnLayout {
                 placeholderText: "dados-copy"
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
@@ -193,14 +193,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: importHostDialog
         title: "Importar do host"
         modal: true
         width: 460
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -235,7 +235,7 @@ ColumnLayout {
                 Layout.fillWidth: true
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
@@ -253,14 +253,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: removeDialog
         title: "Remover volume?"
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: Label {
@@ -275,14 +275,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: pruneDialog
         title: "Limpar volumes?"
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: Label {

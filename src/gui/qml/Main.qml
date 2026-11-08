@@ -576,12 +576,17 @@ ApplicationWindow {
         onActivated: searchField.forceActiveFocus()
     }
 
-    Dialog {
+    AppDialog {
         id: settingsDialog
         title: qsTr("Configurações")
         modal: true
-        width: 440
+        width: 460
         anchors.centerIn: parent
+        header: null
+        leftPadding: 18
+        rightPadding: 18
+        topPadding: 16
+        bottomPadding: 14
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -590,6 +595,17 @@ ApplicationWindow {
         }
         contentItem: ColumnLayout {
             spacing: 10
+
+            Text {
+                Layout.bottomMargin: 4
+                text: qsTr("Configurações")
+                color: Theme.textPrimary
+                font.family: Theme.fontFamily
+                font.pixelSize: 17
+                font.weight: Font.DemiBold
+                font.letterSpacing: -0.3
+            }
+
             Text {
                 text: qsTr("Modo do engine")
                 color: Theme.textSecondary
@@ -597,11 +613,14 @@ ApplicationWindow {
                 font.pixelSize: Theme.fontMeta
                 font.weight: Font.DemiBold
             }
-            ComboBox {
+
+            AppSelect {
                 id: engineModeBox
+                Layout.fillWidth: true
                 model: ["rootless", "rootful"]
                 currentIndex: backend.settings().engineMode === "rootful" ? 1 : 0
             }
+
             Text {
                 text: qsTr("Alterar o modo exige reiniciar o podstackd:\n"
                            + "systemctl --user restart podstack.service")
@@ -611,6 +630,7 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
             }
+
             Text {
                 text: backend.lastError
                 visible: backend.lastError.length > 0
@@ -621,7 +641,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: qsTr("Cancelar")

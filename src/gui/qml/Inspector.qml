@@ -541,7 +541,7 @@ Rectangle {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: removeDialog
         property string containerId
         title: qsTr("Remover container?")
@@ -564,7 +564,7 @@ Rectangle {
         onAccepted: backend.removeContainer(containerId, true, false)
     }
 
-    Dialog {
+    AppDialog {
         id: renameDialog
         property string containerId
         title: qsTr("Renomear container")
@@ -593,7 +593,7 @@ Rectangle {
                 Layout.fillWidth: true
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: qsTr("Cancelar")

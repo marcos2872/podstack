@@ -627,7 +627,7 @@ Item {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: createDialog
         title: qsTr("Novo container")
         modal: true
@@ -712,7 +712,7 @@ Item {
                 Item { Layout.fillWidth: true }
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: qsTr("Cancelar")

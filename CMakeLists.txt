@@ -106,6 +106,9 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/Main.qml
         src/gui/qml/Theme.qml
         src/gui/qml/AppIcon.qml
+        src/gui/qml/AppSelect.qml
+        src/gui/qml/AppDialog.qml
+        src/gui/qml/AppFooter.qml
         src/gui/qml/AppBadge.qml
         src/gui/qml/NavItem.qml
         src/gui/qml/Sparkline.qml

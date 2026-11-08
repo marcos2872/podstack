@@ -114,14 +114,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: pullDialog
         title: "Pull de imagem"
         modal: true
         width: 460
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -163,7 +163,7 @@ ColumnLayout {
                 to: 1
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: backend.pullActive ? "Cancelar" : "Fechar"
@@ -185,14 +185,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: importDialog
         title: "Importar imagem"
         modal: true
         width: 460
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -209,7 +209,7 @@ ColumnLayout {
                 placeholderText: "/caminho/imagem.tar"
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
@@ -227,14 +227,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: removeDialog
         title: "Remover imagem?"
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: Label {
@@ -249,14 +249,14 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    AppDialog {
         id: pruneDialog
         title: "Limpar imagens?"
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: Label {
@@ -267,14 +267,14 @@ ColumnLayout {
         onAccepted: backend.pruneImages(false)
     }
 
-    Dialog {
+    AppDialog {
         id: tagDialog
         title: "Tag da imagem"
         modal: true
         width: 460
         background: Rectangle {
             color: Theme.bgSurface
-            radius: 10
+            radius: Theme.radiusLg
             border.color: Theme.border
         }
         contentItem: ColumnLayout {
@@ -304,7 +304,7 @@ ColumnLayout {
                 visible: false
             }
         }
-        footer: RowLayout {
+        footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: "Cancelar"
