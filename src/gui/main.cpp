@@ -1,7 +1,7 @@
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
 
-#include <QGuiApplication>
+#include <QApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -10,7 +10,7 @@
 
 int main(int argc, char *argv[])
 {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("PodStack"));
     QGuiApplication::setOrganizationName(QStringLiteral("PodStack"));
     QGuiApplication::setApplicationVersion(QStringLiteral(PODSTACK_VERSION));

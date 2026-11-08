@@ -11,6 +11,7 @@ namespace PodStack {
 class ContainerListModel : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
 
 public:
     enum Roles {
@@ -19,6 +20,7 @@ public:
         ImageRole,
         PortsRole,
         IdRole,
+        HealthRole,
     };
 
     explicit ContainerListModel(QObject *parent = nullptr);
@@ -28,6 +30,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     int count() const { return m_items.size(); }
+    int revision() const { return m_revision; }
     Q_INVOKABLE QVariantMap get(int row) const;
 
 public slots:
@@ -35,9 +38,11 @@ public slots:
 
 signals:
     void countChanged();
+    void revisionChanged();
 
 private:
     QVector<QVariantMap> m_items;
+    int m_revision = 0;
 };
 
 } // namespace PodStack

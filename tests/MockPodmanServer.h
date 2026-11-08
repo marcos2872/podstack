@@ -21,6 +21,7 @@ public:
 
     QString lastMethod() const;
     QString lastPath() const;
+    QByteArray lastBody() const;
 
 private:
     void run();
@@ -34,4 +35,5 @@ private:
     mutable std::mutex m_mutex;
     QString m_lastMethod;
     QString m_lastPath;
+    QByteArray m_lastBody;
 };

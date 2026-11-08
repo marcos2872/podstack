@@ -18,6 +18,8 @@ find_package(Qt6 6.10 REQUIRED COMPONENTS
     Concurrent
 )
 find_package(CURL REQUIRED)
+find_package(qtermwidget6 REQUIRED)
+find_package(LibArchive REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -42,7 +44,7 @@ add_library(podstack_podman STATIC
     src/podman/UnixHttpClient.cpp
     src/podman/PodmanClient.cpp
 )
-target_link_libraries(podstack_podman PUBLIC podstack_core CURL::libcurl)
+target_link_libraries(podstack_podman PUBLIC podstack_core CURL::libcurl LibArchive::LibArchive)
 
 # ---------------------------------------------------------------------------
 # Daemon
@@ -68,13 +70,18 @@ target_link_libraries(podstack PRIVATE podstack_core Qt6::Network)
 add_library(podstack_gui_lib STATIC
     src/gui/Backend.cpp
     src/gui/ContainerListModel.cpp
+    src/gui/StreamClient.cpp
+    src/gui/TerminalWindow.cpp
 )
 target_include_directories(podstack_gui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_gui_lib PUBLIC
     podstack_core
     Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
     Qt6::Network
     Qt6::Concurrent
+    qtermwidget6
 )
 
 qt_add_executable(podstack-gui
@@ -88,12 +95,19 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/Main.qml
         src/gui/qml/Theme.qml
         src/gui/qml/ActionButton.qml
+        src/gui/qml/FormField.qml
+        src/gui/qml/FormCheck.qml
+        src/gui/qml/LogsView.qml
+        src/gui/qml/StatsView.qml
+        src/gui/qml/Inspector.qml
+        src/gui/qml/FilesView.qml
 )
 
 target_link_libraries(podstack-gui PRIVATE
     podstack_gui_lib
     Qt6::Core
     Qt6::Gui
+    Qt6::Widgets
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2

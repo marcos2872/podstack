@@ -2,7 +2,7 @@
 
 **PodStack** é uma alternativa Linux ao OrbStack: um app desktop para gerenciar containers, imagens, volumes, redes, builds, Compose, máquinas Linux (VMs), Kubernetes e domínios locais sobre o **Podman Engine** nativo.
 
-> **Status:** **M1 em andamento** (lifecycle, inspect, filtros e rootful). M0 concluído com 6 testes e cobertura 84,7%.
+> **Status:** **M1 concluído** (create, lifecycle, logs, stats, files, terminal nativo, batch, health, rename/duplicate, rootful). Ressalvas no M2: terminal embutido, upload e seleção fina.
 > **Licença:** GPL-3.0-or-later.
 > **Baseline funcional:** OrbStack 2.2.5 (build 21124), analisado estaticamente. Ver [`reference/orbstack-2.2.5.md`](reference/orbstack-2.2.5.md).
 > **Nome/branding:** PodStack é um projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado.

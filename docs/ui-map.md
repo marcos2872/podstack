@@ -112,16 +112,18 @@
 
 ## 5. Inspector
 
-Abas por tipo:
+Abas por tipo (estado do M1):
 
-| Aba | Container | Machine | Volume | Image | Pod/Service |
+| Aba | Container | Machine | Volume | Image | Observação |
 |---|---|---|---|---|---|
-| **Info** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Stats** | ✅ | ✅ | — | — | ✅ (pod) |
-| **Logs** | ✅ | ✅ | — | — | ✅ |
-| **Terminal** | ✅ | ✅ | — | — | ✅ (exec) |
-| **Files** | ✅ | ✅ | ✅ | ✅ (RO) | — |
-| **Inspect** (extra PodStack) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Info** | ✅ | planejado | planejado | planejado | nome, imagem, portas, estado, health, ações |
+| **Logs** | ✅ | planejado | — | — | streaming/follow, busca, wrap, timestamps |
+| **Stats** | ✅ | planejado | — | — | CPU, memória, rede, disco/PIDs + gráfico |
+| **Files** | ✅ | planejado | planejado | — | listar e baixar para `~/Downloads` |
+| **Terminal** | janela nativa (M1) | planejado | — | — | QTermWidget; embutir no inspector no M2 |
+| **Inspect** | CLI `podstack inspect` | — | — | — | aba GUI no M2 |
+
+Ações da GUI no M1: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all` e Settings (rootless/rootful).
 
 ### 5.1 Info
 

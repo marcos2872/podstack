@@ -2,11 +2,19 @@
 
 #include "core/Paths.h"
 
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QUrl>
 #include <QtEndian>
+
+#include <archive.h>
+#include <archive_entry.h>
 
 #include <utility>
 
@@ -18,17 +26,36 @@ QString encodeId(const QString &id)
     return QString::fromLatin1(QUrl::toPercentEncoding(id));
 }
 
+QString encodePath(const QString &path)
+{
+    return QString::fromLatin1(QUrl::toPercentEncoding(path));
+}
+
+QString normalizeEntryName(QString name)
+{
+    while (name.startsWith(QStringLiteral("./"))) {
+        name.remove(0, 2);
+    }
+    while (name.startsWith(QLatin1Char('/'))) {
+        name.remove(0, 1);
+    }
+    while (name.endsWith(QLatin1Char('/')) && name.size() > 1) {
+        name.chop(1);
+    }
+    return name;
+}
+
 } // namespace
 
 QJsonObject ContainerInfo::toJson() const
-{
-    QJsonObject obj;
+{    QJsonObject obj;
     obj.insert(QStringLiteral("id"), id);
     obj.insert(QStringLiteral("name"), name);
     obj.insert(QStringLiteral("image"), image);
     obj.insert(QStringLiteral("state"), state);
     obj.insert(QStringLiteral("status"), status);
     obj.insert(QStringLiteral("created"), created);
+    obj.insert(QStringLiteral("health"), health);
 
     QJsonArray portArray;
     for (const QString &port : ports) {
@@ -42,6 +69,92 @@ QJsonObject ContainerInfo::toJson() const
     }
     obj.insert(QStringLiteral("labels"), labelObject);
     return obj;
+}
+
+QJsonObject FileEntry::toJson() const
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("name"), name);
+    object.insert(QStringLiteral("size"), static_cast<double>(size));
+    object.insert(QStringLiteral("directory"), directory);
+    object.insert(QStringLiteral("mode"), mode);
+    object.insert(QStringLiteral("modified"), modified);
+    return object;
+}
+
+QJsonObject ContainerCreateSpec::toJson() const
+{
+    QJsonObject object;
+    if (!image.isEmpty()) {
+        object.insert(QStringLiteral("image"), image);
+    }
+    if (!name.isEmpty()) {
+        object.insert(QStringLiteral("name"), name);
+    }
+    if (!command.isEmpty()) {
+        QJsonArray commandArray;
+        for (const QString &part : QProcess::splitCommand(command)) {
+            commandArray.append(part);
+        }
+        object.insert(QStringLiteral("command"), commandArray);
+    }
+    if (!env.isEmpty()) {
+        QJsonObject envObject;
+        for (auto it = env.constBegin(); it != env.constEnd(); ++it) {
+            envObject.insert(it.key(), it.value());
+        }
+        object.insert(QStringLiteral("env"), envObject);
+    }
+    if (!ports.isEmpty()) {
+        QJsonArray portArray;
+        for (const PortMapping &port : ports) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("host_ip"), port.hostIp);
+            entry.insert(QStringLiteral("host_port"), port.hostPort);
+            entry.insert(QStringLiteral("container_port"), port.containerPort);
+            entry.insert(QStringLiteral("protocol"), port.protocol);
+            portArray.append(entry);
+        }
+        object.insert(QStringLiteral("portmappings"), portArray);
+    }
+    if (!mounts.isEmpty()) {
+        QJsonArray mountArray;
+        for (const MountMapping &mount : mounts) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("type"), QStringLiteral("bind"));
+            entry.insert(QStringLiteral("source"), mount.source);
+            entry.insert(QStringLiteral("destination"), mount.destination);
+            QJsonArray options;
+            options.append(QStringLiteral("rbind"));
+            options.append(mount.readOnly ? QStringLiteral("ro") : QStringLiteral("rw"));
+            entry.insert(QStringLiteral("options"), options);
+            mountArray.append(entry);
+        }
+        object.insert(QStringLiteral("mounts"), mountArray);
+    }
+    if (!labels.isEmpty()) {
+        QJsonObject labelObject;
+        for (auto it = labels.constBegin(); it != labels.constEnd(); ++it) {
+            labelObject.insert(it.key(), it.value());
+        }
+        object.insert(QStringLiteral("labels"), labelObject);
+    }
+    if (!workDir.isEmpty()) {
+        object.insert(QStringLiteral("work_dir"), workDir);
+    }
+    if (!user.isEmpty()) {
+        object.insert(QStringLiteral("user"), user);
+    }
+    if (remove) {
+        object.insert(QStringLiteral("remove"), true);
+    }
+    if (init) {
+        object.insert(QStringLiteral("init"), true);
+    }
+    if (privileged) {
+        object.insert(QStringLiteral("privileged"), true);
+    }
+    return object;
 }
 
 PodmanClient::PodmanClient(QString socketPath)
@@ -144,7 +257,7 @@ QVector<ContainerInfo> PodmanClient::listContainers(bool all, Error *error)
 
     const QString suffix = all ? QStringLiteral("/containers/json?all=true")
                                : QStringLiteral("/containers/json?all=false");
-    const HttpResponse response = m_http.request(QByteArrayLiteral("GET"), path(suffix));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("GET"), this->path(suffix));
     if (response.status != 200) {
         if (error) {
             *error = errorFromResponse(response,
@@ -191,6 +304,14 @@ QVector<ContainerInfo> PodmanClient::listContainers(bool all, Error *error)
         info.state = object.value(QStringLiteral("State")).toString();
         info.status = object.value(QStringLiteral("Status")).toString();
         info.created = object.value(QStringLiteral("Created")).toString();
+
+        if (info.status.contains(QStringLiteral("(unhealthy)"))) {
+            info.health = QStringLiteral("unhealthy");
+        } else if (info.status.contains(QStringLiteral("(health: starting)"))) {
+            info.health = QStringLiteral("starting");
+        } else if (info.status.contains(QStringLiteral("(healthy)"))) {
+            info.health = QStringLiteral("healthy");
+        }
 
         const QJsonArray ports = object.value(QStringLiteral("Ports")).toArray();
         for (const QJsonValue &portValue : ports) {
@@ -375,6 +496,34 @@ bool PodmanClient::killContainer(const QString &id, const QString &signal, Error
     return false;
 }
 
+bool PodmanClient::renameContainer(const QString &id, const QString &name, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o novo nome."));
+        }
+        return false;
+    }
+
+    const QString suffix = QStringLiteral("/containers/%1/rename?name=%2")
+                               .arg(encodeId(id), encodeId(name));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("POST"), this->path(suffix));
+    if (response.status == 204) {
+        return true;
+    }
+    if (error) {
+        *error = errorFromResponse(response, QStringLiteral("Falha ao renomear o container."));
+    }
+    return false;
+}
+
 QJsonObject PodmanClient::inspectContainer(const QString &id, Error *error)
 {
     if (error) {
@@ -402,6 +551,210 @@ QJsonObject PodmanClient::inspectContainer(const QString &id, Error *error)
         return {};
     }
     return document.object();
+}
+
+QString PodmanClient::createContainer(const ContainerCreateSpec &spec, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return {};
+    }
+    if (spec.image.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe a imagem do container."));
+        }
+        return {};
+    }
+
+    const QByteArray body = QJsonDocument(spec.toJson()).toJson(QJsonDocument::Compact);
+    const HttpResponse response = m_http.request(QByteArrayLiteral("POST"),
+                                                  path(QStringLiteral("/containers/create")),
+                                                  body, QStringLiteral("application/json"));
+    if (response.status != 201 && response.status != 200) {
+        if (error) {
+            *error = errorFromResponse(response, QStringLiteral("Falha ao criar o container."));
+        }
+        return {};
+    }
+
+    const QJsonObject object = QJsonDocument::fromJson(response.body).object();
+    const QString id = object.value(QStringLiteral("Id")).toString();
+    if (id.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_RESPONSE"),
+                                 QStringLiteral("O Podman não retornou o ID do container."));
+        }
+        return {};
+    }
+    return id;
+}
+
+QVector<FileEntry> PodmanClient::listFiles(const QString &id, const QString &path, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return {};
+    }
+
+    const QString suffix = QStringLiteral("/containers/%1/archive?path=%2")
+                               .arg(encodeId(id), encodePath(path));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("GET"), this->path(suffix));
+    if (response.status != 200) {
+        if (error) {
+            *error = errorFromResponse(response, QStringLiteral("Falha ao listar arquivos."));
+        }
+        return {};
+    }
+
+    archive *archive = archive_read_new();
+    archive_read_support_filter_all(archive);
+    archive_read_support_format_tar(archive);
+
+    if (archive_read_open_memory(archive, response.body.constData(),
+                                 static_cast<size_t>(response.body.size()))
+        != ARCHIVE_OK) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_ARCHIVE_ERROR"),
+                                 QStringLiteral("Falha ao abrir o tar do container."),
+                                 QString::fromUtf8(archive_error_string(archive)));
+        }
+        archive_read_free(archive);
+        return {};
+    }
+
+    QVector<FileEntry> entries;
+    archive_entry *entry = nullptr;
+    while (archive_read_next_header(archive, &entry) == ARCHIVE_OK) {
+        const char *rawName = archive_entry_pathname(entry);
+        if (!rawName) {
+            archive_read_data_skip(archive);
+            continue;
+        }
+
+        const QString name = normalizeEntryName(QString::fromUtf8(rawName));
+        if (name.isEmpty() || name == QStringLiteral(".")) {
+            archive_read_data_skip(archive);
+            continue;
+        }
+
+        FileEntry file;
+        file.name = name;
+        file.size = static_cast<qint64>(archive_entry_size(entry));
+        file.directory = archive_entry_filetype(entry) == AE_IFDIR;
+        file.mode = QString::number(archive_entry_mode(entry) & 07777, 8).rightJustified(4, '0');
+        file.modified = QDateTime::fromSecsSinceEpoch(archive_entry_mtime(entry)).toString(Qt::ISODate);
+        entries.append(file);
+        archive_read_data_skip(archive);
+    }
+
+    archive_read_free(archive);
+    return entries;
+}
+
+bool PodmanClient::downloadFile(const QString &id, const QString &path,
+                                const QString &destination, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+
+    const QString suffix = QStringLiteral("/containers/%1/archive?path=%2")
+                               .arg(encodeId(id), encodePath(path));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("GET"), this->path(suffix));
+    if (response.status != 200) {
+        if (error) {
+            *error = errorFromResponse(response, QStringLiteral("Falha ao baixar o arquivo."));
+        }
+        return false;
+    }
+
+    archive *archive = archive_read_new();
+    archive_read_support_filter_all(archive);
+    archive_read_support_format_tar(archive);
+    if (archive_read_open_memory(archive, response.body.constData(),
+                                 static_cast<size_t>(response.body.size()))
+        != ARCHIVE_OK) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_ARCHIVE_ERROR"),
+                                 QStringLiteral("Falha ao abrir o tar do container."),
+                                 QString::fromUtf8(archive_error_string(archive)));
+        }
+        archive_read_free(archive);
+        return false;
+    }
+
+    const QString normalized = normalizeEntryName(path);
+    const QString baseName = QFileInfo(path).fileName();
+    bool found = false;
+
+    archive_entry *entry = nullptr;
+    while (archive_read_next_header(archive, &entry) == ARCHIVE_OK) {
+        const char *rawName = archive_entry_pathname(entry);
+        if (!rawName || archive_entry_filetype(entry) == AE_IFDIR) {
+            archive_read_data_skip(archive);
+            continue;
+        }
+
+        const QString name = normalizeEntryName(QString::fromUtf8(rawName));
+        const bool matches = name == normalized || name == baseName
+                             || name.endsWith(QLatin1Char('/') + baseName);
+        if (!matches) {
+            archive_read_data_skip(archive);
+            continue;
+        }
+
+        QDir().mkpath(QFileInfo(destination).absolutePath());
+        QFile output(destination);
+        if (!output.open(QIODevice::WriteOnly)) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                     QStringLiteral("Não foi possível escrever o arquivo."),
+                                     output.errorString());
+            }
+            archive_read_free(archive);
+            return false;
+        }
+
+        char buffer[8192];
+        while (true) {
+            const la_ssize_t bytes = archive_read_data(archive, buffer, sizeof(buffer));
+            if (bytes < 0) {
+                if (error) {
+                    *error = Error::make(QStringLiteral("PODSTACK_ARCHIVE_ERROR"),
+                                         QStringLiteral("Falha ao extrair o arquivo."),
+                                         QString::fromUtf8(archive_error_string(archive)));
+                }
+                archive_read_free(archive);
+                return false;
+            }
+            if (bytes == 0) {
+                break;
+            }
+            output.write(buffer, static_cast<qint64>(bytes));
+        }
+
+        found = true;
+        break;
+    }
+
+    archive_read_free(archive);
+
+    if (!found) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Arquivo não encontrado no container."), path);
+        }
+        return false;
+    }
+    return true;
 }
 
 bool PodmanClient::execOnce(const QString &id, const QStringList &cmd, ExecResult *result,
@@ -556,6 +909,51 @@ bool PodmanClient::streamLogs(const QString &id, int tail, bool follow,
     if (!ok && error) {
         *error = Error::make(QStringLiteral("PODSTACK_ENGINE_ERROR"),
                              QStringLiteral("Falha ao ler os logs do container."), streamError);
+    }
+    return ok;
+}
+
+bool PodmanClient::streamStats(const QString &id, int intervalSeconds,
+                               const std::function<bool(const QByteArray &)> &onLine,
+                               std::atomic_bool *cancel, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+
+    const QString suffix = QStringLiteral("/containers/stats?stream=true&interval=%1&containers=%2")
+                               .arg(intervalSeconds)
+                               .arg(encodeId(id));
+    QString streamError;
+    QByteArray buffer;
+
+    const auto onData = [&](const QByteArray &data) {
+        buffer.append(data);
+        int newline = -1;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+            const QByteArray line = buffer.left(newline);
+            buffer.remove(0, newline + 1);
+            if (line.trimmed().isEmpty()) {
+                continue;
+            }
+            if (!onLine(line)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool ok = m_http.stream(path(suffix), onData, cancel, &streamError);
+    if (!buffer.trimmed().isEmpty()) {
+        onLine(buffer);
+    }
+    if (!ok && error) {
+        *error = Error::make(QStringLiteral("PODSTACK_ENGINE_ERROR"),
+                             QStringLiteral("Falha ao ler as estatísticas do container."),
+                             streamError);
     }
     return ok;
 }

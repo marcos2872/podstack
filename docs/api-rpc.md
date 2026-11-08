@@ -116,14 +116,15 @@ interface Subscription { subscriptionId: string }
 |---|---|---|
 | `containers.list` | `{all?, state?: "running"\|"stopped"\|"paused", filter?, limit?, offset?}` | `{items: Container[], total}` |
 | `containers.get` | `{id}` | `Container` |
-| `containers.create` | `{image, name?, cmd?, entrypoint?, ports?, env?, volumes?, workdir?, user?, labels?, restart?, resources?, flags?}` | `Container` |
+| `containers.create` | `{image, name?, command?, env?, ports?, mounts?, workDir?, user?, remove?, init?, privileged?, start?}` | `{id, started}` |
+| `containers.duplicate` | `{id, name?}` | `{id, source, started}` |
 | `containers.start` | `{id}` | `{id, ok:true}` |
 | `containers.stop` | `{id, timeoutSeconds?}` | `{id, ok:true}` |
 | `containers.restart` | `{id, timeoutSeconds?}` | `{id, ok:true}` |
 | `containers.pause` / `unpause` | `{id}` | `{id, ok:true}` |
 | `containers.kill` | `{id, signal?}` | `{id, ok:true}` |
 | `containers.remove` | `{id, force?, volumes?}` | `{id, ok:true}` |
-| `containers.rename` | `{id, name}` | `Container` |
+| `containers.rename` | `{id, name}` | `{id, ok:true}` |
 | `containers.inspect` | `{id}` | `{id, json: object}` |
 | `containers.top` | `{id}` | `{titles:[], processes:[][]}` |
 | `containers.changes` | `{id}` | `{changes:[{path,kind}]}` |
@@ -136,9 +137,9 @@ interface Subscription { subscriptionId: string }
 | `containers.exec.write` | `{sessionId, dataBase64}` | `{}` |
 | `containers.exec.resize` | `{sessionId, rows, cols}` | `{}` |
 | `containers.exec.close` | `{sessionId}` | `{exitCode?}` |
-| `containers.files.list` | `{id, path}` | `{entries:[{name,size,mode,mtime,dir,symlink}]}` |
-| `containers.files.download` | `{id, path}` | `JobRef` (gera arquivo temporário) |
-| `containers.files.upload` | `{id, path, sourcePath}` | `JobRef` |
+| `containers.files.list` | `{id, path}` | `{path, entries:[{name,size,directory,mode,modified}]}` |
+| `containers.files.download` | `{id, path, destination}` | `{path, destination}` |
+| `containers.files.upload` | `{id, path, sourcePath}` | `JobRef` (planejado M2) |
 | `containers.export` | `{id, path}` | `JobRef` |
 | `containers.commit` | `{id, repo, tag?, message?}` | `{imageId}` |
 

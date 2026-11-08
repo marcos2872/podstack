@@ -139,6 +139,13 @@ void RpcTest::lifecycle()
                  .toBool(),
              qPrintable(error.message));
 
+    QJsonObject renameParams = idParams;
+    renameParams.insert(QStringLiteral("name"), QStringLiteral("renamed"));
+    QVERIFY2(client.call(QStringLiteral("containers.rename"), renameParams, &error)
+                 .value(QStringLiteral("ok"))
+                 .toBool(),
+             qPrintable(error.message));
+
     const QJsonObject inspect = client.call(QStringLiteral("containers.inspect"), idParams, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(inspect.value(QStringLiteral("json"))
@@ -146,6 +153,63 @@ void RpcTest::lifecycle()
                  .value(QStringLiteral("Id"))
                  .toString(),
              QStringLiteral("abc123"));
+
+    QJsonObject createParams;
+    createParams.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    createParams.insert(QStringLiteral("name"), QStringLiteral("created"));
+    createParams.insert(QStringLiteral("command"), QStringLiteral("sleep 10"));
+    createParams.insert(QStringLiteral("env"),
+                        QJsonObject{{QStringLiteral("A"), QStringLiteral("B")}});
+    createParams.insert(QStringLiteral("ports"),
+                        QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 18080},
+                                               {QStringLiteral("containerPort"), 80},
+                                               {QStringLiteral("protocol"), QStringLiteral("tcp")}}});
+    createParams.insert(QStringLiteral("mounts"),
+                        QJsonArray{QJsonObject{{QStringLiteral("source"), QStringLiteral("/tmp")},
+                                               {QStringLiteral("destination"),
+                                                QStringLiteral("/mnt")},
+                                               {QStringLiteral("readOnly"), false}}});
+    createParams.insert(QStringLiteral("workDir"), QStringLiteral("/tmp"));
+    createParams.insert(QStringLiteral("user"), QStringLiteral("0:0"));
+    createParams.insert(QStringLiteral("remove"), true);
+    createParams.insert(QStringLiteral("start"), true);
+
+    const QJsonObject created =
+        client.call(QStringLiteral("containers.create"), createParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.value(QStringLiteral("id")).toString(), QStringLiteral("created123"));
+    QVERIFY(created.value(QStringLiteral("started")).toBool());
+
+    const QJsonObject duplicated =
+        client.call(QStringLiteral("containers.duplicate"), idParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(duplicated.value(QStringLiteral("id")).toString(), QStringLiteral("created123"));
+    QCOMPARE(duplicated.value(QStringLiteral("source")).toString(), QStringLiteral("abc123"));
+
+    PodStack::Error createError;
+    client.call(QStringLiteral("containers.create"), {}, &createError);
+    QCOMPARE(createError.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QJsonObject filesParams;
+    filesParams.insert(QStringLiteral("id"), QStringLiteral("abc123"));
+    filesParams.insert(QStringLiteral("path"), QStringLiteral("/"));
+    const QJsonObject files =
+        client.call(QStringLiteral("containers.files.list"), filesParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(files.value(QStringLiteral("entries")).toArray().size(), 2);
+
+    const QString destination = QDir::tempPath()
+                                + QStringLiteral("/podstack-rpc-file-%1.txt")
+                                      .arg(QCoreApplication::applicationPid());
+    QFile::remove(destination);
+    QJsonObject downloadParams = filesParams;
+    downloadParams.insert(QStringLiteral("path"), QStringLiteral("/file.txt"));
+    downloadParams.insert(QStringLiteral("destination"), destination);
+    const QJsonObject download =
+        client.call(QStringLiteral("containers.files.download"), downloadParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(download.value(QStringLiteral("destination")).toString(), destination);
+    QFile::remove(destination);
 
     QJsonObject runningParams;
     runningParams.insert(QStringLiteral("all"), true);
@@ -251,6 +315,27 @@ void RpcTest::subscriptions()
         }
     }
     QCOMPARE(events, 1);
+
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 4},
+                 {QStringLiteral("method"), QStringLiteral("containers.stats.subscribe")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("id"), QStringLiteral("abc123")},
+                              {QStringLiteral("intervalSeconds"), 1}}}});
+
+    int stats = 0;
+    for (int i = 0; i < 20 && stats < 1; ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("containers.stats.delta")) {
+            ++stats;
+        }
+    }
+    QCOMPARE(stats, 1);
 }
 
 void RpcTest::invalidRequests()

@@ -21,7 +21,8 @@
   Alternativa Linux ao OrbStack, com Qt 6/QML, daemon de usuário e CLI scriptable.
 </p>
 
-> **Status:** **M1 em andamento** — lifecycle completo (start/stop/restart/pause/unpause/kill/remove), inspect, filtros de estado, rootful e ações na GUI. M0: 6 testes e cobertura 84,7% com gate de 80%.
+> **Status:** **M1 concluído** — create, lifecycle completo, inspect, logs, stats, files (list/download), terminal nativo, batch, health, rename/duplicate e rootful. **7 testes**, cobertura **82,5%** (gate 80%). Próximo: M2.
+> **Ressalvas M1:** terminal abre em janela nativa (embutir no inspector fica no M2); upload de arquivos e seleção múltipla fina também ficam no M2.
 > **Plataforma:** Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10.
 > **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).
 
@@ -204,7 +205,7 @@ Detalhes e critérios de saída em [`docs/roadmap.md`](docs/roadmap.md).
 # dependências (Fedora)
 sudo dnf install cmake ninja-build gcc-c++ \
   qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
-  libcurl-devel
+  qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel
 
 # build
 cmake --preset dev

@@ -10,7 +10,50 @@
 
 #include <cstring>
 
+#include <system_error>
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+
 namespace {
+
+QByteArray tarEntry(const QByteArray &name, const QByteArray &data, char type = '0')
+{
+    char header[512] = {};
+    std::memcpy(header, name.constData(), std::min<int>(name.size(), 100));
+    std::snprintf(header + 100, 8, "%07o", 0644);
+    std::snprintf(header + 108, 8, "%07o", 0);
+    std::snprintf(header + 116, 8, "%07o", 0);
+    std::snprintf(header + 124, 12, "%011o", static_cast<unsigned int>(data.size()));
+    std::snprintf(header + 136, 12, "%011o", 0);
+    std::memset(header + 148, ' ', 8);
+    header[156] = type;
+    std::memcpy(header + 257, "ustar", 6);
+    std::memcpy(header + 263, "00", 2);
+
+    unsigned int checksum = 0;
+    for (unsigned char byte : header) {
+        checksum += byte;
+    }
+    std::snprintf(header + 148, 8, "%06o", checksum);
+    header[154] = '\0';
+    header[155] = ' ';
+
+    QByteArray entry(header, 512);
+    entry.append(data);
+    const int padding = (512 - (data.size() % 512)) % 512;
+    entry.append(QByteArray(padding, '\0'));
+    return entry;
+}
+
+QByteArray mockTar()
+{
+    QByteArray tar;
+    tar += tarEntry("file.txt", "hello", '0');
+    tar += tarEntry("dir/", {}, '5');
+    tar.append(QByteArray(1024, '\0'));
+    return tar;
+}
 
 QByteArray httpResponse(int status, const QByteArray &reason, const QByteArray &body,
                         const QByteArray &extraHeaders = {})
@@ -95,6 +138,12 @@ QString MockPodmanServer::lastPath() const
     return m_lastPath;
 }
 
+QByteArray MockPodmanServer::lastBody() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_lastBody;
+}
+
 void MockPodmanServer::run()
 {
     while (!m_stopping.load()) {
@@ -149,12 +198,16 @@ void MockPodmanServer::handleClient(int clientFd)
         std::lock_guard<std::mutex> lock(m_mutex);
         m_lastMethod = method;
         m_lastPath = path;
+        m_lastBody = body;
     }
 
     QByteArray response;
     if (pathOnly == QStringLiteral("/_ping")) {
         response = httpResponse(200, "OK", "OK",
                                 "Libpod-Api-Version: 5.8.9\r\nApi-Version: 1.44\r\n");
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.endsWith(QStringLiteral("/containers/create"))) {
+        response = httpResponse(201, "Created", R"({"Id":"created123"})");
     } else if (pathOnly.contains(QStringLiteral("/containers/fail/"))) {
         response = httpResponse(500, "Internal Server Error",
                                 R"({"message":"forced failure","cause":"mock"})");
@@ -162,16 +215,16 @@ void MockPodmanServer::handleClient(int clientFd)
         response = httpResponse(404, "Not Found",
                                 R"({"message":"no such container","cause":"mock"})");
     } else if (pathOnly.contains(QStringLiteral("/libpod/containers/json"))) {
-        const QByteArray payload = R"([{
+        const QByteArray payload = R"JSON([{
             "Id": "abc123",
             "Names": ["/demo"],
             "Image": "docker.io/library/alpine:3.20",
             "State": "running",
-            "Status": "Up 1 minute",
+            "Status": "Up 1 minute (healthy)",
             "Created": "2026-01-01T00:00:00Z",
             "Ports": [{"HostIp": "0.0.0.0", "HostPort": 8080, "ContainerPort": 80, "Protocol": "tcp"}],
             "Labels": {"dev.podstack.test": "1"}
-        }])";
+        }])JSON";
         response = httpResponse(200, "OK", payload);
     } else if (method == QStringLiteral("POST") && pathOnly.endsWith(QStringLiteral("/exec"))) {
         response = httpResponse(201, "Created", R"({"Id":"exec-1"})");
@@ -189,9 +242,18 @@ void MockPodmanServer::handleClient(int clientFd)
             "Id":"abc123",
             "Name":"/demo",
             "State":{"Status":"running","Running":true,"Pid":1,"ExitCode":0},
-            "Config":{"Image":"docker.io/library/alpine:3.20","Env":["A=B"]},
+            "Config":{"Image":"docker.io/library/alpine:3.20","Env":["A=B"],"Cmd":["sleep","10"],"WorkingDir":"/tmp","User":"0:0"},
+            "HostConfig":{"PortBindings":{"80/tcp":[{"HostIp":"0.0.0.0","HostPort":"8080"}]}},
+            "Mounts":[{"Source":"/tmp","Destination":"/mnt","RW":true}],
             "NetworkSettings":{"IPAddress":"10.0.0.2"}
         })");
+    } else if (pathOnly.contains(QStringLiteral("/archive"))) {
+        response = httpResponse(200, "OK", mockTar());
+    } else if (pathOnly.contains(QStringLiteral("/stats"))) {
+        const QByteArray statsPayload = QByteArrayLiteral(
+            "{\"cpu_percent\":\"1.5%\",\"mem_usage\":\"1MB / 1GB\","
+            "\"net_io\":\"0B / 0B\",\"block_io\":\"0B / 0B\",\"pids\":\"1\"}\n");
+        response = httpResponse(200, "OK", statsPayload);
     } else if (pathOnly.contains(QStringLiteral("/logs"))) {
         const auto frame = [](const QByteArray &payload) {
             QByteArray out;
@@ -217,7 +279,8 @@ void MockPodmanServer::handleClient(int clientFd)
                    || pathOnly.endsWith(QStringLiteral("/start"))
                    || pathOnly.endsWith(QStringLiteral("/pause"))
                    || pathOnly.endsWith(QStringLiteral("/unpause"))
-                   || pathOnly.endsWith(QStringLiteral("/kill")))) {
+                   || pathOnly.endsWith(QStringLiteral("/kill"))
+                   || pathOnly.endsWith(QStringLiteral("/rename")))) {
         response = httpResponse(204, "No Content", {});
     } else if (method == QStringLiteral("DELETE")
                && pathOnly.contains(QStringLiteral("/containers/"))) {

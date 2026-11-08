@@ -37,7 +37,7 @@
 
 ## M1 — Containers
 
-> **Status (2026-11-08): em andamento.** Primeira fatia entregue: filtros de estado, pause/unpause/kill, inspect, rootful e ações na GUI. Pendentes: create, logs na UI, terminal, stats, files, batch e healthcheck visual.
+> **Status (2026-11-08): concluído com ressalvas.** Entregues: create, lifecycle completo, inspect, logs, stats, files (list/download), terminal nativo, batch (start/stop all), health, rename/duplicate e rootful. Pendências finas para o M2: terminal embutido no inspector, upload de arquivos e seleção múltipla arbitrária.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
