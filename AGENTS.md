@@ -154,9 +154,15 @@ cmake --build --preset dev
 
 # testes
 ctest --preset dev
+
+# daemon + GUI (incremental; use PODSTACK_SKIP_BUILD=1 para não recompilar)
+./scripts/dev.sh
+PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
 ```
 
-> Ainda não existe `CMakeLists.txt`; os comandos passam a valer a partir do M0 (T0-02).
+`PODSTACK_CONTROL_SOCKET` permite usar um socket de dev isolado do daemon do sistema.
+
+> O M0 já entrega `CMakeLists.txt` e os binários em `build/dev/`.
 
 **Verificação mínima por mudança:**
 

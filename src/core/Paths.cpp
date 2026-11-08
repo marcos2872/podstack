@@ -68,6 +68,10 @@ QString runtimeDir()
 
 QString controlSocket()
 {
+    const QString override = qEnvironmentVariable("PODSTACK_CONTROL_SOCKET");
+    if (!override.isEmpty()) {
+        return override;
+    }
     return runtimeDir() + QStringLiteral("/control.sock");
 }
 

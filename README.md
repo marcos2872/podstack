@@ -205,8 +205,17 @@ cmake --preset dev
 cmake --build --preset dev
 ctest --preset dev
 
-# rodar daemon + GUI
+# rodar daemon + GUI (build incremental)
 ./scripts/dev.sh
+
+# depois do primeiro build, sem recompilar:
+PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
+```
+
+O `scripts/dev.sh` usa `$XDG_RUNTIME_DIR/podstack/control.sock`, inicia o daemon se necessário e reaproveita um daemon já ativo. Para isolar do daemon do sistema, defina `PODSTACK_CONTROL_SOCKET`:
+
+```bash
+PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
 ```
 
 O CLI também pode ser usado separadamente:
