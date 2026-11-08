@@ -15,7 +15,7 @@
   Alternativa Linux ao OrbStack, com Qt 6/QML, daemon de usuário e CLI scriptable.
 </p>
 
-> **Status:** especificação concluída (M0 pronto para começar). O código será construído contra [`docs/tasks.md`](docs/tasks.md).
+> **Status:** **M0 concluído** — CMake, daemon JSON-RPC, cliente Libpod (logs/events/exec hijack), CLI (`version/status/ps/exec/doctor`) e shell QML funcionando. Próximo: M1 (containers completos).
 > **Plataforma:** Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10.
 > **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).
 
@@ -138,7 +138,7 @@ Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`. Regras de uso, tam
 │   │   ├── podstack-icon-{16,24,32,48,64,128,256,512}.png
 │   │   └── tray/
 │   └── logo.md
-└── docs/                  # especificação, PRD, arquitetura, ADRs e referência
+├── docs/                  # especificação, PRD, arquitetura, ADRs e referência
     ├── README.md
     ├── constitution.md
     ├── PRD.md
@@ -158,9 +158,19 @@ Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`. Regras de uso, tam
     ├── roadmap.md
     ├── adr/
     └── reference/
+├── CMakeLists.txt
+├── CMakePresets.json
+├── src/
+│   ├── core/
+│   ├── podman/
+│   ├── daemon/
+│   ├── cli/
+│   └── gui/
+├── tests/
+├── packaging/
+├── scripts/
+└── .github/workflows/
 ```
-
-O código (`src/`, `tests/`, `packaging/`) será criado no M0 conforme [`docs/tasks.md`](docs/tasks.md).
 
 ---
 
@@ -184,19 +194,28 @@ Detalhes e critérios de saída em [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Começando (desenvolvimento)
 
-Ainda não há código. Quando o M0 for iniciado:
-
 ```bash
 # dependências (Fedora)
 sudo dnf install cmake ninja-build gcc-c++ \
   qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
-  qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
-  qtermwidget-devel libcurl-devel sqlite-devel
+  libcurl-devel
 
-# build (previsto)
+# build
 cmake --preset dev
 cmake --build --preset dev
 ctest --preset dev
+
+# rodar daemon + GUI
+./scripts/dev.sh
+```
+
+O CLI também pode ser usado separadamente:
+
+```bash
+./build/dev/podstackd &          # daemon
+./build/dev/podstack status
+./build/dev/podstack ps --all
+./build/dev/podstack exec <container> -- /bin/echo hello
 ```
 
 Leia [`AGENTS.md`](AGENTS.md) antes de contribuir. Ele define ordem de leitura, regras de clean-room, convenções de código, fluxo de tarefas e critérios de verificação.

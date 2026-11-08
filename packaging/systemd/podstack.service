@@ -1,0 +1,25 @@
+[Unit]
+Description=PodStack daemon
+Requires=podstack.socket
+After=podstack.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/podstackd
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=20
+
+# Hardening básico
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.config/podstack %h/.local/share/podstack %h/.local/state/podstack %h/.cache/podstack %t/podstack
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=default.target

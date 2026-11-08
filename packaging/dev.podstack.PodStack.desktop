@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=PodStack
+Comment=Containers, Compose, VMs Linux e Kubernetes sobre Podman
+Exec=podstack-gui
+Icon=dev.podstack.PodStack
+Terminal=false
+Type=Application
+Categories=Development;System;
+StartupWMClass=dev.podstack.PodStack
+Keywords=podman;docker;container;compose;kubernetes;vm;

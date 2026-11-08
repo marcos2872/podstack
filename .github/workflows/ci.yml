@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependências
+        run: |
+          dnf install -y git cmake ninja-build gcc-c++ \
+            qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
+            qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
+            qtermwidget-devel libcurl-devel
+
+      - name: Configurar
+        run: cmake --preset dev
+
+      - name: Compilar
+        run: cmake --build --preset dev
+
+      - name: Testar
+        run: ctest --preset dev

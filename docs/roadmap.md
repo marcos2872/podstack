@@ -34,6 +34,8 @@ gantt
 
 ### M0 — Fundação (2 semanas)
 
+**Status:** **concluído em 2026-11-08** (build, testes e E2E verdes).
+
 **Objetivo:** provar a arquitetura e destravar os riscos técnicos.
 
 **Entregáveis:**

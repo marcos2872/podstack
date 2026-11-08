@@ -12,7 +12,7 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** especificação concluída (M0). **Ainda não há código de produto.** O próximo passo é o M0 em [`docs/tasks.md`](docs/tasks.md).
+**Status atual:** **M0 concluído** em 2026-11-08. Próximo marco: **M1** (containers completos) em [`docs/tasks.md`](docs/tasks.md).
 
 ---
 
@@ -101,11 +101,18 @@ Para a área que você vai mexer, leia também:
 │   ├── roadmap.md
 │   ├── adr/
 │   └── reference/
-└── (a criar no M0)
-    ├── src/                  # core, podman, daemon, cli, gui, machines, k8s, proxy, platform
-    ├── tests/
-    ├── packaging/
-    └── CMakeLists.txt
+├── CMakeLists.txt
+├── CMakePresets.json
+├── src/                      # core, podman, daemon, cli, gui
+│   ├── core/
+│   ├── podman/
+│   ├── daemon/
+│   ├── cli/
+│   └── gui/
+├── tests/
+├── packaging/
+├── scripts/
+└── .github/workflows/
 ```
 
 ---

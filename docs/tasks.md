@@ -8,6 +8,8 @@
 
 ## M0 — Fundação
 
+> **Status (2026-11-08): concluído.** Evidências: `cmake --build --preset dev` sem warnings; `ctest --preset dev` 3/3 (core, contrato e Podman real); CLI/daemon E2E (`status`, `ps`, `exec`); hijack de exec e demux de logs validados.
+
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
 | T0-01 | P0 | Criar repositório, `.gitignore`, `LICENSE`, `README.md` | — | `git status` limpo; licença definida |
