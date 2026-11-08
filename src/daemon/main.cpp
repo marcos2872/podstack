@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
-    QCommandLineOption verboseOption(QStringList{QStringLiteral("v"), QStringLiteral("verbose")},
+    QCommandLineOption verboseOption(QStringList{QStringLiteral("verbose")},
                                      QStringLiteral("Habilita logs de debug."));
     QCommandLineOption socketOption(QStringLiteral("socket"),
                                     QStringLiteral("Socket de controle."),

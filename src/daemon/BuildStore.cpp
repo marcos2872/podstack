@@ -219,41 +219,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     return true;
 }
 
-bool BuildStore::update(const BuildRecord &record, Error *error)
-{
-    if (error) {
-        *error = {};
-    }
-    std::lock_guard<std::recursive_mutex> lock(m_mutex);
-    if (!open(error)) {
-        return false;
-    }
-
-    const char *sql = R"SQL(
-UPDATE builds SET status = ?, finished_at = ?, duration_ms = ?, error = ?, log_path = ?
-WHERE id = ?
-)SQL";
-
-    sqlite3_stmt *statement = nullptr;
-    if (sqlite3_prepare_v2(m_db, sql, -1, &statement, nullptr) != SQLITE_OK) {
-        return fail(QStringLiteral("Falha ao preparar a atualização do build."), error);
-    }
-
-    bindText(statement, 1, record.status);
-    bindText(statement, 2, record.finishedAt);
-    sqlite3_bind_int(statement, 3, record.durationMs);
-    bindText(statement, 4, record.error);
-    bindText(statement, 5, record.logPath);
-    bindText(statement, 6, record.id);
-
-    const bool ok = sqlite3_step(statement) == SQLITE_DONE;
-    sqlite3_finalize(statement);
-    if (!ok) {
-        return fail(QStringLiteral("Falha ao atualizar o build."), error);
-    }
-    return true;
-}
-
 bool BuildStore::finish(const QString &id, const QString &status, const QString &errorText,
                         int durationMs, Error *error)
 {

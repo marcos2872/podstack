@@ -252,7 +252,7 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 
 ## 13. Cobertura e qualidade
 
-- **M3 (atual):** **80,7%** de linhas no total (`src/`); gate do CI em **80%** sobre `src/`. O gcovr roda com `--gcov-ignore-parse-errors` e `--merge-mode-functions=separate` para contornar bugs conhecidos do gcov (negative hits e merge de `main.cpp` de targets diferentes).
+- **M3 (atual):** **82,5%** de linhas no total (`src/`); gate do CI em **80%** sobre `src/`. O gcovr roda com `--gcov-ignore-parse-errors` e `--merge-mode-functions=separate` para contornar bugs conhecidos do gcov (negative hits e merge de `main.cpp` de targets diferentes). O CI repete `ctest -R rpc` antes do relatório porque o `.gcda` do `podstackd` é sobrescrito pelo último teste que inicia o daemon; o rpc cobre o maior conjunto de handlers.
 - **Meta v1.0:** manter ≥ 80% e buscar ≥ 85% em caminhos críticos; testes QML/terminal dedicados entram no M2.
 - Nenhum merge com teste vermelho.
 - Bug corrigido → teste de regressão obrigatório.

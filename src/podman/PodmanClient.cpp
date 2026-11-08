@@ -19,6 +19,8 @@
 #include <archive.h>
 #include <archive_entry.h>
 
+#include <chrono>
+#include <thread>
 #include <utility>
 
 namespace PodStack {
@@ -87,6 +89,162 @@ QJsonObject jsonFromLabels(const QMap<QString, QString> &labels)
         object.insert(it.key(), it.value());
     }
     return object;
+}
+
+QString statsHumanBytes(qint64 bytes)
+{
+    static const char *units[] = {"B", "kB", "MB", "GB", "TB"};
+    double value = static_cast<double>(bytes);
+    int unit = 0;
+    while (value >= 1000.0 && unit < 4) {
+        value /= 1000.0;
+        ++unit;
+    }
+    return QString::number(value, 'f', unit == 0 ? 0 : 2)
+           + QString::fromLatin1(units[unit]);
+}
+
+QJsonObject formatContainerStats(const QJsonObject &raw)
+{
+    if (raw.contains(QStringLiteral("cpu_percent"))
+        && raw.contains(QStringLiteral("mem_usage"))) {
+        return raw;
+    }
+
+    const QJsonArray statsArray = raw.value(QStringLiteral("Stats")).toArray();
+    if (!statsArray.isEmpty()) {
+        const QJsonObject entry = statsArray.first().toObject();
+        QJsonObject out;
+        out.insert(QStringLiteral("id"),
+                   entry.value(QStringLiteral("ContainerID")).toString());
+        out.insert(QStringLiteral("name"),
+                   entry.value(QStringLiteral("Name")).toString());
+
+        double cpu = entry.value(QStringLiteral("AvgCPU")).toDouble();
+        if (cpu <= 0.0) {
+            cpu = entry.value(QStringLiteral("CPU")).toDouble();
+        }
+        out.insert(QStringLiteral("cpu_percent"),
+                   QString::number(cpu, 'f', 2) + QLatin1Char('%'));
+
+        const qint64 memoryUsage =
+            static_cast<qint64>(entry.value(QStringLiteral("MemUsage")).toDouble());
+        const qint64 memoryLimit =
+            static_cast<qint64>(entry.value(QStringLiteral("MemLimit")).toDouble());
+        out.insert(QStringLiteral("mem_usage"),
+                   statsHumanBytes(memoryUsage) + QStringLiteral(" / ")
+                       + statsHumanBytes(memoryLimit));
+        out.insert(QStringLiteral("mem_percent"),
+                   QString::number(entry.value(QStringLiteral("MemPerc")).toDouble(),
+                                   'f', 2)
+                       + QLatin1Char('%'));
+
+        qint64 rxBytes = 0;
+        qint64 txBytes = 0;
+        const QJsonObject networks = entry.value(QStringLiteral("Network")).toObject();
+        for (auto it = networks.constBegin(); it != networks.constEnd(); ++it) {
+            const QJsonObject network = it.value().toObject();
+            rxBytes += static_cast<qint64>(
+                network.value(QStringLiteral("RxBytes")).toDouble());
+            txBytes += static_cast<qint64>(
+                network.value(QStringLiteral("TxBytes")).toDouble());
+        }
+        out.insert(QStringLiteral("net_io"),
+                   statsHumanBytes(rxBytes) + QStringLiteral(" / ")
+                       + statsHumanBytes(txBytes));
+        out.insert(QStringLiteral("block_io"),
+                   statsHumanBytes(static_cast<qint64>(
+                       entry.value(QStringLiteral("BlockInput")).toDouble()))
+                       + QStringLiteral(" / ")
+                       + statsHumanBytes(static_cast<qint64>(
+                           entry.value(QStringLiteral("BlockOutput")).toDouble())));
+        out.insert(QStringLiteral("pids"),
+                   QString::number(entry.value(QStringLiteral("PIDs")).toInt()));
+        return out;
+    }
+
+    QJsonObject out;
+    QString id = raw.value(QStringLiteral("Id")).toString();
+    if (id.isEmpty()) {
+        id = raw.value(QStringLiteral("id")).toString();
+    }
+    out.insert(QStringLiteral("id"), id);
+    out.insert(QStringLiteral("name"), raw.value(QStringLiteral("name")).toString());
+
+    const QJsonObject cpu = raw.value(QStringLiteral("cpu_stats")).toObject();
+    const QJsonObject precpu = raw.value(QStringLiteral("precpu_stats")).toObject();
+    const double total = cpu.value(QStringLiteral("cpu_usage"))
+                             .toObject()
+                             .value(QStringLiteral("total_usage"))
+                             .toDouble();
+    const double preTotal = precpu.value(QStringLiteral("cpu_usage"))
+                                .toObject()
+                                .value(QStringLiteral("total_usage"))
+                                .toDouble();
+    const double system = cpu.value(QStringLiteral("system_cpu_usage")).toDouble();
+    const double preSystem = precpu.value(QStringLiteral("system_cpu_usage")).toDouble();
+    const int online = cpu.value(QStringLiteral("online_cpus")).toInt(1);
+    double cpuPercent = 0.0;
+    if (preSystem > 0.0 && system > preSystem && total > preTotal) {
+        cpuPercent = ((total - preTotal) / (system - preSystem)) * online * 100.0;
+    }
+    out.insert(QStringLiteral("cpu_percent"),
+               QString::number(cpuPercent, 'f', 2) + QLatin1Char('%'));
+
+    const QJsonObject memory = raw.value(QStringLiteral("memory_stats")).toObject();
+    const qint64 memoryUsage =
+        static_cast<qint64>(memory.value(QStringLiteral("usage")).toDouble());
+    const qint64 memoryLimit =
+        static_cast<qint64>(memory.value(QStringLiteral("limit")).toDouble());
+    out.insert(QStringLiteral("mem_usage"),
+               statsHumanBytes(memoryUsage) + QStringLiteral(" / ")
+                   + statsHumanBytes(memoryLimit));
+    if (memoryLimit > 0) {
+        out.insert(QStringLiteral("mem_percent"),
+                   QString::number(memoryUsage * 100.0 / memoryLimit, 'f', 2)
+                       + QLatin1Char('%'));
+    }
+
+    qint64 rxBytes = 0;
+    qint64 txBytes = 0;
+    const QJsonObject networks = raw.value(QStringLiteral("networks")).toObject();
+    for (auto it = networks.constBegin(); it != networks.constEnd(); ++it) {
+        const QJsonObject network = it.value().toObject();
+        rxBytes += static_cast<qint64>(
+            network.value(QStringLiteral("rx_bytes")).toDouble());
+        txBytes += static_cast<qint64>(
+            network.value(QStringLiteral("tx_bytes")).toDouble());
+    }
+    out.insert(QStringLiteral("net_io"),
+               statsHumanBytes(rxBytes) + QStringLiteral(" / ")
+                   + statsHumanBytes(txBytes));
+
+    qint64 readBytes = 0;
+    qint64 writeBytes = 0;
+    const QJsonArray io = raw.value(QStringLiteral("blkio_stats"))
+                              .toObject()
+                              .value(QStringLiteral("io_service_bytes_recursive"))
+                              .toArray();
+    for (const QJsonValue &value : io) {
+        const QJsonObject entry = value.toObject();
+        const QString op = entry.value(QStringLiteral("op")).toString();
+        const qint64 bytes = static_cast<qint64>(
+            entry.value(QStringLiteral("value")).toDouble());
+        if (op == QStringLiteral("read")) {
+            readBytes += bytes;
+        } else if (op == QStringLiteral("write")) {
+            writeBytes += bytes;
+        }
+    }
+    out.insert(QStringLiteral("block_io"),
+               statsHumanBytes(readBytes) + QStringLiteral(" / ")
+                   + statsHumanBytes(writeBytes));
+    out.insert(QStringLiteral("pids"),
+               QString::number(raw.value(QStringLiteral("pids_stats"))
+                                   .toObject()
+                                   .value(QStringLiteral("current"))
+                                   .toInt()));
+    return out;
 }
 
 bool buildContextTar(const QString &contextPath, QByteArray *tar, Error *error)
@@ -2665,38 +2823,46 @@ bool PodmanClient::streamStats(const QString &id, int intervalSeconds,
         return false;
     }
 
-    const QString suffix = QStringLiteral("/containers/stats?stream=true&interval=%1&containers=%2")
-                               .arg(intervalSeconds)
+    const QString suffix = QStringLiteral("/containers/stats?stream=false&containers=%1")
                                .arg(encodeId(id));
-    QString streamError;
-    QByteArray buffer;
+    const int safeInterval = qBound(1, intervalSeconds, 60);
 
-    const auto onData = [&](const QByteArray &data) {
-        buffer.append(data);
-        int newline = -1;
-        while ((newline = buffer.indexOf('\n')) >= 0) {
-            const QByteArray line = buffer.left(newline);
-            buffer.remove(0, newline + 1);
-            if (line.trimmed().isEmpty()) {
-                continue;
-            }
-            if (!onLine(line)) {
-                return false;
-            }
+    while (true) {
+        if (cancel && cancel->load()) {
+            return true;
         }
-        return true;
-    };
 
-    const bool ok = m_http.stream(path(suffix), onData, cancel, &streamError);
-    if (!buffer.trimmed().isEmpty()) {
-        onLine(buffer);
+        const HttpResponse response =
+            m_http.request(QByteArrayLiteral("GET"), path(suffix), {}, {}, 20000);
+        if (response.status != 200) {
+            if (error) {
+                *error = errorFromResponse(
+                    response, QStringLiteral("Falha ao ler as estatísticas do container."));
+            }
+            return false;
+        }
+
+        const QJsonObject raw = QJsonDocument::fromJson(response.body).object();
+        const QJsonObject formatted = formatContainerStats(raw);
+        if (!formatted.isEmpty()) {
+            if (!onLine(QJsonDocument(formatted).toJson(QJsonDocument::Compact))) {
+                return true;
+            }
+        } else if (!onLine(response.body)) {
+            return true;
+        }
+
+        if (!cancel) {
+            return true;
+        }
+
+        for (int tick = 0; tick < safeInterval * 10; ++tick) {
+            if (cancel->load()) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
     }
-    if (!ok && error) {
-        *error = Error::make(QStringLiteral("PODSTACK_ENGINE_ERROR"),
-                             QStringLiteral("Falha ao ler as estatísticas do container."),
-                             streamError);
-    }
-    return ok;
 }
 
 bool PodmanClient::streamEvents(const std::function<bool(const QByteArray &)> &onData,
