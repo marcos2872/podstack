@@ -43,6 +43,12 @@
     database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/>',
     arrowUp: '<path d="M12 19V5M6 11l6-6 6 6"/>',
     arrowDown: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+    minimize: '<path d="M5 12h14"/>',
+    maximize: '<rect x="5" y="5" width="14" height="14" rx="1.5"/>',
+    restore: '<rect x="8" y="8" width="11" height="11" rx="1.5"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>',
+    wifi: '<path d="M3 9a15 15 0 0 1 18 0"/><path d="M6 12a10 10 0 0 1 12 0"/><path d="M9 15a5 5 0 0 1 6 0"/><circle cx="12" cy="18" r=".8"/>',
+    volume: '<path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 9a5 5 0 0 1 0 6"/>',
+    battery: '<rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2"/><rect x="4" y="9" width="12" height="6" rx="1" fill="currentColor" stroke="none"/>',
   };
 
   function icon(name, cls = "") {
@@ -872,6 +878,37 @@
       </section>`;
   }
 
+  /* ------------------------------------------------------------------ desktop shell */
+  function renderShell() {
+    const now = new Date();
+    const date = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+    const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    $("#desktopBar").innerHTML = `
+      <div class="shell-left"><span class="activities">Atividades</span></div>
+      <div class="shell-center">${escapeHtml(date)} · ${escapeHtml(time)}</div>
+      <div class="shell-right">${icon("wifi")}${icon("volume")}${icon("battery")}</div>`;
+    $("#dock").innerHTML = `
+      <button class="dock-icon" data-action="soon" data-label="Arquivos" title="Arquivos">${icon("folder")}</button>
+      <button class="dock-icon" data-action="soon" data-label="Terminal" title="Terminal">${icon("terminal")}</button>
+      <button class="dock-icon" data-action="soon" data-label="Navegador" title="Navegador">${icon("activity")}</button>
+      <button class="dock-icon" data-action="soon" data-label="Settings" title="Settings">${icon("settings")}</button>
+      <button class="dock-icon app" data-action="window-restore" title="PodStack">${icon("containers")}<span class="running-dot"></span></button>`;
+  }
+
+  function renderTitlebar() {
+    const maximized = $("#appWindow")?.classList.contains("maximized");
+    $("#titlebar").innerHTML = `
+      <div class="titlebar-left">
+        <span class="titlebar-logo"></span>
+        <span class="titlebar-title">PodStack <span class="titlebar-sep">—</span> ${escapeHtml(VIEWS[state.view])}</span>
+      </div>
+      <div class="titlebar-controls">
+        <button class="win-btn" data-action="window-minimize" title="Minimizar">${icon("minimize")}</button>
+        <button class="win-btn" data-action="window-maximize" title="${maximized ? "Restaurar" : "Maximizar"}">${icon(maximized ? "restore" : "maximize")}</button>
+        <button class="win-btn close" data-action="window-close" title="Fechar">${icon("x")}</button>
+      </div>`;
+  }
+
   /* ------------------------------------------------------------------ status */
   function renderStatusbar() {
     const running = runningCount();
@@ -903,6 +940,7 @@
     renderTopbar();
     renderMain();
     renderStatusbar();
+    renderTitlebar();
   }
 
   /* ------------------------------------------------------------------ stats */
@@ -1328,6 +1366,24 @@
       case "theme":
         setTheme(state.theme === "dark" ? "light" : "dark");
         break;
+      case "window-minimize":
+        $("#appWindow").classList.add("minimized");
+        toast("Janela minimizada — clique no ícone do PodStack na dock para restaurar.", "info");
+        break;
+      case "window-restore":
+        $("#appWindow").classList.remove("minimized");
+        toast("PodStack restaurado", "success");
+        break;
+      case "window-maximize": {
+        const win = $("#appWindow");
+        win.classList.toggle("maximized");
+        renderTitlebar();
+        toast(win.classList.contains("maximized") ? "Janela maximizada" : "Janela restaurada", "info");
+        break;
+      }
+      case "window-close":
+        toast("A demo permanece aberta para você explorar.", "info");
+        break;
       case "settings":
         modalSettings();
         break;
@@ -1634,6 +1690,7 @@
   });
 
   /* ------------------------------------------------------------------ init */
+  renderShell();
   resetHistory();
   render();
 })();

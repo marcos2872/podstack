@@ -8,19 +8,28 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=8" />
 </head>
 <body>
-  <div class="app">
-    <aside class="sidebar" id="sidebar" aria-label="Navegação principal"></aside>
-    <div class="workspace">
-      <header class="topbar" id="topbar"></header>
-      <main class="main" id="main"></main>
-      <footer class="statusbar" id="statusbar"></footer>
-    </div>
+  <div class="desktop">
+    <header class="desktop-bar" id="desktopBar"></header>
+    <main class="desktop-area">
+      <div class="window" id="appWindow">
+        <div class="window-titlebar" id="titlebar"></div>
+        <div class="app">
+          <aside class="sidebar" id="sidebar" aria-label="Navegação principal"></aside>
+          <div class="workspace">
+            <header class="topbar" id="topbar"></header>
+            <main class="main" id="main"></main>
+            <footer class="statusbar" id="statusbar"></footer>
+          </div>
+        </div>
+        <div id="modalRoot"></div>
+      </div>
+    </main>
+    <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+    <nav class="dock" id="dock" aria-label="Dock"></nav>
   </div>
-  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
-  <div id="modalRoot"></div>
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
