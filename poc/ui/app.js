@@ -49,6 +49,7 @@
     wifi: '<path d="M3 9a15 15 0 0 1 18 0"/><path d="M6 12a10 10 0 0 1 12 0"/><path d="M9 15a5 5 0 0 1 6 0"/><circle cx="12" cy="18" r=".8"/>',
     volume: '<path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 9a5 5 0 0 1 0 6"/>',
     battery: '<rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2"/><rect x="4" y="9" width="12" height="6" rx="1" fill="currentColor" stroke="none"/>',
+    shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/>',
   };
 
   function icon(name, cls = "") {
@@ -236,6 +237,31 @@
     memHistoryFor: null,
     modalConfirm: null,
     statsTimer: null,
+    setup: {
+      open: false,
+      step: 0,
+      busy: false,
+      progress: 0,
+      logs: [],
+      docker: true,
+      podman: false,
+      podmanVersion: "",
+      podmanLatest: "5.8.9",
+      podmanOutdated: false,
+      qemu: false,
+      kvm: true,
+      virtiofsd: false,
+      libvirt: false,
+      caddy: false,
+      k3s: false,
+      sqlite: true,
+      socket: false,
+      rootless: false,
+      installK3s: false,
+      scanning: false,
+      validating: false,
+      validated: false,
+    },
   };
 
   const VIEWS = {
@@ -249,6 +275,16 @@
     machines: "Machines",
     devices: "Devices",
   };
+
+  const SETUP_STEPS = [
+    { label: "Boas-vindas", hint: "visão geral" },
+    { label: "Diagnóstico", hint: "o que já existe" },
+    { label: "Docker → Podman", hint: "sem conflito de engine" },
+    { label: "QEMU/KVM", hint: "máquinas Linux" },
+    { label: "Componentes", hint: "socket, Caddy, k3s" },
+    { label: "Validação", hint: "checklist final" },
+    { label: "Pronto", hint: "abrir o app" },
+  ];
 
   const NAV = [
     {
@@ -891,7 +927,7 @@
     const date = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
     const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
     $("#desktopBar").innerHTML = `
-      <div class="shell-left"><span class="activities">Atividades</span></div>
+      <div class="shell-left"><span class="activities">Atividades</span><button class="shell-setup" data-action="setup-open" title="Configurar máquina">${icon("settings")} Configurar máquina <span class="setup-dot"></span></button></div>
       <div class="shell-center">${escapeHtml(date)} · ${escapeHtml(time)}</div>
       <div class="shell-right">${icon("wifi")}${icon("volume")}${icon("battery")}</div>`;
     $("#dock").innerHTML = `
@@ -899,6 +935,7 @@
       <button class="dock-icon" data-action="soon" data-label="Terminal" title="Terminal">${icon("terminal")}</button>
       <button class="dock-icon" data-action="soon" data-label="Navegador" title="Navegador">${icon("activity")}</button>
       <button class="dock-icon" data-action="soon" data-label="Settings" title="Settings">${icon("settings")}</button>
+      <button class="dock-icon setup" data-action="setup-open" title="Configurar máquina">${icon("settings")}<span class="setup-badge">1</span></button>
       <button class="dock-icon app" data-action="window-restore" title="PodStack">${icon("containers")}<span class="running-dot"></span></button>`;
   }
 
@@ -914,6 +951,263 @@
         <button class="win-btn" data-action="window-maximize" title="${maximized ? "Restaurar" : "Maximizar"}">${icon(maximized ? "restore" : "maximize")}</button>
         <button class="win-btn close" data-action="window-close" title="Fechar">${icon("x")}</button>
       </div>`;
+  }
+
+  /* ------------------------------------------------------------------ setup / onboarding */
+  function renderSetup() {
+    const root = $("#setupRoot");
+    if (!state.setup.open) {
+      root.innerHTML = "";
+      return;
+    }
+    const s = state.setup;
+    const step = SETUP_STEPS[s.step];
+    root.innerHTML = `
+      <div class="setup-backdrop" data-action="setup-close"></div>
+      <div class="setup-window" role="dialog" aria-modal="true" aria-label="PodStack Setup">
+        <div class="setup-titlebar">
+          <div class="setup-title"><span class="titlebar-logo"></span> PodStack Setup <span class="badge accent">primeira execução</span></div>
+          <button class="win-btn" data-action="setup-close" title="Fechar">${icon("x")}</button>
+        </div>
+        <div class="setup-body">
+          <aside class="setup-rail">
+            ${SETUP_STEPS.map((item, i) => `
+              <div class="setup-step ${i === s.step ? "active" : i < s.step ? "done" : ""}">
+                <span class="setup-step-dot">${i < s.step ? icon("check") : i + 1}</span>
+                <div><div class="setup-step-label">${item.label}</div><div class="setup-step-hint">${item.hint}</div></div>
+              </div>`).join("")}
+            <div class="setup-rail-foot">${icon("shield")}<span>Nada é alterado sem sua confirmação.</span></div>
+          </aside>
+          <section class="setup-main">
+            <div class="setup-content">${setupStepContent()}</div>
+            <div class="setup-footer">
+              <span class="setup-footer-status">${s.busy ? "Aplicando alterações…" : step.hint}</span>
+              <span class="grow"></span>
+              ${s.step > 0 ? `<button class="btn ghost" data-action="setup-back" ${s.busy ? "disabled" : ""}>Voltar</button>` : ""}
+              ${s.step === SETUP_STEPS.length - 1
+                ? `<button class="btn primary" data-action="setup-finish">Abrir PodStack</button>`
+                : `<button class="btn primary" data-action="setup-next" ${s.busy ? "disabled" : ""}>${s.step === 0 ? "Começar" : "Continuar"}</button>`}
+            </div>
+          </section>
+        </div>
+      </div>`;
+    requestAnimationFrame(() => {
+      const log = $("#setupLog");
+      if (log) log.scrollTop = log.scrollHeight;
+    });
+  }
+
+  function setupStepContent() {
+    switch (state.setup.step) {
+      case 0: return setupWelcome();
+      case 1: return setupDiagnose();
+      case 2: return setupDocker();
+      case 3: return setupQemu();
+      case 4: return setupComponents();
+      case 5: return setupValidate();
+      default: return setupDone();
+    }
+  }
+
+  function setupCheckRow(label, status, detail) {
+    const icons = { ok: "check", warn: "alert", missing: "x", optional: "check" };
+    const badges = { ok: "success", warn: "warning", missing: "muted", optional: "muted" };
+    const texts = { ok: "OK", warn: "atenção", missing: "ausente", optional: "opcional" };
+    return `<div class="setup-check">
+      <span class="setup-check-icon ${status}">${icon(icons[status] || "x")}</span>
+      <div class="setup-check-text"><div class="setup-check-label">${label}</div><div class="setup-check-detail">${detail}</div></div>
+      <span class="badge ${badges[status] || "muted"}">${texts[status] || status}</span>
+    </div>`;
+  }
+
+  function setupInstallPanel() {
+    const s = state.setup;
+    if (!s.busy && s.logs.length === 0) return "";
+    return `<div class="setup-progress">
+      <div class="setup-progress-head"><span>${s.busy ? "Aplicando…" : "Concluído"}</span><span id="setupProgressText">${s.progress}%</span></div>
+      <div class="bar"><div class="bar-fill" id="setupProgress" style="width:${s.progress}%"></div></div>
+    </div>
+    <div class="setup-log" id="setupLog">${s.logs.map((line) => `<div class="log-line"><span class="log-ts">$</span><span class="log-msg">${escapeHtml(line)}</span></div>`).join("")}</div>`;
+  }
+
+  function setupWelcome() {
+    return `<div class="setup-hero">
+      <div class="setup-hero-logo"><span class="logo"></span></div>
+      <h1>Vamos preparar sua máquina</h1>
+      <p class="setup-lead">O PodStack roda sobre o Podman nativo e usa QEMU/KVM para máquinas Linux. Vamos detectar o que já existe, remover conflitos e validar cada componente antes de abrir o app.</p>
+      <div class="setup-feature-grid">
+        <div>${icon("containers")}<b>Podman nativo</b><span>Engine rootless, socket e CLI, sem Docker.</span></div>
+        <div>${icon("machines")}<b>QEMU/KVM</b><span>Máquinas Linux com cloud-init e virtiofs.</span></div>
+        <div>${icon("networks")}<b>Domínios locais</b><span>Caddy para HTTPS em *.localhost.</span></div>
+        <div>${icon("builds")}<b>Sem conflito</b><span>Docker é detectado e removido antes do Podman.</span></div>
+      </div>
+      <div class="setup-note">${icon("shield")}<span>Nada é alterado sem sua confirmação. Você pode pular etapas e revisar depois em Settings.</span></div>
+    </div>`;
+  }
+
+  function setupDiagnose() {
+    const s = state.setup;
+    return `<h2 class="setup-h2">Diagnóstico do sistema</h2>
+      <p class="setup-lead">Este é o estado atual da máquina. Docker é um conflito conhecido; Podman é obrigatório para o app.</p>
+      <div class="setup-checks">
+        ${setupCheckRow("Docker Engine", s.docker ? "warn" : "ok", s.docker ? "v27.3.1 · docker.socket ativo — será removido" : "não instalado")}
+        ${setupCheckRow("Podman", !s.podman ? "missing" : s.podmanOutdated ? "warn" : "ok", !s.podman ? "ausente — instalação necessária" : s.podmanOutdated ? `v${s.podmanVersion} → ${s.podmanLatest} — atualização disponível` : `v${s.podmanVersion} · rootless · atualizado`)}
+        ${setupCheckRow("QEMU/KVM", s.qemu ? "ok" : "missing", s.qemu ? "QEMU 9.0.2 · /dev/kvm disponível" : "ausente — necessário para machines")}
+        ${setupCheckRow("/dev/kvm", s.kvm ? "ok" : "warn", s.kvm ? "disponível" : "indisponível — modo TCG (lento)")}
+        ${setupCheckRow("virtiofsd", s.virtiofsd ? "ok" : "missing", s.virtiofsd ? "0.1.2" : "ausente — mounts de máquinas")}
+        ${setupCheckRow("systemd (user)", "ok", "sessão de usuário ativa")}
+        ${setupCheckRow("SQLite", s.sqlite ? "ok" : "missing", s.sqlite ? "3.51.2" : "ausente — histórico de builds")}
+        ${setupCheckRow("Caddy", s.caddy ? "ok" : "optional", s.caddy ? "2.8.4" : "opcional — domínios locais")}
+        ${setupCheckRow("k3s", s.k3s ? "ok" : "optional", s.k3s ? "v1.31" : "opcional — Kubernetes local")}
+      </div>
+      <div class="setup-scenario">
+        <span>Cenário de demonstração</span>
+        <select data-setup-scenario>
+          <option value="missing" ${!s.podman ? "selected" : ""}>Podman ausente</option>
+          <option value="outdated" ${s.podman && s.podmanOutdated ? "selected" : ""}>Podman 5.4.2 (atualizar)</option>
+          <option value="current" ${s.podman && !s.podmanOutdated ? "selected" : ""}>Podman 5.8.9 (atualizado)</option>
+        </select>
+      </div>
+      <div class="setup-actions">
+        <button class="btn" data-action="setup-scan" ${s.scanning ? "disabled" : ""}>${icon("refresh")} ${s.scanning ? "Escaneando…" : "Escanear novamente"}</button>
+      </div>`;
+  }
+
+  function setupDocker() {
+    const s = state.setup;
+    const podmanCurrent = s.podman && !s.podmanOutdated;
+    const podmanOutdated = s.podman && s.podmanOutdated;
+    const noAction = !s.docker && podmanCurrent;
+    const label = s.docker
+      ? (!s.podman ? "Desinstalar Docker e instalar Podman" : podmanOutdated ? "Desinstalar Docker e atualizar Podman" : "Desinstalar Docker")
+      : (!s.podman ? "Instalar Podman" : podmanOutdated ? "Atualizar Podman" : "Verificar novamente");
+    return `<h2 class="setup-h2">Docker → Podman</h2>
+      <p class="setup-lead">O PodStack usa o Podman nativo. O Docker é desinstalado para evitar conflito de sockets, redes e containers; o Podman é instalado ou atualizado conforme a detecção.</p>
+      ${s.docker
+        ? `<div class="setup-card warn"><div class="setup-card-head">${icon("alert")}<div><b>Docker detectado</b><span>v27.3.1 · docker.socket ativo</span></div><span class="badge warning">conflito</span></div><p>Remover o Docker libera o socket, as redes e os containers para o Podman. Seus dados do Docker não são migrados automaticamente.</p></div>`
+        : `<div class="setup-card success"><div class="setup-card-head">${icon("check")}<div><b>Docker não instalado</b><span>nenhum conflito de engine</span></div><span class="badge success">OK</span></div></div>`}
+      <div class="setup-checks">
+        ${setupCheckRow("Docker Engine", s.docker ? "warn" : "ok", s.docker ? "v27.3.1 · docker.socket ativo — será desinstalado" : "não instalado")}
+        ${setupCheckRow("Podman", !s.podman ? "missing" : s.podmanOutdated ? "warn" : "ok", !s.podman ? "ausente — será instalado" : s.podmanOutdated ? `v${s.podmanVersion} → ${s.podmanLatest} — atualização disponível` : `v${s.podmanVersion} · rootless · atualizado`)}
+      </div>
+      ${!noAction
+        ? `<div class="setup-card">
+            <div class="setup-card-head">${icon("download")}<div><b>${s.docker ? "Substituir o engine" : "Preparar o Podman"}</b><span>${s.docker ? "Desinstala o Docker e instala/atualiza o Podman." : "Instala/atualiza o Podman e ativa o socket de usuário."}</span></div></div>
+            <div class="setup-actions">
+              <button class="btn primary" data-action="setup-apply-engine" ${s.busy ? "disabled" : ""}>${icon(s.docker ? "trash" : "download")} ${label}</button>
+            </div>
+          </div>`
+        : `<div class="setup-card success"><div class="setup-card-head">${icon("check")}<div><b>Engine pronto</b><span>Docker ausente · Podman ${s.podmanVersion}</span></div><span class="badge success">OK</span></div></div>`}
+      ${setupInstallPanel()}`;
+  }
+
+  function setupQemu() {
+    const s = state.setup;
+    return `<h2 class="setup-h2">QEMU/KVM</h2>
+      <p class="setup-lead">Máquinas Linux rodam em QEMU/KVM. O virtiofsd é usado para mounts e o libvirt é opcional para integração com virsh.</p>
+      <div class="setup-checks">
+        ${setupCheckRow("QEMU", s.qemu ? "ok" : "missing", s.qemu ? "qemu-system 9.0.2" : "ausente")}
+        ${setupCheckRow("/dev/kvm", s.kvm ? "ok" : "warn", s.kvm ? "disponível — aceleração KVM" : "indisponível — TCG será usado")}
+        ${setupCheckRow("virtiofsd", s.virtiofsd ? "ok" : "missing", s.virtiofsd ? "instalado" : "ausente — mounts de máquinas")}
+        ${setupCheckRow("libvirt", s.libvirt ? "ok" : "optional", s.libvirt ? "ativo" : "opcional — integração com virsh")}
+      </div>
+      ${!s.qemu ? `<div class="setup-card">
+        <div class="setup-card-head">${icon("machines")}<div><b>Instalar QEMU/KVM</b><span>qemu-kvm · qemu-system · virtiofsd · edk2-ovmf</span></div></div>
+        <div class="setup-actions"><button class="btn primary" data-action="setup-install-qemu" ${s.busy ? "disabled" : ""}>${icon("download")} Instalar virtualização</button></div>
+      </div>` : `<div class="setup-card success"><div class="setup-card-head">${icon("check")}<div><b>Virtualização pronta</b><span>KVM ${s.kvm ? "ativo" : "em modo TCG"}</span></div><span class="badge success">OK</span></div></div>`}
+      ${setupInstallPanel()}`;
+  }
+
+  function setupComponents() {
+    const s = state.setup;
+    return `<h2 class="setup-h2">Componentes do PodStack</h2>
+      <p class="setup-lead">Obrigatórios: Podman socket, rootless e SQLite. Caddy habilita domínios locais; k3s é opcional.</p>
+      <div class="setup-options">
+        <label class="setup-option"><input type="checkbox" checked disabled /><div><b>Podman socket</b><span>systemd --user + socket 0600</span></div><span class="badge ${s.socket ? "success" : "muted"}">${s.socket ? "OK" : "pendente"}</span></label>
+        <label class="setup-option"><input type="checkbox" checked disabled /><div><b>Rootless</b><span>sem root e sem setuid</span></div><span class="badge ${s.rootless ? "success" : "muted"}">${s.rootless ? "OK" : "pendente"}</span></label>
+        <label class="setup-option"><input type="checkbox" checked disabled /><div><b>SQLite</b><span>histórico de builds</span></div><span class="badge ${s.sqlite ? "success" : "muted"}">${s.sqlite ? "OK" : "pendente"}</span></label>
+        <label class="setup-option"><input type="checkbox" checked disabled /><div><b>Caddy</b><span>HTTPS para *.localhost</span></div><span class="badge ${s.caddy ? "success" : "muted"}">${s.caddy ? "OK" : "opcional"}</span></label>
+        <label class="setup-option" data-action="setup-toggle-k3s"><input type="checkbox" ${s.installK3s ? "checked" : ""} /><div><b>k3s</b><span>Kubernetes local (opcional)</span></div><span class="badge ${s.k3s ? "success" : "muted"}">${s.k3s ? "OK" : "opcional"}</span></label>
+      </div>
+      <div class="setup-actions"><button class="btn primary" data-action="setup-install-components" ${s.busy ? "disabled" : ""}>${icon("download")} Instalar componentes</button></div>
+      ${setupInstallPanel()}`;
+  }
+
+  function setupValidate() {
+    const s = state.setup;
+    const checks = [
+      ["Podman", !s.podman ? "missing" : s.podmanOutdated ? "warn" : "ok", !s.podman ? "ausente" : s.podmanOutdated ? `v${s.podmanVersion} → ${s.podmanLatest}` : `v${s.podmanVersion} · atualizado`],
+      ["Podman socket", s.socket ? "ok" : "missing", s.socket ? "ativo" : "inativo"],
+      ["Rootless", s.rootless ? "ok" : "warn", s.rootless ? "configurado" : "pendente"],
+      ["Docker ausente", !s.docker ? "ok" : "warn", !s.docker ? "removido" : "ainda instalado"],
+      ["QEMU", s.qemu ? "ok" : "missing", s.qemu ? "instalado" : "ausente"],
+      ["/dev/kvm", s.kvm ? "ok" : "warn", s.kvm ? "disponível" : "TCG (lento)"],
+      ["virtiofsd", s.virtiofsd ? "ok" : "missing", s.virtiofsd ? "instalado" : "ausente"],
+      ["SQLite", s.sqlite ? "ok" : "missing", s.sqlite ? "ok" : "ausente"],
+      ["Caddy", s.caddy ? "ok" : "optional", s.caddy ? "ok" : "domínios desabilitados"],
+      ["k3s", s.k3s ? "ok" : (s.installK3s ? "missing" : "optional"), s.k3s ? "ok" : (s.installK3s ? "não instalado" : "não selecionado")],
+    ];
+    const hasMissing = checks.some(([, status]) => status === "missing");
+    return `<h2 class="setup-h2">Validação</h2>
+      <p class="setup-lead">Confira o estado final. O app pode abrir com avisos, mas os itens obrigatórios precisam estar OK.</p>
+      <div class="setup-checks">${checks.map(([label, status, detail]) => setupCheckRow(label, status, detail)).join("")}</div>
+      ${s.validated ? `<div class="setup-card ${hasMissing ? "warn" : "success"}"><div class="setup-card-head">${icon(hasMissing ? "alert" : "check")}<div><b>${hasMissing ? "Alguns itens precisam de atenção" : "Tudo pronto para abrir o PodStack"}</b><span>${hasMissing ? "Você pode corrigir ou abrir mesmo assim." : "Todos os componentes obrigatórios estão OK."}</span></div></div></div>` : ""}
+      <div class="setup-actions"><button class="btn" data-action="setup-validate" ${s.validating ? "disabled" : ""}>${icon("check")} ${s.validating ? "Validando…" : "Validar instalação"}</button></div>`;
+  }
+
+  function setupDone() {
+    const s = state.setup;
+    return `<div class="setup-done">
+      <div class="setup-done-icon">${icon("check")}</div>
+      <h1>Tudo pronto</h1>
+      <p class="setup-lead">Sua máquina está configurada para rodar o PodStack.</p>
+      <div class="setup-summary">
+        <div><b>Podman</b><span>${s.podman ? `v${s.podmanVersion}${s.podmanOutdated ? " · atualização pendente" : " · rootless"}` : "pendente"}</span></div>
+        <div><b>QEMU/KVM</b><span>${s.qemu ? (s.kvm ? "KVM ativo" : "TCG") : "pendente"}</span></div>
+        <div><b>Socket</b><span>${s.socket ? "ativo" : "pendente"}</span></div>
+        <div><b>Docker</b><span>${s.docker ? "remover pendente" : "removido"}</span></div>
+        <div><b>Caddy</b><span>${s.caddy ? "ativo" : "opcional"}</span></div>
+        <div><b>k3s</b><span>${s.k3s ? "ativo" : "opcional"}</span></div>
+      </div>
+      <div class="setup-actions"><button class="btn" data-action="setup-recheck">Rever diagnóstico</button></div>
+    </div>`;
+  }
+
+  function runSetup(commands, onDone) {
+    const s = state.setup;
+    if (s.busy) return;
+    s.busy = true;
+    s.progress = 0;
+    s.logs = [];
+    renderSetup();
+    let index = 0;
+    const timer = setInterval(() => {
+      if (!s.open) {
+        clearInterval(timer);
+        return;
+      }
+      s.logs.push(commands[index]);
+      index++;
+      s.progress = Math.round((index / commands.length) * 100);
+      const log = $("#setupLog");
+      if (log) {
+        log.innerHTML = s.logs.map((line) => `<div class="log-line"><span class="log-ts">$</span><span class="log-msg">${escapeHtml(line)}</span></div>`).join("");
+        log.scrollTop = log.scrollHeight;
+      }
+      const bar = $("#setupProgress");
+      if (bar) bar.style.width = `${s.progress}%`;
+      const text = $("#setupProgressText");
+      if (text) text.textContent = `${s.progress}%`;
+      if (index >= commands.length) {
+        clearInterval(timer);
+        setTimeout(() => {
+          onDone();
+          s.busy = false;
+          s.logs.push("✔ concluído");
+          renderSetup();
+        }, 420);
+      }
+    }, 360);
   }
 
   /* ------------------------------------------------------------------ status */
@@ -1405,6 +1699,143 @@
   /* ------------------------------------------------------------------ actions */
   function handleAction(action, ds) {
     switch (action) {
+      case "setup-open":
+        closeModal();
+        state.setup.open = true;
+        state.setup.step = 0;
+        state.setup.busy = false;
+        state.setup.scanning = false;
+        state.setup.validating = false;
+        state.setup.logs = [];
+        state.setup.progress = 0;
+        renderSetup();
+        break;
+      case "setup-close":
+        state.setup.open = false;
+        state.setup.busy = false;
+        state.setup.scanning = false;
+        state.setup.validating = false;
+        renderSetup();
+        break;
+      case "setup-next":
+        if (state.setup.busy || state.setup.validating) break;
+        state.setup.step = Math.min(SETUP_STEPS.length - 1, state.setup.step + 1);
+        state.setup.logs = [];
+        state.setup.progress = 0;
+        renderSetup();
+        break;
+      case "setup-back":
+        if (state.setup.busy) break;
+        state.setup.step = Math.max(0, state.setup.step - 1);
+        state.setup.logs = [];
+        state.setup.progress = 0;
+        renderSetup();
+        break;
+      case "setup-recheck":
+        state.setup.step = 1;
+        state.setup.logs = [];
+        state.setup.progress = 0;
+        renderSetup();
+        break;
+      case "setup-scan":
+        if (state.setup.scanning) break;
+        state.setup.scanning = true;
+        renderSetup();
+        setTimeout(() => {
+          state.setup.scanning = false;
+          toast("Diagnóstico atualizado", "success");
+          renderSetup();
+        }, 900);
+        break;
+      case "setup-toggle-k3s":
+        state.setup.installK3s = !state.setup.installK3s;
+        renderSetup();
+        break;
+      case "setup-apply-engine": {
+        const s = state.setup;
+        const hadDocker = s.docker;
+        const wasMissing = !s.podman;
+        const wasOutdated = s.podmanOutdated;
+        const commands = [];
+        if (s.docker) {
+          commands.push("systemctl --user stop docker.socket docker.service");
+          commands.push("sudo dnf remove -y docker-ce docker-ce-cli containerd.io");
+        }
+        if (!s.podman) {
+          commands.push("sudo dnf install -y podman");
+        } else if (s.podmanOutdated) {
+          commands.push("sudo dnf upgrade -y podman");
+        } else {
+          commands.push("podman --version");
+        }
+        commands.push("systemctl --user enable --now podman.socket");
+        commands.push("podman info --format '{{.Host.Security.Rootless}}'");
+        runSetup(commands, () => {
+          s.docker = false;
+          s.podman = true;
+          s.podmanVersion = s.podmanLatest;
+          s.podmanOutdated = false;
+          s.socket = true;
+          s.rootless = true;
+          toast(`${hadDocker ? "Docker desinstalado; " : ""}${wasMissing ? "Podman instalado" : wasOutdated ? "Podman atualizado" : "Podman OK"}`, "success");
+        });
+        break;
+      }
+      case "setup-install-qemu":
+        runSetup([
+          "sudo dnf install -y qemu-kvm qemu-system-x86_64 qemu-system-aarch64",
+          "sudo dnf install -y virtiofsd libvirt-daemon-kvm edk2-ovmf",
+          "sudo systemctl enable --now libvirtd",
+          "test -e /dev/kvm && echo 'kvm: disponível'",
+        ], () => {
+          state.setup.qemu = true;
+          state.setup.kvm = true;
+          state.setup.virtiofsd = true;
+          state.setup.libvirt = true;
+          toast("QEMU/KVM instalado", "success");
+        });
+        break;
+      case "setup-install-components": {
+        const commands = [
+          "sudo dnf install -y sqlite libarchive",
+          "systemctl --user enable --now podman.socket",
+          "podman system service --time=0 &",
+          "sudo dnf install -y caddy",
+        ];
+        if (state.setup.installK3s) {
+          commands.push("curl -sfL https://get.k3s.io | sh -s - --disable=traefik");
+        }
+        runSetup(commands, () => {
+          state.setup.socket = true;
+          state.setup.rootless = true;
+          state.setup.sqlite = true;
+          state.setup.caddy = true;
+          if (state.setup.installK3s) state.setup.k3s = true;
+          toast("Componentes instalados", "success");
+        });
+        break;
+      }
+      case "setup-validate":
+        if (state.setup.validating) break;
+        state.setup.validating = true;
+        renderSetup();
+        setTimeout(() => {
+          state.setup.validating = false;
+          state.setup.validated = true;
+          toast("Validação concluída", "success");
+          renderSetup();
+        }, 1300);
+        break;
+      case "setup-finish":
+        state.setup.open = false;
+        state.setup.busy = false;
+        state.setup.scanning = false;
+        state.setup.validating = false;
+        renderSetup();
+        state.view = "containers";
+        render();
+        toast("Tudo pronto — bem-vindo ao PodStack", "success");
+        break;
       case "theme":
         setTheme(state.theme === "dark" ? "light" : "dark");
         break;
@@ -1723,8 +2154,28 @@
     }
   });
 
+  document.addEventListener("change", (event) => {
+    const select = event.target.closest("[data-setup-scenario]");
+    if (!select) return;
+    const s = state.setup;
+    const value = select.value;
+    s.podman = value !== "missing";
+    s.podmanOutdated = value === "outdated";
+    s.podmanVersion = value === "current" ? s.podmanLatest : value === "outdated" ? "5.4.2" : "";
+    if (!s.podman) s.podmanVersion = "";
+    renderSetup();
+  });
+
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeModal();
+    if (event.key === "Escape") {
+      if (state.setup.open) {
+        state.setup.open = false;
+        state.setup.busy = false;
+        renderSetup();
+      } else {
+        closeModal();
+      }
+    }
     if (event.key === "/" && !event.target.matches("input, textarea, select")) {
       event.preventDefault();
       $("#search")?.focus();
