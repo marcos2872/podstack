@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">PodStack — ícone do app</title>
+  <desc id="desc">Ícone quadrado escuro com a cápsula índigo e blocos ciano/índigo.</desc>
+  <rect width="256" height="256" rx="56" fill="#0F1115"/>
+  <rect x="64" y="88" width="128" height="80" rx="40" fill="#3730A3"/>
+  <rect x="83" y="110" width="34" height="36" rx="9" fill="#22D3EE"/>
+  <rect x="123" y="110" width="34" height="36" rx="9" fill="#6366F1"/>
+  <rect x="163" y="110" width="10" height="36" rx="5" fill="#A5B4FC"/>
+</svg>

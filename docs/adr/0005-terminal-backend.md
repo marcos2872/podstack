@@ -1,0 +1,68 @@
+# ADR-0005 — Backend de terminal embutido
+
+| Campo | Valor |
+|---|---|
+| Status | **Aceito** (2026-11-08) |
+| Data | 2026-11-08 |
+| Decisores | Produto, Arquitetura |
+| Relacionados | `PRD.md` (Q1 resolvida), `plan.md`, `ui-map.md`, `LICENSE` |
+
+## Contexto
+
+O terminal é uma aba central (exec em containers, shell em machines). O OrbStack usa Ghostty (macOS/AppKit). No Linux/Qt 6, as opções viáveis:
+
+| Opção | Licença | Estado | Esforço |
+|---|---|---|---|
+| **QTermWidget** 2.4/2.5 | **GPL-2.0-or-later** | ativo, Qt 6 puro | baixo (`QQuickWidget`) |
+| **libvterm** 0.3 | **MIT** | estável, upstream calmo | alto (renderizador, seleção, IME, mouse) |
+| QMLTermWidget | GPL-2.0 | pouco ativo | médio |
+| xterm.js + WebEngine | MIT | maduro | médio, +150 MB |
+| KonsolePart (KF6) | GPL-2.0 | ativo | médio, puxa Konsole |
+
+## Decisão
+
+O PodStack é licenciado sob **GPL-3.0-or-later**. Portanto:
+
+- Usar **QTermWidget 2.5+** embutido via **`QQuickWidget`**.
+- QTermWidget é **GPL-2.0-or-later**, compatível com GPL-3.0-or-later (o código GPLv2-or-later pode ser combinado em um trabalho GPLv3).
+- Manter uma abstração `TerminalBackend` para permitir troca futura, mas **não** linkar libvterm no binário principal.
+- Oferecer **"Abrir no terminal externo"** como fallback e para `kubectl exec`.
+
+## Alternativas
+
+**libvterm (MIT):** só seria necessária se o projeto fosse permissivo/proprietário. Como a licença é GPL-3.0-or-later, não há ganho em assumir semanas de renderizador/IME/seleção/mouse.
+
+**xterm.js + WebEngine:** rejeitado pelo peso (~150 MB) e por adicionar um runtime web ao app.
+
+**KonsolePart:** rejeitado por puxar Konsole/KF6 e aumentar o acoplamento.
+
+## Consequências
+
+**Positivas:**
+
+- Terminal completo em dias, não meses.
+- OSC-7/OSC-8, cores, mouse, seleção, bracketed paste.
+- Compatível com a licença do projeto; sem conflito legal.
+- Abstração permite trocar o backend no futuro se necessário.
+
+**Negativas:**
+
+- O binário combinado permanece GPL-3.0-or-later (já era a escolha do projeto).
+- Glitches de fonte conhecidos no Qt 6.9+ (mitigáveis com fonte monoespaçada explícita e política de arredondamento de escala).
+- Sem SIXEL (limitação conhecida; documentar).
+
+## Implementação
+
+- `TerminalBackend` (interface) + `QTermWidgetBackend`.
+- QML hospeda o widget via `QQuickWidget`; input/output via sinais.
+- Testes: TTY, resize, UTF-8, cores, Ctrl+C/D, bracketed paste.
+- Fallback sempre disponível: `xdg-terminal-exec`/terminal preferido.
+- Cabeçalhos SPDX `GPL-3.0-or-later` em todos os fontes.
+
+## Referências
+
+- QTermWidget: https://github.com/lxqt/qtermwidget
+- libvterm: https://www.leonerd.org.uk/code/libvterm/
+- Discussão de manutenção: https://github.com/lxqt/lxqt/discussions/2761
+- GPLv3: https://www.gnu.org/licenses/gpl-3.0.html
+- Compatibilidade GPLv2-or-later → GPLv3: https://www.gnu.org/licenses/gpl-faq.html#AllCompatibility

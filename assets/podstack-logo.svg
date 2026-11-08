@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 128" role="img" aria-labelledby="title desc">
+  <title id="title">PodStack</title>
+  <desc id="desc">Lockup horizontal da marca PodStack com cápsula e wordmark.</desc>
+  <rect width="360" height="128" rx="24" fill="#0F1115"/>
+  <rect x="32" y="38" width="84" height="52" rx="26" fill="#3730A3"/>
+  <rect x="50" y="52" width="22" height="24" rx="6" fill="#22D3EE"/>
+  <rect x="76" y="52" width="22" height="24" rx="6" fill="#6366F1"/>
+  <rect x="102" y="52" width="6" height="24" rx="3" fill="#A5B4FC"/>
+  <text x="140" y="79" font-family="Inter, Manrope, 'IBM Plex Sans', system-ui, sans-serif" font-size="40" font-weight="600" letter-spacing="-0.5">
+    <tspan fill="#E6EAF0">Pod</tspan><tspan fill="#22D3EE">Stack</tspan>
+  </text>
+</svg>

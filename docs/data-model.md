@@ -1,0 +1,438 @@
+# Modelo de dados — PodStack
+
+> Entidades de domínio, esquema SQLite e formatos de arquivo. A fonte de verdade de containers/imagens/volumes/redes/pods é o **Podman**; o daemon persiste apenas o que o Podman não conhece (machines, builds, clusters, jobs, settings, domínios).
+
+---
+
+## 1. Convenções
+
+- IDs persistentes: UUIDv7 em texto (ordenáveis por tempo).
+- Timestamps: RFC 3339 UTC (`2026-11-08T12:00:00Z`).
+- Nomes: RFC 1123 (`[a-z0-9-]`, 1–63 chars), sem `_`/maiúsculas.
+- Dinheiro/licença não se aplica; tamanhos em **bytes** (inteiros).
+- Enums persistidos como strings estáveis (nunca ordinais).
+- `schemaVersion` inteiro no config e `PRAGMA user_version` no SQLite.
+
+---
+
+## 2. Entidades
+
+### 2.1 Container (efêmero, cache)
+
+| Campo | Tipo | Origem |
+|---|---|---|
+| `id` | string (hex) | Libpod |
+| `name` | string | Libpod |
+| `image` / `imageId` | string | Libpod |
+| `state` | enum | `created`, `running`, `paused`, `stopped`, `exited`, `dead` |
+| `status` | string | texto do engine |
+| `created` / `startedAt` / `finishedAt` | timestamp | Libpod |
+| `ports` | array | Libpod (`Ports`) |
+| `labels` | map | Libpod |
+| `composeProject` / `composeService` | string? | labels `com.docker.compose.*` |
+| `podId` / `podName` | string? | Libpod |
+| `networks` | array | Libpod |
+| `mounts` | array | Libpod |
+| `health` | enum? | healthcheck |
+| `exitCode` | int? | Libpod |
+| `arch` | string? | imagem/labels |
+
+Não persistido. Cache em memória reconstruído por eventos.
+
+### 2.2 Image
+
+| Campo | Tipo |
+|---|---|
+| `id` | string |
+| `repoTags` / `repoDigests` | array |
+| `size` | int64 |
+| `created` | timestamp |
+| `labels` | map |
+| `architecture` / `os` | string |
+| `dangling` | bool |
+| `inUse` | bool (calculado) |
+
+### 2.3 Volume
+
+| Campo | Tipo |
+|---|---|
+| `name` | string |
+| `driver` | string |
+| `mountpoint` | string |
+| `createdAt` | timestamp |
+| `labels` | map |
+| `options` | map |
+| `sizeBytes` | int64? (calculado) |
+| `inUse` | bool |
+
+### 2.4 Network
+
+| Campo | Tipo |
+|---|---|
+| `id` / `name` | string |
+| `driver` | string (`bridge`) |
+| `subnet4` / `gateway4` | string? |
+| `subnet6` / `gateway6` | string? |
+| `ipv6Enabled` | bool |
+| `labels` | map |
+| `containers` | array de `{id,name,ipv4,ipv6}` |
+
+### 2.5 Pod
+
+| Campo | Tipo |
+|---|---|
+| `id` / `name` | string |
+| `status` | enum |
+| `created` | timestamp |
+| `labels` | map |
+| `containers` | array de IDs |
+| `infraId` | string |
+
+### 2.6 Machine (persistida)
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | UUIDv7 | PK |
+| `name` | string | único |
+| `distro` | string | `ubuntu`, `debian`, ... |
+| `distroVersion` | string? | `24.04`, `noble`, ... |
+| `arch` | enum | `x86_64`, `aarch64` |
+| `cpus` | int | 1..N |
+| `memoryBytes` | int64 | ≥ 1 GiB |
+| `diskBytes` | int64 | ≥ 1 GiB |
+| `diskPath` | string | qcow2 |
+| `seedPath` | string? | seed ISO |
+| `sshPort` | int | hostfwd |
+| `sshUser` | string | default = usuário do host |
+| `sshKeyPath` | string | chave privada 0600 |
+| `state` | enum | ver §3.2 |
+| `isolated` | bool | sem mounts/host |
+| `isolateNetwork` | bool | sem rede host |
+| `forwardSshAgent` | bool | |
+| `httpPort` / `httpsPort` | int? | portas anunciadas |
+| `lastBootAt` | timestamp? | |
+| `createdAt` / `updatedAt` | timestamp | |
+| `error` | string? | último erro |
+| `podmanMachine` | bool | false (QEMU direto) |
+
+### 2.7 MachinePort / MachineMount
+
+`machine_ports`: `id`, `machineId`, `hostPort`, `guestPort`, `protocol`, `exposeLan`, `label`.
+`machine_mounts`: `id`, `machineId`, `source`, `target`, `readOnly`, `tag` (virtiofs).
+
+### 2.8 Snapshot (P2)
+
+`id`, `machineId`, `name`, `path`, `sizeBytes`, `createdAt`.
+
+### 2.9 ComposeProject (efêmero, derivado)
+
+| Campo | Tipo |
+|---|---|
+| `name` | string (label `com.docker.compose.project`) |
+| `workingDir` | string? (label) |
+| `configFiles` | array (label) |
+| `services` | array de `{name, containerIds, status}` |
+| `status` | enum (`running`, `partial`, `stopped`) |
+
+Derivado dos containers; não persistido (ou cache).
+
+### 2.10 Build / BuildStep (persistidos)
+
+`builds`: `id`, `imageRef`, `status` (`queued`, `running`, `success`, `failed`, `cancelled`), `startedAt`, `finishedAt`, `durationMs`, `trigger` (`gui`, `cli`, `compose`), `contextPath`, `dockerfile`, `logPath`, `error`.
+`build_steps`: `id`, `buildId`, `index`, `name`, `status`, `startedAt`, `finishedAt`, `logPath`.
+
+### 2.11 Cluster (persistido)
+
+`clusters`: `id`, `name`, `provider` (`k3s-vm`), `state`, `apiPort`, `kubeconfigPath`, `contextName`, `vmMachineId`, `createdAt`, `updatedAt`, `error`.
+
+### 2.12 Domain (persistido para custom domains)
+
+`domains`: `id`, `hostname`, `targetType` (`container`, `service`, `machine`), `targetId`, `port`, `https`, `source` (`label`, `manual`), `createdAt`.
+
+### 2.13 Job / JobEvent
+
+`jobs`: `id`, `type` (`pull`, `build`, `export`, `import`, `machine-create`, `k8s-enable`), `state`, `progress` (0..100), `message`, `payload` (JSON), `createdAt`, `updatedAt`, `error`.
+`job_events`: `id`, `jobId`, `seq`, `at`, `level`, `message`, `data` (JSON).
+
+### 2.14 Setting
+
+`settings`: `key` (PK), `value` (JSON), `updatedAt`, `schemaVersion`.
+
+---
+
+## 3. Máquinas de estado
+
+### 3.1 Container
+
+`created → running → paused → running → stopped → running`; `running → stopped` (stop/kill); qualquer → `removed`.
+
+### 3.2 Machine
+
+`provisioning → running → stopping → stopped → starting → running`; `provisioning → error`; `error → provisioning` (retry); `running|stopped|error → deleting → deleted`.
+
+### 3.3 Cluster
+
+`disabled → provisioning → running → stopping → disabled`; `provisioning → error`; `running → error` (health).
+
+### 3.4 Job
+
+`queued → running → success|failed|cancelled`; `running → cancelling → cancelled`.
+
+---
+
+## 4. Esquema SQLite
+
+```sql
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+PRAGMA user_version = 1;
+
+CREATE TABLE machines (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  distro TEXT NOT NULL,
+  distro_version TEXT,
+  arch TEXT NOT NULL,
+  cpus INTEGER NOT NULL,
+  memory_bytes INTEGER NOT NULL,
+  disk_bytes INTEGER NOT NULL,
+  disk_path TEXT NOT NULL,
+  seed_path TEXT,
+  ssh_port INTEGER NOT NULL,
+  ssh_user TEXT NOT NULL,
+  ssh_key_path TEXT NOT NULL,
+  state TEXT NOT NULL,
+  isolated INTEGER NOT NULL DEFAULT 0,
+  isolate_network INTEGER NOT NULL DEFAULT 0,
+  forward_ssh_agent INTEGER NOT NULL DEFAULT 0,
+  http_port INTEGER,
+  https_port INTEGER,
+  last_boot_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  error TEXT
+);
+
+CREATE TABLE machine_ports (
+  id TEXT PRIMARY KEY,
+  machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  host_port INTEGER NOT NULL,
+  guest_port INTEGER NOT NULL,
+  protocol TEXT NOT NULL DEFAULT 'tcp',
+  expose_lan INTEGER NOT NULL DEFAULT 0,
+  label TEXT
+);
+
+CREATE TABLE machine_mounts (
+  id TEXT PRIMARY KEY,
+  machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,
+  target TEXT NOT NULL,
+  read_only INTEGER NOT NULL DEFAULT 0,
+  tag TEXT NOT NULL
+);
+
+CREATE TABLE builds (
+  id TEXT PRIMARY KEY,
+  image_ref TEXT NOT NULL,
+  status TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT,
+  duration_ms INTEGER,
+  trigger TEXT NOT NULL,
+  context_path TEXT,
+  dockerfile TEXT,
+  log_path TEXT,
+  error TEXT
+);
+
+CREATE TABLE build_steps (
+  id TEXT PRIMARY KEY,
+  build_id TEXT NOT NULL REFERENCES builds(id) ON DELETE CASCADE,
+  idx INTEGER NOT NULL,
+  name TEXT,
+  status TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT,
+  log_path TEXT
+);
+
+CREATE TABLE clusters (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  state TEXT NOT NULL,
+  api_port INTEGER,
+  kubeconfig_path TEXT,
+  context_name TEXT,
+  vm_machine_id TEXT REFERENCES machines(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  error TEXT
+);
+
+CREATE TABLE domains (
+  id TEXT PRIMARY KEY,
+  hostname TEXT NOT NULL UNIQUE,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  port INTEGER,
+  https INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE jobs (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  state TEXT NOT NULL,
+  progress INTEGER NOT NULL DEFAULT 0,
+  message TEXT,
+  payload TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  error TEXT
+);
+
+CREATE TABLE job_events (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  at TEXT NOT NULL,
+  level TEXT NOT NULL,
+  message TEXT,
+  data TEXT
+);
+
+CREATE TABLE settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  schema_version INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX idx_machines_state ON machines(state);
+CREATE INDEX idx_builds_started ON builds(started_at DESC);
+CREATE INDEX idx_jobs_state ON jobs(state);
+CREATE INDEX idx_domains_hostname ON domains(hostname);
+```
+
+---
+
+## 5. Configuração (`config.json`)
+
+```json
+{
+  "schemaVersion": 1,
+  "app": {
+    "startAtLogin": false,
+    "waitForContainerStop": true,
+    "keepRunningInTray": true,
+    "theme": "system",
+    "language": "pt-BR"
+  },
+  "engine": {
+    "mode": "rootless",
+    "socketPath": null
+  },
+  "docker": {
+    "exposePortsToLan": true,
+    "enableContainerdImageStore": false
+  },
+  "network": {
+    "https": false,
+    "proxy": "auto",
+    "proxyExclude": [],
+    "subnet4": "192.168.127.0/24",
+    "bridge": true
+  },
+  "machines": {
+    "exposePortsToLan": false,
+    "forwardPorts": true,
+    "default": null
+  },
+  "kubernetes": {
+    "enabled": false,
+    "exposeServices": false,
+    "kubeconfigUseDomain": true,
+    "tlsSan": []
+  },
+  "ssh": {
+    "exposePort": false,
+    "forwardAgent": false
+  },
+  "terminal": {
+    "fontFamily": "monospace",
+    "fontSize": 12,
+    "fontBold": true
+  },
+  "logs": {
+    "fontSize": 12,
+    "wrapLines": false,
+    "searchMode": "filter",
+    "prettyJson": true
+  },
+  "updates": {
+    "mode": "check",
+    "channel": "stable"
+  },
+  "telemetry": {
+    "enabled": false,
+    "crashReports": false,
+    "usage": false,
+    "performance": false,
+    "errors": false
+  }
+}
+```
+
+- Local: `~/.config/podstack/config.json` (0600).
+- Escrita atômica (tmp + rename); backup `.bak` antes de migrar.
+- Campos desconhecidos preservados.
+
+---
+
+## 6. `meta.json` por máquina
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "0193f2c4-...",
+  "name": "dev-ubuntu",
+  "distro": "ubuntu",
+  "distroVersion": "24.04",
+  "arch": "x86_64",
+  "resources": { "cpus": 2, "memoryBytes": 4294967296, "diskBytes": 21474836480 },
+  "network": { "sshPort": 32222, "httpPort": 8080, "httpsPort": 8443 },
+  "ssh": { "user": "marcos", "keyPath": "id_ed25519" },
+  "mounts": [{ "source": "/home/marcos/Projetos", "target": "/mnt/projetos", "readOnly": false }],
+  "isolated": false,
+  "createdAt": "2026-11-08T12:00:00Z"
+}
+```
+
+`meta.json` é a fonte de verdade recuperável; SQLite é índice/cache.
+
+---
+
+## 7. Retenção e limpeza
+
+| Dado | Retenção |
+|---|---|
+| Logs do daemon | 10 MB × 5 arquivos |
+| Logs de build | 30 dias ou 100 builds |
+| Jobs concluídos | 7 dias |
+| `job_events` | 30 dias |
+| Snapshots | até o usuário remover |
+| Imagens cloud em cache | LRU, limite configurável (default 20 GB) |
+
+Limpeza executada no start e a cada 24 h; nunca remove dados de máquinas em uso.
+
+---
+
+## 8. Migração
+
+- `schemaVersion`/`user_version` incrementados por migration idempotente.
+- Antes de migrar: `cp podstack.db podstack.db.bak-<timestamp>`.
+- Falha → restaurar backup e abortar com erro claro.
+- Config: merge de defaults + preservação de desconhecidos.

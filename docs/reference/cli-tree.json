@@ -1,0 +1,358 @@
+{
+  "clone": {
+    "subcommands": [],
+    "flags": []
+  },
+  "config_add": {
+    "subcommands": [],
+    "flags": []
+  },
+  "config_docker": {
+    "subcommands": [],
+    "flags": []
+  },
+  "config_get": {
+    "subcommands": [],
+    "flags": []
+  },
+  "config_remove": {
+    "subcommands": [],
+    "flags": []
+  },
+  "config_reset": {
+    "subcommands": [],
+    "flags": []
+  },
+  "config_set": {
+    "subcommands": [],
+    "flags": []
+  },
+  "config_show": {
+    "subcommands": [],
+    "flags": []
+  },
+  "config": {
+    "subcommands": [
+      "add",
+      "docker",
+      "get",
+      "remove",
+      "reset",
+      "set",
+      "show"
+    ],
+    "flags": []
+  },
+  "create": {
+    "subcommands": [],
+    "flags": [
+      "--arch=",
+      "--arch",
+      "--cpus=",
+      "--cpus",
+      "--disk=",
+      "--disk",
+      "--forward-ssh-agent",
+      "--isolate-network",
+      "--isolated",
+      "--memory=",
+      "--memory",
+      "--mount=",
+      "--mount",
+      "--set-password",
+      "--user=",
+      "--user",
+      "--user-data=",
+      "--user-data"
+    ]
+  },
+  "debug": {
+    "subcommands": [],
+    "flags": [
+      "--context=",
+      "--context",
+      "--fallback",
+      "--reset",
+      "--workdir=",
+      "--workdir"
+    ]
+  },
+  "default": {
+    "subcommands": [],
+    "flags": []
+  },
+  "delete": {
+    "subcommands": [],
+    "flags": [
+      "--all",
+      "--force"
+    ]
+  },
+  "docker_migrate": {
+    "subcommands": [],
+    "flags": [
+      "--all",
+      "--containers",
+      "--force",
+      "--images",
+      "--volumes"
+    ]
+  },
+  "docker_volume_clone": {
+    "subcommands": [],
+    "flags": [
+      "--name=",
+      "--name"
+    ]
+  },
+  "docker_volume_export": {
+    "subcommands": [],
+    "flags": []
+  },
+  "docker_volume_import": {
+    "subcommands": [],
+    "flags": [
+      "--name=",
+      "--name"
+    ]
+  },
+  "docker_volume": {
+    "subcommands": [
+      "clone",
+      "export",
+      "import"
+    ],
+    "flags": []
+  },
+  "docker": {
+    "subcommands": [
+      "migrate",
+      "volume"
+    ],
+    "flags": []
+  },
+  "doctor": {
+    "subcommands": [],
+    "flags": [
+      "--fix",
+      "--quiet"
+    ]
+  },
+  "export": {
+    "subcommands": [],
+    "flags": []
+  },
+  "help": {
+    "subcommands": [],
+    "flags": []
+  },
+  "import": {
+    "subcommands": [],
+    "flags": [
+      "--name=",
+      "--name"
+    ]
+  },
+  "info": {
+    "subcommands": [],
+    "flags": [
+      "--format=",
+      "--format"
+    ]
+  },
+  "k8s": {
+    "subcommands": [],
+    "flags": []
+  },
+  "list": {
+    "subcommands": [],
+    "flags": [
+      "--format=",
+      "--format",
+      "--quiet",
+      "--running"
+    ]
+  },
+  "login": {
+    "subcommands": [],
+    "flags": [
+      "--domain=",
+      "--domain",
+      "--force"
+    ]
+  },
+  "logout": {
+    "subcommands": [],
+    "flags": []
+  },
+  "logs": {
+    "subcommands": [],
+    "flags": [
+      "--all"
+    ]
+  },
+  "pull": {
+    "subcommands": [],
+    "flags": [
+      "--machine=",
+      "--machine"
+    ]
+  },
+  "push": {
+    "subcommands": [],
+    "flags": [
+      "--machine=",
+      "--machine"
+    ]
+  },
+  "rename": {
+    "subcommands": [],
+    "flags": []
+  },
+  "report": {
+    "subcommands": [],
+    "flags": []
+  },
+  "reset": {
+    "subcommands": [],
+    "flags": [
+      "--yes"
+    ]
+  },
+  "restart": {
+    "subcommands": [],
+    "flags": [
+      "--all"
+    ]
+  },
+  "run": {
+    "subcommands": [],
+    "flags": [
+      "--machine=",
+      "--machine",
+      "--path",
+      "--shell",
+      "--user=",
+      "--user",
+      "--workdir=",
+      "--workdir"
+    ]
+  },
+  "serial_list": {
+    "subcommands": [],
+    "flags": [
+      "--format=",
+      "--format"
+    ]
+  },
+  "serial": {
+    "subcommands": [
+      "list"
+    ],
+    "flags": []
+  },
+  "ssh": {
+    "subcommands": [],
+    "flags": []
+  },
+  "start": {
+    "subcommands": [],
+    "flags": [
+      "--all"
+    ]
+  },
+  "status": {
+    "subcommands": [],
+    "flags": []
+  },
+  "stop": {
+    "subcommands": [],
+    "flags": [
+      "--all",
+      "--force"
+    ]
+  },
+  "top": {
+    "subcommands": [],
+    "flags": []
+  },
+  "update": {
+    "subcommands": [],
+    "flags": [
+      "--check"
+    ]
+  },
+  "usb_attach": {
+    "subcommands": [],
+    "flags": [
+      "--machine=",
+      "--machine"
+    ]
+  },
+  "usb_detach": {
+    "subcommands": [],
+    "flags": []
+  },
+  "usb_info": {
+    "subcommands": [],
+    "flags": []
+  },
+  "usb_list": {
+    "subcommands": [],
+    "flags": [
+      "--format=",
+      "--format"
+    ]
+  },
+  "usb": {
+    "subcommands": [
+      "attach",
+      "detach",
+      "info",
+      "list"
+    ],
+    "flags": []
+  },
+  "version": {
+    "subcommands": [],
+    "flags": []
+  },
+  "root_command": {
+    "subcommands": [
+      "clone",
+      "config",
+      "create",
+      "debug",
+      "default",
+      "delete",
+      "docker",
+      "doctor",
+      "export",
+      "help",
+      "import",
+      "info",
+      "k8s",
+      "list",
+      "login",
+      "logout",
+      "logs",
+      "pull",
+      "push",
+      "rename",
+      "report",
+      "reset",
+      "restart",
+      "run",
+      "serial",
+      "ssh",
+      "start",
+      "status",
+      "stop",
+      "top",
+      "update",
+      "usb",
+      "version"
+    ],
+    "flags": []
+  }
+}

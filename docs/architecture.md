@@ -1,0 +1,330 @@
+# Arquitetura — PodStack
+
+> Visão técnica detalhada. Complementa [`plan.md`](plan.md) e os ADRs.
+
+---
+
+## 1. Contexto (C4 nível 1)
+
+```mermaid
+flowchart TB
+  Dev["Desenvolvedor Linux"]
+  subgraph PodStack["PodStack"]
+    App["App desktop<br/>(GUI + tray)"]
+    Daemon["podstackd"]
+    CLI["podstack CLI"]
+    Helper["podstack-helper<br/>(root)"]
+  end
+  Podman["Podman Engine<br/>(libpod REST)"]
+  VM["QEMU/KVM<br/>machines"]
+  K8s["k3s<br/>(cluster local)"]
+  OS["systemd, resolved,<br/>firewalld, polkit"]
+  Registry["Registries OCI"]
+  Dev --> App
+  Dev --> CLI
+  App <--> Daemon
+  CLI <--> Daemon
+  Daemon <--> Podman
+  Podman <--> Registry
+  Daemon <--> VM
+  Daemon <--> K8s
+  Daemon <--> Helper
+  Helper <--> OS
+```
+
+**Atores externos:** registries OCI, imagens cloud (download), servidores de update.
+
+---
+
+## 2. Containers (C4 nível 2)
+
+```mermaid
+flowchart LR
+  subgraph GUI["podstack-gui (Qt Quick)"]
+    QML["QML views"]
+    Models["List/Inspector models"]
+    Term["Terminal widget"]
+  end
+  subgraph Daemon["podstackd"]
+    RPC["RPC server<br/>JSON-RPC 2.0"]
+    State["State store<br/>(cache + SQLite)"]
+    PC["PodmanClient<br/>(libcurl)"]
+    Streams["StreamHub<br/>(logs/stats/events)"]
+    Jobs["JobManager"]
+    Mach["MachineManager"]
+    Kube["K8sManager"]
+    Proxy["ProxyManager<br/>(Caddy/DNS)"]
+    Cfg["Settings"]
+    Diag["Diagnostics"]
+  end
+  subgraph System["Sistema"]
+    PSock["podman.socket"]
+    QMP["QEMU/QMP"]
+    Helper["podstack-helper"]
+    Resolved["systemd-resolved"]
+  end
+  QML --> Models --> RPC
+  Term --> RPC
+  RPC --> State
+  RPC --> Jobs
+  State --> PC
+  PC --> PSock
+  PC --> Streams --> RPC
+  Jobs --> PC
+  Jobs --> Mach --> QMP
+  Kube --> QMP
+  Proxy --> Helper
+  Helper --> Resolved
+  Cfg --> State
+  Diag --> RPC
+```
+
+### 2.1 Responsabilidades por componente
+
+| Componente | Faz | Não faz |
+|---|---|---|
+| **RPC server** | aceita conexões, valida UID, despacha métodos, assina streams | lógica de negócio pesada |
+| **State store** | cache reconciliado, índices, persistência SQLite | falar com Podman diretamente |
+| **PodmanClient** | HTTP/libcurl, parsing, erros, streams | decidir UI |
+| **StreamHub** | fan-out de logs/stats/events, backpressure | armazenar histórico longo |
+| **JobManager** | jobs longos, progresso, cancelamento, retomada | bloquear RPC |
+| **MachineManager** | ciclo de vida QEMU, cloud-init, SSH, virtiofs, QMP | containers |
+| **K8sManager** | provisionar/gerenciar k3s, kubeconfig, watch | proxy de domínios |
+| **ProxyManager** | DNS userspace, Caddy, detecção de porta, certs | lógica de containers |
+| **Settings** | schema, validação, migração, defaults | UI |
+| **Diagnostics** | checks, report, redaction | enviar sem consentimento |
+
+---
+
+## 3. Fluxos (sequência)
+
+### 3.1 Listar e iniciar container
+
+```mermaid
+sequenceDiagram
+  participant UI as GUI
+  participant D as podstackd
+  participant P as Podman
+  UI->>D: containers.list {all:true}
+  D->>P: GET /libpod/containers/json?all=true
+  P-->>D: [...]
+  D-->>UI: result
+  UI->>D: containers.start {id}
+  D->>P: POST /libpod/containers/{id}/start
+  P-->>D: 204
+  D-->>UI: result ok
+  P-->>D: event container.start
+  D-->>UI: notification event
+```
+
+### 3.2 Logs em streaming
+
+```mermaid
+sequenceDiagram
+  participant UI as GUI
+  participant D as podstackd
+  participant P as Podman
+  UI->>D: logs.subscribe {id, tail:200, follow:true}
+  D->>P: GET /logs?follow=1&stdout=1&stderr=1
+  loop linhas
+    P-->>D: chunk
+    D-->>UI: notification logs.delta
+  end
+  UI->>D: logs.unsubscribe {subscriptionId}
+  D->>P: abort (close)
+```
+
+### 3.3 Exec/terminal (hijack)
+
+```mermaid
+sequenceDiagram
+  participant UI as Terminal
+  participant D as podstackd
+  participant P as Podman
+  UI->>D: exec.create {id, cmd, tty:true}
+  D->>P: POST /containers/{id}/exec
+  P-->>D: {Id}
+  D->>P: POST /exec/{id}/start (Upgrade: tcp)
+  P-->>D: 101 UPGRADED
+  D-->>UI: session.open
+  UI->>D: exec.write {data}
+  D->>P: send(data)
+  P-->>D: recv(data)
+  D-->>UI: exec.data
+  UI->>D: exec.resize {h,w}
+  D->>P: POST /exec/{id}/resize
+```
+
+### 3.4 Criar máquina
+
+```mermaid
+sequenceDiagram
+  participant UI as GUI
+  participant D as podstackd
+  participant Q as QEMU
+  participant G as Guest (cloud-init)
+  UI->>D: machines.create {distro, cpus, mem, disk, userData}
+  D->>D: baixar/verificar imagem cloud
+  D->>D: criar disco qcow2 + seed ISO
+  D->>Q: iniciar com QMP
+  Q->>G: boot + cloud-init
+  D->>G: aguardar SSH (timeout 120s)
+  G-->>D: SSH ok
+  D-->>UI: machine ready
+  D-->>UI: notification machine.state
+```
+
+### 3.5 Requisição de domínio
+
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant DNS as resolved/DNS
+  participant C as Caddy/Proxy
+  participant D as podstackd
+  participant P as Podman
+  B->>DNS: app.podstack.local
+  DNS-->>B: 127.0.0.1
+  B->>C: GET app.podstack.local:443 (SNI)
+  C->>D: lookup domain
+  D-->>C: upstream (ip:port)
+  C->>P: proxy request
+  P-->>C: response
+  C-->>B: response
+```
+
+### 3.6 Habilitar Kubernetes
+
+```mermaid
+sequenceDiagram
+  participant UI as GUI
+  participant D as podstackd
+  participant VM as VM k3s
+  participant K as kubectl
+  UI->>D: k8s.enable
+  D->>VM: provisionar VM + instalar k3s
+  VM-->>D: kubeconfig
+  D->>D: gravar kubeconfig isolado + contexto
+  D->>K: kubectl get nodes (validação)
+  K-->>D: Ready
+  D-->>UI: cluster ready
+```
+
+---
+
+## 4. Concorrência e threads
+
+| Contexto | Thread | Regras |
+|---|---|---|
+| Qt event loop (GUI/daemon) | principal | nunca bloquear > 16 ms |
+| RPC handlers | principal | operações rápidas; jobs em pool |
+| Jobs (pull/build/export/create) | `QThreadPool` | progresso via sinal; cancelável |
+| Streams libcurl | thread por stream (pool) | entrega via fila; backpressure |
+| SQLite | thread do job / pool | conexão por thread; WAL |
+| QMP | thread por máquina | comandos serializados; timeout |
+| DNS/proxy | thread dedicada / event loop | non-blocking |
+
+**Backpressure:** cada assinatura tem fila limitada (ex.: 10k linhas ou 1 MB). Ao encher, descarta linhas antigas e envia `logs.dropped {count}`.
+
+**Cancelamento:** `QAtomicInt`/`std::stop_token` verificado em callbacks do libcurl (`CURLOPT_XFERINFOFUNCTION`).
+
+---
+
+## 5. Persistência
+
+```mermaid
+erDiagram
+  MACHINE ||--o{ MACHINE_PORT : exposes
+  MACHINE ||--o{ MACHINE_MOUNT : mounts
+  MACHINE ||--o{ SNAPSHOT : has
+  BUILD ||--o{ BUILD_STEP : contains
+  CLUSTER ||--o{ KUBECONFIG : owns
+  SETTING ||--|| SETTING_VALUE : has
+  JOB ||--o{ JOB_EVENT : emits
+```
+
+- **Fonte de verdade:** Podman para containers/imagens/volumes/redes/pods; `meta.json` + SQLite para machines/builds/clusters/settings/jobs.
+- **SQLite (WAL):** tabelas `machines`, `machine_ports`, `machine_mounts`, `builds`, `build_steps`, `clusters`, `jobs`, `job_events`, `settings`, `domains`.
+- **Migrações:** `user_version` + scripts idempotentes; backup `.bak` antes.
+- **Config:** `config.json` com `schemaVersion`; leitura tolerante a campos desconhecidos.
+
+Detalhes em [`data-model.md`](data-model.md).
+
+---
+
+## 6. Tratamento de erros
+
+- **Camadas:** libcurl → `PodmanError` (HTTP status + body) → `PodstackError` (código estável) → RPC error → UI.
+- **Classificação:** `invalid_input`, `not_found`, `conflict`, `permission`, `unavailable`, `timeout`, `cancelled`, `internal`.
+- **Retry:** apenas GET idempotente; mutações exigem idempotency key quando aplicável.
+- **Mensagens:** curta (usuário), detalhe (técnico), remediação (ação).
+- **Correlação:** cada RPC tem `traceId`; logs incluem.
+
+---
+
+## 7. Observabilidade
+
+- Logs JSON em `~/.local/state/podstack/logs/podstackd.log` (rotação 10 MB × 5).
+- Níveis: `error`, `warn`, `info`, `debug`, `trace` (runtime via settings).
+- Redaction: env, tokens, `Authorization`, chaves SSH, senhas.
+- `podstack doctor` checks:
+  1. socket do daemon
+  2. socket do Podman + versão
+  3. permissões de `/dev/kvm` (se machines habilitado)
+  4. `virtiofsd`, `qemu-img`, `cloud-localds`
+  5. DNS (`*.localhost`/`*.podstack.local`)
+  6. portas 80/443/8080/8443
+  7. kubeconfig/contexto
+  8. espaço em disco
+- `podstack report`: tar.gz com logs, config redigida, `podman info`, versões; prévia e consentimento.
+
+---
+
+## 8. Implantação (unidades)
+
+```
+/usr/bin/podstack              # CLI
+/usr/bin/podstack-gui          # GUI (ou podstack --gui)
+/usr/libexec/podstack/podstackd
+/usr/libexec/podstack/podstack-helper
+/usr/lib/systemd/user/podstack.socket
+/usr/lib/systemd/user/podstack.service
+/usr/lib/systemd/system/podstack-helper.service
+/usr/share/polkit-1/actions/dev.podstack.helper.policy
+/usr/share/podstack/qml/...
+/usr/share/icons/hicolor/.../apps/dev.podstack.PodStack.png
+/usr/share/applications/dev.podstack.PodStack.desktop
+/usr/share/metainfo/dev.podstack.PodStack.appdata.xml
+```
+
+**Ativação:** `systemctl --global enable podstack.socket` no `%post`; GUI conecta no socket; daemon sobe sob demanda.
+
+---
+
+## 9. Segurança em arquitetura
+
+- GUI/CLI nunca falam com Podman diretamente; apenas com o daemon.
+- Daemon roda como usuário; helper é o único root.
+- Helper expõe D-Bus com métodos declarativos; polkit por ação; rate limit.
+- Socket de controle com `SO_PEERCRED`; sem TCP.
+- Proxy/DNS só escutam em loopback por padrão; LAN é opt-in.
+- CA e chaves com 0600; keyring quando disponível.
+- SELinux: tipos para helper, portas, dummy link e CA.
+
+Detalhes em [`security.md`](security.md).
+
+---
+
+## 10. Decisões e trade-offs
+
+| Decisão | Alternativa | Motivo |
+|---|---|---|
+| JSON-RPC sobre Unix socket | gRPC/protobuf | simplicidade, debug, sem codegen |
+| libcurl para Libpod | QNetworkAccessManager/CLI | hijack e streams |
+| QEMU/KVM direto | libvirt/podman machine | controle, cloud-init, distros arbitrárias |
+| `*.localhost` no v1 | mDNS/`/etc/hosts` | zero privilégio, sem conflito |
+| Caddy para HTTPS | proxy próprio | CA e TLS maduros |
+| SQLite | arquivos JSON | consultas, histórico, migração |
+| RPM primeiro | Flatpak (não no v1) | integração systemd/helper/SELinux |
+
+ADRs: [`adr/`](adr/).

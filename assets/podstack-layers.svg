@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">PodStack — símbolo camadas</title>
+  <desc id="desc">Três camadas empilhadas em índigo e ciano, com pontos de status.</desc>
+  <rect x="24" y="68" width="80" height="24" rx="8" fill="#3730A3"/>
+  <rect x="24" y="42" width="80" height="24" rx="8" fill="#6366F1"/>
+  <rect x="24" y="16" width="80" height="24" rx="8" fill="#22D3EE"/>
+  <circle cx="40" cy="80" r="4" fill="#FFFFFF" opacity="0.9"/>
+  <circle cx="40" cy="54" r="4" fill="#FFFFFF" opacity="0.9"/>
+  <circle cx="40" cy="28" r="4" fill="#0E3A47"/>
+</svg>
