@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "daemon/BuildStore.h"
 #include "daemon/ComposeManager.h"
+#include "daemon/SetupManager.h"
 #include "podman/PodmanClient.h"
 
 #include <QHash>
@@ -80,6 +81,14 @@ private:
     QJsonObject buildsList(const QJsonObject &params, Error *error);
     QJsonObject buildGet(const QJsonObject &params, Error *error);
     QJsonObject buildRemove(const QJsonObject &params, Error *error);
+    QJsonObject setupStatus();
+    QJsonObject setupCheck(const QJsonObject &params);
+    QJsonObject setupValidate();
+    QJsonObject setupApply(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject setupRemoveDocker(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject setupCancel(const QJsonObject &params);
+    QJsonObject setupComplete(const QJsonObject &params, Error *error);
+    QJsonObject setupSubscribe(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeLogs(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeStats(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeEvents(const Notify &notify, Error *error);
@@ -92,6 +101,7 @@ private:
     PodmanClient m_podman;
     ComposeManager m_compose;
     BuildStore m_buildStore;
+    SetupManager m_setup;
     std::mutex m_subscriptionsMutex;
     QHash<QString, std::shared_ptr<Subscription>> m_subscriptions;
     std::mutex m_buildMutex;

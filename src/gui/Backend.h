@@ -42,6 +42,19 @@ class Backend : public QObject {
     Q_PROPERTY(QString activeBuildId READ activeBuildId NOTIFY buildStateChanged)
     Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
     Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
+    Q_PROPERTY(bool setupCompleted READ setupCompleted NOTIFY setupChanged)
+    Q_PROPERTY(bool setupPending READ setupPending NOTIFY setupChanged)
+    Q_PROPERTY(QVariantList setupChecks READ setupChecks NOTIFY setupChanged)
+    Q_PROPERTY(QVariantMap setupSummary READ setupSummary NOTIFY setupChanged)
+    Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
+    Q_PROPERTY(QString setupJobId READ setupJobId NOTIFY setupJobChanged)
+    Q_PROPERTY(bool setupJobActive READ setupJobActive NOTIFY setupJobChanged)
+    Q_PROPERTY(int setupProgress READ setupProgress NOTIFY setupJobChanged)
+    Q_PROPERTY(QStringList setupLog READ setupLog NOTIFY setupJobChanged)
+    Q_PROPERTY(QString setupStatus READ setupStatus NOTIFY setupJobChanged)
+    Q_PROPERTY(QString setupError READ setupError NOTIFY setupChanged)
+    Q_PROPERTY(bool setupBusy READ setupBusy NOTIFY setupChanged)
+    Q_PROPERTY(bool setupLoaded READ setupLoaded NOTIFY setupChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -72,6 +85,19 @@ public:
     QString activeBuildId() const { return m_activeBuildId; }
     QString eventMessage() const { return m_eventMessage; }
     QString eventKind() const { return m_eventKind; }
+    bool setupCompleted() const { return m_setupCompleted; }
+    bool setupPending() const { return !m_setupCompleted && m_setupShowOnboarding; }
+    QVariantList setupChecks() const { return m_setupChecks; }
+    QVariantMap setupSummary() const { return m_setupSummary; }
+    QString setupDockerPolicy() const { return m_setupDockerPolicy; }
+    QString setupJobId() const { return m_setupJobId; }
+    bool setupJobActive() const { return m_setupJobActive; }
+    int setupProgress() const { return m_setupProgress; }
+    QStringList setupLog() const { return m_setupLog; }
+    QString setupStatus() const { return m_setupStatus; }
+    QString setupError() const { return m_setupError; }
+    bool setupBusy() const { return m_setupBusy; }
+    bool setupLoaded() const { return m_setupLoaded; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
@@ -132,6 +158,14 @@ public:
     Q_INVOKABLE void saveEngineMode(const QString &mode);
     Q_INVOKABLE void saveTheme(const QString &theme);
     Q_INVOKABLE void openTerminal(const QString &id);
+    Q_INVOKABLE void setupRefresh();
+    Q_INVOKABLE void setupCheck();
+    Q_INVOKABLE void setupValidate();
+    Q_INVOKABLE void setupApply(const QString &action, const QVariantList &components = {});
+    Q_INVOKABLE void setupRemoveDocker();
+    Q_INVOKABLE void setupCancel();
+    Q_INVOKABLE void setupComplete();
+    Q_INVOKABLE void setupSkip();
 
 signals:
     void containersChanged(const QVariantList &items);
@@ -153,12 +187,18 @@ signals:
     void buildLogChanged();
     void buildStateChanged();
     void eventsChanged();
+    void setupChanged();
+    void setupJobChanged();
 
 private:
     void onRefreshFinished();
     void onActionFinished();
     void onFilesFinished();
     void onCatalogFinished();
+    void onSetupFinished();
+    void applySetupStatus(const QJsonObject &status);
+    void applySetupJob(const QJsonObject &job);
+    void runSetupRequest(const QString &method, const QJsonObject &params);
     void refreshSection(const QString &section);
     void startNextCatalog();
     void runAction(const QString &method, const QJsonObject &params,
@@ -168,12 +208,15 @@ private:
     QFutureWatcher<QJsonObject> m_actionWatcher;
     QFutureWatcher<QJsonObject> m_filesWatcher;
     QFutureWatcher<QJsonObject> m_catalogWatcher;
+    QFutureWatcher<QJsonObject> m_setupWatcher;
+    QString m_setupPendingMethod;
     QString m_catalogSection;
     QStringList m_catalogQueue;
     StreamClient m_stream;
     StreamClient m_pullStream;
     StreamClient m_composeStream;
     StreamClient m_buildStream;
+    StreamClient m_setupStream;
     StreamClient m_eventsStream;
     QTimer m_eventTimer;
     QTimer m_logsTimer;
@@ -205,6 +248,19 @@ private:
     QString m_eventMessage;
     QString m_eventKind;
     QSet<QString> m_recentEvents;
+    bool m_setupCompleted = false;
+    bool m_setupShowOnboarding = true;
+    QVariantList m_setupChecks;
+    QVariantMap m_setupSummary;
+    QString m_setupDockerPolicy = QStringLiteral("keep");
+    QString m_setupJobId;
+    bool m_setupJobActive = false;
+    int m_setupProgress = 0;
+    QStringList m_setupLog;
+    QString m_setupStatus;
+    QString m_setupError;
+    bool m_setupBusy = false;
+    bool m_setupLoaded = false;
 };
 
 } // namespace PodStack

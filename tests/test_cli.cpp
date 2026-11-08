@@ -31,6 +31,7 @@ private slots:
     void lifecycleAndInspect();
     void catalog();
     void composeAndBuild();
+    void setupCommand();
     void errorPaths();
 
 private:
@@ -480,6 +481,30 @@ void CliTest::composeAndBuild()
 
     result = run({QStringLiteral("builds"), QStringLiteral("rm"), buildId}, env);
     QCOMPARE(result.code, 0);
+}
+
+void CliTest::setupCommand()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    const CliResult check = run({QStringLiteral("setup"), QStringLiteral("--check")}, env);
+    QCOMPARE(check.code, 0);
+    QVERIFY(check.out.contains(QStringLiteral("podman")));
+    QVERIFY(check.out.contains(QStringLiteral("sqlite")));
+
+    const CliResult status = run({QStringLiteral("setup")}, env);
+    QCOMPARE(status.code, 0);
+    QVERIFY(status.out.contains(QStringLiteral("Política do Docker")));
+    QVERIFY(status.out.contains(QStringLiteral("Onboarding")));
+
+    const CliResult validate = run({QStringLiteral("setup"), QStringLiteral("--validate")}, env);
+    QVERIFY(validate.code == 0 || validate.code == 1);
+    QVERIFY(validate.out.contains(QStringLiteral("Validação")));
+
+    const CliResult remove =
+        run({QStringLiteral("setup"), QStringLiteral("--remove-docker")}, env);
+    QVERIFY(remove.code != 0);
+    QVERIFY(remove.err.contains(QStringLiteral("--yes")));
 }
 
 void CliTest::errorPaths()

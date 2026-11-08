@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QSaveFile>
@@ -18,6 +19,21 @@ QStringList splitKey(const QString &key)
     return key.split(QLatin1Char('.'), Qt::SkipEmptyParts);
 }
 
+/// Mescla defaults e valores persistidos preservando chaves aninhadas.
+QJsonValue mergeValue(const QJsonValue &base, const QJsonValue &stored)
+{
+    if (!base.isObject() || !stored.isObject()) {
+        return stored;
+    }
+
+    QJsonObject merged = base.toObject();
+    const QJsonObject storedObject = stored.toObject();
+    for (auto it = storedObject.constBegin(); it != storedObject.constEnd(); ++it) {
+        merged.insert(it.key(), mergeValue(merged.value(it.key()), it.value()));
+    }
+    return merged;
+}
+
 } // namespace
 
 Config::Config()
@@ -26,11 +42,20 @@ Config::Config()
 }
 
 QJsonObject Config::defaults()
-{    QJsonObject app;
+{
+    QJsonObject app;
     app.insert(QStringLiteral("startAtLogin"), false);
     app.insert(QStringLiteral("waitForContainerStop"), true);
     app.insert(QStringLiteral("theme"), QStringLiteral("system"));
     app.insert(QStringLiteral("language"), QStringLiteral("pt-BR"));
+    app.insert(QStringLiteral("showOnboarding"), true);
+
+    QJsonObject setup;
+    setup.insert(QStringLiteral("completed"), false);
+    setup.insert(QStringLiteral("completedAt"), QJsonValue::Null);
+    setup.insert(QStringLiteral("dockerPolicy"), QStringLiteral("keep"));
+    setup.insert(QStringLiteral("components"), QJsonArray{});
+    setup.insert(QStringLiteral("lastValidation"), QJsonValue::Null);
 
     QJsonObject engine;
     engine.insert(QStringLiteral("mode"), QStringLiteral("rootless"));
@@ -57,6 +82,7 @@ QJsonObject Config::defaults()
     QJsonObject root;
     root.insert(QStringLiteral("schemaVersion"), 1);
     root.insert(QStringLiteral("app"), app);
+    root.insert(QStringLiteral("setup"), setup);
     root.insert(QStringLiteral("engine"), engine);
     root.insert(QStringLiteral("network"), network);
     root.insert(QStringLiteral("machines"), machines);
@@ -90,7 +116,7 @@ Config Config::load()
 
     const QJsonObject stored = document.object();
     for (auto it = stored.constBegin(); it != stored.constEnd(); ++it) {
-        config.m_values.insert(it.key(), it.value());
+        config.m_values.insert(it.key(), mergeValue(config.m_values.value(it.key()), it.value()));
     }
     return config;
 }

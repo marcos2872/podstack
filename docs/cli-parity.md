@@ -148,13 +148,15 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 
 > O provider Compose é detectado em `docker-compose`, `podman compose` ou `docker compose`; `PODSTACK_COMPOSE_PROVIDER` força um binário.
 
-### 2.3.4 Setup (proposto)
+### 2.3.4 Setup (implementado)
 
 | Comando | Flags | Notas |
 |---|---|---|
-| `podstack setup` | `--check`, `--apply`, `--validate`, `--remove-docker`, `--yes` | Setup/onboarding; `--check` é read-only; Docker só é removido com `--remove-docker` + confirmação |
+| `podstack setup` | `--check`, `--status`, `--validate`, `--apply podman\|qemu\|components\|socket`, `--install-*`, `--remove-docker --yes`, `--caddy` | Setup/onboarding; `--check` é read-only; Docker só é removido com `--remove-docker --yes` |
 
 > O fluxo principal instala/atualiza o Podman e **não remove o Docker**; a GUI usa a mesma API `setup.*`.
+> `--apply` inicia um job no daemon e imprime o `jobId`; o progresso aparece em `setup.status` e nos
+> eventos `setup.delta`/`setup.done`. Instalações exigem o `podstack-helper` + polkit.
 
 ### 2.4 Configuração
 

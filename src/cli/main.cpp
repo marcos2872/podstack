@@ -60,6 +60,10 @@ void printUsage()
           << "  build <contexto> -t <tag> [-f Dockerfile] [--build-arg K=V]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
+          << "  setup [--check|--status|--validate]\n"
+          << "        [--apply podman|qemu|components|socket]\n"
+          << "        [--remove-docker --yes]\n"
+          << "                          Setup/onboarding da máquina\n"
           << "  doctor                  Diagnóstico rápido\n"
           << "  help                    Esta ajuda\n";
     out().flush();
@@ -1384,6 +1388,131 @@ int commandBuilds(const QStringList &args)
     return kExitUsage;
 }
 
+int commandSetup(const QStringList &args)
+{
+    PodStack::RpcClient client;
+    PodStack::Error error;
+
+    const auto printChecks = [](const QJsonArray &checks) {
+        for (const QJsonValue &value : checks) {
+            const QJsonObject check = value.toObject();
+            const QString status = check.value(QStringLiteral("status")).toString();
+            const QString version = check.value(QStringLiteral("version")).toString();
+            const QString detail = check.value(QStringLiteral("detail")).toString();
+            out() << QStringLiteral("%1  %2")
+                         .arg(status.leftJustified(9))
+                         .arg(check.value(QStringLiteral("id")).toString());
+            if (!version.isEmpty()) {
+                out() << QStringLiteral("  ") << version;
+            }
+            out() << QStringLiteral("  ") << detail << '\n';
+        }
+    };
+
+    const bool removeDocker = args.contains(QStringLiteral("--remove-docker"));
+    if (removeDocker) {
+        if (!args.contains(QStringLiteral("--yes"))) {
+            err() << "A remoção do Docker exige --yes e aviso explícito de perda de dados.\n";
+            err().flush();
+            return kExitUsage;
+        }
+        const QJsonObject result = client.call(
+            QStringLiteral("setup.removeDocker"),
+            QJsonObject{{QStringLiteral("confirm"), true}}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        out() << "Job iniciado: " << result.value(QStringLiteral("jobId")).toString() << '\n';
+        out().flush();
+        return kExitOk;
+    }
+
+    QString action;
+    const int applyIndex = args.indexOf(QStringLiteral("--apply"));
+    if (applyIndex >= 0) {
+        if (applyIndex + 1 < args.size() && !args.at(applyIndex + 1).startsWith(QStringLiteral("--"))) {
+            action = args.at(applyIndex + 1);
+        } else {
+            action = QStringLiteral("podman");
+        }
+    }
+    if (args.contains(QStringLiteral("--install-podman"))) {
+        action = QStringLiteral("podman");
+    } else if (args.contains(QStringLiteral("--install-qemu"))) {
+        action = QStringLiteral("qemu");
+    } else if (args.contains(QStringLiteral("--install-components"))) {
+        action = QStringLiteral("components");
+    } else if (args.contains(QStringLiteral("--enable-socket"))) {
+        action = QStringLiteral("socket");
+    }
+
+    if (!action.isEmpty()) {
+        QString type = action;
+        if (action == QStringLiteral("podman")) {
+            type = QStringLiteral("install-podman");
+        } else if (action == QStringLiteral("qemu")) {
+            type = QStringLiteral("install-qemu");
+        } else if (action == QStringLiteral("components")) {
+            type = QStringLiteral("install-components");
+        } else if (action == QStringLiteral("socket")) {
+            type = QStringLiteral("enable-socket");
+        }
+
+        QJsonObject params;
+        params.insert(QStringLiteral("action"), type);
+        if (type == QStringLiteral("install-components")
+            && args.contains(QStringLiteral("--caddy"))) {
+            params.insert(QStringLiteral("components"), QJsonArray{QStringLiteral("caddy")});
+        }
+        const QJsonObject result =
+            client.call(QStringLiteral("setup.apply"), params, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        out() << "Job iniciado: " << result.value(QStringLiteral("jobId")).toString()
+              << " (" << result.value(QStringLiteral("state")).toString() << ")\n";
+        out().flush();
+        return kExitOk;
+    }
+
+    if (args.contains(QStringLiteral("--validate"))) {
+        const QJsonObject result = client.call(QStringLiteral("setup.validate"), {}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        printChecks(result.value(QStringLiteral("checks")).toArray());
+        out() << (result.value(QStringLiteral("ok")).toBool()
+                      ? QStringLiteral("Validação OK.\n")
+                      : QStringLiteral("Validação com pendências.\n"));
+        out().flush();
+        return result.value(QStringLiteral("ok")).toBool() ? kExitOk : 1;
+    }
+
+    if (args.contains(QStringLiteral("--check"))) {
+        const QJsonObject result = client.call(QStringLiteral("setup.check"), {}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        printChecks(result.value(QStringLiteral("checks")).toArray());
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonObject status = client.call(QStringLiteral("setup.status"), {}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+    out() << "Configuração concluída: "
+          << (status.value(QStringLiteral("completed")).toBool() ? "sim" : "não") << '\n'
+          << "Onboarding habilitado: "
+          << (status.value(QStringLiteral("showOnboarding")).toBool() ? "sim" : "não") << '\n'
+          << "Política do Docker: "
+          << status.value(QStringLiteral("dockerPolicy")).toString() << '\n';
+    printChecks(status.value(QStringLiteral("checks")).toArray());
+    out().flush();
+    return kExitOk;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -1447,6 +1576,9 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("builds")) {
         return commandBuilds(args);
+    }
+    if (command == QStringLiteral("setup")) {
+        return commandSetup(args);
     }
     if (command == QStringLiteral("doctor")) {
         return commandDoctor();

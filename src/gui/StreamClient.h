@@ -20,6 +20,9 @@ public:
     void pullImage(const QString &reference, const QString &platform = {});
     void subscribeComposeLogs(const QString &project, const QString &service = {});
     void startBuild(const QJsonObject &params);
+    void startSetup(const QJsonObject &params);
+    void startSetupRemoveDocker(const QJsonObject &params);
+    void subscribeSetup(const QString &jobId);
     void subscribeEvents();
     void unsubscribe();
 
@@ -32,6 +35,8 @@ signals:
     void composeLog(const QString &service, const QString &line);
     void buildEvent(const QJsonObject &event);
     void buildFinished(const QJsonObject &result);
+    void setupEvent(const QJsonObject &event);
+    void setupFinished(const QJsonObject &result);
     void eventReceived(const QJsonObject &event);
     void error(const QString &message);
 

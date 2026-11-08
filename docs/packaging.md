@@ -129,18 +129,20 @@ After=dbus.service
 Type=dbus
 BusName=dev.podstack.Helper1
 ExecStart=/usr/libexec/podstack/podstack-helper
+User=root
 NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=read-only
-RestrictAddressFamilies=AF_UNIX
-SystemCallFilter=@system-service
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
 ```
 
-- D-Bus policy restrita a `root` e ao helper.
+- D-Bus policy (`share/dbus-1/system.d/dev.podstack.Helper1.conf`) permite que apenas
+  `root` possua o nome; chamadas de usuários são autorizadas pelo polkit.
 - Ativação sob demanda via `dev.podstack.Helper1`.
+- **Sem** `ProtectSystem=strict`: o helper precisa escrever em `/usr` e `/var` para o gerenciador
+  de pacotes. A proteção efetiva é a allowlist fechada de pacotes + polkit + auditoria no journal.
+- O helper nunca recebe `Exec`/shell; cada método monta `dnf`/`apt-get`/`pacman` com argumentos fixos.
 
 ---
 

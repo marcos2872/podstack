@@ -227,6 +227,12 @@ Janela separada, aberta no primeiro uso, por `podstack setup` ou Settings → �
 - Detecção é read-only; toda alteração exige consentimento.
 - Docker e Podman coexistem (sockets diferentes); o PodStack usa Podman.
 
+**Implementação:** `SetupWindow.qml` (janela 1020×680 limitada à tela), `SetupRail.qml`
+(rail das 7 etapas) e `SetupCheckRow.qml` (linha de check com versão, detalhe e remediação).
+O `Main` abre a janela quando `setupPending` (`!setup.completed && app.showOnboarding`); o X
+pergunta se o usuário quer continuar depois (`app.showOnboarding=false`) e o botão
+**Executar configuração novamente** em Settings reabre o assistente.
+
 ---
 
 ## 9. Tray / menu bar
@@ -325,14 +331,10 @@ qml/
 ├── ComposeView.qml
 ├── BuildsView.qml
 ├── Toast.qml
-└── Setup/               # planejado (T7-07)
-    ├── SetupWindow.qml
-    ├── SetupRail.qml
-    ├── SetupStep.qml
-    ├── SetupCheckRow.qml
-    ├── SetupProgress.qml
-    ├── SetupLog.qml
-    └── SetupDone.qml
+└── Setup/               # implementado em src/gui/qml (sem subpasta)
+    ├── SetupWindow.qml    # 7 etapas + progresso/log + confirmações
+    ├── SetupRail.qml      # rail de etapas
+    └── SetupCheckRow.qml  # check com status/versão/remediação
 ```
 
 - `qt_add_qml_module`; `qmllint` no CI.

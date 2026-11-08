@@ -241,6 +241,30 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("builds.remove")) {
         return buildRemove(params, error);
     }
+    if (method == QStringLiteral("setup.status")) {
+        return setupStatus();
+    }
+    if (method == QStringLiteral("setup.check")) {
+        return setupCheck(params);
+    }
+    if (method == QStringLiteral("setup.validate")) {
+        return setupValidate();
+    }
+    if (method == QStringLiteral("setup.apply")) {
+        return setupApply(params, notify, error);
+    }
+    if (method == QStringLiteral("setup.removeDocker")) {
+        return setupRemoveDocker(params, notify, error);
+    }
+    if (method == QStringLiteral("setup.cancel")) {
+        return setupCancel(params);
+    }
+    if (method == QStringLiteral("setup.complete")) {
+        return setupComplete(params, error);
+    }
+    if (method == QStringLiteral("setup.subscribe")) {
+        return setupSubscribe(params, notify, error);
+    }
     if (method == QStringLiteral("containers.logs.subscribe")) {
         return subscribeLogs(params, notify, error);
     }
@@ -253,6 +277,7 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
         || method == QStringLiteral("images.push.unsubscribe")
         || method == QStringLiteral("compose.logs.unsubscribe")
         || method == QStringLiteral("builds.unsubscribe")
+        || method == QStringLiteral("setup.unsubscribe")
         || method == QStringLiteral("events.unsubscribe")) {
         return unsubscribe(params);
     }
@@ -1831,6 +1856,82 @@ QJsonObject Daemon::buildRemove(const QJsonObject &params, Error *error)
     result.insert(QStringLiteral("id"), id);
     result.insert(QStringLiteral("removed"), true);
     return result;
+}
+
+QJsonObject Daemon::setupStatus()
+{
+    return m_setup.status();
+}
+
+QJsonObject Daemon::setupCheck(const QJsonObject &params)
+{
+    const bool deep = params.value(QStringLiteral("deep")).toBool(false);
+    QJsonArray checks;
+    for (const SetupCheck &check : m_setup.check(deep)) {
+        checks.append(check.toJson());
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("checks"), checks);
+    return result;
+}
+
+QJsonObject Daemon::setupValidate()
+{
+    return m_setup.validate();
+}
+
+QJsonObject Daemon::setupApply(const QJsonObject &params, const Notify &notify, Error *error)
+{
+    return m_setup.apply(params, notify, error);
+}
+
+QJsonObject Daemon::setupRemoveDocker(const QJsonObject &params, const Notify &notify,
+                                      Error *error)
+{
+    return m_setup.removeDocker(params, notify, error);
+}
+
+QJsonObject Daemon::setupCancel(const QJsonObject &params)
+{
+    return m_setup.cancel(params);
+}
+
+QJsonObject Daemon::setupComplete(const QJsonObject &params, Error *error)
+{
+    const bool skipped = params.value(QStringLiteral("skipped")).toBool(false);
+    if (!m_setup.complete(skipped, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("completed"), !skipped);
+    result.insert(QStringLiteral("skipped"), skipped);
+    return result;
+}
+
+QJsonObject Daemon::setupSubscribe(const QJsonObject &params, const Notify &notify, Error *error)
+{
+    const QString jobId = params.value(QStringLiteral("jobId")).toString();
+    if (jobId.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o job de setup."));
+        }
+        return {};
+    }
+
+    const QJsonObject job = m_setup.jobStatus(jobId);
+    if (job.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Job de setup não encontrado."));
+        }
+        return {};
+    }
+
+    m_setup.subscribe(jobId, notify);
+    return QJsonObject{{QStringLiteral("jobId"), jobId}};
 }
 
 QJsonObject Daemon::unsubscribe(const QJsonObject &params)

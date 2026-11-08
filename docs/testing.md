@@ -106,6 +106,18 @@
 | Validação | obrigatórios vs. opcionais; “abrir mesmo assim” |
 | Jobs | progresso/log/cancelamento/retry; job sobrevive ao fechar a janela |
 
+**Cobertura atual (M3+onboarding):**
+
+| Suíte | Caso | O que cobre |
+|---|---|---|
+| `test_core` | `configSetupDefaults`, `configMergePreservesDefaults` | defaults de `setup.*`/`app.showOnboarding` e merge recursivo |
+| `test_rpc` | `setupFlow` | `setup.status/check/validate/complete`, ids dos checks, `PODSTACK_INVALID_PARAMS` e `PODSTACK_CONFIRMATION_REQUIRED` |
+| `test_gui` | `backendSetup` | `setupRefresh`, `setupLoaded`, `setupChecks`, `setupSkip` e `setupComplete` |
+| `test_cli` | `setupCommand` | `podstack setup --check`, `--validate` e a exigência de `--yes` |
+
+**Pendente de validação em máquina limpa:** instalação real via `podstack-helper` + polkit
+(Fedora com e sem Docker), KVM/TCG e QEMU. O fluxo de UI e o contrato RPC já são cobertos.
+
 ---
 
 ## 4. Machines (QEMU)

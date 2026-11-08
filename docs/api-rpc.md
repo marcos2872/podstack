@@ -275,23 +275,31 @@ interface Subscription { subscriptionId: string }
 | `events.subscribe` | `{types?}` | `Subscription` |
 | `events.unsubscribe` | `{subscriptionId}` | `{}` |
 
-### 4.12 `setup.*` (proposto)
+### 4.12 `setup.*`
 
-> Ainda não implementado; contrato proposto para o onboarding/setup. Só entra em `apiVersion` quando o daemon implementar.
+Implementado para o onboarding/setup de primeira execução. A detecção é read-only; ações
+privilegiadas passam pelo helper allowlisted e nunca por shell na GUI.
 
 | Método | Params | Result |
 |---|---|---|
-| `setup.status` | `{}` | `{completed, completedAt, dockerPolicy, checks: SetupCheck[], summary}` |
+| `setup.status` | `{}` | `{completed, completedAt, dockerPolicy, showOnboarding, checks: SetupCheck[], summary, activeJob?}` |
 | `setup.check` | `{deep?:bool}` | `{checks: SetupCheck[]}` |
-| `setup.apply` | `{actions:[{type:"install-podman"\|"upgrade-podman"\|"install-qemu"\|"install-components", options?}]}` | `JobRef` |
-| `setup.removeDocker` | `{confirm:true, export?:bool}` | `JobRef` |
-| `setup.cancel` | `{jobId}` | `{}` |
+| `setup.apply` | `{action:"install-podman"\|"upgrade-podman"\|"install-qemu"\|"install-components"\|"enable-socket", components?:string[]}` | `{jobId, state}` |
+| `setup.removeDocker` | `{confirm:true}` | `{jobId, state}` |
+| `setup.cancel` | `{jobId}` | `{cancelled:bool}` |
+| `setup.complete` | `{skipped?:bool}` | `{completed, skipped}` |
+| `setup.subscribe` | `{jobId}` | `{jobId}` — anexa o cliente ao job e envia `setup.delta` |
 | `setup.validate` | `{}` | `{checks: SetupCheck[], ok, warnings}` |
 
-- `SetupCheck`: `{id, status:"ok"|"warn"|"missing"|"optional", version?, detail?, remediation?}`.
-- `setup.apply` **não** remove o Docker; `setup.removeDocker` é separado, opt-in e exige `confirm:true`.
-- Progresso via `job.delta`/`job.done` (ou `setup.delta`/`setup.done`); o job continua no daemon se a janela fechar.
-- Ações privilegiadas passam pelo helper allowlisted; o daemon nunca executa shell.
+- `SetupCheck`: `{id, status:"ok"|"warn"|"missing"|"optional", version, detail, remediation}`.
+- `setup.apply` **não** remove o Docker; `setup.removeDocker` é separado, opt-in e exige `confirm:true`
+  (sem isso retorna `PODSTACK_CONFIRMATION_REQUIRED`).
+- `setup.complete` grava `setup.completed`/`completedAt`/`lastValidation`; com `skipped:true` grava
+  apenas `app.showOnboarding=false`, mantendo o setup pendente.
+- Progresso via `setup.delta`/`setup.done`; o job continua no daemon se a janela fechar e pode ser
+  retomado com `setup.subscribe`. `setup.done` inclui os checks recalculados.
+- Ações que instalam pacotes exigem o helper (`dev.podstack.Helper1` no barramento de sistema) e
+  retornam `PODSTACK_HELPER_UNAVAILABLE` quando ele não está instalado.
 
 ---
 

@@ -16,6 +16,7 @@ find_package(Qt6 6.10 REQUIRED COMPONENTS
     QuickControls2
     Network
     Concurrent
+    DBus
 )
 find_package(CURL REQUIRED)
 find_package(qtermwidget6 REQUIRED)
@@ -57,8 +58,26 @@ add_executable(podstackd
     src/daemon/RpcServer.cpp
     src/daemon/BuildStore.cpp
     src/daemon/ComposeManager.cpp
+    src/daemon/SetupManager.cpp
 )
-target_link_libraries(podstackd PRIVATE podstack_podman Qt6::Concurrent SQLite::SQLite3)
+target_link_libraries(podstackd PRIVATE
+    podstack_podman
+    Qt6::Concurrent
+    Qt6::DBus
+    SQLite::SQLite3
+)
+
+# ---------------------------------------------------------------------------
+# Helper privilegiado (system D-Bus + polkit, métodos allowlisted)
+# ---------------------------------------------------------------------------
+add_executable(podstack-helper
+    src/helper/main.cpp
+    src/helper/HelperService.cpp
+    src/helper/Polkit.cpp
+)
+target_include_directories(podstack-helper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(podstack-helper PRIVATE PODSTACK_VERSION="${PROJECT_VERSION}")
+target_link_libraries(podstack-helper PRIVATE Qt6::Core Qt6::DBus)
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -129,6 +148,9 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/ComposeView.qml
         src/gui/qml/BuildsView.qml
         src/gui/qml/Toast.qml
+        src/gui/qml/SetupWindow.qml
+        src/gui/qml/SetupRail.qml
+        src/gui/qml/SetupCheckRow.qml
     RESOURCES
         assets/fonts/Inter-Regular.ttf
         assets/fonts/Inter-Medium.ttf
@@ -165,6 +187,20 @@ install(FILES
     packaging/systemd/podstack.socket
     packaging/systemd/podstack.service
     DESTINATION lib/systemd/user
+)
+
+install(FILES packaging/systemd-system/podstack-helper.service
+    DESTINATION lib/systemd/system
+)
+
+install(TARGETS podstack-helper RUNTIME DESTINATION libexec/podstack)
+
+install(FILES packaging/polkit/dev.podstack.helper.policy
+    DESTINATION share/polkit-1/actions
+)
+
+install(FILES packaging/dbus/dev.podstack.Helper1.conf
+    DESTINATION share/dbus-1/system.d
 )
 
 install(FILES packaging/dev.podstack.PodStack.desktop

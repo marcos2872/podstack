@@ -154,6 +154,8 @@ Campos desconhecidos são preservados na escrita. Config inválida → backup + 
 
 > O Docker **não** é removido por padrão. `setup.dockerPolicy=removed` só é gravado depois de confirmação explícita e da ação allowlisted do helper; não há migração automática de dados do Docker.
 
+> O onboarding abre quando `setup.completed=false` **e** `app.showOnboarding=true` (default). Pular o assistente grava `app.showOnboarding=false`, mantém `setup.completed=false` e deixa a Main com o aviso de configuração pendente; Settings → “Executar configuração novamente” reabre o fluxo.
+
 ---
 
 ## 3. Mapeamento GUI ↔ CLI ↔ OrbStack

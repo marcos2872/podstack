@@ -23,7 +23,8 @@ ApplicationWindow {
         const available = Screen.desktopAvailableHeight
         return Math.min(780, Math.max(560, available > 0 ? available - 80 : 780))
     }
-    visible: true
+    visible: backend.setupCompleted || !backend.setupPending
+             || (backend.setupLoaded && backend.setupError.length > 0)
     title: qsTr("PodStack")
     color: Theme.bgBase
 
@@ -57,6 +58,24 @@ ApplicationWindow {
         minimumWidth = Math.min(900, preferredWidth)
         minimumHeight = Math.min(600, preferredHeight)
         applyTheme(backend.settings().theme || "system")
+        backend.setupRefresh()
+    }
+
+    property bool setupOpened: false
+
+    Connections {
+        target: backend
+
+        function onSetupChanged() {
+            if (backend.setupPending && !backend.setupCompleted && !setupOpened) {
+                setupOpened = true
+                setupWindow.openSetup(false)
+            }
+        }
+    }
+
+    SetupWindow {
+        id: setupWindow
     }
 
     readonly property var sections: [
@@ -718,6 +737,14 @@ ApplicationWindow {
             }
         }
         footer: AppFooter {
+            ActionButton {
+                text: qsTr("Executar configuração")
+                iconName: "settings"
+                onClicked: {
+                    settingsDialog.close()
+                    setupWindow.openSetup(true)
+                }
+            }
             Item { Layout.fillWidth: true }
             ActionButton {
                 text: qsTr("Cancelar")

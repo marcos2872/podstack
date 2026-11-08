@@ -32,6 +32,7 @@ private slots:
     void backendM3();
     void backendErrors();
     void backendTheme();
+    void backendSetup();
 
 private:
     QProcessEnvironment daemonEnvironment() const;
@@ -504,6 +505,28 @@ void GuiTest::backendTheme()
     QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
              QStringLiteral("system"));
     QVERIFY(actionSpy.count() >= 2);
+}
+
+void GuiTest::backendSetup()
+{
+    PodStack::Backend backend;
+    QSignalSpy setupSpy(&backend, &PodStack::Backend::setupChanged);
+
+    QVERIFY(!backend.setupLoaded());
+    backend.setupRefresh();
+    QTRY_VERIFY_WITH_TIMEOUT(backend.setupLoaded(), 15000);
+    QVERIFY(setupSpy.count() > 0);
+    QVERIFY(backend.setupChecks().size() >= 8);
+    QVERIFY(backend.setupCompleted() == false);
+    QVERIFY(backend.setupPending());
+
+    backend.setupSkip();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupPending(), 10000);
+    QVERIFY(!backend.setupCompleted());
+
+    backend.setupComplete();
+    QTRY_VERIFY_WITH_TIMEOUT(backend.setupCompleted(), 10000);
+    QVERIFY(!backend.setupPending());
 }
 
 } // namespace

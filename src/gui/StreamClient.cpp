@@ -105,6 +105,51 @@ void StreamClient::startBuild(const QJsonObject &params)
     connectSocket();
 }
 
+void StreamClient::startSetup(const QJsonObject &params)
+{
+    stop(true);
+    m_kind = QStringLiteral("setup");
+    m_unsubscribeMethod = QStringLiteral("setup.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("setup.apply")},
+        {QStringLiteral("params"), params},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
+void StreamClient::startSetupRemoveDocker(const QJsonObject &params)
+{
+    stop(true);
+    m_kind = QStringLiteral("setup");
+    m_unsubscribeMethod = QStringLiteral("setup.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("setup.removeDocker")},
+        {QStringLiteral("params"), params},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
+void StreamClient::subscribeSetup(const QString &jobId)
+{
+    stop(true);
+    m_kind = QStringLiteral("setup");
+    m_unsubscribeMethod = QStringLiteral("setup.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("setup.subscribe")},
+        {QStringLiteral("params"), QJsonObject{{QStringLiteral("jobId"), jobId}}},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
 void StreamClient::subscribeEvents()
 {
     stop(true);
@@ -194,6 +239,22 @@ void StreamClient::onReadyRead()
 
         const QJsonObject message = document.object();
         if (message.value(QStringLiteral("id")).toInt() == 1) {
+            if (message.contains(QStringLiteral("error"))) {
+                const QJsonObject errorObject =
+                    message.value(QStringLiteral("error")).toObject();
+                QString text = errorObject.value(QStringLiteral("message")).toString();
+                const QJsonObject data =
+                    errorObject.value(QStringLiteral("data")).toObject();
+                const QString remediation =
+                    data.value(QStringLiteral("remediation")).toString();
+                if (!remediation.isEmpty()) {
+                    text += QStringLiteral(" ") + remediation;
+                }
+                emit error(text);
+                m_pendingSend = false;
+                continue;
+            }
+
             m_lastResult = message.value(QStringLiteral("result")).toObject();
             m_subscriptionId =
                 m_lastResult.value(QStringLiteral("subscriptionId")).toString();
@@ -217,6 +278,13 @@ void StreamClient::onReadyRead()
             emit buildEvent(params);
         } else if (method == QStringLiteral("builds.done")) {
             emit buildFinished(params);
+            m_subscriptionId.clear();
+            m_kind.clear();
+            m_socket.abort();
+        } else if (method == QStringLiteral("setup.delta")) {
+            emit setupEvent(params);
+        } else if (method == QStringLiteral("setup.done")) {
+            emit setupFinished(params);
             m_subscriptionId.clear();
             m_kind.clear();
             m_socket.abort();
