@@ -29,7 +29,7 @@ jobs:
         run: |
           dnf install -y cmake ninja-build gcc-c++ gcovr \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
-            qtermwidget-devel libarchive-devel libcurl-devel
+            qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel
 
       - name: Configurar (coverage)
         run: cmake --preset coverage
@@ -44,6 +44,7 @@ jobs:
         run: |
           mkdir -p coverage
           gcovr -r . --filter 'src/' --gcov-ignore-parse-errors \
+            --merge-mode-functions=separate \
             --xml coverage.xml \
             --html-details coverage/index.html \
             --txt-metric line --print-summary | tee coverage-summary.txt
@@ -52,6 +53,7 @@ jobs:
       - name: Cobertura (gate 80%)
         run: |
           gcovr -r . --filter 'src/' --gcov-ignore-parse-errors \
+            --merge-mode-functions=separate \
             --txt-metric line --print-summary --fail-under-line 80 \
             | tee coverage-gate.txt
           cat coverage-gate.txt >> "$GITHUB_STEP_SUMMARY"

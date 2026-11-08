@@ -29,6 +29,7 @@ private slots:
     void backendActions();
     void backendStreams();
     void backendCatalog();
+    void backendM3();
 
 private:
     QProcessEnvironment daemonEnvironment() const;
@@ -36,6 +37,8 @@ private:
     MockPodmanServer m_mock;
     QProcess m_daemon;
     QString m_controlSocket;
+    QString m_testDataDir;
+    QString m_fakeProvider;
 };
 
 QProcessEnvironment GuiTest::daemonEnvironment() const
@@ -43,12 +46,29 @@ QProcessEnvironment GuiTest::daemonEnvironment() const
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
+    env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    env.insert(QStringLiteral("XDG_DATA_HOME"), m_testDataDir + QStringLiteral("/data"));
+    env.insert(QStringLiteral("XDG_STATE_HOME"), m_testDataDir + QStringLiteral("/state"));
+    env.insert(QStringLiteral("XDG_CONFIG_HOME"), m_testDataDir + QStringLiteral("/config"));
     return env;
 }
 
 void GuiTest::initTestCase()
 {
     QVERIFY(m_mock.isListening());
+
+    m_testDataDir = QDir::tempPath()
+                    + QStringLiteral("/podstack-gui-data-%1")
+                          .arg(QCoreApplication::applicationPid());
+    QDir(m_testDataDir).removeRecursively();
+    QDir().mkpath(m_testDataDir);
+    m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
+    QFile provider(m_fakeProvider);
+    QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    provider.write("#!/bin/sh\necho \"fake compose $@\"\nexit 0\n");
+    provider.close();
+    QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                    | QFileDevice::ExeOwner));
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-gui-%1.sock")
@@ -79,6 +99,7 @@ void GuiTest::cleanupTestCase()
         m_daemon.waitForFinished(1000);
     }
     QFile::remove(m_controlSocket);
+    QDir(m_testDataDir).removeRecursively();
 }
 
 void GuiTest::containerListModel()
@@ -353,6 +374,70 @@ void GuiTest::backendCatalog()
     QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 15, 5000);
     QCOMPARE(actionSpy.last().at(0).toBool(), true);
     QDir(hostDir).removeRecursively();
+}
+
+void GuiTest::backendM3()
+{
+    PodStack::Backend backend;
+    QSignalSpy composeSpy(&backend, &PodStack::Backend::composeProjectsChanged);
+    QSignalSpy composeLogsSpy(&backend, &PodStack::Backend::composeLogsChanged);
+    QSignalSpy buildSpy(&backend, &PodStack::Backend::buildStateChanged);
+    QSignalSpy buildsSpy(&backend, &PodStack::Backend::buildsChanged);
+    QSignalSpy eventsSpy(&backend, &PodStack::Backend::eventsChanged);
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    backend.refreshCompose();
+    QTRY_VERIFY_WITH_TIMEOUT(composeSpy.count() > 0, 5000);
+    QCOMPARE(backend.composeProjects().size(), 1);
+
+    backend.subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
+    QTRY_VERIFY_WITH_TIMEOUT(backend.composeLogLines().size() >= 2, 5000);
+    backend.unsubscribeComposeLogs();
+
+    const QString projectDir = m_testDataDir + QStringLiteral("/project");
+    QDir().mkpath(projectDir);
+    QFile dockerfile(projectDir + QStringLiteral("/Dockerfile"));
+    QVERIFY(dockerfile.open(QIODevice::WriteOnly));
+    dockerfile.write("FROM alpine:3.20\n");
+    dockerfile.close();
+
+    QVariantMap spec;
+    spec.insert(QStringLiteral("contextPath"), projectDir);
+    spec.insert(QStringLiteral("tag"), QStringLiteral("localhost/mock:1"));
+    spec.insert(QStringLiteral("dockerfile"), QStringLiteral("Dockerfile"));
+    backend.startBuild(spec);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.buildActive() && buildSpy.count() > 0, 5000);
+    QVERIFY(backend.buildLog().size() >= 2);
+    QVERIFY(!backend.activeBuildId().isEmpty());
+
+    QTRY_VERIFY_WITH_TIMEOUT(buildsSpy.count() > 0, 5000);
+    QVERIFY(backend.builds().size() >= 1);
+
+    QTRY_VERIFY_WITH_TIMEOUT(eventsSpy.count() > 0, 5000);
+    QVERIFY(backend.eventMessage().contains(QStringLiteral("start")));
+
+    backend.composeUp(projectDir);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+
+    backend.composeDown(projectDir, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+
+    backend.composeRestart(projectDir, QString());
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+
+    backend.composeStop(projectDir, QString());
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 3, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+
+    backend.composeStart(projectDir, QString());
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+
+    backend.removeBuild(backend.activeBuildId());
+    QTest::qWait(100);
 }
 
 } // namespace

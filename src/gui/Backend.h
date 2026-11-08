@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QSet>
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
@@ -31,6 +32,15 @@ class Backend : public QObject {
     Q_PROPERTY(bool pullActive READ pullActive NOTIFY pullStateChanged)
     Q_PROPERTY(QString pullStatus READ pullStatus NOTIFY pullStateChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
+    Q_PROPERTY(QVariantList composeProjects READ composeProjects NOTIFY composeProjectsChanged)
+    Q_PROPERTY(QStringList composeLogLines READ composeLogLines NOTIFY composeLogsChanged)
+    Q_PROPERTY(QVariantList builds READ builds NOTIFY buildsChanged)
+    Q_PROPERTY(QStringList buildLog READ buildLog NOTIFY buildLogChanged)
+    Q_PROPERTY(bool buildActive READ buildActive NOTIFY buildStateChanged)
+    Q_PROPERTY(QString buildStatus READ buildStatus NOTIFY buildStateChanged)
+    Q_PROPERTY(QString activeBuildId READ activeBuildId NOTIFY buildStateChanged)
+    Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
+    Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -51,6 +61,15 @@ public:
     bool pullActive() const { return m_pullActive; }
     QString pullStatus() const { return m_pullStatus; }
     QVariantMap diskUsage() const { return m_diskUsage; }
+    QVariantList composeProjects() const { return m_composeProjects; }
+    QStringList composeLogLines() const { return m_composeLogLines; }
+    QVariantList builds() const { return m_builds; }
+    QStringList buildLog() const { return m_buildLog; }
+    bool buildActive() const { return m_buildActive; }
+    QString buildStatus() const { return m_buildStatus; }
+    QString activeBuildId() const { return m_activeBuildId; }
+    QString eventMessage() const { return m_eventMessage; }
+    QString eventKind() const { return m_eventKind; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
@@ -79,6 +98,19 @@ public:
     Q_INVOKABLE void createPod(const QString &name);
     Q_INVOKABLE void podAction(const QString &action, const QString &id);
     Q_INVOKABLE void removePod(const QString &id, bool force);
+    Q_INVOKABLE void refreshCompose();
+    Q_INVOKABLE void composeUp(const QString &projectPath);
+    Q_INVOKABLE void composeDown(const QString &projectPath, bool volumes);
+    Q_INVOKABLE void composeRestart(const QString &projectPath, const QString &service);
+    Q_INVOKABLE void composeStop(const QString &projectPath, const QString &service);
+    Q_INVOKABLE void composeStart(const QString &projectPath, const QString &service);
+    Q_INVOKABLE void subscribeComposeLogs(const QString &project, const QString &service);
+    Q_INVOKABLE void unsubscribeComposeLogs();
+    Q_INVOKABLE void openPath(const QString &path);
+    Q_INVOKABLE void refreshBuilds();
+    Q_INVOKABLE void startBuild(const QVariantMap &spec);
+    Q_INVOKABLE void cancelBuild();
+    Q_INVOKABLE void removeBuild(const QString &id);
     Q_INVOKABLE void lifecycle(const QString &action, const QString &id);
     Q_INVOKABLE void removeContainer(const QString &id, bool force, bool volumes);
     Q_INVOKABLE void createContainer(const QVariantMap &spec, bool start);
@@ -112,6 +144,12 @@ signals:
     void podsChanged();
     void pullStateChanged();
     void diskUsageChanged();
+    void composeProjectsChanged();
+    void composeLogsChanged();
+    void buildsChanged();
+    void buildLogChanged();
+    void buildStateChanged();
+    void eventsChanged();
 
 private:
     void onRefreshFinished();
@@ -120,7 +158,8 @@ private:
     void onCatalogFinished();
     void refreshSection(const QString &section);
     void startNextCatalog();
-    void runAction(const QString &method, const QJsonObject &params);
+    void runAction(const QString &method, const QJsonObject &params,
+                   int timeoutMs = 30000);
 
     QFutureWatcher<QJsonObject> m_watcher;
     QFutureWatcher<QJsonObject> m_actionWatcher;
@@ -130,6 +169,10 @@ private:
     QStringList m_catalogQueue;
     StreamClient m_stream;
     StreamClient m_pullStream;
+    StreamClient m_composeStream;
+    StreamClient m_buildStream;
+    StreamClient m_eventsStream;
+    QTimer m_eventTimer;
     QTimer m_logsTimer;
     bool m_logsPending = false;
     bool m_connected = false;
@@ -148,6 +191,16 @@ private:
     bool m_pullActive = false;
     QString m_pullStatus;
     QVariantMap m_diskUsage;
+    QVariantList m_composeProjects;
+    QStringList m_composeLogLines;
+    QVariantList m_builds;
+    QStringList m_buildLog;
+    bool m_buildActive = false;
+    QString m_buildStatus;
+    QString m_activeBuildId;
+    QString m_eventMessage;
+    QString m_eventKind;
+    QSet<QString> m_recentEvents;
 };
 
 } // namespace PodStack

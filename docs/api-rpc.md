@@ -209,16 +209,22 @@ interface Subscription { subscriptionId: string }
 
 | Método | Params | Result |
 |---|---|---|
-| `compose.projects.list` | `{}` | `{items: ComposeProject[]}` |
-| `compose.up` | `{projectPath, detach?}` | `JobRef` |
-| `compose.down` | `{projectPath, volumes?}` | `JobRef` |
-| `compose.restart` | `{projectPath, service?}` | `JobRef` |
-| `compose.logs.subscribe` | `{projectPath, service?}` | `Subscription` |
-| `builds.list` | `{limit?, offset?}` | `{items: Build[]}` |
-| `builds.get` | `{id}` | `Build` |
-| `builds.start` | `{contextPath, dockerfile?, tag, buildArgs?, platform?}` | `JobRef` |
-| `builds.cancel` | `{id}` | `{}` |
-| `builds.remove` | `{id}` | `{}` |
+| `compose.projects.list` | `{}` | `{items: ComposeProject[], total}` |
+| `compose.up` | `{projectPath, detach?}` | `{projectPath, action, ok:true}` |
+| `compose.down` | `{projectPath, volumes?}` | `{projectPath, action, ok:true}` |
+| `compose.restart` / `stop` / `start` | `{projectPath, service?}` | `{projectPath, service, action, ok:true}` |
+| `compose.logs.subscribe` | `{project, service?}` | `{subscriptionId, project}` + `compose.logs.delta {service, containerId, line}` |
+| `compose.logs.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
+| `builds.start` | `{contextPath, dockerfile?, tag, buildArgs?, platform?, trigger?}` | `{buildId, subscriptionId, logPath}` + `builds.delta {buildId, line}` + `builds.done {buildId, status, imageId, error, durationMs}` |
+| `builds.cancel` | `{id}` | `{id, subscriptionId, cancelled}` |
+| `builds.list` | `{limit?, offset?}` | `{items: Build[], total}` |
+| `builds.get` | `{id}` | `Build` (+ `steps`) |
+| `builds.remove` | `{id}` | `{id, removed:true}` |
+
+> O provider Compose é detectado em `docker-compose`, `podman compose` ou `docker compose`
+> (ou `PODSTACK_COMPOSE_PROVIDER`). `up/down/restart/stop/start` são síncronos e podem
+> demorar; o cliente usa timeout de 10 min. O build empacota o contexto em tar (até 512 MB),
+> envia para `POST /libpod/build` e persiste metadados em SQLite (`builds`/`build_steps`).
 
 ### 4.8 `k8s.*`
 

@@ -132,6 +132,20 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 
 > O `docker`/`podman` continua disponível para paridade; os comandos acima são o caminho nativo do PodStack.
 
+### 2.3.3 Compose e builds (M3)
+
+| Comando | Flags | Notas |
+|---|---|---|
+| `podstack compose ls` | | Projetos agrupados por labels |
+| `podstack compose up <dir>` | | `up -d` via provider; timeout 10 min |
+| `podstack compose down <dir>` | `--volumes` | |
+| `podstack compose restart|stop|start <dir> [serviço]` | | |
+| `podstack compose logs <projeto> [serviço]` | | Stream agregado ou por serviço |
+| `podstack build <contexto> -t <tag>` | `-f`, `--build-arg`, `--platform` | Via Libpod |
+| `podstack builds [ls|rm <id>]` | | Histórico SQLite |
+
+> O provider Compose é detectado em `docker-compose`, `podman compose` ou `docker compose`; `PODSTACK_COMPOSE_PROVIDER` força um binário.
+
 ### 2.4 Configuração
 
 | `orb` | `podstack` | Flags | Notas |

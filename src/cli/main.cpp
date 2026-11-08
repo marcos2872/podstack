@@ -55,6 +55,11 @@ void printUsage()
           << "                          Gerencia redes\n"
           << "  pods [ls|create|start|stop|restart|rm]\n"
           << "                          Gerencia pods\n"
+          << "  compose [ls|up|down|restart|stop|start|logs]\n"
+          << "                          Projetos Docker Compose\n"
+          << "  build <contexto> -t <tag> [-f Dockerfile] [--build-arg K=V]\n"
+          << "                          Build de imagem\n"
+          << "  builds [ls|rm]        Histórico de builds\n"
           << "  doctor                  Diagnóstico rápido\n"
           << "  help                    Esta ajuda\n";
     out().flush();
@@ -1101,6 +1106,284 @@ int commandPods(const QStringList &args)
     return kExitUsage;
 }
 
+int commandCompose(const QStringList &args)
+{
+    const QString sub = args.isEmpty() ? QStringLiteral("ls") : args.first();
+
+    if (sub == QStringLiteral("ls") || sub == QStringLiteral("list")) {
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("compose.projects.list"), {}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        struct Row {
+            QString name;
+            QString status;
+            QString services;
+            QString dir;
+        };
+        QVector<Row> rows;
+        int nameWidth = 8;
+        int statusWidth = 10;
+        for (const QJsonValue &value : result.value(QStringLiteral("items")).toArray()) {
+            const QJsonObject project = value.toObject();
+            Row row;
+            row.name = project.value(QStringLiteral("name")).toString();
+            row.status = project.value(QStringLiteral("status")).toString();
+            QStringList services;
+            for (const QJsonValue &service :
+                 project.value(QStringLiteral("services")).toArray()) {
+                services.append(service.toObject().value(QStringLiteral("name")).toString());
+            }
+            row.services = services.join(QStringLiteral(","));
+            row.dir = project.value(QStringLiteral("workingDir")).toString();
+            nameWidth = qMax(nameWidth, row.name.size());
+            statusWidth = qMax(statusWidth, row.status.size());
+            rows.append(row);
+        }
+        out() << QStringLiteral("%1  %2  %3  %4\n")
+                     .arg(QStringLiteral("NAME").leftJustified(nameWidth))
+                     .arg(QStringLiteral("STATUS").leftJustified(statusWidth))
+                     .arg(QStringLiteral("SERVICES").leftJustified(20))
+                     .arg(QStringLiteral("DIR"));
+        for (const Row &row : rows) {
+            out() << QStringLiteral("%1  %2  %3  %4\n")
+                         .arg(row.name.leftJustified(nameWidth))
+                         .arg(row.status.leftJustified(statusWidth))
+                         .arg(row.services.leftJustified(20))
+                         .arg(row.dir);
+        }
+        out().flush();
+        return kExitOk;
+    }
+
+    if (sub == QStringLiteral("up") || sub == QStringLiteral("down")
+        || sub == QStringLiteral("restart") || sub == QStringLiteral("stop")
+        || sub == QStringLiteral("start")) {
+        QString projectPath;
+        QString service;
+        bool volumes = false;
+        for (int i = 1; i < args.size(); ++i) {
+            if (args.at(i) == QStringLiteral("--volumes")) {
+                volumes = true;
+            } else if (projectPath.isEmpty()) {
+                projectPath = args.at(i);
+            } else if (service.isEmpty()) {
+                service = args.at(i);
+            }
+        }
+        if (projectPath.isEmpty()) {
+            err() << "Uso: podstack compose " << sub
+                  << " <diretório> [serviço] [--volumes]\n";
+            return kExitUsage;
+        }
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        client.call(QStringLiteral("compose.") + sub,
+                    QJsonObject{{QStringLiteral("projectPath"), projectPath},
+                                {QStringLiteral("service"), service},
+                                {QStringLiteral("volumes"), volumes},
+                                {QStringLiteral("detach"), true}},
+                    &error, 600000);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        out() << "compose " << sub << " concluído\n";
+        out().flush();
+        return kExitOk;
+    }
+
+    if (sub == QStringLiteral("logs")) {
+        if (args.size() < 2) {
+            err() << "Uso: podstack compose logs <projeto> [serviço]\n";
+            return kExitUsage;
+        }
+        QJsonObject params;
+        params.insert(QStringLiteral("project"), args.at(1));
+        if (args.size() > 2) {
+            params.insert(QStringLiteral("service"), args.at(2));
+        }
+        PodStack::RpcStream stream;
+        PodStack::Error error;
+        const bool ok = stream.run(
+            QStringLiteral("compose.logs.subscribe"), params,
+            [&](const QString &method, const QJsonObject &payload) {
+                if (method == QStringLiteral("compose.logs.delta")) {
+                    out() << payload.value(QStringLiteral("service")).toString() << " | "
+                          << payload.value(QStringLiteral("line")).toString() << '\n';
+                    out().flush();
+                }
+            },
+            &error, 0, false);
+        return ok ? kExitOk : fail(error);
+    }
+
+    err() << "subcomando desconhecido: compose " << sub << '\n';
+    return kExitUsage;
+}
+
+int commandBuild(const QStringList &args)
+{
+    QString contextPath;
+    QString tag;
+    QString dockerfile = QStringLiteral("Dockerfile");
+    QString platform;
+    QStringList buildArgList;
+
+    for (int i = 0; i < args.size(); ++i) {
+        if (args.at(i) == QStringLiteral("-t") && i + 1 < args.size()) {
+            tag = args.at(++i);
+        } else if (args.at(i) == QStringLiteral("-f") && i + 1 < args.size()) {
+            dockerfile = args.at(++i);
+        } else if (args.at(i) == QStringLiteral("--platform") && i + 1 < args.size()) {
+            platform = args.at(++i);
+        } else if (args.at(i) == QStringLiteral("--build-arg") && i + 1 < args.size()) {
+            buildArgList.append(args.at(++i));
+        } else if (contextPath.isEmpty() && !args.at(i).startsWith(QStringLiteral("-"))) {
+            contextPath = args.at(i);
+        }
+    }
+
+    if (contextPath.isEmpty() || tag.isEmpty()) {
+        err() << "Uso: podstack build <contexto> -t <tag> [-f Dockerfile] "
+                 "[--build-arg K=V] [--platform p]\n";
+        return kExitUsage;
+    }
+
+    QJsonObject buildArgs;
+    for (const QString &item : buildArgList) {
+        const int equals = item.indexOf(QLatin1Char('='));
+        if (equals > 0) {
+            buildArgs.insert(item.left(equals), item.mid(equals + 1));
+        }
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("contextPath"), contextPath);
+    params.insert(QStringLiteral("dockerfile"), dockerfile);
+    params.insert(QStringLiteral("tag"), tag);
+    params.insert(QStringLiteral("buildArgs"), buildArgs);
+    params.insert(QStringLiteral("platform"), platform);
+    params.insert(QStringLiteral("trigger"), QStringLiteral("cli"));
+
+    QString finalStatus;
+    QString finalError;
+    QString buildId;
+    PodStack::RpcStream stream;
+    PodStack::Error error;
+    const bool ok = stream.run(
+        QStringLiteral("builds.start"), params,
+        [&](const QString &method, const QJsonObject &payload) {
+            if (method == QStringLiteral("builds.delta")) {
+                const QString line = payload.value(QStringLiteral("line")).toString();
+                if (!line.isEmpty()) {
+                    out() << line << '\n';
+                    out().flush();
+                }
+                if (buildId.isEmpty()) {
+                    buildId = payload.value(QStringLiteral("buildId")).toString();
+                }
+            } else if (method == QStringLiteral("builds.done")) {
+                finalStatus = payload.value(QStringLiteral("status")).toString();
+                finalError = payload.value(QStringLiteral("error")).toString();
+                buildId = payload.value(QStringLiteral("buildId")).toString();
+            }
+        },
+        &error);
+    if (!ok) {
+        return fail(error);
+    }
+    if (finalStatus == QStringLiteral("failed")) {
+        err() << "build " << buildId << " falhou: " << finalError << '\n';
+        err().flush();
+        return kExitError;
+    }
+    if (finalStatus == QStringLiteral("cancelled")) {
+        err() << "build " << buildId << " cancelado\n";
+        err().flush();
+        return kExitError;
+    }
+    out() << "build " << buildId << " concluído\n";
+    out().flush();
+    return kExitOk;
+}
+
+int commandBuilds(const QStringList &args)
+{
+    const QString sub = args.isEmpty() ? QStringLiteral("ls") : args.first();
+
+    if (sub == QStringLiteral("ls") || sub == QStringLiteral("list")) {
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("builds.list"),
+                        QJsonObject{{QStringLiteral("limit"), 50}}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        struct Row {
+            QString id;
+            QString image;
+            QString status;
+            QString duration;
+            QString started;
+        };
+        QVector<Row> rows;
+        int imageWidth = 10;
+        for (const QJsonValue &value : result.value(QStringLiteral("items")).toArray()) {
+            const QJsonObject build = value.toObject();
+            Row row;
+            row.id = build.value(QStringLiteral("id")).toString();
+            row.image = build.value(QStringLiteral("imageRef")).toString();
+            row.status = build.value(QStringLiteral("status")).toString();
+            row.duration = QString::number(build.value(QStringLiteral("durationMs")).toInt()
+                                           / 1000.0, 'f', 1)
+                           + QStringLiteral("s");
+            row.started = build.value(QStringLiteral("startedAt")).toString();
+            imageWidth = qMax(imageWidth, row.image.size());
+            rows.append(row);
+        }
+        out() << QStringLiteral("%1  %2  %3  %4  %5\n")
+                     .arg(QStringLiteral("ID").leftJustified(18))
+                     .arg(QStringLiteral("IMAGE").leftJustified(imageWidth))
+                     .arg(QStringLiteral("STATUS").leftJustified(10))
+                     .arg(QStringLiteral("DURATION").leftJustified(9))
+                     .arg(QStringLiteral("STARTED"));
+        for (const Row &row : rows) {
+            out() << QStringLiteral("%1  %2  %3  %4  %5\n")
+                         .arg(row.id.leftJustified(18))
+                         .arg(row.image.leftJustified(imageWidth))
+                         .arg(row.status.leftJustified(10))
+                         .arg(row.duration.leftJustified(9))
+                         .arg(row.started);
+        }
+        out().flush();
+        return kExitOk;
+    }
+
+    if (sub == QStringLiteral("rm") || sub == QStringLiteral("remove")) {
+        if (args.size() < 2) {
+            err() << "Uso: podstack builds rm <id>\n";
+            return kExitUsage;
+        }
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        client.call(QStringLiteral("builds.remove"),
+                    QJsonObject{{QStringLiteral("id"), args.at(1)}}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        out() << "build " << args.at(1) << " removido\n";
+        out().flush();
+        return kExitOk;
+    }
+
+    err() << "subcomando desconhecido: builds " << sub << '\n';
+    return kExitUsage;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -1155,6 +1438,15 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("pods")) {
         return commandPods(args);
+    }
+    if (command == QStringLiteral("compose")) {
+        return commandCompose(args);
+    }
+    if (command == QStringLiteral("build")) {
+        return commandBuild(args);
+    }
+    if (command == QStringLiteral("builds")) {
+        return commandBuilds(args);
     }
     if (command == QStringLiteral("doctor")) {
         return commandDoctor();

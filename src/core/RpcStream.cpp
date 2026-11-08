@@ -38,7 +38,7 @@ RpcStream::RpcStream(QString socketPath)
 }
 
 bool RpcStream::run(const QString &method, const QJsonObject &params, const Event &onEvent,
-                    Error *error, int timeoutMs)
+                    Error *error, int timeoutMs, bool requireDone)
 {
     if (error) {
         *error = {};
@@ -121,7 +121,7 @@ bool RpcStream::run(const QString &method, const QJsonObject &params, const Even
                 onEvent(messageMethod, messageParams);
             }
 
-            if (messageMethod.endsWith(QStringLiteral(".done"))) {
+            if (requireDone && messageMethod.endsWith(QStringLiteral(".done"))) {
                 return true;
             }
             if (messageMethod.endsWith(QStringLiteral(".error"))) {

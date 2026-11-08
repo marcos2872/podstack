@@ -12,7 +12,7 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** **M2 concluído** (catálogo de imagens/volumes/redes/pods, pull/push/tag/untag, clone e export/import de volumes, import do host, multi-seleção e upload) sobre o M1 (create, lifecycle, logs, stats, files, terminal nativo, batch, health, rename/duplicate, rootful). 7 testes, cobertura 81,1% com gate de 80%. Ressalvas para o M3: T2-15/T2-16 (LAN/proxy), seletor visual de plataforma, terminal embutido e prévia detalhada de prune. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
+**Status atual:** **M3 concluído** (Compose por labels + provider, logs por serviço/agregados, builds via Libpod com histórico SQLite, eventos globais em toasts) sobre o M2 (imagens/volumes/redes/pods) e o M1 (containers, logs, stats, files, terminal, batch, health, rootful). 7 testes, cobertura 80,7% com gate de 80%. Ressalvas para o M4: buildx multi-plataforma real, stack Supabase, T2-15/T2-16 (LAN/proxy), terminal embutido e prévia de prune. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
 
 ---
 
@@ -146,7 +146,8 @@ Ambiente de referência: **Fedora 43/44**, Podman ≥ 5.8, Qt ≥ 6.10, `/dev/kv
 sudo dnf install cmake ninja-build gcc-c++ \
   qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
   qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
-  qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel
+  qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
+  docker-compose
 
 # build
 cmake --preset dev

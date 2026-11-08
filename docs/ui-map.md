@@ -95,7 +95,8 @@
 | Volumes | nome, driver, tamanho, links | criar, clone, importar do host, prune, remover |
 | Networks | nome, driver, subnet, containers | criar, conectar, desconectar, remover |
 | Pods | nome, status, containers, ID | criar, start, stop, restart, remover |
-| Builds | planejado (M3) | — |
+| Compose | projeto, status, serviços, diretório | up, down, restart, logs, abrir YAML/diretório |
+| Builds | imagem, status, duração, origem | novo build, cancelar, remover, log |
 | Services | planejado (K8s) | — |
 | Machines | planejado (M4) | — |
 | Devices | tipo, nome, VID:PID, status | attach/detach |
@@ -123,7 +124,7 @@ Abas por tipo (estado do M2):
 | **Terminal** | janela nativa | planejado | — | — | QTermWidget; embutir no inspector no M3 |
 | **Inspect** | CLI `podstack inspect` | — | — | — | aba GUI no M2 |
 
-Ações da GUI no M2: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). A barra de status mostra o uso de disco (`system.df`). Machines, Services, Builds e Devices permanecem desabilitados até os marcos seguintes.
+Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod, mostra progresso/steps e mantém histórico em SQLite. **Eventos globais** aparecem como toasts no topo. A barra de status mostra o uso de disco (`system.df`). Machines, Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 

@@ -100,6 +100,8 @@ gantt
 
 ### M3 — Compose e builds (3 semanas)
 
+**Status:** **concluído com ressalvas** — Compose, builds com histórico SQLite e eventos globais em toasts. Pendências para o M4: buildx multi-plataforma real e Supabase.
+
 **Objetivo:** fluxo de projeto completo (J1).
 
 **Entregáveis:**

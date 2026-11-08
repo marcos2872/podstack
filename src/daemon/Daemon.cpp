@@ -4,10 +4,14 @@
 #include "core/Logging.h"
 #include "core/Paths.h"
 
+#include <QDateTime>
+#include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QStringList>
 #include <QtConcurrent>
 
@@ -56,6 +60,7 @@ QStringList aliasesFromParams(const QJsonObject &params)
 
 Daemon::Daemon()
     : m_podman(selectedPodmanSocket())
+    , m_compose(&m_podman)
 {
     Error error;
     if (!m_podman.ping(&error)) {
@@ -63,6 +68,12 @@ Daemon::Daemon()
     } else {
         qCInfo(lcPodman) << "Podman conectado; API" << m_podman.apiVersion() << "modo"
                          << engineMode();
+    }
+
+    Error storeError;
+    if (!m_buildStore.open(&storeError)) {
+        qCWarning(lcPodman) << "Histórico de builds indisponível:" << storeError.message
+                            << storeError.detail;
     }
 }
 
@@ -203,6 +214,33 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("pods.remove")) {
         return podRemove(params, error);
     }
+    if (method == QStringLiteral("compose.projects.list")) {
+        return composeProjects(error);
+    }
+    if (method == QStringLiteral("compose.up") || method == QStringLiteral("compose.down")
+        || method == QStringLiteral("compose.restart")
+        || method == QStringLiteral("compose.stop")
+        || method == QStringLiteral("compose.start")) {
+        return composeAction(method, params, error);
+    }
+    if (method == QStringLiteral("compose.logs.subscribe")) {
+        return subscribeComposeLogs(params, notify, error);
+    }
+    if (method == QStringLiteral("builds.start")) {
+        return buildStart(params, notify, error);
+    }
+    if (method == QStringLiteral("builds.cancel")) {
+        return buildCancel(params, error);
+    }
+    if (method == QStringLiteral("builds.list")) {
+        return buildsList(params, error);
+    }
+    if (method == QStringLiteral("builds.get")) {
+        return buildGet(params, error);
+    }
+    if (method == QStringLiteral("builds.remove")) {
+        return buildRemove(params, error);
+    }
     if (method == QStringLiteral("containers.logs.subscribe")) {
         return subscribeLogs(params, notify, error);
     }
@@ -213,6 +251,8 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
         || method == QStringLiteral("containers.stats.unsubscribe")
         || method == QStringLiteral("images.pull.unsubscribe")
         || method == QStringLiteral("images.push.unsubscribe")
+        || method == QStringLiteral("compose.logs.unsubscribe")
+        || method == QStringLiteral("builds.unsubscribe")
         || method == QStringLiteral("events.unsubscribe")) {
         return unsubscribe(params);
     }
@@ -1379,6 +1419,417 @@ QJsonObject Daemon::systemDf(Error *error)
 
     QJsonObject result;
     result.insert(QStringLiteral("json"), json);
+    return result;
+}
+
+QJsonObject Daemon::composeProjects(Error *error)
+{
+    QJsonArray items;
+    for (const ComposeProjectInfo &project : m_compose.listProjects(error)) {
+        items.append(project.toJson());
+    }
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("items"), items);
+    result.insert(QStringLiteral("total"), items.size());
+    return result;
+}
+
+QJsonObject Daemon::composeAction(const QString &method, const QJsonObject &params,
+                                  Error *error)
+{
+    const QString projectPath = params.value(QStringLiteral("projectPath")).toString();
+    if (projectPath.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o diretório do projeto Compose."));
+        }
+        return {};
+    }
+
+    const QString action = method.section(QLatin1Char('.'), 1);
+    const QString service = params.value(QStringLiteral("service")).toString();
+    bool ok = false;
+    if (action == QStringLiteral("up")) {
+        ok = m_compose.up(projectPath, params.value(QStringLiteral("detach")).toBool(true),
+                          error);
+    } else if (action == QStringLiteral("down")) {
+        ok = m_compose.down(projectPath, params.value(QStringLiteral("volumes")).toBool(false),
+                            error);
+    } else if (action == QStringLiteral("restart")) {
+        ok = m_compose.restart(projectPath, service, error);
+    } else if (action == QStringLiteral("stop")) {
+        ok = m_compose.stop(projectPath, service, error);
+    } else if (action == QStringLiteral("start")) {
+        ok = m_compose.start(projectPath, service, error);
+    } else if (error) {
+        *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                             QStringLiteral("Ação Compose inválida."), action);
+    }
+    if (!ok) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("projectPath"), projectPath);
+    result.insert(QStringLiteral("service"), service);
+    result.insert(QStringLiteral("action"), action);
+    result.insert(QStringLiteral("ok"), true);
+    return result;
+}
+
+QJsonObject Daemon::subscribeComposeLogs(const QJsonObject &params, const Notify &notify,
+                                         Error *error)
+{
+    const QString project = params.value(QStringLiteral("project")).toString();
+    if (project.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o projeto Compose."));
+        }
+        return {};
+    }
+    const QString serviceFilter = params.value(QStringLiteral("service")).toString();
+
+    const QVector<ContainerInfo> containers = m_podman.listContainers(true, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    QVector<QPair<QString, QString>> targets;
+    for (const ContainerInfo &container : containers) {
+        if (container.labels.value(QStringLiteral("com.docker.compose.project")) != project) {
+            continue;
+        }
+        const QString service = container.labels.value(
+            QStringLiteral("com.docker.compose.service"));
+        if (!serviceFilter.isEmpty() && service != serviceFilter) {
+            continue;
+        }
+        targets.append({container.id, service});
+    }
+    if (targets.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Nenhum container do projeto encontrado."),
+                                 project);
+        }
+        return {};
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    auto remaining = std::make_shared<std::atomic_int>(targets.size());
+
+    for (const auto &target : targets) {
+        const QString containerId = target.first;
+        const QString service = target.second;
+        (void)QtConcurrent::run([this, project, service, containerId, subscriptionId,
+                                 subscription, remaining, notify] {
+            QByteArray buffer;
+            Error streamError;
+            const auto onData = [&](const QByteArray &data) {
+                buffer.append(data);
+                int newline = -1;
+                while ((newline = buffer.indexOf('\n')) >= 0) {
+                    QByteArray line = buffer.left(newline);
+                    buffer.remove(0, newline + 1);
+                    if (line.endsWith('\r')) {
+                        line.chop(1);
+                    }
+                    QJsonObject payload;
+                    payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                    payload.insert(QStringLiteral("project"), project);
+                    payload.insert(QStringLiteral("service"), service);
+                    payload.insert(QStringLiteral("containerId"), containerId);
+                    payload.insert(QStringLiteral("line"), QString::fromUtf8(line));
+                    notify(QStringLiteral("compose.logs.delta"), payload);
+                    if (subscription->cancel.load()) {
+                        return false;
+                    }
+                }
+                return !subscription->cancel.load();
+            };
+
+            m_podman.streamLogs(containerId, 200, true, onData, &subscription->cancel,
+                                &streamError);
+            if (--(*remaining) == 0) {
+                removeSubscription(subscriptionId);
+            }
+        });
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    result.insert(QStringLiteral("project"), project);
+    return result;
+}
+
+QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, Error *error)
+{
+    const QString contextPath = params.value(QStringLiteral("contextPath")).toString();
+    const QString tag = params.value(QStringLiteral("tag")).toString();
+    const QString dockerfile =
+        params.value(QStringLiteral("dockerfile")).toString(QStringLiteral("Dockerfile"));
+    const QString platform = params.value(QStringLiteral("platform")).toString();
+    const QString trigger =
+        params.value(QStringLiteral("trigger")).toString(QStringLiteral("gui"));
+
+    if (contextPath.isEmpty() || tag.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o contexto e a tag do build."));
+        }
+        return {};
+    }
+
+    QMap<QString, QString> buildArgs;
+    const QJsonObject argsObject = params.value(QStringLiteral("buildArgs")).toObject();
+    for (auto it = argsObject.constBegin(); it != argsObject.constEnd(); ++it) {
+        buildArgs.insert(it.key(), it.value().toString());
+    }
+
+    const QString buildId = QStringLiteral("build-%1-%2")
+                                .arg(QDateTime::currentSecsSinceEpoch())
+                                .arg(m_nextBuild++);
+    const QString logDir = Paths::stateDir() + QStringLiteral("/builds");
+    QDir().mkpath(logDir);
+    const QString logPath = logDir + QLatin1Char('/') + buildId + QStringLiteral(".log");
+
+    BuildRecord record;
+    record.id = buildId;
+    record.imageRef = tag;
+    record.status = QStringLiteral("running");
+    record.startedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    record.trigger = trigger;
+    record.contextPath = contextPath;
+    record.dockerfile = dockerfile;
+    record.logPath = logPath;
+    if (!m_buildStore.insert(record, error)) {
+        return {};
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_buildMutex);
+        m_buildSubscriptions.insert(buildId, subscriptionId);
+    }
+
+    (void)QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs,
+                             platform, logPath, subscriptionId, subscription, notify] {
+        QElapsedTimer timer;
+        timer.start();
+
+        QFile logFile(logPath);
+        if (!logFile.open(QIODevice::WriteOnly | QIODevice::Append)) {
+            qCWarning(lcPodman) << "Não foi possível abrir o log do build:"
+                                << logFile.errorString();
+        }
+        int stepIndex = 0;
+        bool sawStep = false;
+
+        const auto onLine = [&](const QByteArray &line) {
+            QString text;
+            const QJsonDocument document = QJsonDocument::fromJson(line);
+            if (document.isObject()) {
+                const QJsonObject object = document.object();
+                text = object.value(QStringLiteral("stream")).toString();
+                const QString errorText = object.value(QStringLiteral("error")).toString();
+                if (!errorText.isEmpty()) {
+                    text = errorText;
+                }
+                if (text.isEmpty()) {
+                    text = object.value(QStringLiteral("status")).toString();
+                }
+            }
+            if (text.isEmpty()) {
+                text = QString::fromUtf8(line);
+            }
+            if (!text.endsWith(QLatin1Char('\n'))) {
+                text += QLatin1Char('\n');
+            }
+            if (logFile.isOpen()) {
+                logFile.write(text.toUtf8());
+                logFile.flush();
+            }
+
+            QJsonObject payload;
+            payload.insert(QStringLiteral("buildId"), buildId);
+            payload.insert(QStringLiteral("line"), text.trimmed());
+            notify(QStringLiteral("builds.delta"), payload);
+
+            if (text.startsWith(QStringLiteral("STEP "))) {
+                const QRegularExpression expression(
+                    QStringLiteral("^STEP\\s+(\\d+)/(\\d+):\\s*(.*)$"));
+                const QRegularExpressionMatch match = expression.match(text.trimmed());
+                if (match.hasMatch()) {
+                    BuildStepRecord step;
+                    step.id = buildId + QStringLiteral("-step-")
+                              + match.captured(1);
+                    step.buildId = buildId;
+                    step.index = match.captured(1).toInt();
+                    step.name = match.captured(3);
+                    step.status = QStringLiteral("running");
+                    step.startedAt =
+                        QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+                    step.logPath = logPath;
+                    m_buildStore.addStep(step);
+                    stepIndex = step.index;
+                    sawStep = true;
+                }
+            }
+            return !subscription->cancel.load();
+        };
+
+        QString imageId;
+        Error buildError;
+        const bool ok = m_podman.buildImage(contextPath, dockerfile, tag, buildArgs, platform,
+                                            onLine, &subscription->cancel, &imageId,
+                                            &buildError);
+        if (logFile.isOpen()) {
+            logFile.close();
+        }
+
+        const bool cancelled = subscription->cancel.load();
+        const QString status = cancelled ? QStringLiteral("cancelled")
+                                         : (ok ? QStringLiteral("success")
+                                               : QStringLiteral("failed"));
+        const int durationMs = static_cast<int>(timer.elapsed());
+        const QString errorText = ok ? QString() : buildError.message;
+
+        m_buildStore.finish(buildId, status, errorText, durationMs);
+        m_buildStore.finishSteps(buildId,
+                                 status == QStringLiteral("success")
+                                     ? QStringLiteral("success")
+                                     : QStringLiteral("failed"));
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("buildId"), buildId);
+        payload.insert(QStringLiteral("status"), status);
+        payload.insert(QStringLiteral("imageId"), imageId);
+        payload.insert(QStringLiteral("error"), errorText);
+        payload.insert(QStringLiteral("durationMs"), durationMs);
+        payload.insert(QStringLiteral("steps"), sawStep ? stepIndex : 0);
+        notify(QStringLiteral("builds.done"), payload);
+
+        {
+            std::lock_guard<std::mutex> lock(m_buildMutex);
+            m_buildSubscriptions.remove(buildId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("buildId"), buildId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    result.insert(QStringLiteral("logPath"), logPath);
+    return result;
+}
+
+QJsonObject Daemon::buildCancel(const QJsonObject &params, Error *error)
+{
+    const QString id = params.value(QStringLiteral("id")).toString();
+    if (id.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o build."));
+        }
+        return {};
+    }
+
+    QString subscriptionId;
+    {
+        std::lock_guard<std::mutex> lock(m_buildMutex);
+        subscriptionId = m_buildSubscriptions.value(id);
+    }
+    if (subscriptionId.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Build não está em execução."), id);
+        }
+        return {};
+    }
+
+    QJsonObject result = unsubscribe(QJsonObject{{QStringLiteral("subscriptionId"),
+                                                  subscriptionId}});
+    result.insert(QStringLiteral("id"), id);
+    return result;
+}
+
+QJsonObject Daemon::buildsList(const QJsonObject &params, Error *error)
+{
+    const int limit = params.value(QStringLiteral("limit")).toInt(50);
+    const int offset = params.value(QStringLiteral("offset")).toInt(0);
+
+    QJsonArray items;
+    for (const BuildRecord &record : m_buildStore.list(limit, offset, error)) {
+        items.append(record.toJson());
+    }
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("items"), items);
+    result.insert(QStringLiteral("total"), items.size());
+    return result;
+}
+
+QJsonObject Daemon::buildGet(const QJsonObject &params, Error *error)
+{
+    const QString id = params.value(QStringLiteral("id")).toString();
+    if (id.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o build."));
+        }
+        return {};
+    }
+
+    const BuildRecord record = m_buildStore.get(id, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    return record.toJson();
+}
+
+QJsonObject Daemon::buildRemove(const QJsonObject &params, Error *error)
+{
+    const QString id = params.value(QStringLiteral("id")).toString();
+    if (id.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o build."));
+        }
+        return {};
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_buildMutex);
+        const QString subscriptionId = m_buildSubscriptions.value(id);
+        if (!subscriptionId.isEmpty()) {
+            unsubscribe(QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}});
+        }
+    }
+
+    const BuildRecord record = m_buildStore.get(id, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    if (!record.logPath.isEmpty()) {
+        QFile::remove(record.logPath);
+    }
+    if (!m_buildStore.remove(id, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), id);
+    result.insert(QStringLiteral("removed"), true);
     return result;
 }
 

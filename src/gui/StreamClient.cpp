@@ -70,6 +70,56 @@ void StreamClient::pullImage(const QString &reference, const QString &platform)
     connectSocket();
 }
 
+void StreamClient::subscribeComposeLogs(const QString &project, const QString &service)
+{
+    stop(true);
+    m_kind = QStringLiteral("compose");
+    m_unsubscribeMethod = QStringLiteral("compose.logs.unsubscribe");
+    QJsonObject params;
+    params.insert(QStringLiteral("project"), project);
+    if (!service.isEmpty()) {
+        params.insert(QStringLiteral("service"), service);
+    }
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("compose.logs.subscribe")},
+        {QStringLiteral("params"), params},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
+void StreamClient::startBuild(const QJsonObject &params)
+{
+    stop(true);
+    m_kind = QStringLiteral("build");
+    m_unsubscribeMethod = QStringLiteral("builds.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("builds.start")},
+        {QStringLiteral("params"), params},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
+void StreamClient::subscribeEvents()
+{
+    stop(true);
+    m_kind = QStringLiteral("events");
+    m_unsubscribeMethod = QStringLiteral("events.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("events.subscribe")},
+        {QStringLiteral("params"), QJsonObject{}},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
 void StreamClient::unsubscribe()
 {
     stop(true);
@@ -144,10 +194,10 @@ void StreamClient::onReadyRead()
 
         const QJsonObject message = document.object();
         if (message.value(QStringLiteral("id")).toInt() == 1) {
-            m_subscriptionId = message.value(QStringLiteral("result"))
-                                   .toObject()
-                                   .value(QStringLiteral("subscriptionId"))
-                                   .toString();
+            m_lastResult = message.value(QStringLiteral("result")).toObject();
+            m_subscriptionId =
+                m_lastResult.value(QStringLiteral("subscriptionId")).toString();
+            emit subscriptionReady(m_lastResult);
             continue;
         }
 
@@ -160,6 +210,18 @@ void StreamClient::onReadyRead()
             emit stats(params);
         } else if (method == QStringLiteral("images.pull.delta")) {
             emit pullEvent(params);
+        } else if (method == QStringLiteral("compose.logs.delta")) {
+            emit composeLog(params.value(QStringLiteral("service")).toString(),
+                            params.value(QStringLiteral("line")).toString());
+        } else if (method == QStringLiteral("builds.delta")) {
+            emit buildEvent(params);
+        } else if (method == QStringLiteral("builds.done")) {
+            emit buildFinished(params);
+            m_subscriptionId.clear();
+            m_kind.clear();
+            m_socket.abort();
+        } else if (method == QStringLiteral("event")) {
+            emit eventReceived(params);
         } else if (method == QStringLiteral("images.pull.done")) {
             emit pullFinished(true, {});
             m_subscriptionId.clear();
