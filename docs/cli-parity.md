@@ -99,6 +99,39 @@
 
 > No M1, create/duplicate/rename/batch, logs/stats/files e terminal estão disponíveis na GUI; os equivalentes CLI entram no M2.
 
+### 2.3.2 Catálogo (extensões PodStack)
+
+Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker CLI; aqui o caminho é nativo):
+
+| Comando | Flags | Notas |
+|---|---|---|
+| `podstack images [ls]` | `--format` | repo:tag, ID, tamanho, uso |
+| `podstack images pull <ref>` | `--platform` | progresso por camada; `Ctrl+C` cancela |
+| `podstack images push <id>` | `--destination` | stream de push |
+| `podstack images rm <id>` | `--force` | |
+| `podstack images prune` | `--all` | |
+| `podstack images history <id>` | | |
+| `podstack images tag|untag <id> <repo:tag>` | | |
+| `podstack images inspect <id>` | | JSON |
+| `podstack images export <id> <arquivo>` / `load <arquivo>` | | tar |
+| `podstack volumes [ls]` | | nome, driver, tamanho, links |
+| `podstack volumes create <nome>` | `--driver` | |
+| `podstack volumes rm <nome>` | `--force` | |
+| `podstack volumes prune` | | |
+| `podstack volumes clone <origem> <destino>` | | reflink/fallback |
+| `podstack volumes export|import <nome> <arquivo>` | `--force` | `.tar.zst` |
+| `podstack volumes import-host <nome> <dir>` | | copia do host |
+| `podstack networks [ls]` | | nome, driver, subnet, containers |
+| `podstack networks create <nome>` | `--subnet`, `--gateway`, `--driver`, `--ipv6` | |
+| `podstack networks rm <nome>` | `--force` | |
+| `podstack networks connect|disconnect <rede> <container>` | `--alias` | |
+| `podstack pods [ls]` | | nome, status, containers, ID |
+| `podstack pods create <nome>` | | |
+| `podstack pods start|stop|restart <id>` | | |
+| `podstack pods rm <id>` | `--force` | |
+
+> O `docker`/`podman` continua disponível para paridade; os comandos acima são o caminho nativo do PodStack.
+
 ### 2.4 Configuração
 
 | `orb` | `podstack` | Flags | Notas |

@@ -247,6 +247,9 @@ void MockPodmanServer::handleClient(int clientFd)
             "Mounts":[{"Source":"/tmp","Destination":"/mnt","RW":true}],
             "NetworkSettings":{"IPAddress":"10.0.0.2"}
         })");
+    } else if (method == QStringLiteral("PUT")
+               && pathOnly.contains(QStringLiteral("/archive"))) {
+        response = httpResponse(200, "OK", {});
     } else if (pathOnly.contains(QStringLiteral("/archive"))) {
         response = httpResponse(200, "OK", mockTar());
     } else if (pathOnly.contains(QStringLiteral("/stats"))) {
@@ -273,6 +276,130 @@ void MockPodmanServer::handleClient(int clientFd)
             200, "OK",
             QByteArrayLiteral(R"({"Type":"container","Action":"start","Actor":{"ID":"abc123"}})"
                               "\n"));
+    } else if (pathOnly.contains(QStringLiteral("/missing"))) {
+        response = httpResponse(404, "Not Found",
+                                R"({"message":"not found","cause":"mock"})");
+    } else if (pathOnly.contains(QStringLiteral("/libpod/images/json"))) {
+        response = httpResponse(
+            200, "OK",
+            QByteArrayLiteral(R"JSON([{
+                "Id":"img1234567890","RepoTags":["docker.io/library/alpine:3.20"],
+                "RepoDigests":[],"Created":1700000000,"Size":7000000,
+                "Containers":1,"Digest":"sha256:deadbeef","Labels":{"dev.podstack.test":"1"}
+            },{
+                "Id":"dangling123456","RepoTags":[],"RepoDigests":[],
+                "Created":1700000001,"Size":1000,"Containers":0,"Labels":{}
+            }])JSON"));
+    } else if (pathOnly.contains(QStringLiteral("/libpod/images/img1234567890/json"))
+               || pathOnly.contains(QStringLiteral("/libpod/images/img123/json"))) {
+        response = httpResponse(200, "OK", R"({
+            "Id":"img1234567890","RepoTags":["docker.io/library/alpine:3.20"],
+            "Digest":"sha256:deadbeef","Size":7000000,"Architecture":"amd64","Os":"linux"
+        })");
+    } else if (pathOnly.contains(QStringLiteral("/libpod/images/img1234567890/history"))) {
+        response = httpResponse(
+            200, "OK",
+            R"([{"Id":"img1234567890","Created":1700000000,"CreatedBy":"COPY /app","Comment":"","Size":123}])");
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.contains(QStringLiteral("/libpod/images/pull"))) {
+        if (path.contains(QStringLiteral("fail"))) {
+            response = httpResponse(200, "OK",
+                                    QByteArrayLiteral("{\"error\":\"pull failed\"}\n"));
+        } else {
+            response = httpResponse(
+                200, "OK",
+                QByteArrayLiteral(
+                    "{\"stream\":\"Trying to pull...\\n\"}\n"
+                    "{\"status\":\"Downloading\",\"progress\":\"50%\",\"id\":\"layer1\"}\n"
+                    "{\"images\":[\"img1234567890\"],\"id\":\"img1234567890\"}\n"));
+        }
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.contains(QStringLiteral("/libpod/images/img1234567890/push"))) {
+        response = httpResponse(
+            200, "OK",
+            QByteArrayLiteral("{\"status\":\"Pushing\"}\n"
+                              "{\"status\":\"Done\"}\n"));
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.endsWith(QStringLiteral("/untag"))) {
+        response = httpResponse(201, "Created", {});
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.endsWith(QStringLiteral("/tag"))) {
+        response = httpResponse(201, "Created", {});
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.contains(QStringLiteral("/libpod/images/prune"))) {
+        response = httpResponse(200, "OK",
+                                R"({"ImagesDeleted":[],"SpaceReclaimed":12345})");
+    } else if (pathOnly.endsWith(QStringLiteral("/get"))
+               && pathOnly.contains(QStringLiteral("/libpod/images/"))) {
+        response = httpResponse(200, "OK", mockTar());
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.contains(QStringLiteral("/libpod/images/load"))) {
+        response = httpResponse(200, "OK", R"({"stream":"Loaded image"})");
+    } else if (method == QStringLiteral("DELETE")
+               && pathOnly.contains(QStringLiteral("/libpod/images/"))) {
+        response = httpResponse(200, "OK", R"([{"Deleted":"img1234567890"}])");
+    } else if (pathOnly.contains(QStringLiteral("/libpod/volumes/json"))) {
+        response = httpResponse(
+            200, "OK",
+            R"([{"Name":"vol1","Driver":"local","Mountpoint":"/tmp/podstack-mock-volume","CreatedAt":"2026-01-01T00:00:00Z","Labels":{}}])");
+    } else if (pathOnly.contains(QStringLiteral("/libpod/volumes/vol2/json"))) {
+        response = httpResponse(
+            200, "OK",
+            R"({"Name":"vol2","Driver":"local","Mountpoint":"/tmp/podstack-mock-volume2","Labels":{}})");
+    } else if (pathOnly.contains(QStringLiteral("/libpod/volumes/vol1/json"))) {
+        response = httpResponse(
+            200, "OK",
+            R"({"Name":"vol1","Driver":"local","Mountpoint":"/tmp/podstack-mock-volume","Labels":{}})");
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.contains(QStringLiteral("/libpod/volumes/create"))) {
+        response = httpResponse(201, "Created",
+                                R"({"Name":"vol2","Driver":"local","Mountpoint":"/tmp/podstack-mock-volume2"})");
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.contains(QStringLiteral("/libpod/volumes/prune"))) {
+        response = httpResponse(200, "OK", R"([{"Id":"vol1","SpaceReclaimed":456}])");
+    } else if (method == QStringLiteral("DELETE")
+               && pathOnly.contains(QStringLiteral("/libpod/volumes/"))) {
+        response = httpResponse(204, "No Content", {});
+    } else if (pathOnly.contains(QStringLiteral("/libpod/networks/json"))) {
+        response = httpResponse(
+            200, "OK",
+            R"([{"name":"mock-net","id":"net123","driver":"bridge","network_interface":"podman9","created":"2026-01-01T00:00:00Z","subnets":[{"subnet":"10.89.0.0/24","gateway":"10.89.0.1"}],"ipv6_enabled":false,"dns_enabled":true,"internal":false,"labels":{}}])");
+    } else if (pathOnly.contains(QStringLiteral("/libpod/networks/mock-net/json"))) {
+        response = httpResponse(
+            200, "OK",
+            R"({"name":"mock-net","id":"net123","driver":"bridge","subnets":[{"subnet":"10.89.0.0/24","gateway":"10.89.0.1"}],"containers":{"abc123":{}}})");
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.contains(QStringLiteral("/libpod/networks/create"))) {
+        response = httpResponse(
+            200, "OK",
+            R"({"name":"mock-net","id":"net123","driver":"bridge","subnets":[{"subnet":"10.90.0.0/24","gateway":"10.90.0.1"}]})");
+    } else if (method == QStringLiteral("POST")
+               && (pathOnly.endsWith(QStringLiteral("/connect"))
+                   || pathOnly.endsWith(QStringLiteral("/disconnect")))) {
+        response = httpResponse(200, "OK", {});
+    } else if (method == QStringLiteral("DELETE")
+               && pathOnly.contains(QStringLiteral("/libpod/networks/"))) {
+        response = httpResponse(200, "OK", {});
+    } else if (pathOnly.contains(QStringLiteral("/libpod/pods/json"))) {
+        response = httpResponse(
+            200, "OK",
+            R"([{"Id":"pod123","Name":"demo-pod","Status":"Running","Created":"2026-01-01T00:00:00Z","InfraId":"infra123","Containers":[{"Id":"infra123","Names":"demo-pod-infra","Status":"running"},{"Id":"c1","Names":"demo-pod-c1","Status":"running"}],"Labels":{}}])");
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.contains(QStringLiteral("/libpod/pods/create"))) {
+        response = httpResponse(201, "Created", R"({"Id":"pod123"})");
+    } else if (method == QStringLiteral("POST")
+               && pathOnly.startsWith(QStringLiteral("/libpod/pods/"))
+               && (pathOnly.endsWith(QStringLiteral("/start"))
+                   || pathOnly.endsWith(QStringLiteral("/stop"))
+                   || pathOnly.endsWith(QStringLiteral("/restart")))) {
+        response = httpResponse(200, "OK", {});
+    } else if (method == QStringLiteral("DELETE")
+               && pathOnly.contains(QStringLiteral("/libpod/pods/"))) {
+        response = httpResponse(200, "OK", {});
+    } else if (pathOnly.contains(QStringLiteral("/libpod/system/df"))) {
+        response = httpResponse(
+            200, "OK",
+            R"({"ImagesSize":7001000,"Containers":[],"Images":[{"Repository":"docker.io/library/alpine","Tag":"3.20","ImageID":"img1234567890","Size":7000000}],"Volumes":[{"VolumeName":"vol1","Links":1,"Size":2048,"ReclaimableSize":2048}]})");
     } else if (method == QStringLiteral("POST")
                && (pathOnly.endsWith(QStringLiteral("/stop"))
                    || pathOnly.endsWith(QStringLiteral("/restart"))

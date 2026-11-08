@@ -74,6 +74,71 @@ struct FileEntry {
     QJsonObject toJson() const;
 };
 
+struct ImageInfo {
+    QString id;
+    QStringList repoTags;
+    QString digest;
+    qint64 size = 0;
+    qint64 created = 0;
+    int containers = 0;
+    bool dangling = false;
+    QMap<QString, QString> labels;
+
+    QJsonObject toJson() const;
+};
+
+struct ImageHistoryEntry {
+    QString id;
+    qint64 created = 0;
+    QString createdBy;
+    QString comment;
+    qint64 size = 0;
+
+    QJsonObject toJson() const;
+};
+
+struct VolumeInfo {
+    QString name;
+    QString driver;
+    QString mountpoint;
+    QString created;
+    qint64 size = 0;
+    qint64 reclaimable = 0;
+    int links = 0;
+    QMap<QString, QString> labels;
+
+    QJsonObject toJson() const;
+};
+
+struct NetworkInfo {
+    QString name;
+    QString id;
+    QString driver;
+    QString interfaceName;
+    QString subnet;
+    QString gateway;
+    QString created;
+    bool ipv6 = false;
+    bool dnsEnabled = false;
+    bool internal = false;
+    int containers = 0;
+    QMap<QString, QString> labels;
+
+    QJsonObject toJson() const;
+};
+
+struct PodInfo {
+    QString id;
+    QString name;
+    QString status;
+    QString created;
+    QString infraId;
+    int containers = 0;
+    QMap<QString, QString> labels;
+
+    QJsonObject toJson() const;
+};
+
 /// Cliente da API Libpod do Podman sobre o socket Unix.
 /// Thread-safe para chamadas concorrentes (cada chamada usa um CURL handle próprio).
 class PodmanClient {
@@ -98,6 +163,8 @@ public:
     QVector<FileEntry> listFiles(const QString &id, const QString &path, Error *error = nullptr);
     bool downloadFile(const QString &id, const QString &path, const QString &destination,
                       Error *error = nullptr);
+    bool uploadFile(const QString &id, const QString &path, const QString &sourcePath,
+                    Error *error = nullptr);
 
     bool execOnce(const QString &id, const QStringList &cmd, ExecResult *result,
                   Error *error = nullptr);
@@ -112,6 +179,60 @@ public:
 
     bool streamEvents(const std::function<bool(const QByteArray &)> &onData,
                       std::atomic_bool *cancel, Error *error = nullptr);
+
+    // Imagens
+    QVector<ImageInfo> listImages(bool all, Error *error = nullptr);
+    QJsonObject inspectImage(const QString &id, Error *error = nullptr);
+    QVector<ImageHistoryEntry> imageHistory(const QString &id, Error *error = nullptr);
+    bool pullImage(const QString &reference, const QString &platform,
+                   const std::function<bool(const QByteArray &)> &onLine,
+                   std::atomic_bool *cancel, Error *error = nullptr);
+    bool pushImage(const QString &id, const QString &destination,
+                   const std::function<bool(const QByteArray &)> &onLine,
+                   std::atomic_bool *cancel, Error *error = nullptr);
+    bool tagImage(const QString &id, const QString &repo, const QString &tag,
+                  Error *error = nullptr);
+    bool untagImage(const QString &id, const QString &repo, const QString &tag,
+                    Error *error = nullptr);
+    bool removeImage(const QString &id, bool force, Error *error = nullptr);
+    bool pruneImages(bool all, qint64 *reclaimedBytes, Error *error = nullptr);
+    bool exportImage(const QString &id, const QString &destination, Error *error = nullptr);
+    bool loadImage(const QString &source, Error *error = nullptr);
+
+    // Volumes
+    QVector<VolumeInfo> listVolumes(Error *error = nullptr);
+    QJsonObject inspectVolume(const QString &name, Error *error = nullptr);
+    QJsonObject createVolume(const QString &name, const QString &driver,
+                             const QMap<QString, QString> &labels,
+                             const QMap<QString, QString> &options, Error *error = nullptr);
+    bool removeVolume(const QString &name, bool force, Error *error = nullptr);
+    bool pruneVolumes(qint64 *reclaimedBytes, Error *error = nullptr);
+    bool cloneVolume(const QString &source, const QString &destination, Error *error = nullptr);
+    bool exportVolume(const QString &name, const QString &destination, Error *error = nullptr);
+    bool importVolume(const QString &name, const QString &source, bool force,
+                      Error *error = nullptr);
+    bool importHostPath(const QString &name, const QString &sourcePath,
+                        Error *error = nullptr);
+
+    // Redes
+    QVector<NetworkInfo> listNetworks(Error *error = nullptr);
+    QJsonObject createNetwork(const QString &name, const QString &driver,
+                              const QString &subnet, const QString &gateway, bool ipv6,
+                              const QMap<QString, QString> &labels, Error *error = nullptr);
+    bool removeNetwork(const QString &name, bool force, Error *error = nullptr);
+    bool connectNetwork(const QString &name, const QString &containerId,
+                        const QStringList &aliases, Error *error = nullptr);
+    bool disconnectNetwork(const QString &name, const QString &containerId,
+                           Error *error = nullptr);
+
+    // Pods
+    QVector<PodInfo> listPods(Error *error = nullptr);
+    QJsonObject createPod(const QString &name, const QMap<QString, QString> &labels,
+                          Error *error = nullptr);
+    bool podAction(const QString &id, const QString &action, Error *error = nullptr);
+    bool removePod(const QString &id, bool force, Error *error = nullptr);
+
+    QJsonObject systemDf(Error *error = nullptr);
 
     QString socketPath() const { return m_http.socketPath(); }
 

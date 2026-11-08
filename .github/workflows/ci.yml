@@ -43,7 +43,7 @@ jobs:
       - name: Cobertura (relatório)
         run: |
           mkdir -p coverage
-          gcovr -r . --filter 'src/' \
+          gcovr -r . --filter 'src/' --gcov-ignore-parse-errors \
             --xml coverage.xml \
             --html-details coverage/index.html \
             --txt-metric line --print-summary | tee coverage-summary.txt
@@ -51,7 +51,7 @@ jobs:
 
       - name: Cobertura (gate 80%)
         run: |
-          gcovr -r . --filter 'src/' \
+          gcovr -r . --filter 'src/' --gcov-ignore-parse-errors \
             --txt-metric line --print-summary --fail-under-line 80 \
             | tee coverage-gate.txt
           cat coverage-gate.txt >> "$GITHUB_STEP_SUMMARY"

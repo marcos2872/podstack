@@ -29,6 +29,12 @@ public:
     bool stream(const QString &path, const std::function<bool(const QByteArray &)> &onData,
                 std::atomic_bool *cancel, QString *error, int timeoutMs = 0);
 
+    /// Stream de uma requisição com método/corpo (pull/push de imagens).
+    bool streamRequest(const QByteArray &method, const QString &path, const QByteArray &body,
+                       const QString &contentType,
+                       const std::function<bool(const QByteArray &)> &onData,
+                       std::atomic_bool *cancel, QString *error, int timeoutMs = 0);
+
     /// Exec/attach com HTTP hijack (`Upgrade: tcp`), retornando o stream cru.
     bool hijack(const QString &path, const QByteArray &body,
                 const std::function<bool(const QByteArray &)> &onData, std::atomic_bool *cancel,

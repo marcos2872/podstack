@@ -17,6 +17,22 @@
 #include <QtConcurrent>
 
 namespace PodStack {
+namespace {
+
+QString humanBytes(qint64 bytes)
+{
+    static const char *units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+    double value = static_cast<double>(bytes);
+    int unit = 0;
+    while (value >= 1024.0 && unit < 4) {
+        value /= 1024.0;
+        ++unit;
+    }
+    return QString::number(value, 'f', unit == 0 ? 0 : 1) + QLatin1Char(' ')
+           + QString::fromLatin1(units[unit]);
+}
+
+} // namespace
 
 Backend::Backend(QObject *parent)
     : QObject(parent)
@@ -27,6 +43,8 @@ Backend::Backend(QObject *parent)
             &Backend::onActionFinished);
     connect(&m_filesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onFilesFinished);
+    connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onCatalogFinished);
 
     m_logsTimer.setSingleShot(true);
     m_logsTimer.setInterval(50);
@@ -67,7 +85,40 @@ Backend::Backend(QObject *parent)
         emit lastErrorChanged();
     });
 
+    connect(&m_pullStream, &StreamClient::pullEvent, this,
+            [this](const QJsonObject &event) {
+                const QString status = event.value(QStringLiteral("status")).toString();
+                const QString stream =
+                    event.value(QStringLiteral("stream")).toString().trimmed();
+                if (!status.isEmpty()) {
+                    const QString progress =
+                        event.value(QStringLiteral("progress")).toString();
+                    m_pullStatus = progress.isEmpty() ? status : status + QStringLiteral(" ")
+                                                                          + progress;
+                } else if (!stream.isEmpty()) {
+                    m_pullStatus = stream;
+                }
+                emit pullStateChanged();
+            });
+
+    connect(&m_pullStream, &StreamClient::pullFinished, this,
+            [this](bool ok, const QString &error) {
+                m_pullActive = false;
+                m_pullStatus = ok ? QStringLiteral("Pull concluído") : error;
+                emit pullStateChanged();
+                if (ok) {
+                    refreshImages();
+                }
+            });
+
+    connect(&m_pullStream, &StreamClient::error, this, [this](const QString &message) {
+        m_pullActive = false;
+        m_pullStatus = message;
+        emit pullStateChanged();
+    });
+
     QTimer::singleShot(0, this, &Backend::refresh);
+    QTimer::singleShot(0, this, &Backend::refreshCatalog);
 }
 
 QString Backend::version() const
@@ -95,6 +146,353 @@ void Backend::refresh()
         }
         return result;
     }));
+}
+
+void Backend::refreshCatalog()
+{
+    refreshImages();
+    refreshVolumes();
+    refreshNetworks();
+    refreshPods();
+    refreshSection(QStringLiteral("df"));
+}
+
+void Backend::refreshImages()
+{
+    refreshSection(QStringLiteral("images"));
+}
+
+void Backend::refreshVolumes()
+{
+    refreshSection(QStringLiteral("volumes"));
+}
+
+void Backend::refreshNetworks()
+{
+    refreshSection(QStringLiteral("networks"));
+}
+
+void Backend::refreshPods()
+{
+    refreshSection(QStringLiteral("pods"));
+}
+
+void Backend::refreshSection(const QString &section)
+{
+    if (!m_catalogQueue.contains(section)) {
+        m_catalogQueue.append(section);
+    }
+    startNextCatalog();
+}
+
+void Backend::startNextCatalog()
+{
+    if (m_catalogWatcher.isRunning() || m_catalogQueue.isEmpty()) {
+        return;
+    }
+
+    m_catalogSection = m_catalogQueue.takeFirst();
+
+    QString method;
+    if (m_catalogSection == QStringLiteral("images")) {
+        method = QStringLiteral("images.list");
+    } else if (m_catalogSection == QStringLiteral("volumes")) {
+        method = QStringLiteral("volumes.list");
+    } else if (m_catalogSection == QStringLiteral("networks")) {
+        method = QStringLiteral("networks.list");
+    } else if (m_catalogSection == QStringLiteral("pods")) {
+        method = QStringLiteral("pods.list");
+    } else if (m_catalogSection == QStringLiteral("df")) {
+        method = QStringLiteral("system.df");
+    } else {
+        startNextCatalog();
+        return;
+    }
+
+    m_catalogWatcher.setFuture(QtConcurrent::run([method] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(method, {}, &error);
+        if (!error.isEmpty()) {
+            QJsonObject payload;
+            payload.insert(QStringLiteral("error"), error.toJson());
+            return payload;
+        }
+        return result;
+    }));
+}
+
+void Backend::onCatalogFinished()
+{
+    const QJsonObject result = m_catalogWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+        startNextCatalog();
+        return;
+    }
+
+    const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+
+    if (m_catalogSection == QStringLiteral("images")) {
+        m_images.clear();
+        for (const QJsonValue &value : items) {
+            const QJsonObject image = value.toObject();
+            QVariantMap item;
+            const QJsonArray tags = image.value(QStringLiteral("repoTags")).toArray();
+            item.insert(QStringLiteral("id"),
+                        image.value(QStringLiteral("id")).toString());
+            item.insert(QStringLiteral("name"),
+                        tags.isEmpty() ? QStringLiteral("<none>:<none>")
+                                       : tags.first().toString());
+            item.insert(QStringLiteral("digest"),
+                        image.value(QStringLiteral("digest")).toString());
+            item.insert(QStringLiteral("size"),
+                        static_cast<double>(
+                            image.value(QStringLiteral("size")).toDouble()));
+            item.insert(QStringLiteral("created"),
+                        static_cast<double>(
+                            image.value(QStringLiteral("created")).toDouble()));
+            item.insert(QStringLiteral("containers"),
+                        image.value(QStringLiteral("containers")).toInt());
+            item.insert(QStringLiteral("dangling"),
+                        image.value(QStringLiteral("dangling")).toBool());
+            m_images.append(item);
+        }
+        emit imagesChanged();
+    } else if (m_catalogSection == QStringLiteral("volumes")) {
+        m_volumes.clear();
+        for (const QJsonValue &value : items) {
+            const QJsonObject volume = value.toObject();
+            QVariantMap item;
+            item.insert(QStringLiteral("name"),
+                        volume.value(QStringLiteral("name")).toString());
+            item.insert(QStringLiteral("driver"),
+                        volume.value(QStringLiteral("driver")).toString());
+            item.insert(QStringLiteral("mountpoint"),
+                        volume.value(QStringLiteral("mountpoint")).toString());
+            item.insert(QStringLiteral("size"),
+                        static_cast<double>(
+                            volume.value(QStringLiteral("size")).toDouble()));
+            item.insert(QStringLiteral("links"),
+                        volume.value(QStringLiteral("links")).toInt());
+            m_volumes.append(item);
+        }
+        emit volumesChanged();
+    } else if (m_catalogSection == QStringLiteral("networks")) {
+        m_networks.clear();
+        for (const QJsonValue &value : items) {
+            const QJsonObject network = value.toObject();
+            QVariantMap item;
+            item.insert(QStringLiteral("name"),
+                        network.value(QStringLiteral("name")).toString());
+            item.insert(QStringLiteral("driver"),
+                        network.value(QStringLiteral("driver")).toString());
+            item.insert(QStringLiteral("subnet"),
+                        network.value(QStringLiteral("subnet")).toString());
+            item.insert(QStringLiteral("gateway"),
+                        network.value(QStringLiteral("gateway")).toString());
+            item.insert(QStringLiteral("containers"),
+                        network.value(QStringLiteral("containers")).toInt());
+            m_networks.append(item);
+        }
+        emit networksChanged();
+    } else if (m_catalogSection == QStringLiteral("df")) {
+        const QJsonObject df = result.value(QStringLiteral("json")).toObject();
+        qint64 volumesSize = 0;
+        for (const QJsonValue &value : df.value(QStringLiteral("Volumes")).toArray()) {
+            volumesSize += static_cast<qint64>(
+                value.toObject().value(QStringLiteral("Size")).toDouble());
+        }
+        qint64 containersSize = 0;
+        for (const QJsonValue &value : df.value(QStringLiteral("Containers")).toArray()) {
+            containersSize += static_cast<qint64>(
+                value.toObject().value(QStringLiteral("Size")).toDouble());
+        }
+        m_diskUsage.clear();
+        m_diskUsage.insert(QStringLiteral("images"),
+                           humanBytes(static_cast<qint64>(
+                               df.value(QStringLiteral("ImagesSize")).toDouble())));
+        m_diskUsage.insert(QStringLiteral("volumes"), humanBytes(volumesSize));
+        m_diskUsage.insert(QStringLiteral("containers"), humanBytes(containersSize));
+        emit diskUsageChanged();
+    } else if (m_catalogSection == QStringLiteral("pods")) {
+        m_pods.clear();
+        for (const QJsonValue &value : items) {
+            const QJsonObject pod = value.toObject();
+            QVariantMap item;
+            item.insert(QStringLiteral("id"),
+                        pod.value(QStringLiteral("id")).toString());
+            item.insert(QStringLiteral("name"),
+                        pod.value(QStringLiteral("name")).toString());
+            item.insert(QStringLiteral("status"),
+                        pod.value(QStringLiteral("status")).toString());
+            item.insert(QStringLiteral("containers"),
+                        pod.value(QStringLiteral("containers")).toInt());
+            item.insert(QStringLiteral("created"),
+                        pod.value(QStringLiteral("created")).toString());
+            m_pods.append(item);
+        }
+        emit podsChanged();
+    }
+
+    startNextCatalog();
+}
+
+void Backend::pullImage(const QString &reference, const QString &platform)
+{
+    if (reference.isEmpty()) {
+        m_lastError = QStringLiteral("Informe a imagem para o pull.");
+        emit lastErrorChanged();
+        return;
+    }
+
+    m_pullActive = true;
+    m_pullStatus = QStringLiteral("Iniciando pull de %1...").arg(reference);
+    emit pullStateChanged();
+    m_pullStream.pullImage(reference, platform);
+}
+
+void Backend::cancelPull()
+{
+    m_pullStream.unsubscribe();
+    m_pullActive = false;
+    m_pullStatus = QStringLiteral("Pull cancelado");
+    emit pullStateChanged();
+}
+
+void Backend::removeImage(const QString &id, bool force)
+{
+    runAction(QStringLiteral("images.remove"),
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}});
+}
+
+void Backend::pruneImages(bool all)
+{
+    runAction(QStringLiteral("images.prune"), QJsonObject{{QStringLiteral("all"), all}});
+}
+
+void Backend::tagImage(const QString &id, const QString &repoTag)
+{
+    QString repo = repoTag;
+    QString tag = QStringLiteral("latest");
+    const int slash = repo.lastIndexOf(QLatin1Char('/'));
+    const int colon = repo.lastIndexOf(QLatin1Char(':'));
+    if (colon > slash) {
+        tag = repo.mid(colon + 1);
+        repo = repo.left(colon);
+    }
+
+    runAction(QStringLiteral("images.tag"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("repo"), repo},
+                          {QStringLiteral("tag"), tag}});
+}
+
+void Backend::untagImage(const QString &id, const QString &repoTag)
+{
+    QString repo = repoTag;
+    QString tag = QStringLiteral("latest");
+    const int slash = repo.lastIndexOf(QLatin1Char('/'));
+    const int colon = repo.lastIndexOf(QLatin1Char(':'));
+    if (colon > slash) {
+        tag = repo.mid(colon + 1);
+        repo = repo.left(colon);
+    }
+
+    runAction(QStringLiteral("images.untag"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("repo"), repo},
+                          {QStringLiteral("tag"), tag}});
+}
+
+void Backend::exportImage(const QString &id, const QString &path)
+{
+    runAction(QStringLiteral("images.export"),
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("path"), path}});
+}
+
+void Backend::loadImage(const QString &path)
+{
+    runAction(QStringLiteral("images.load"), QJsonObject{{QStringLiteral("path"), path}});
+}
+
+void Backend::createVolume(const QString &name, const QString &driver)
+{
+    runAction(QStringLiteral("volumes.create"),
+              QJsonObject{{QStringLiteral("name"), name},
+                          {QStringLiteral("driver"), driver}});
+}
+
+void Backend::removeVolume(const QString &name, bool force)
+{
+    runAction(QStringLiteral("volumes.remove"),
+              QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("force"), force}});
+}
+
+void Backend::pruneVolumes()
+{
+    runAction(QStringLiteral("volumes.prune"), {});
+}
+
+void Backend::cloneVolume(const QString &source, const QString &destination)
+{
+    runAction(QStringLiteral("volumes.clone"),
+              QJsonObject{{QStringLiteral("source"), source},
+                          {QStringLiteral("destination"), destination}});
+}
+
+void Backend::importHostPath(const QString &name, const QString &sourcePath)
+{
+    runAction(QStringLiteral("volumes.importHostPath"),
+              QJsonObject{{QStringLiteral("name"), name},
+                          {QStringLiteral("sourcePath"), sourcePath}});
+}
+
+void Backend::createNetwork(const QString &name, const QString &subnet,
+                            const QString &gateway)
+{
+    runAction(QStringLiteral("networks.create"),
+              QJsonObject{{QStringLiteral("name"), name},
+                          {QStringLiteral("subnet"), subnet},
+                          {QStringLiteral("gateway"), gateway}});
+}
+
+void Backend::removeNetwork(const QString &name, bool force)
+{
+    runAction(QStringLiteral("networks.remove"),
+              QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("force"), force}});
+}
+
+void Backend::connectNetwork(const QString &name, const QString &containerId)
+{
+    runAction(QStringLiteral("networks.connect"),
+              QJsonObject{{QStringLiteral("name"), name},
+                          {QStringLiteral("containerId"), containerId}});
+}
+
+void Backend::disconnectNetwork(const QString &name, const QString &containerId)
+{
+    runAction(QStringLiteral("networks.disconnect"),
+              QJsonObject{{QStringLiteral("name"), name},
+                          {QStringLiteral("containerId"), containerId}});
+}
+
+void Backend::createPod(const QString &name)
+{
+    runAction(QStringLiteral("pods.create"), QJsonObject{{QStringLiteral("name"), name}});
+}
+
+void Backend::podAction(const QString &action, const QString &id)
+{
+    runAction(QStringLiteral("pods.") + action, QJsonObject{{QStringLiteral("id"), id}});
+}
+
+void Backend::removePod(const QString &id, bool force)
+{
+    runAction(QStringLiteral("pods.remove"),
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}});
 }
 
 void Backend::onRefreshFinished()
@@ -438,20 +836,24 @@ void Backend::duplicateContainer(const QString &id)
 
 void Backend::batchAll(const QString &action)
 {
-    if (action != QStringLiteral("start") && action != QStringLiteral("stop")
-        && action != QStringLiteral("restart") && action != QStringLiteral("remove")) {
-        m_lastError = QStringLiteral("Ação de lote inválida.");
-        emit lastErrorChanged();
-        emit actionFinished(false, m_lastError);
-        return;
-    }
-
     QStringList ids;
     for (const QVariant &value : m_containers) {
         const QString id = value.toMap().value(QStringLiteral("id")).toString();
         if (!id.isEmpty()) {
             ids.append(id);
         }
+    }
+    batchIds(ids, action);
+}
+
+void Backend::batchIds(const QStringList &ids, const QString &action)
+{
+    if (action != QStringLiteral("start") && action != QStringLiteral("stop")
+        && action != QStringLiteral("restart") && action != QStringLiteral("remove")) {
+        m_lastError = QStringLiteral("Ação de lote inválida.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
     }
     if (ids.isEmpty()) {
         return;
@@ -487,6 +889,20 @@ void Backend::batchAll(const QString &action)
         }
         return result;
     }));
+}
+
+void Backend::uploadFile(const QString &id, const QString &path, const QString &sourcePath)
+{
+    if (id.isEmpty() || path.isEmpty() || sourcePath.isEmpty()) {
+        m_lastError = QStringLiteral("Informe o container, o destino e o arquivo local.");
+        emit lastErrorChanged();
+        return;
+    }
+
+    runAction(QStringLiteral("containers.files.upload"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("path"), path},
+                          {QStringLiteral("sourcePath"), sourcePath}});
 }
 
 void Backend::runAction(const QString &method, const QJsonObject &params)
@@ -525,6 +941,7 @@ void Backend::onActionFinished()
     }
     emit actionFinished(true, {});
     refresh();
+    refreshCatalog();
 }
 
 } // namespace PodStack

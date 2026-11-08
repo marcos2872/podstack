@@ -295,7 +295,6 @@ Rectangle {
         property string containerId
         title: "Remover container?"
         modal: true
-        anchors.centerIn: parent
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: theme.bgSurface
@@ -315,7 +314,6 @@ Rectangle {
         property string containerId
         title: "Renomear container"
         modal: true
-        anchors.centerIn: parent
         width: 420
         background: Rectangle {
             color: theme.bgSurface

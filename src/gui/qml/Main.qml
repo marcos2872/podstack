@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import PodStack 1.0
+import PodStack
 
 ApplicationWindow {
     id: window
@@ -13,7 +13,55 @@ ApplicationWindow {
     title: "PodStack"
     color: theme.bgBase
 
+    property string section: "containers"
+
     Theme { id: theme }
+
+    readonly property var sections: [
+        { group: "DOCKER", items: [
+            { key: "containers", label: "Containers" },
+            { key: "images", label: "Images" },
+            { key: "volumes", label: "Volumes" },
+            { key: "networks", label: "Networks" }
+        ] },
+        { group: "KUBERNETES", items: [
+            { key: "pods", label: "Pods" }
+        ] },
+        { group: "LINUX", items: [
+            { key: "machines", label: "Machines", disabled: true },
+            { key: "devices", label: "Devices", disabled: true }
+        ] }
+    ]
+
+    function refreshCurrent() {
+        if (section === "containers") {
+            backend.refresh()
+        } else if (section === "images") {
+            backend.refreshImages()
+        } else if (section === "volumes") {
+            backend.refreshVolumes()
+        } else if (section === "networks") {
+            backend.refreshNetworks()
+        } else if (section === "pods") {
+            backend.refreshPods()
+        }
+    }
+
+    function sectionIndex() {
+        if (section === "images") {
+            return 1
+        }
+        if (section === "volumes") {
+            return 2
+        }
+        if (section === "networks") {
+            return 3
+        }
+        if (section === "pods") {
+            return 4
+        }
+        return 0
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -70,34 +118,22 @@ ApplicationWindow {
 
                 Item { Layout.fillWidth: true }
 
-                TextField {
-                    id: search
-                    Layout.preferredWidth: 280
-                    placeholderText: "Buscar containers..."
-                    placeholderTextColor: theme.textSecondary
-                    color: theme.textPrimary
-                    font.pixelSize: 13
-                    background: Rectangle {
-                        color: theme.bgElevated
-                        radius: theme.radius
-                        border.color: theme.border
-                        border.width: 1
-                    }
-                }
-
                 ActionButton {
                     text: "Novo"
-                    onClicked: createDialog.open()
+                    visible: window.section === "containers"
+                    onClicked: containersPage.openCreate()
                 }
 
                 ActionButton {
                     text: "Start all"
+                    visible: window.section === "containers"
                     accentColor: theme.success
                     onClicked: backend.batchAll("start")
                 }
 
                 ActionButton {
                     text: "Stop all"
+                    visible: window.section === "containers"
                     accentColor: theme.warning
                     onClicked: backend.batchAll("stop")
                 }
@@ -105,7 +141,7 @@ ApplicationWindow {
                 Button {
                     id: refreshButton
                     text: "Atualizar"
-                    onClicked: backend.refresh()
+                    onClicked: window.refreshCurrent()
                     background: Rectangle {
                         color: theme.indigo500
                         radius: theme.radius
@@ -146,99 +182,55 @@ ApplicationWindow {
 
             // Sidebar
             Rectangle {
-                SplitView.preferredWidth: 220
-                SplitView.minimumWidth: 180
+                SplitView.preferredWidth: 200
+                SplitView.minimumWidth: 170
                 color: theme.bgSurface
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 12
+                    anchors.margins: 10
                     spacing: 2
 
-                    Label {
-                        text: "DOCKER"
-                        color: theme.textSecondary
-                        font.pixelSize: 10
-                        font.bold: true
-                        Layout.leftMargin: 8
-                        Layout.topMargin: 8
-                        Layout.bottomMargin: 4
-                    }
-
                     Repeater {
-                        model: ["Containers", "Images", "Volumes", "Builds", "Networks"]
-                        delegate: ItemDelegate {
-                            Layout.fillWidth: true
-                            text: modelData
-                            highlighted: index === 0
-                            background: Rectangle {
-                                color: parent.highlighted ? theme.bgElevated : "transparent"
-                                radius: theme.radius
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                color: parent.highlighted ? theme.textPrimary : theme.textSecondary
-                                font.pixelSize: 13
-                                leftPadding: 8
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
-                    }
+                        model: window.sections
 
-                    Label {
-                        text: "KUBERNETES"
-                        color: theme.textSecondary
-                        font.pixelSize: 10
-                        font.bold: true
-                        Layout.leftMargin: 8
-                        Layout.topMargin: 14
-                        Layout.bottomMargin: 4
-                    }
-
-                    Repeater {
-                        model: ["Pods", "Services"]
-                        delegate: ItemDelegate {
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            text: modelData
-                            background: Rectangle {
-                                color: "transparent"
-                                radius: theme.radius
-                            }
-                            contentItem: Text {
-                                text: parent.text
+                            spacing: 2
+
+                            Label {
+                                text: modelData.group
                                 color: theme.textSecondary
-                                font.pixelSize: 13
-                                leftPadding: 8
-                                verticalAlignment: Text.AlignVCenter
+                                font.pixelSize: 10
+                                font.bold: true
+                                Layout.leftMargin: 8
+                                Layout.topMargin: 10
+                                Layout.bottomMargin: 4
                             }
-                        }
-                    }
 
-                    Label {
-                        text: "LINUX"
-                        color: theme.textSecondary
-                        font.pixelSize: 10
-                        font.bold: true
-                        Layout.leftMargin: 8
-                        Layout.topMargin: 14
-                        Layout.bottomMargin: 4
-                    }
+                            Repeater {
+                                model: modelData.items
 
-                    Repeater {
-                        model: ["Machines", "Devices"]
-                        delegate: ItemDelegate {
-                            Layout.fillWidth: true
-                            text: modelData
-                            background: Rectangle {
-                                color: "transparent"
-                                radius: theme.radius
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                color: theme.textSecondary
-                                font.pixelSize: 13
-                                leftPadding: 8
-                                verticalAlignment: Text.AlignVCenter
+                                ItemDelegate {
+                                    Layout.fillWidth: true
+                                    text: modelData.label
+                                    enabled: !modelData.disabled
+                                    highlighted: window.section === modelData.key
+                                    onClicked: window.section = modelData.key
+                                    background: Rectangle {
+                                        color: parent.highlighted ? theme.bgElevated
+                                                                  : "transparent"
+                                        radius: theme.radius
+                                    }
+                                    contentItem: Text {
+                                        text: parent.text
+                                        color: parent.highlighted
+                                               ? theme.textPrimary : theme.textSecondary
+                                        font.pixelSize: 13
+                                        leftPadding: 8
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
                             }
                         }
                     }
@@ -264,143 +256,30 @@ ApplicationWindow {
                 }
             }
 
-            // Container list
-            Rectangle {
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 420
-                color: theme.bgBase
+            StackLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                currentIndex: window.sectionIndex()
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 48
-                        color: theme.bgBase
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 16
-                            anchors.rightMargin: 16
-                            spacing: 8
-
-                            Label {
-                                text: "Containers"
-                                color: theme.textPrimary
-                                font.pixelSize: 15
-                                font.bold: true
-                            }
-
-                            Label {
-                                text: containerModel.count + " itens"
-                                color: theme.textSecondary
-                                font.pixelSize: 11
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            Label {
-                                text: backend.connected ? "conectado" : "offline"
-                                color: backend.connected ? theme.success : theme.danger
-                                font.pixelSize: 11
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
-                        color: theme.border
-                    }
-
-                    ListView {
-                        id: containerList
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        model: ContainerListModel { id: containerModel }
-                        ScrollBar.vertical: ScrollBar {}
-
-                        delegate: ItemDelegate {
-                            width: ListView.view.width
-                            height: 56
-                            onClicked: containerList.currentIndex = index
-                            background: Rectangle {
-                                color: containerList.currentIndex === index ? theme.bgElevated
-                                                                           : "transparent"
-                            }
-                            contentItem: RowLayout {
-                                spacing: 12
-
-                                Rectangle {
-                                    width: 8
-                                    height: 8
-                                    radius: 4
-                                    color: model.state === "running"
-                                           ? (model.health === "unhealthy" ? theme.danger
-                                              : model.health === "starting" ? theme.warning
-                                                                             : theme.success)
-                                           : theme.textSecondary
-                                }
-
-                                ColumnLayout {
-                                    spacing: 2
-                                    Layout.fillWidth: true
-
-                                    Label {
-                                        text: model.name
-                                        color: theme.textPrimary
-                                        font.pixelSize: 13
-                                        font.bold: true
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-
-                                    Label {
-                                        text: model.image
-                                              + (model.ports.length > 0 ? "  ·  " + model.ports : "")
-                                        color: theme.textSecondary
-                                        font.pixelSize: 11
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-                                }
-
-                                Label {
-                                    text: model.state
-                                    color: model.state === "running"
-                                           ? (model.health === "unhealthy" ? theme.danger
-                                              : model.health === "starting" ? theme.warning
-                                                                             : theme.success)
-                                           : theme.textSecondary
-                                    font.pixelSize: 11
-                                }
-                            }
-                        }
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        Layout.margins: 24
-                        visible: containerModel.count === 0
-                        horizontalAlignment: Text.AlignHCenter
-                        text: backend.connected
-                              ? "Nenhum container encontrado.\nCrie um container pela CLI: podstack run ..."
-                              : "podstackd não está acessível.\nVerifique: systemctl --user status podstack.socket"
-                        color: theme.textSecondary
-                        font.pixelSize: 12
-                        wrapMode: Text.WordWrap
-                    }
+                ContainersPage {
+                    id: containersPage
                 }
-            }
 
-            Inspector {
-                SplitView.preferredWidth: 340
-                SplitView.minimumWidth: 280
-                selected: containerModel.revision >= 0 && containerList.currentIndex >= 0
-                          ? containerModel.get(containerList.currentIndex)
-                          : null
+                ImagesView {
+                    id: imagesPage
+                }
+
+                VolumesView {
+                    id: volumesPage
+                }
+
+                NetworksView {
+                    id: networksPage
+                }
+
+                PodsView {
+                    id: podsPage
+                }
             }
         }
 
@@ -424,6 +303,14 @@ ApplicationWindow {
                 Item { Layout.fillWidth: true }
 
                 Label {
+                    text: "imagens " + (backend.diskUsage.images || "—")
+                          + "  ·  volumes " + (backend.diskUsage.volumes || "—")
+                          + "  ·  containers " + (backend.diskUsage.containers || "—")
+                    color: theme.textSecondary
+                    font.pixelSize: 10
+                }
+
+                Label {
                     text: "GPL-3.0-or-later"
                     color: theme.textSecondary
                     font.pixelSize: 10
@@ -433,123 +320,9 @@ ApplicationWindow {
     }
 
     Dialog {
-        id: createDialog
-        title: "Novo container"
-        modal: true
-        anchors.centerIn: parent
-        width: 640
-        background: Rectangle {
-            color: theme.bgSurface
-            radius: 10
-            border.color: theme.border
-        }
-        contentItem: ColumnLayout {
-            spacing: 8
-            GridLayout {
-                columns: 2
-                Layout.fillWidth: true
-                columnSpacing: 10
-                rowSpacing: 6
-
-                Label { text: "Imagem"; color: theme.textSecondary; font.pixelSize: 11 }
-                FormField {
-                    id: createImage
-                    Layout.fillWidth: true
-                    placeholderText: "nginx:alpine"
-                }
-
-                Label { text: "Nome"; color: theme.textSecondary; font.pixelSize: 11 }
-                FormField {
-                    id: createName
-                    Layout.fillWidth: true
-                    placeholderText: "opcional"
-                }
-
-                Label { text: "Comando"; color: theme.textSecondary; font.pixelSize: 11 }
-                FormField {
-                    id: createCommand
-                    Layout.fillWidth: true
-                    placeholderText: "opcional"
-                }
-
-                Label { text: "Portas"; color: theme.textSecondary; font.pixelSize: 11 }
-                FormField {
-                    id: createPorts
-                    Layout.fillWidth: true
-                    placeholderText: "8080:80, 127.0.0.1:8081:81"
-                }
-
-                Label { text: "Env"; color: theme.textSecondary; font.pixelSize: 11 }
-                FormField {
-                    id: createEnv
-                    Layout.fillWidth: true
-                    placeholderText: "A=B, C=D"
-                }
-
-                Label { text: "Volumes"; color: theme.textSecondary; font.pixelSize: 11 }
-                FormField {
-                    id: createMounts
-                    Layout.fillWidth: true
-                    placeholderText: "/host:/container, /tmp:/mnt"
-                }
-
-                Label { text: "Workdir"; color: theme.textSecondary; font.pixelSize: 11 }
-                FormField {
-                    id: createWorkDir
-                    Layout.fillWidth: true
-                    placeholderText: "opcional"
-                }
-
-                Label { text: "Usuário"; color: theme.textSecondary; font.pixelSize: 11 }
-                FormField {
-                    id: createUser
-                    Layout.fillWidth: true
-                    placeholderText: "opcional (uid:gid)"
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                FormCheck { id: createRemove; text: "Remover ao parar" }
-                FormCheck { id: createInit; text: "Init" }
-                FormCheck { id: createPrivileged; text: "Privileged" }
-                Item { Layout.fillWidth: true }
-            }
-        }
-        footer: RowLayout {
-            Item { Layout.fillWidth: true }
-            ActionButton {
-                text: "Cancelar"
-                accentColor: theme.bgElevated
-                onClicked: createDialog.close()
-            }
-            ActionButton {
-                text: "Criar e iniciar"
-                onClicked: {
-                    backend.createContainer({
-                        image: createImage.text,
-                        name: createName.text,
-                        command: createCommand.text,
-                        portsText: createPorts.text,
-                        envText: createEnv.text,
-                        mountsText: createMounts.text,
-                        workDir: createWorkDir.text,
-                        user: createUser.text,
-                        remove: createRemove.checked,
-                        init: createInit.checked,
-                        privileged: createPrivileged.checked
-                    }, true)
-                    createDialog.close()
-                }
-            }
-        }
-    }
-
-    Dialog {
         id: settingsDialog
         title: "Configurações"
         modal: true
-        anchors.centerIn: parent
         width: 440
         background: Rectangle {
             color: theme.bgSurface
@@ -606,7 +379,7 @@ ApplicationWindow {
     Connections {
         target: backend
         function onContainersChanged(items) {
-            containerModel.setContainers(items)
+            containersPage.setContainers(items)
         }
     }
 }

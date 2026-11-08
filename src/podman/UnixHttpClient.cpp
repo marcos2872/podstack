@@ -126,6 +126,14 @@ bool UnixHttpClient::stream(const QString &path,
                             const std::function<bool(const QByteArray &)> &onData,
                             std::atomic_bool *cancel, QString *error, int timeoutMs)
 {
+    return streamRequest(QByteArrayLiteral("GET"), path, {}, {}, onData, cancel, error, timeoutMs);
+}
+
+bool UnixHttpClient::streamRequest(const QByteArray &method, const QString &path,
+                                   const QByteArray &body, const QString &contentType,
+                                   const std::function<bool(const QByteArray &)> &onData,
+                                   std::atomic_bool *cancel, QString *error, int timeoutMs)
+{
     if (error) {
         error->clear();
     }
@@ -144,18 +152,29 @@ bool UnixHttpClient::stream(const QString &path,
     WriteContext context;
     context.stream = &onData;
 
+    struct curl_slist *headers = nullptr;
+    if (!contentType.isEmpty()) {
+        headers = curl_slist_append(headers, ("Content-Type: " + contentType).toUtf8().constData());
+    }
+
     curl_easy_setopt(curl, CURLOPT_UNIX_SOCKET_PATH, socketPath.constData());
     curl_easy_setopt(curl, CURLOPT_URL, url.constData());
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.constData());
     curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &context);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progressCallback);
     curl_easy_setopt(curl, CURLOPT_XFERINFODATA, cancel);
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
     if (timeoutMs > 0) {
         curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, static_cast<long>(timeoutMs));
+    }
+    if (!body.isEmpty()) {
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.constData());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(body.size()));
     }
 
     const CURLcode result = curl_easy_perform(curl);
@@ -164,6 +183,9 @@ bool UnixHttpClient::stream(const QString &path,
         *error = QString::fromUtf8(curl_easy_strerror(result));
     }
 
+    if (headers) {
+        curl_slist_free_all(headers);
+    }
     curl_easy_cleanup(curl);
     return ok;
 }

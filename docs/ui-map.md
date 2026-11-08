@@ -88,16 +88,16 @@
 
 ### 4.2 Por seção
 
-| Seção | Colunas principais | Ações de toolbar |
+| Seção | Colunas principais (implementado) | Ações de toolbar |
 |---|---|---|
-| Containers | nome, status, imagem, portas, projeto, idade | criar, filtro, ordenar, abrir em janela |
-| Images | repositório:tag, digest, tamanho, idade, uso | pull, importar, prune, ordenar |
-| Volumes | nome, driver, tamanho, uso | criar, importar, prune |
-| Networks | nome, driver, subnet, containers | criar |
-| Builds | imagem, status, duração, quando | filtrar, limpar |
-| Pods | nome, namespace, status, IP, idade | filtrar, abrir |
-| Services | nome, namespace, tipo, ClusterIP, portas | filtrar, abrir |
-| Machines | nome, distro, status, arch, recursos | criar, importar, abrir em janela |
+| Containers | nome, status, imagem, portas | criar, start/stop all, lote por seleção, terminal |
+| Images | repositório:tag, digest, tamanho, uso | pull, importar, tag, untag, prune, remover |
+| Volumes | nome, driver, tamanho, links | criar, clone, importar do host, prune, remover |
+| Networks | nome, driver, subnet, containers | criar, conectar, desconectar, remover |
+| Pods | nome, status, containers, ID | criar, start, stop, restart, remover |
+| Builds | planejado (M3) | — |
+| Services | planejado (K8s) | — |
+| Machines | planejado (M4) | — |
 | Devices | tipo, nome, VID:PID, status | attach/detach |
 
 ### 4.3 Estados
@@ -112,7 +112,7 @@
 
 ## 5. Inspector
 
-Abas por tipo (estado do M1):
+Abas por tipo (estado do M2):
 
 | Aba | Container | Machine | Volume | Image | Observação |
 |---|---|---|---|---|---|
@@ -120,10 +120,10 @@ Abas por tipo (estado do M1):
 | **Logs** | ✅ | planejado | — | — | streaming/follow, busca, wrap, timestamps |
 | **Stats** | ✅ | planejado | — | — | CPU, memória, rede, disco/PIDs + gráfico |
 | **Files** | ✅ | planejado | planejado | — | listar e baixar para `~/Downloads` |
-| **Terminal** | janela nativa (M1) | planejado | — | — | QTermWidget; embutir no inspector no M2 |
+| **Terminal** | janela nativa | planejado | — | — | QTermWidget; embutir no inspector no M3 |
 | **Inspect** | CLI `podstack inspect` | — | — | — | aba GUI no M2 |
 
-Ações da GUI no M1: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all` e Settings (rootless/rootful).
+Ações da GUI no M2: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). A barra de status mostra o uso de disco (`system.df`). Machines, Services, Builds e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 

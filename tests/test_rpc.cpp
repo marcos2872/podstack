@@ -26,6 +26,7 @@ private slots:
     void cleanupTestCase();
     void lifecycle();
     void subscriptions();
+    void catalog();
     void invalidRequests();
 
 private:
@@ -211,6 +212,22 @@ void RpcTest::lifecycle()
     QCOMPARE(download.value(QStringLiteral("destination")).toString(), destination);
     QFile::remove(destination);
 
+    const QString uploadSource = QDir::tempPath()
+                                 + QStringLiteral("/podstack-rpc-upload-%1.txt")
+                                       .arg(QCoreApplication::applicationPid());
+    QFile uploadFile(uploadSource);
+    QVERIFY(uploadFile.open(QIODevice::WriteOnly));
+    uploadFile.write("rpc-upload");
+    uploadFile.close();
+    QJsonObject uploadParams = filesParams;
+    uploadParams.insert(QStringLiteral("path"), QStringLiteral("/tmp"));
+    uploadParams.insert(QStringLiteral("sourcePath"), uploadSource);
+    const QJsonObject upload =
+        client.call(QStringLiteral("containers.files.upload"), uploadParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(upload.value(QStringLiteral("ok")).toBool());
+    QFile::remove(uploadSource);
+
     QJsonObject runningParams;
     runningParams.insert(QStringLiteral("all"), true);
     runningParams.insert(QStringLiteral("state"), QStringLiteral("running"));
@@ -336,6 +353,217 @@ void RpcTest::subscriptions()
         }
     }
     QCOMPARE(stats, 1);
+}
+
+void RpcTest::catalog()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    QJsonObject result = client.call(QStringLiteral("images.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("items")).toArray().size(), 2);
+
+    result = client.call(QStringLiteral("images.history"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("img1234567890")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("items")).toArray().size(), 1);
+
+    result = client.call(QStringLiteral("images.tag"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("img1234567890")},
+                                     {QStringLiteral("repo"), QStringLiteral("repo")},
+                                     {QStringLiteral("tag"), QStringLiteral("v1")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    result = client.call(QStringLiteral("images.untag"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("img1234567890")},
+                                     {QStringLiteral("repo"), QStringLiteral("repo")},
+                                     {QStringLiteral("tag"), QStringLiteral("v1")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    result = client.call(QStringLiteral("images.remove"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("img1234567890")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(result.value(QStringLiteral("removed")).toBool());
+
+    result = client.call(QStringLiteral("images.prune"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(static_cast<qint64>(
+                 result.value(QStringLiteral("reclaimedBytes")).toDouble()),
+             12345);
+
+    result = client.call(QStringLiteral("volumes.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("items")).toArray().size(), 1);
+
+    const QString sourceDir = QStringLiteral("/tmp/podstack-mock-volume");
+    const QString destinationDir = QStringLiteral("/tmp/podstack-mock-volume2");
+    QDir(sourceDir).removeRecursively();
+    QDir(destinationDir).removeRecursively();
+    QDir().mkpath(sourceDir);
+    QFile sourceFile(sourceDir + QStringLiteral("/a.txt"));
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write("hello");
+    sourceFile.close();
+
+    result = client.call(QStringLiteral("volumes.create"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("vol2")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("Name")).toString(), QStringLiteral("vol2"));
+
+    result = client.call(QStringLiteral("volumes.clone"),
+                         QJsonObject{{QStringLiteral("source"), QStringLiteral("vol1")},
+                                     {QStringLiteral("destination"), QStringLiteral("vol2")}},
+                         &error, 60000);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const QString archivePath = QDir::tempPath()
+                                + QStringLiteral("/podstack-rpc-volume-%1.tar.zst")
+                                      .arg(QCoreApplication::applicationPid());
+    QFile::remove(archivePath);
+    result = client.call(QStringLiteral("volumes.export"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("vol1")},
+                                     {QStringLiteral("path"), archivePath}},
+                         &error, 60000);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(QFileInfo(archivePath).size() > 0);
+
+    result = client.call(QStringLiteral("volumes.import"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("vol2")},
+                                     {QStringLiteral("path"), archivePath},
+                                     {QStringLiteral("force"), true}},
+                         &error, 60000);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QFile::remove(archivePath);
+
+    const QString hostDir = QStringLiteral("/tmp/podstack-host-src");
+    QDir(hostDir).removeRecursively();
+    QDir().mkpath(hostDir);
+    QFile hostFile(hostDir + QStringLiteral("/b.txt"));
+    QVERIFY(hostFile.open(QIODevice::WriteOnly));
+    hostFile.write("host-content");
+    hostFile.close();
+    result = client.call(QStringLiteral("volumes.importHostPath"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("vol2")},
+                                     {QStringLiteral("sourcePath"), hostDir}},
+                         &error, 60000);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QDir(hostDir).removeRecursively();
+
+    result = client.call(QStringLiteral("volumes.remove"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("vol1")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    result = client.call(QStringLiteral("volumes.prune"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(static_cast<qint64>(
+                 result.value(QStringLiteral("reclaimedBytes")).toDouble()),
+             456);
+
+    result = client.call(QStringLiteral("networks.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("items")).toArray().size(), 1);
+
+    result = client.call(QStringLiteral("networks.create"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("mock-net")},
+                                     {QStringLiteral("subnet"),
+                                      QStringLiteral("10.90.0.0/24")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("name")).toString(), QStringLiteral("mock-net"));
+
+    result = client.call(QStringLiteral("networks.connect"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("mock-net")},
+                                     {QStringLiteral("containerId"),
+                                      QStringLiteral("abc123")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    result = client.call(QStringLiteral("networks.disconnect"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("mock-net")},
+                                     {QStringLiteral("containerId"),
+                                      QStringLiteral("abc123")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    result = client.call(QStringLiteral("networks.remove"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("mock-net")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    result = client.call(QStringLiteral("pods.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("items")).toArray().size(), 1);
+
+    result = client.call(QStringLiteral("pods.create"),
+                         QJsonObject{{QStringLiteral("name"), QStringLiteral("demo-pod")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("Id")).toString(), QStringLiteral("pod123"));
+
+    result = client.call(QStringLiteral("pods.start"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("pod123")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(result.value(QStringLiteral("ok")).toBool());
+
+    result = client.call(QStringLiteral("pods.remove"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("pod123")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    result = client.call(QStringLiteral("system.df"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(static_cast<qint64>(result.value(QStringLiteral("json"))
+                                     .toObject()
+                                     .value(QStringLiteral("ImagesSize"))
+                                     .toDouble()),
+             7001000);
+
+    QLocalSocket socket;
+    socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(socket.waitForConnected(5000));
+    QByteArray buffer;
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("images.pull")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("reference"), QStringLiteral("alpine")}}}});
+
+    const QJsonObject pullResponse = readMessage(socket, buffer);
+    QVERIFY(!pullResponse.value(QStringLiteral("result"))
+                 .toObject()
+                 .value(QStringLiteral("subscriptionId"))
+                 .toString()
+                 .isEmpty());
+
+    int deltas = 0;
+    bool done = false;
+    for (int i = 0; i < 20 && !done; ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        const QString method = message.value(QStringLiteral("method")).toString();
+        if (method == QStringLiteral("images.pull.delta")) {
+            ++deltas;
+        } else if (method == QStringLiteral("images.pull.done")) {
+            done = true;
+        }
+    }
+    QVERIFY(deltas >= 2);
+    QVERIFY(done);
+    socket.disconnectFromServer();
+
+    QDir(sourceDir).removeRecursively();
+    QDir(destinationDir).removeRecursively();
 }
 
 void RpcTest::invalidRequests()
