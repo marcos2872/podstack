@@ -184,6 +184,14 @@ void MockPodmanServer::handleClient(int clientFd)
                                      "mock-exec-output\r\n");
     } else if (pathOnly.endsWith(QStringLiteral("/exec/exec-1/json"))) {
         response = httpResponse(200, "OK", R"({"ExitCode":0})");
+    } else if (pathOnly.contains(QStringLiteral("/containers/abc123/json"))) {
+        response = httpResponse(200, "OK", R"({
+            "Id":"abc123",
+            "Name":"/demo",
+            "State":{"Status":"running","Running":true,"Pid":1,"ExitCode":0},
+            "Config":{"Image":"docker.io/library/alpine:3.20","Env":["A=B"]},
+            "NetworkSettings":{"IPAddress":"10.0.0.2"}
+        })");
     } else if (pathOnly.contains(QStringLiteral("/logs"))) {
         const auto frame = [](const QByteArray &payload) {
             QByteArray out;
@@ -206,7 +214,10 @@ void MockPodmanServer::handleClient(int clientFd)
     } else if (method == QStringLiteral("POST")
                && (pathOnly.endsWith(QStringLiteral("/stop"))
                    || pathOnly.endsWith(QStringLiteral("/restart"))
-                   || pathOnly.endsWith(QStringLiteral("/start")))) {
+                   || pathOnly.endsWith(QStringLiteral("/start"))
+                   || pathOnly.endsWith(QStringLiteral("/pause"))
+                   || pathOnly.endsWith(QStringLiteral("/unpause"))
+                   || pathOnly.endsWith(QStringLiteral("/kill")))) {
         response = httpResponse(204, "No Content", {});
     } else if (method == QStringLiteral("DELETE")
                && pathOnly.contains(QStringLiteral("/containers/"))) {

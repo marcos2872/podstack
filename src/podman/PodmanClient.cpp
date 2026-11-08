@@ -312,6 +312,98 @@ bool PodmanClient::removeContainer(const QString &id, bool force, bool volumes, 
     return false;
 }
 
+bool PodmanClient::pauseContainer(const QString &id, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("POST"), path(QStringLiteral("/containers/%1/pause").arg(encodeId(id))));
+    if (response.status == 204) {
+        return true;
+    }
+    if (error) {
+        *error = errorFromResponse(response, QStringLiteral("Falha ao pausar o container."));
+    }
+    return false;
+}
+
+bool PodmanClient::unpauseContainer(const QString &id, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("POST"), path(QStringLiteral("/containers/%1/unpause").arg(encodeId(id))));
+    if (response.status == 204) {
+        return true;
+    }
+    if (error) {
+        *error = errorFromResponse(response, QStringLiteral("Falha ao despausar o container."));
+    }
+    return false;
+}
+
+bool PodmanClient::killContainer(const QString &id, const QString &signal, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+
+    QString suffix = QStringLiteral("/containers/%1/kill").arg(encodeId(id));
+    if (!signal.isEmpty()) {
+        suffix += QStringLiteral("?signal=")
+                  + QString::fromLatin1(QUrl::toPercentEncoding(signal));
+    }
+
+    const HttpResponse response = m_http.request(QByteArrayLiteral("POST"), path(suffix));
+    if (response.status == 204) {
+        return true;
+    }
+    if (error) {
+        *error = errorFromResponse(response, QStringLiteral("Falha ao matar o container."));
+    }
+    return false;
+}
+
+QJsonObject PodmanClient::inspectContainer(const QString &id, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return {};
+    }
+
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("GET"), path(QStringLiteral("/containers/%1/json").arg(encodeId(id))));
+    if (response.status != 200) {
+        if (error) {
+            *error = errorFromResponse(response, QStringLiteral("Falha ao inspecionar o container."));
+        }
+        return {};
+    }
+
+    const QJsonDocument document = QJsonDocument::fromJson(response.body);
+    if (!document.isObject()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_RESPONSE"),
+                                 QStringLiteral("Resposta inválida do inspect."));
+        }
+        return {};
+    }
+    return document.object();
+}
+
 bool PodmanClient::execOnce(const QString &id, const QStringList &cmd, ExecResult *result,
                             Error *error)
 {

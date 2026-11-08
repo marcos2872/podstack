@@ -62,6 +62,8 @@ gantt
 
 ### M1 — Containers (4 semanas)
 
+**Status:** **em andamento** — lifecycle, inspect, filtros e rootful entregues; faltam create, logs na UI, terminal, stats e files.
+
 **Objetivo:** paridade de ciclo de vida e inspeção.
 
 **Entregáveis:**

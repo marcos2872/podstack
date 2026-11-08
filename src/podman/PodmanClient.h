@@ -48,6 +48,10 @@ public:
     bool stopContainer(const QString &id, int timeoutSeconds = 10, Error *error = nullptr);
     bool restartContainer(const QString &id, int timeoutSeconds = 10, Error *error = nullptr);
     bool removeContainer(const QString &id, bool force, bool volumes, Error *error = nullptr);
+    bool pauseContainer(const QString &id, Error *error = nullptr);
+    bool unpauseContainer(const QString &id, Error *error = nullptr);
+    bool killContainer(const QString &id, const QString &signal, Error *error = nullptr);
+    QJsonObject inspectContainer(const QString &id, Error *error = nullptr);
 
     bool execOnce(const QString &id, const QStringList &cmd, ExecResult *result,
                   Error *error = nullptr);

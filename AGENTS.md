@@ -12,7 +12,7 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** **M0 concluído** em 2026-11-08 (6 testes, cobertura 84,3% com gate de 80%). Próximo marco: **M1** (containers completos) em [`docs/tasks.md`](docs/tasks.md).
+**Status atual:** **M1 em andamento** (lifecycle/inspect/filtros/rootful). M0: 6 testes, cobertura 84,7% com gate de 80%. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
 
 ---
 

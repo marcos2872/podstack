@@ -87,6 +87,16 @@
 | — | `build` | `--file`, `--tag`, `--platform`, `--build-arg` | Libpod build |
 | `debug CONTAINER` | `debug CONTAINER` | `--context`, `--workdir`, `--fallback`, `--reset` | Debug shell (P2) |
 
+### 2.3.1 Containers (extensões PodStack)
+
+| Docker/OrbStack | `podstack` | Flags | Notas |
+|---|---|---|---|
+| `docker ps` | `ps` | `--all`, `--running`, `--stopped`, `--format`, `--quiet` | Lista e filtra por estado |
+| `docker pause` / `unpause` | `pause` / `unpause` | — | Ciclo de vida |
+| `docker kill` | `kill` | `--signal` | Sinal opcional (ex.: `SIGTERM`) |
+| `docker inspect` | `inspect` | — | JSON bruto do container |
+| `docker exec` | `exec` | `-- <cmd...>` | Exec one-shot via hijack |
+
 ### 2.4 Configuração
 
 | `orb` | `podstack` | Flags | Notas |

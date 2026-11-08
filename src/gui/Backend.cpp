@@ -17,6 +17,8 @@ Backend::Backend(QObject *parent)
 {
     connect(&m_watcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onRefreshFinished);
+    connect(&m_actionWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onActionFinished);
     QTimer::singleShot(0, this, &Backend::refresh);
 }
 
@@ -91,6 +93,74 @@ void Backend::onRefreshFinished()
     }
 
     emit containersChanged(items);
+}
+
+void Backend::lifecycle(const QString &action, const QString &id)
+{
+    if (action.isEmpty() || id.isEmpty()) {
+        m_lastError = QStringLiteral("Ação ou container inválido.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    runAction(QStringLiteral("containers.") + action, params);
+}
+
+void Backend::removeContainer(const QString &id, bool force, bool volumes)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Container inválido.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    params.insert(QStringLiteral("force"), force);
+    params.insert(QStringLiteral("volumes"), volumes);
+    runAction(QStringLiteral("containers.remove"), params);
+}
+
+void Backend::runAction(const QString &method, const QJsonObject &params)
+{
+    if (m_actionWatcher.isRunning()) {
+        return;
+    }
+
+    m_actionWatcher.setFuture(QtConcurrent::run([method, params] {
+        RpcClient client;
+        Error error;
+        QJsonObject result = client.call(method, params, &error);
+        if (!error.isEmpty()) {
+            QJsonObject payload;
+            payload.insert(QStringLiteral("error"), error.toJson());
+            return payload;
+        }
+        return result;
+    }));
+}
+
+void Backend::onActionFinished()
+{
+    const QJsonObject result = m_actionWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    if (!m_lastError.isEmpty()) {
+        m_lastError.clear();
+        emit lastErrorChanged();
+    }
+    emit actionFinished(true, {});
+    refresh();
 }
 
 } // namespace PodStack

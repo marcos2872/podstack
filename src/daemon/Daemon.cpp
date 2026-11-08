@@ -1,5 +1,6 @@
 #include "daemon/Daemon.h"
 
+#include "core/Config.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
 
@@ -11,14 +12,34 @@
 #include <QtConcurrent>
 
 namespace PodStack {
+namespace {
+
+QString selectedPodmanSocket()
+{
+    const Config config = Config::load();
+    if (config.get(QStringLiteral("engine.mode")).toString() == QStringLiteral("rootful")) {
+        return QStringLiteral("/run/podman/podman.sock");
+    }
+    return Paths::podmanSocket();
+}
+
+QString engineMode()
+{
+    const Config config = Config::load();
+    return config.get(QStringLiteral("engine.mode")).toString(QStringLiteral("rootless"));
+}
+
+} // namespace
 
 Daemon::Daemon()
+    : m_podman(selectedPodmanSocket())
 {
     Error error;
     if (!m_podman.ping(&error)) {
         qCWarning(lcPodman) << "Podman indisponível:" << error.message << error.detail;
     } else {
-        qCInfo(lcPodman) << "Podman conectado; API" << m_podman.apiVersion();
+        qCInfo(lcPodman) << "Podman conectado; API" << m_podman.apiVersion() << "modo"
+                         << engineMode();
     }
 }
 
@@ -43,11 +64,17 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("containers.start") || method == QStringLiteral("containers.stop")
         || method == QStringLiteral("containers.restart")
-        || method == QStringLiteral("containers.remove")) {
+        || method == QStringLiteral("containers.remove")
+        || method == QStringLiteral("containers.pause")
+        || method == QStringLiteral("containers.unpause")
+        || method == QStringLiteral("containers.kill")) {
         return containerAction(method, params, error);
     }
     if (method == QStringLiteral("containers.exec")) {
         return containerExec(params, error);
+    }
+    if (method == QStringLiteral("containers.inspect")) {
+        return containerInspect(params, error);
     }
     if (method == QStringLiteral("containers.logs.subscribe")) {
         return subscribeLogs(params, notify, error);
@@ -72,6 +99,7 @@ QJsonObject Daemon::systemHello() const
     QJsonObject podman;
     podman.insert(QStringLiteral("apiVersion"), m_podman.apiVersion());
     podman.insert(QStringLiteral("socket"), m_podman.socketPath());
+    podman.insert(QStringLiteral("mode"), engineMode());
 
     QJsonObject result;
     result.insert(QStringLiteral("apiVersion"), 1);
@@ -88,6 +116,7 @@ QJsonObject Daemon::systemStatus()
     QJsonObject podman;
     podman.insert(QStringLiteral("apiVersion"), m_podman.apiVersion());
     podman.insert(QStringLiteral("socket"), m_podman.socketPath());
+    podman.insert(QStringLiteral("mode"), engineMode());
 
     QJsonObject result;
     result.insert(QStringLiteral("state"), ok ? QStringLiteral("ok") : QStringLiteral("error"));
@@ -134,6 +163,7 @@ QJsonObject Daemon::systemDoctor()
 QJsonObject Daemon::containersList(const QJsonObject &params, Error *error)
 {
     const bool all = params.value(QStringLiteral("all")).toBool(false);
+    const QString state = params.value(QStringLiteral("state")).toString();
     const QVector<ContainerInfo> containers = m_podman.listContainers(all, error);
     if (error && !error->isEmpty()) {
         return {};
@@ -141,6 +171,21 @@ QJsonObject Daemon::containersList(const QJsonObject &params, Error *error)
 
     QJsonArray items;
     for (const ContainerInfo &container : containers) {
+        if (!state.isEmpty() && state != QStringLiteral("all")) {
+            if (state == QStringLiteral("running") && container.state != QStringLiteral("running")) {
+                continue;
+            }
+            if (state == QStringLiteral("paused") && container.state != QStringLiteral("paused")) {
+                continue;
+            }
+            if (state == QStringLiteral("stopped")
+                && container.state != QStringLiteral("exited")
+                && container.state != QStringLiteral("created")
+                && container.state != QStringLiteral("dead")
+                && container.state != QStringLiteral("stopped")) {
+                continue;
+            }
+        }
         items.append(container.toJson());
     }
 
@@ -170,6 +215,12 @@ QJsonObject Daemon::containerAction(const QString &method, const QJsonObject &pa
     } else if (method == QStringLiteral("containers.remove")) {
         ok = m_podman.removeContainer(id, params.value(QStringLiteral("force")).toBool(false),
                                       params.value(QStringLiteral("volumes")).toBool(false), error);
+    } else if (method == QStringLiteral("containers.pause")) {
+        ok = m_podman.pauseContainer(id, error);
+    } else if (method == QStringLiteral("containers.unpause")) {
+        ok = m_podman.unpauseContainer(id, error);
+    } else if (method == QStringLiteral("containers.kill")) {
+        ok = m_podman.killContainer(id, params.value(QStringLiteral("signal")).toString(), error);
     }
 
     if (!ok) {
@@ -212,6 +263,24 @@ QJsonObject Daemon::containerExec(const QJsonObject &params, Error *error)
     result.insert(QStringLiteral("id"), id);
     result.insert(QStringLiteral("exitCode"), execResult.exitCode);
     result.insert(QStringLiteral("stdout"), QString::fromUtf8(execResult.output));
+    return result;
+}
+
+QJsonObject Daemon::containerInspect(const QJsonObject &params, Error *error)
+{
+    const QString id = requireId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QJsonObject json = m_podman.inspectContainer(id, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), id);
+    result.insert(QStringLiteral("json"), json);
     return result;
 }
 

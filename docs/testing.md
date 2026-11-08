@@ -236,7 +236,7 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 
 ## 13. Cobertura e qualidade
 
-- **M0 (atual):** **84,3%** de linhas no total (`src/`) e **82,2%** no núcleo (`core/podman/daemon`); gate do CI em **80%** sobre `src/`.
+- **M0 (atual):** **84,7%** de linhas no total (`src/`) e **82,2%** no núcleo (`core/podman/daemon`); gate do CI em **80%** sobre `src/`.
 - **Meta v1.0:** manter ≥ 80% e buscar ≥ 85% em caminhos críticos; CLI/GUI já entram na medição (testes de subprocesso e modelos QML).
 - Nenhum merge com teste vermelho.
 - Bug corrigido → teste de regressão obrigatório.

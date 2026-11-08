@@ -36,8 +36,12 @@ void printUsage()
           << "Comandos:\n"
           << "  version                 Mostra a versão\n"
           << "  status                  Estado do daemon/Podman\n"
-          << "  ps [--all] [--format json] [--quiet]\n"
+          << "  ps [--all|--running|--stopped] [--format json] [--quiet]\n"
           << "                          Lista containers\n"
+          << "  pause <id|nome>         Pausa um container\n"
+          << "  unpause <id|nome>       Despausa um container\n"
+          << "  kill [--signal S] <id>  Mata um container\n"
+          << "  inspect <id|nome>       Mostra o JSON do container\n"
           << "  exec <id|nome> -- <cmd...>\n"
           << "                          Executa um comando no container (hijack)\n"
           << "  doctor                  Diagnóstico rápido\n"
@@ -100,11 +104,17 @@ int commandPs(const QStringList &args)
     bool all = false;
     bool quiet = false;
     bool json = false;
+    bool running = false;
+    bool stopped = false;
 
     for (int i = 0; i < args.size(); ++i) {
         const QString &arg = args.at(i);
         if (arg == QStringLiteral("--all") || arg == QStringLiteral("-a")) {
             all = true;
+        } else if (arg == QStringLiteral("--running") || arg == QStringLiteral("-r")) {
+            running = true;
+        } else if (arg == QStringLiteral("--stopped") || arg == QStringLiteral("-s")) {
+            stopped = true;
         } else if (arg == QStringLiteral("--quiet") || arg == QStringLiteral("-q")) {
             quiet = true;
         } else if (arg == QStringLiteral("--format")) {
@@ -121,10 +131,21 @@ int commandPs(const QStringList &args)
         }
     }
 
+    if (running && stopped) {
+        err() << "--running e --stopped são mutuamente exclusivos\n";
+        return kExitUsage;
+    }
+    if (running || stopped) {
+        all = true;
+    }
+
     PodStack::RpcClient client;
     PodStack::Error error;
     QJsonObject params;
     params.insert(QStringLiteral("all"), all);
+    params.insert(QStringLiteral("state"), running ? QStringLiteral("running")
+                                     : stopped ? QStringLiteral("stopped")
+                                               : QString());
 
     const QJsonObject result = client.call(QStringLiteral("containers.list"), params, &error);
     if (!error.isEmpty()) {
@@ -200,6 +221,71 @@ int commandPs(const QStringList &args)
                      .arg(row.image.leftJustified(imageWidth))
                      .arg(row.ports);
     }
+    out().flush();
+    return kExitOk;
+}
+
+int commandLifecycle(const QString &action, const QStringList &args)
+{
+    QString id;
+    QString signal;
+    for (int i = 0; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--signal")) {
+            if (i + 1 >= args.size()) {
+                err() << "--signal exige um valor\n";
+                return kExitUsage;
+            }
+            signal = args.at(++i);
+        } else if (id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "argumento inesperado: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+
+    if (id.isEmpty()) {
+        err() << "Uso: podstack " << action << " <id|nome>\n";
+        return kExitUsage;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    if (!signal.isEmpty()) {
+        params.insert(QStringLiteral("signal"), signal);
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    client.call(QStringLiteral("containers.") + action, params, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    out() << action << ' ' << id << ": ok\n";
+    out().flush();
+    return kExitOk;
+}
+
+int commandInspect(const QStringList &args)
+{
+    if (args.size() != 1) {
+        err() << "Uso: podstack inspect <id|nome>\n";
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("containers.inspect"),
+                    QJsonObject{{QStringLiteral("id"), args.first()}}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    const QJsonObject json = result.value(QStringLiteral("json")).toObject();
+    out() << QJsonDocument(json.isEmpty() ? result : json).toJson(QJsonDocument::Indented);
     out().flush();
     return kExitOk;
 }
@@ -303,6 +389,18 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("ps")) {
         return commandPs(args);
+    }
+    if (command == QStringLiteral("pause")) {
+        return commandLifecycle(QStringLiteral("pause"), args);
+    }
+    if (command == QStringLiteral("unpause")) {
+        return commandLifecycle(QStringLiteral("unpause"), args);
+    }
+    if (command == QStringLiteral("kill")) {
+        return commandLifecycle(QStringLiteral("kill"), args);
+    }
+    if (command == QStringLiteral("inspect")) {
+        return commandInspect(args);
     }
     if (command == QStringLiteral("exec")) {
         return commandExec(args);
