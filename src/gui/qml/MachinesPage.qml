@@ -8,6 +8,7 @@ ColumnLayout {
 
     property string selectedMachineId: ""
     property string pendingDeleteId: ""
+    property string pendingExportId: ""
 
     signal machineExpandRequested(string id, int tab)
 
@@ -130,8 +131,44 @@ ColumnLayout {
         return stage
     }
 
-    function createRequested() {
-        const index = distroSelect.currentIndex
+    function archiveStageLabel(stage) {
+        if (stage === "validating") {
+            return qsTr("Preparando…")
+        }
+        if (stage === "stopping") {
+            return qsTr("Parando a machine…")
+        }
+        if (stage === "disk") {
+            return qsTr("Preparando o disco…")
+        }
+        if (stage === "archive") {
+            return qsTr("Compactando o arquivo…")
+        }
+        if (stage === "starting") {
+            return qsTr("Reiniciando a machine…")
+        }
+        if (stage === "verify") {
+            return qsTr("Verificando o arquivo…")
+        }
+        if (stage === "metadata") {
+            return qsTr("Restaurando a machine…")
+        }
+        if (stage === "cancelling") {
+            return qsTr("Cancelando…")
+        }
+        if (stage === "cancelled") {
+            return qsTr("Operação cancelada.")
+        }
+        if (stage === "done") {
+            return qsTr("Concluído.")
+        }
+        if (stage === "error") {
+            return qsTr("Falhou.")
+        }
+        return stage
+    }
+
+    function createRequested() {        const index = distroSelect.currentIndex
         const distro = index >= 0 && index < backend.machineDistros.length
                        ? backend.machineDistros[index] : ({})
         backend.createMachine({
@@ -166,6 +203,7 @@ ColumnLayout {
             text: qsTr("Nova machine")
             variant: "primary"
             iconName: "plus"
+            enabled: !backend.machineCreateActive
             onClicked: {
                 machineName.text = ""
                 machineCpus.text = "2"
@@ -178,9 +216,25 @@ ColumnLayout {
                 isolateNetworkBox.checked = false
                 forwardSshAgentBox.checked = false
                 distroSelect.currentIndex = 0
+                backend.resetMachineCreateState()
                 backend.refreshMachineDistros()
                 createDialog.open()
             }
+        }
+
+        ActionButton {
+            text: qsTr("Importar")
+            variant: "ghost"
+            iconName: "download"
+            enabled: !backend.machineCreateActive
+            onClicked: {
+                importPath.text = ""
+                importName.text = ""
+                importForce.checked = false
+                backend.resetMachineCreateState()
+                importDialog.open()
+            }
+            Accessible.name: qsTr("Importar machine de um arquivo .tar.zst")
         }
 
         ActionButton {
@@ -234,6 +288,13 @@ ColumnLayout {
                 machinesPage.pendingDeleteId = id
                 deleteMachineDialog.open()
             }
+            onExportRequested: function(id) {
+                machinesPage.pendingExportId = id
+                exportPath.text = backend.machineArchivePath(id)
+                exportForce.checked = false
+                backend.resetMachineCreateState()
+                exportDialog.open()
+            }
         }
     }
 
@@ -245,8 +306,15 @@ ColumnLayout {
         }
 
         function onMachineCreateStateChanged() {
-            if (!backend.machineCreateActive && backend.machineCreateStage === "done") {
+            if (backend.machineCreateActive || backend.machineCreateStage !== "done") {
+                return
+            }
+            if (backend.machineJobKind === "create") {
                 createDialog.close()
+            } else if (backend.machineJobKind === "export") {
+                exportDialog.close()
+            } else if (backend.machineJobKind === "import") {
+                importDialog.close()
             }
         }
     }
@@ -510,6 +578,231 @@ ColumnLayout {
                     }
                     deleteMachineDialog.close()
                 }
+            }
+        }
+    }
+
+    AppDialog {
+        id: exportDialog
+        title: qsTr("Exportar machine")
+        modal: true
+        width: 520
+        anchors.centerIn: parent
+        closePolicy: backend.machineCreateActive ? Popup.NoAutoClose
+                                                 : Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onClosed: machinesPage.pendingExportId = ""
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Text {
+                text: qsTr("Arquivo .tar.zst de destino")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
+            FormField {
+                id: exportPath
+                Layout.fillWidth: true
+                placeholderText: qsTr("/home/voce/Downloads/machine.tar.zst")
+                enabled: !backend.machineCreateActive
+            }
+
+            FormCheck {
+                id: exportForce
+                text: qsTr("Substituir o arquivo se já existir")
+                enabled: !backend.machineCreateActive
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 4
+                visible: backend.machineCreateActive || backend.machineCreateError.length > 0
+                         || backend.machineCreateStage === "cancelled"
+                         || backend.machineCreateStage === "done"
+
+                Text {
+                    Layout.fillWidth: true
+                    text: machinesPage.archiveStageLabel(backend.machineCreateStage)
+                    color: backend.machineCreateError.length > 0 ? Theme.danger
+                                                                 : Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    elide: Text.ElideRight
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 6
+                    radius: 3
+                    color: Theme.bgSurface2
+
+                    Rectangle {
+                        width: parent.width
+                               * Math.max(0, Math.min(1, backend.machineCreateProgress / 100))
+                        height: parent.height
+                        radius: parent.radius
+                        color: Theme.indigo500
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: backend.machineCreateError.length > 0
+                    text: backend.machineCreateError
+                    color: Theme.danger
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: backend.machineCreateActive ? qsTr("Cancelar export") : qsTr("Fechar")
+                variant: "secondary"
+                onClicked: {
+                    if (backend.machineCreateActive) {
+                        backend.cancelMachineCreate()
+                    } else {
+                        exportDialog.close()
+                    }
+                }
+            }
+            ActionButton {
+                text: qsTr("Exportar")
+                variant: "primary"
+                enabled: !backend.machineCreateActive && exportPath.text.length > 0
+                         && machinesPage.pendingExportId.length > 0
+                         && backend.machineCreateStage !== "done"
+                onClicked: backend.exportMachine(machinesPage.pendingExportId,
+                                                 exportPath.text, exportForce.checked)
+            }
+        }
+    }
+
+    AppDialog {
+        id: importDialog
+        title: qsTr("Importar machine")
+        modal: true
+        width: 520
+        anchors.centerIn: parent
+        closePolicy: backend.machineCreateActive ? Popup.NoAutoClose
+                                                 : Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Text {
+                text: qsTr("Arquivo .tar.zst")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
+            FormField {
+                id: importPath
+                Layout.fillWidth: true
+                placeholderText: qsTr("/home/voce/Downloads/machine.tar.zst")
+                enabled: !backend.machineCreateActive
+            }
+
+            Text {
+                text: qsTr("Nome da nova machine (opcional)")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
+            FormField {
+                id: importName
+                Layout.fillWidth: true
+                placeholderText: qsTr("usado no arquivo se vazio")
+                enabled: !backend.machineCreateActive
+            }
+
+            FormCheck {
+                id: importForce
+                text: qsTr("Substituir uma machine existente com o mesmo nome")
+                enabled: !backend.machineCreateActive
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 4
+                visible: backend.machineCreateActive || backend.machineCreateError.length > 0
+                         || backend.machineCreateStage === "cancelled"
+                         || backend.machineCreateStage === "done"
+
+                Text {
+                    Layout.fillWidth: true
+                    text: machinesPage.archiveStageLabel(backend.machineCreateStage)
+                    color: backend.machineCreateError.length > 0 ? Theme.danger
+                                                                 : Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    elide: Text.ElideRight
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 6
+                    radius: 3
+                    color: Theme.bgSurface2
+
+                    Rectangle {
+                        width: parent.width
+                               * Math.max(0, Math.min(1, backend.machineCreateProgress / 100))
+                        height: parent.height
+                        radius: parent.radius
+                        color: Theme.indigo500
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: backend.machineCreateError.length > 0
+                    text: backend.machineCreateError
+                    color: Theme.danger
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: backend.machineCreateActive ? qsTr("Cancelar import") : qsTr("Fechar")
+                variant: "secondary"
+                onClicked: {
+                    if (backend.machineCreateActive) {
+                        backend.cancelMachineCreate()
+                    } else {
+                        importDialog.close()
+                    }
+                }
+            }
+            ActionButton {
+                text: qsTr("Importar")
+                variant: "primary"
+                enabled: !backend.machineCreateActive && importPath.text.length > 0
+                         && backend.machineCreateStage !== "done"
+                onClicked: backend.importMachine(importPath.text, importName.text,
+                                                 importForce.checked)
             }
         }
     }

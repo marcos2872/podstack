@@ -1374,6 +1374,10 @@ void printMachineUsage(QTextStream &stream)
            << "                          Baixa um arquivo/diretório da machine (scp)\n"
            << "  push <id|nome> <local> <remoto>\n"
            << "                          Envia um arquivo/diretório para a machine (scp)\n"
+           << "  export <id|nome> <arquivo> [--force] [--json]\n"
+           << "                          Exporta a machine para um .tar.zst (pausa)\n"
+           << "  import <arquivo> [--name N] [--force] [--json]\n"
+           << "                          Restaura uma machine de um .tar.zst\n"
            << "  distros [--json]         Lista imagens cloud e cache local\n";
     stream.flush();
 }
@@ -1873,6 +1877,165 @@ int machineDeleteCommand(const QStringList &args)
     }
 
     out() << "machine " << id << " removida\n";
+    out().flush();
+    return kExitOk;
+}
+
+int machineExportCommand(const QStringList &args)
+{
+    QString id;
+    QString file;
+    bool force = false;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--force")) {
+            force = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && file.isEmpty()) {
+            file = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() || file.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    params.insert(QStringLiteral("path"), QFileInfo(file).absoluteFilePath());
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+
+    QJsonObject donePayload;
+    PodStack::Error doneError;
+    PodStack::RpcStream stream;
+    PodStack::Error error;
+    const bool ok = stream.run(
+        QStringLiteral("machines.export"), params,
+        [&](const QString &method, const QJsonObject &payload) {
+            if (method == QStringLiteral("machines.delta")) {
+                if (!json) {
+                    out() << '[' << payload.value(QStringLiteral("stage")).toString() << "] "
+                          << payload.value(QStringLiteral("progress")).toInt() << "%\n";
+                    out().flush();
+                }
+            } else if (method == QStringLiteral("machines.done")) {
+                donePayload = payload;
+                const QJsonObject errorObject =
+                    payload.value(QStringLiteral("error")).toObject();
+                if (!errorObject.isEmpty()) {
+                    doneError = errorFromJson(errorObject);
+                }
+            }
+        },
+        &error);
+    if (!ok) {
+        return fail(error);
+    }
+    if (!doneError.isEmpty()) {
+        return fail(doneError);
+    }
+
+    if (json) {
+        out() << QJsonDocument(donePayload).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonObject machine = donePayload.value(QStringLiteral("machine")).toObject();
+    out() << "machine " << machine.value(QStringLiteral("id")).toString() << " exportada para "
+          << donePayload.value(QStringLiteral("path")).toString() << '\n';
+    out().flush();
+    return kExitOk;
+}
+
+int machineImportCommand(const QStringList &args)
+{
+    QString file;
+    QString name;
+    bool force = false;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--force")) {
+            force = true;
+        } else if (arg == QStringLiteral("--name")) {
+            if (i + 1 >= args.size()) {
+                err() << "falta o valor de --name\n";
+                return kExitUsage;
+            }
+            name = args.at(++i);
+        } else if (!arg.startsWith(QLatin1Char('-')) && file.isEmpty()) {
+            file = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (file.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("path"), QFileInfo(file).absoluteFilePath());
+    if (!name.isEmpty()) {
+        params.insert(QStringLiteral("name"), name);
+    }
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+
+    QJsonObject donePayload;
+    PodStack::Error doneError;
+    PodStack::RpcStream stream;
+    PodStack::Error error;
+    const bool ok = stream.run(
+        QStringLiteral("machines.import"), params,
+        [&](const QString &method, const QJsonObject &payload) {
+            if (method == QStringLiteral("machines.delta")) {
+                if (!json) {
+                    out() << '[' << payload.value(QStringLiteral("stage")).toString() << "] "
+                          << payload.value(QStringLiteral("progress")).toInt() << "%\n";
+                    out().flush();
+                }
+            } else if (method == QStringLiteral("machines.done")) {
+                donePayload = payload;
+                const QJsonObject errorObject =
+                    payload.value(QStringLiteral("error")).toObject();
+                if (!errorObject.isEmpty()) {
+                    doneError = errorFromJson(errorObject);
+                }
+            }
+        },
+        &error);
+    if (!ok) {
+        return fail(error);
+    }
+    if (!doneError.isEmpty()) {
+        return fail(doneError);
+    }
+
+    if (json) {
+        out() << QJsonDocument(donePayload).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonObject machine = donePayload.value(QStringLiteral("machine")).toObject();
+    out() << "machine " << machine.value(QStringLiteral("id")).toString() << " importada como "
+          << machine.value(QStringLiteral("name")).toString() << " ("
+          << machine.value(QStringLiteral("state")).toString() << ")\n";
     out().flush();
     return kExitOk;
 }
@@ -2445,6 +2608,12 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("delete") || subcommand == QStringLiteral("rm")) {
         return machineDeleteCommand(args);
+    }
+    if (subcommand == QStringLiteral("export")) {
+        return machineExportCommand(args);
+    }
+    if (subcommand == QStringLiteral("import")) {
+        return machineImportCommand(args);
     }
     if (subcommand == QStringLiteral("ssh")) {
         return machineSshCommand(args.mid(1));

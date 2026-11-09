@@ -220,7 +220,14 @@ encerra a janela da instância já em execução.
   (**SHA-256/SHA-512**) é obrigatório e verificado antes de usar a imagem. O cache em
   `~/.cache/podstack/images/` é `0700` e os arquivos/sidecars são `0600`; download em
   `.part` com rename atômico e lock por imagem.
-- Import de máquina/volume: validar manifest/checksum; extrair em dir temporário e mover.
+- Export/import de máquina: o `.tar.zst` contém o disco, o seed cloud-init e o par de
+  chaves SSH da machine; o `.part` e o arquivo final são criados com `0600` e o
+  arquivo só é renomeado no sucesso. O import valida o formato `podstack.machine/1`,
+  rejeita entradas fora da lista (`disk.qcow2`, `seed.iso`, `id_ed25519`,
+  `id_ed25519.pub`, `manifest.json`), links (hardlink/symlink), tamanhos e checksums
+  SHA-256 do manifesto antes de mover o diretório temporário (0700, arquivos 0600)
+  para `machines/<id>`. Mounts do host não são exportados.
+- Import de volume: validar manifest/checksum; extrair em dir temporário e mover.
 - `O_NOFOLLOW`/`openat2(RESOLVE_BENEATH)` quando disponível.
 
 ---

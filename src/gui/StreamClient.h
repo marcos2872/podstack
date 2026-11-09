@@ -25,6 +25,8 @@ public:
     /// Inicia `machines.create` e entrega `machines.delta`/`machines.done` sem unsubscribe:
     /// o daemon remove a subscription quando o job termina.
     void startMachineCreate(const QJsonObject &params);
+    void startMachineExport(const QJsonObject &params);
+    void startMachineImport(const QJsonObject &params);
     void startSetup(const QJsonObject &params);
     void startSetupRemoveDocker(const QJsonObject &params);
     void subscribeSetup(const QString &jobId);
@@ -50,6 +52,7 @@ signals:
     void error(const QString &message);
 
 private:
+    void startMachineJob(const QString &method, const QJsonObject &params);
     void stop(bool sendUnsubscribe);
     void connectSocket();
     void send(const QJsonObject &message);

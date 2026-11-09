@@ -2863,6 +2863,7 @@ void Backend::createMachine(const QVariantMap &spec)
     }
 
     m_machineCreateActive = true;
+    m_machineJobKind = QStringLiteral("create");
     m_machineCreateJobId.clear();
     m_machineCreateStage = QStringLiteral("validating");
     m_machineCreateProgress = 0;
@@ -2886,6 +2887,108 @@ void Backend::cancelMachineCreate()
         client.call(QStringLiteral("machines.cancel"),
                     QJsonObject{{QStringLiteral("jobId"), jobId}}, &error, 30000);
     });
+}
+
+void Backend::resetMachineCreateState()
+{
+    if (m_machineCreateActive) {
+        return;
+    }
+    m_machineCreateStage.clear();
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    m_machineCreateJobId.clear();
+    m_machineJobKind.clear();
+    emit machineCreateStateChanged();
+}
+
+void Backend::exportMachine(const QString &id, const QString &path, bool force)
+{    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (m_machineCreateActive) {
+        fail(QStringLiteral("Já existe uma operação de machine em andamento."));
+        return;
+    }
+    if (id.isEmpty() || path.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe a machine e o arquivo de destino do export."));
+        return;
+    }
+
+    m_machineCreateActive = true;
+    m_machineJobKind = QStringLiteral("export");
+    m_machineCreateJobId.clear();
+    m_machineCreateStage = QStringLiteral("validating");
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    emit machineCreateStateChanged();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    params.insert(QStringLiteral("path"), path.trimmed());
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+    m_machineCreateStream.startMachineExport(params);
+}
+
+void Backend::importMachine(const QString &path, const QString &name, bool force)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (m_machineCreateActive) {
+        fail(QStringLiteral("Já existe uma operação de machine em andamento."));
+        return;
+    }
+    if (path.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe o arquivo de machine para importar."));
+        return;
+    }
+
+    m_machineCreateActive = true;
+    m_machineJobKind = QStringLiteral("import");
+    m_machineCreateJobId.clear();
+    m_machineCreateStage = QStringLiteral("validating");
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    emit machineCreateStateChanged();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("path"), path.trimmed());
+    if (!name.trimmed().isEmpty()) {
+        params.insert(QStringLiteral("name"), name.trimmed());
+    }
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+    m_machineCreateStream.startMachineImport(params);
+}
+
+QString Backend::machineArchivePath(const QString &id) const
+{
+    QString name;
+    for (const QVariant &value : m_machines) {
+        const QVariantMap machine = value.toMap();
+        if (machine.value(QStringLiteral("id")).toString() == id) {
+            name = machine.value(QStringLiteral("name")).toString();
+            break;
+        }
+    }
+    QString directory = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (directory.isEmpty()) {
+        directory = QDir::homePath();
+    }
+    if (name.isEmpty()) {
+        name = QStringLiteral("machine");
+    }
+    return directory + QLatin1Char('/') + name + QStringLiteral(".tar.zst");
 }
 
 void Backend::runAction(const QString &method, const QJsonObject &params, int timeoutMs)

@@ -10,6 +10,7 @@
 #include "machines/CloudImageCache.h"
 #include "machines/CloudInit.h"
 #include "machines/DistroRegistry.h"
+#include "machines/MachineArchive.h"
 #include "machines/MachineFiles.h"
 #include "machines/MachineManager.h"
 #include "machines/MachineMeta.h"
@@ -43,6 +44,7 @@
 #include <sqlite3.h>
 
 #include <csignal>
+#include <thread>
 #include <unistd.h>
 
 using PodStack::BuildRecord;
@@ -53,6 +55,7 @@ using PodStack::CloudInitOptions;
 using PodStack::CreateMachineRequest;
 using PodStack::DistroImage;
 using PodStack::DistroRegistry;
+using PodStack::MachineArchive;
 using PodStack::MachineFiles;
 using PodStack::MachineManager;
 using PodStack::MachineMeta;
@@ -306,7 +309,12 @@ QString createQemuImgScript(const QString &root)
         "  : > \"$log\"\n"
         "  for arg in \"$@\"; do printf '%s\\n' \"$arg\" >> \"$log\"; done\n"
         "fi\n"
-        "eval \"disk=\\${$(( $# - 1 ))}\"\n"
+        "disk=''\n"
+        "if [ \"$1\" = 'convert' ]; then eval \"disk=\\${$#}\"; else eval \"disk=\\${$(( $# - 1 ))}\"; fi\n"
+        "if [ \"$1\" = 'convert' ] && [ -n \"${PODSTACK_QEMU_IMG_BLOCK_RELEASE:-}\" ]; then\n"
+        "  : > \"${PODSTACK_QEMU_IMG_STARTED:-/dev/null}\"\n"
+        "  while [ ! -f \"$PODSTACK_QEMU_IMG_BLOCK_RELEASE\" ]; do sleep 0.02; done\n"
+        "fi\n"
         "printf 'fake-qcow2' > \"$disk\"\n");
     if (!writeTestFile(path, script,
                        QFileDevice::ReadOwner | QFileDevice::WriteOwner
@@ -625,6 +633,95 @@ bool seedMachine(const QString &storePath, const QString &machinesRoot,
            && error.isEmpty();
 }
 
+/// Reescreve uma entrada do `.tar.zst` mantendo o manifesto intacto. Usado para
+/// simular corrupção de conteúdo e validar a checagem de checksum no import.
+bool rewriteArchiveEntry(const QString &source, const QString &target,
+                         const QString &entryName, const QByteArray &replacement)
+{
+    struct archive *reader = archive_read_new();
+    if (!reader) {
+        return false;
+    }
+    archive_read_support_filter_zstd(reader);
+    archive_read_support_format_tar(reader);
+    const QByteArray sourceBytes = QFile::encodeName(source);
+    if (archive_read_open_filename(reader, sourceBytes.constData(), 10240) != ARCHIVE_OK) {
+        archive_read_free(reader);
+        return false;
+    }
+
+    struct archive *writer = archive_write_new();
+    if (!writer) {
+        archive_read_free(reader);
+        return false;
+    }
+    archive_write_add_filter_zstd(writer);
+    archive_write_set_format_pax_restricted(writer);
+    const QByteArray targetBytes = QFile::encodeName(target);
+    if (archive_write_open_filename(writer, targetBytes.constData()) != ARCHIVE_OK) {
+        archive_read_free(reader);
+        archive_write_free(writer);
+        return false;
+    }
+
+    bool ok = true;
+    QByteArray buffer(64 * 1024, '\0');
+    while (true) {
+        struct archive_entry *entry = nullptr;
+        const int status = archive_read_next_header(reader, &entry);
+        if (status == ARCHIVE_EOF) {
+            break;
+        }
+        if (status != ARCHIVE_OK) {
+            ok = false;
+            break;
+        }
+
+        const QString name = QString::fromUtf8(archive_entry_pathname(entry));
+        QByteArray payload;
+        while (true) {
+            const la_ssize_t read = archive_read_data(reader, buffer.data(), buffer.size());
+            if (read < 0) {
+                ok = false;
+                break;
+            }
+            if (read == 0) {
+                break;
+            }
+            payload.append(buffer.constData(), read);
+        }
+        if (!ok) {
+            break;
+        }
+
+        const QByteArray data = name == entryName ? replacement : payload;
+        struct archive_entry *output = archive_entry_new();
+        const QByteArray nameBytes = name.toUtf8();
+        archive_entry_set_pathname(output, nameBytes.constData());
+        archive_entry_set_filetype(output, AE_IFREG);
+        archive_entry_set_perm(output, 0600);
+        archive_entry_set_size(output, data.size());
+        if (archive_write_header(writer, output) != ARCHIVE_OK) {
+            archive_entry_free(output);
+            ok = false;
+            break;
+        }
+        archive_entry_free(output);
+        if (!data.isEmpty()) {
+            archive_write_data(writer, data.constData(), static_cast<size_t>(data.size()));
+        }
+        if (archive_write_finish_entry(writer) != ARCHIVE_OK) {
+            ok = false;
+            break;
+        }
+    }
+
+    archive_read_free(reader);
+    archive_write_close(writer);
+    archive_write_free(writer);
+    return ok;
+}
+
 } // namespace
 
 class MachinesTest : public QObject {
@@ -674,6 +771,9 @@ private slots:
     void machineManagerMounts();
     void machineManagerValidation();
     void machineManagerLifecycle();
+    void machineManagerExportImport();
+    void machineManagerExportConcurrency();
+    void machineManagerImportChecksum();
     void machineManagerCancelled();
     void machineManagerPort();
     void qemuRuntimeFallback();
@@ -2625,6 +2725,324 @@ void MachinesTest::machineManagerLifecycle()
 
     QVERIFY(!manager.remove(meta.id, false, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+}
+
+void MachinesTest::machineManagerExportImport()
+{
+    const QString root = m_root + QStringLiteral("/manager-export");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'e');
+    m_server.setResponse(QStringLiteral("/manager-export.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-export.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("export-src");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.state, QStringLiteral("running"));
+
+    const QString cancelledArchive = root + QStringLiteral("/cancelled.tar.zst");
+    const MachineMeta cancelledExport =
+        manager.exportMachine(created.id, cancelledArchive, false, {}, [] { return true; },
+                              &error);
+    QVERIFY(cancelledExport.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+    QVERIFY(!QFileInfo::exists(cancelledArchive));
+    QCOMPARE(manager.get(created.id, &error).state, QStringLiteral("running"));
+
+    const QByteArray sourceDisk = [&created] {
+        QFile file(created.diskPath);
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    }();
+    QVERIFY(!sourceDisk.isEmpty());
+
+    const QString archive = root + QStringLiteral("/export-src.tar.zst");
+    const MachineMeta relative =
+        manager.exportMachine(created.id, QStringLiteral("relative.tar.zst"), false, {}, {},
+                              &error);
+    QVERIFY(relative.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QStringList stages;
+    const MachineMeta exported = manager.exportMachine(
+        created.id, archive, false,
+        [&stages](const QString &stage, int) { stages.append(stage); }, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(exported.state, QStringLiteral("running"));
+    QVERIFY(QFileInfo(archive).isFile());
+    const QFileDevice::Permissions archivePermissions = QFileInfo(archive).permissions();
+    QVERIFY(archivePermissions.testFlag(QFileDevice::ReadOwner));
+    QVERIFY(!archivePermissions.testFlag(QFileDevice::ReadGroup));
+    QVERIFY(!archivePermissions.testFlag(QFileDevice::ReadOther));
+    QVERIFY(stages.contains(QStringLiteral("stopping")));
+    QVERIFY(stages.contains(QStringLiteral("disk")));
+    QVERIFY(stages.contains(QStringLiteral("archive")));
+    QVERIFY(stages.contains(QStringLiteral("starting")));
+    QCOMPARE(fake->stopCount, 2);
+    QCOMPARE(fake->startCount, 3);
+
+    const MachineMeta existing =
+        manager.exportMachine(created.id, archive, false, {}, {}, &error);
+    QVERIFY(existing.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    const MachineMeta imported =
+        manager.importMachine(archive, QStringLiteral("export-dst"), false, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(imported.name, QStringLiteral("export-dst"));
+    QCOMPARE(imported.state, QStringLiteral("stopped"));
+    QVERIFY(imported.id != created.id);
+    QVERIFY(QFileInfo(imported.diskPath).isFile());
+    QVERIFY(QFileInfo(imported.seedPath).isFile());
+    QVERIFY(QFileInfo(imported.sshKeyPath).isFile());
+    const QFileDevice::Permissions keyPermissions = QFileInfo(imported.sshKeyPath).permissions();
+    QVERIFY(keyPermissions.testFlag(QFileDevice::ReadOwner));
+    QVERIFY(!keyPermissions.testFlag(QFileDevice::ReadGroup));
+    QVERIFY(!keyPermissions.testFlag(QFileDevice::ReadOther));
+    QCOMPARE(QFileInfo(imported.diskPath).size(), sourceDisk.size());
+    QFile importedDisk(imported.diskPath);
+    QVERIFY(importedDisk.open(QIODevice::ReadOnly));
+    QCOMPARE(importedDisk.readAll(), sourceDisk);
+    QVERIFY(QFileInfo(QFileInfo(imported.diskPath).absolutePath()
+                      + QStringLiteral("/meta.json"))
+                .isFile());
+
+    const MachineMeta stored = manager.get(QStringLiteral("export-dst"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stored.id, imported.id);
+
+    QFile sshConfig(root + QStringLiteral("/ssh/config"));
+    QVERIFY(sshConfig.open(QIODevice::ReadOnly));
+    const QString sshText = QString::fromUtf8(sshConfig.readAll());
+    QVERIFY(sshText.contains(QStringLiteral("Host export-dst.podstack export-dst")));
+    QVERIFY(sshText.contains(imported.sshKeyPath));
+
+    const MachineMeta duplicate =
+        manager.importMachine(archive, QStringLiteral("export-dst"), false, {}, {}, &error);
+    QVERIFY(duplicate.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    const MachineMeta replaced =
+        manager.importMachine(archive, QStringLiteral("export-dst"), true, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(replaced.id != imported.id);
+    QCOMPARE(replaced.name, QStringLiteral("export-dst"));
+    QCOMPARE(manager.list(&error).size(), 2);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const MachineMeta started = manager.start(replaced.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(started.state, QStringLiteral("running"));
+    QCOMPARE(fake->startCount, 4);
+
+    const MachineMeta stopped = manager.stop(replaced.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stopped.state, QStringLiteral("stopped"));
+
+    const int stopsBefore = fake->stopCount;
+    const int startsBefore = fake->startCount;
+    const MachineMeta stoppedExport =
+        manager.exportMachine(replaced.id, root + QStringLiteral("/stopped.tar.zst"), false,
+                              {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stoppedExport.state, QStringLiteral("stopped"));
+    QCOMPARE(fake->stopCount, stopsBefore);
+    QCOMPARE(fake->startCount, startsBefore);
+}
+
+void MachinesTest::machineManagerExportConcurrency()
+{
+    const QString root = m_root + QStringLiteral("/manager-export-concurrency");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(1024, 'x');
+    m_server.setResponse(QStringLiteral("/manager-export-concurrency.qcow2"), 200, payload);
+    const DistroImage image =
+        testImage(QStringLiteral("/manager-export-concurrency.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("export-concurrent");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.state, QStringLiteral("running"));
+
+    const QString started = root + QStringLiteral("/qemu-img-started");
+    const QString release = root + QStringLiteral("/qemu-img-release");
+    QFile::remove(started);
+    QFile::remove(release);
+    qputenv("PODSTACK_QEMU_IMG_STARTED", started.toUtf8());
+    qputenv("PODSTACK_QEMU_IMG_BLOCK_RELEASE", release.toUtf8());
+
+    const QString archive = root + QStringLiteral("/concurrent.tar.zst");
+    PodStack::Error exportError;
+    std::thread exporter([&] {
+        manager.exportMachine(created.id, archive, false, {}, {}, &exportError);
+    });
+
+    QElapsedTimer timer;
+    timer.start();
+    while (!QFileInfo::exists(started) && timer.elapsed() < 5000) {
+        QTest::qWait(20);
+    }
+    QVERIFY2(QFileInfo::exists(started), "qemu-img convert não chegou a iniciar");
+
+    PodStack::Error conflictError;
+    const MachineMeta blocked = manager.start(created.id, &conflictError);
+    QCOMPARE(conflictError.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QCOMPARE(blocked.state, QStringLiteral("stopped"));
+
+    QFile releaseFile(release);
+    QVERIFY(releaseFile.open(QIODevice::WriteOnly));
+    releaseFile.close();
+    exporter.join();
+
+    qunsetenv("PODSTACK_QEMU_IMG_STARTED");
+    qunsetenv("PODSTACK_QEMU_IMG_BLOCK_RELEASE");
+
+    QVERIFY2(exportError.isEmpty(), qPrintable(exportError.message));
+    QVERIFY(QFileInfo(archive).isFile());
+    QCOMPARE(manager.get(created.id, &error).state, QStringLiteral("running"));
+}
+
+void MachinesTest::machineManagerImportChecksum()
+{
+    const QString root = m_root + QStringLiteral("/manager-import-checksum");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(1024, 'c');
+    m_server.setResponse(QStringLiteral("/manager-import-checksum.qcow2"), 200, payload);
+    const DistroImage image =
+        testImage(QStringLiteral("/manager-import-checksum.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("checksum-src");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const QString archive = root + QStringLiteral("/checksum.tar.zst");
+    const MachineMeta exported = manager.exportMachine(created.id, archive, false, {}, {},
+                                                       &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(exported.state, QStringLiteral("running"));
+
+    const QString tampered = root + QStringLiteral("/tampered.tar.zst");
+    QVERIFY(rewriteArchiveEntry(archive, tampered, QStringLiteral("disk.qcow2"),
+                                QByteArrayLiteral("FAKE-QCOW2")));
+    const MachineMeta corrupted =
+        manager.importMachine(tampered, QStringLiteral("tampered-import"), false, {}, {},
+                              &error);
+    QVERIFY(corrupted.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(error.message.contains(QStringLiteral("checksum")));
+
+    const MachineMeta missing =
+        manager.importMachine(root + QStringLiteral("/missing.tar.zst"),
+                              QStringLiteral("missing-import"), false, {}, {}, &error);
+    QVERIFY(missing.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const MachineMeta cancelled = manager.importMachine(
+        archive, QStringLiteral("cancelled-import"), false, {}, [] { return true; }, &error);
+    QVERIFY(cancelled.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    QCOMPARE(manager.list(&error).size(), 1);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const MachineMeta restored =
+        manager.importMachine(archive, QStringLiteral("checksum-ok"), false, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(restored.state, QStringLiteral("stopped"));
+    QCOMPARE(manager.list(&error).size(), 2);
 }
 
 void MachinesTest::machineManagerCancelled()

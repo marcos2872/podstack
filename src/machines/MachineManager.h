@@ -11,6 +11,7 @@
 #include "machines/SshConfig.h"
 #include "machines/VirtiofsdProcess.h"
 
+#include <QHash>
 #include <QString>
 #include <QVector>
 
@@ -84,6 +85,18 @@ public:
     MachineMeta restart(const QString &idOrName, Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
     bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
+    /// Empacota a machine em `.tar.zst` (pausa e reinicia se estava rodando).
+    MachineMeta exportMachine(const QString &idOrName, const QString &archivePath, bool force,
+                              const std::function<void(const QString &stage, int progress)>
+                                  &progress,
+                              const std::function<bool()> &cancelled,
+                              Error *error = nullptr);
+    /// Restaura uma machine de um `.tar.zst` com novo ID, porta SSH e bloco SSH.
+    MachineMeta importMachine(const QString &archivePath, const QString &name, bool force,
+                              const std::function<void(const QString &stage, int progress)>
+                                  &progress,
+                              const std::function<bool()> &cancelled,
+                              Error *error = nullptr);
 
 private:
     MachineMeta load(const QString &idOrName, Error *error);
@@ -101,9 +114,16 @@ private:
                          QString *varsPath, Error *error);
     bool createDisk(const QString &diskPath, const QString &backingPath, qint64 diskBytes,
                     Error *error);
+    bool flattenDisk(const QString &diskPath, const QString &targetPath,
+                     const std::function<bool()> &cancelled, Error *error);
+    QString qemuImgBinary(Error *error) const;
     bool ensureSshKey(const QString &directory, const QString &name, QString *privatePath,
                       QString *publicKey, Error *error);
     bool persist(MachineMeta &meta, Error *error);
+    std::shared_ptr<std::recursive_mutex> machineLock(const QString &id);
+    bool tryLockMachine(const QString &id,
+                        std::shared_ptr<std::recursive_mutex> *holder,
+                        std::unique_lock<std::recursive_mutex> *lock);
     static QString normalizeArch(const QString &arch);
     static QString normalizedUser(const QString &user);
     static QString nowIso();
@@ -116,6 +136,9 @@ private:
     SshConfig m_sshConfig;
     std::recursive_mutex m_virtiofsMutex;
     std::map<QString, std::map<QString, std::unique_ptr<VirtiofsdProcess>>> m_virtiofs;
+    std::mutex m_machineLocksMutex;
+    QHash<QString, std::shared_ptr<std::recursive_mutex>> m_machineLocks;
+    std::mutex m_archiveMutex;
 };
 
 } // namespace PodStack

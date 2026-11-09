@@ -35,6 +35,7 @@ Rectangle {
     }
 
     signal deleteRequested(string id)
+    signal exportRequested(string id)
     signal closeRequested()
     signal expandRequested(string id, int tab)
     signal terminalAreaChanged(rect area, bool visible)
@@ -398,6 +399,7 @@ Rectangle {
                 enabled: root.machineId.length > 0 && root.machineState !== "running"
                          && root.machineState !== "starting"
                          && backend.actionActive === false
+                         && backend.machineCreateActive === false
                 onClicked: backend.machineLifecycle("start", root.machineId)
             }
 
@@ -408,6 +410,7 @@ Rectangle {
                          && (root.machineState === "running"
                              || root.machineState === "starting")
                          && backend.actionActive === false
+                         && backend.machineCreateActive === false
                 onClicked: backend.machineLifecycle("stop", root.machineId, false)
             }
 
@@ -440,7 +443,18 @@ Rectangle {
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
                          && backend.actionActive === false
+                         && backend.machineCreateActive === false
                 onClicked: backend.machineLifecycle("restart", root.machineId)
+            }
+
+            ActionButton {
+                text: qsTr("Exportar")
+                size: "sm"
+                enabled: root.machineId.length > 0
+                         && root.machineState !== "provisioning"
+                         && root.machineState !== "deleting"
+                         && backend.machineCreateActive === false
+                onClicked: root.exportRequested(root.machineId)
             }
 
             ActionButton {
@@ -448,6 +462,7 @@ Rectangle {
                 variant: "danger"
                 size: "sm"
                 enabled: root.machineId.length > 0 && backend.actionActive === false
+                         && backend.machineCreateActive === false
                 onClicked: root.deleteRequested(root.machineId)
             }
         }

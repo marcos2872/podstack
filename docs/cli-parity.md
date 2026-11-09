@@ -51,8 +51,8 @@
 | `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | | ⬜ |
 | `pull [-m M] SRC [DST]` | `machine pull <id\|nome> <remoto> <local>` | — | Guest → host via `scp -r`; o local precisa existir como diretório ou arquivo | ✅ T4-08 |
 | `push [-m M] SRC [DST]` | `machine push <id\|nome> <local> <remoto>` | — | Host → guest via `scp -r` | ✅ T4-08 |
-| `export M FILE.tar.zst` | `machine export M FILE` | — | Pausa a máquina | ⬜ T4-09 |
-| `import FILE [-n NAME]` | `machine import FILE` | `--name` | Valida manifest/checksum | ⬜ T4-09 |
+| `export M FILE.tar.zst` | `machine export <id\|nome> <arquivo>` | `--force`, `--json` | Pausa/reinicia a máquina; `--force` substitui o arquivo | ✅ T4-09 |
+| `import FILE [-n NAME]` | `machine import <arquivo>` | `--name`, `--force`, `--json` | Valida manifesto/checksums; `--force` substitui a machine de mesmo nome | ✅ T4-09 |
 | `clone SRC DST` | `machine clone SRC DST` | — | CoW quando possível | ⬜ T4-10 |
 | `rename M NEW` | `machine rename M NEW` | — | Atualiza SSH config | ⬜ T4-10 |
 | `default [M]` | `machine default [M]` | — | Get/set | ⬜ T4-10 |

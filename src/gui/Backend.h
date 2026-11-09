@@ -92,6 +92,7 @@ class Backend : public QObject {
     Q_PROPERTY(bool machineFilesBusy READ machineFilesBusy NOTIFY machineFilesChanged)
     Q_PROPERTY(QString machineFilesError READ machineFilesError NOTIFY machineFilesChanged)
     Q_PROPERTY(bool machineCreateActive READ machineCreateActive NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineJobKind READ machineJobKind NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateJobId READ machineCreateJobId NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateStage READ machineCreateStage NOTIFY machineCreateStateChanged)
     Q_PROPERTY(int machineCreateProgress READ machineCreateProgress
@@ -185,6 +186,7 @@ public:
     bool machineFilesBusy() const { return m_machineFilesBusy; }
     QString machineFilesError() const { return m_machineFilesError; }
     bool machineCreateActive() const { return m_machineCreateActive; }
+    QString machineJobKind() const { return m_machineJobKind; }
     QString machineCreateJobId() const { return m_machineCreateJobId; }
     QString machineCreateStage() const { return m_machineCreateStage; }
     int machineCreateProgress() const { return m_machineCreateProgress; }
@@ -266,6 +268,11 @@ public:
     Q_INVOKABLE void removeMachine(const QString &id, bool force);
     Q_INVOKABLE void createMachine(const QVariantMap &spec);
     Q_INVOKABLE void cancelMachineCreate();
+    Q_INVOKABLE void resetMachineCreateState();
+    Q_INVOKABLE void exportMachine(const QString &id, const QString &path, bool force = false);
+    Q_INVOKABLE void importMachine(const QString &path, const QString &name = QString(),
+                                   bool force = false);
+    Q_INVOKABLE QString machineArchivePath(const QString &id) const;
     Q_INVOKABLE void lifecycle(const QString &action, const QString &id);
     Q_INVOKABLE void removeContainer(const QString &id, bool force, bool volumes);
     Q_INVOKABLE void loadContainerDetail(const QString &id);
@@ -486,6 +493,7 @@ private:
     bool m_machineDistrosLoaded = false;
     bool m_machinesRefreshAgain = false;
     bool m_machineCreateActive = false;
+    QString m_machineJobKind;
     QString m_machineCreateJobId;
     QString m_machineCreateStage;
     int m_machineCreateProgress = 0;

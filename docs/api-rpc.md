@@ -280,6 +280,8 @@ continuam planejados para as tarefas seguintes.
 | `machines.stop` | `{id, force?}` | `Machine` |
 | `machines.restart` | `{id, force?}` | `Machine` |
 | `machines.delete` | `{id, force?}` | `{deleted:true}` |
+| `machines.export` | `{id, path, force?}` | `JobRef` + `Subscription` |
+| `machines.import` | `{path, name?, force?}` | `JobRef` + `Subscription` |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile}` |
 | `machines.files.list` | `{id, path?}` | `{path, items: MachineFile[]}` |
@@ -295,8 +297,6 @@ continuam planejados para as tarefas seguintes.
 |---|---|---|---|
 | `machines.rename` | `{id, name}` | `Machine` | T4-10 |
 | `machines.clone` | `{id, name}` | `JobRef` | T4-10 |
-| `machines.export` | `{id, path}` | `JobRef` | T4-09 |
-| `machines.import` | `{path, name}` | `JobRef` | T4-09 |
 | `machines.ports.list` / `set` | `{id, ports?}` | `{items}` | T4-12 |
 | `machines.console` | `{id}` | `Subscription` (stream serial) | T4-15 |
 
@@ -342,6 +342,29 @@ QEMU (`virtiofs-<tag>.sock` dentro do diretório da machine) e encerra os proces
 stop/remove; falha em um mount desfaz os anteriores e o job termina em erro. Sem o binário
 `virtiofsd` (e sem `PODSTACK_VIRTIOFSD_BINARY`), o job falha com `PODSTACK_UNSUPPORTED` e
 remediação.
+
+**Export/import (T4-09).** `machines.export` para a machine (se estiver rodando),
+converte o disco para um qcow2 autocontido (`qemu-img convert`), grava
+`disk.qcow2`, `seed.iso`, `id_ed25519`, `id_ed25519.pub` e `manifest.json` em
+`<path>` (`.tar.zst`, filtro zstd) com checksum SHA-256 por artefato e reinicia a
+machine ao terminar. O arquivo é gravado em `<path>.part` e renomeado só no
+sucesso; o destino precisa ser absoluto e não pode existir sem `force`. Progresso:
+`machines.delta {jobId, stage, progress}` com `stage` em `stopping`, `disk`,
+`archive`, `starting` ou `done`; o resultado chega em
+`machines.done {jobId, path, machine?, error?}`. `machines.import` extrai em
+diretório temporário, valida formato `podstack.machine/1`, nomes de entrada,
+tamanhos e os checksums do manifesto, cria uma **nova** machine com ID, porta e
+bloco SSH próprios, preservando a identidade/chave SSH do arquivo (o pacote é
+uma credencial), grava `meta.json`/SQLite e o bloco SSH, e deixa a machine
+`stopped`. `name` vazio usa o nome do manifesto;
+nome existente retorna `PODSTACK_CONFLICT` sem `force` (com `force`, a machine
+existente é removida e substituída). Mounts do host não são exportados. Progresso:
+`verify`, `metadata`, `done`. Cancelamento em ambos usa os checkpoints e termina em
+`PODSTACK_CANCELLED`, removendo o `.part`/diretório temporário; `machines.cancel`
+aceita o `jobId` dos dois jobs. Export/import são serializados entre si e uma
+segunda operação na mesma machine (start/stop/restart/delete/export) retorna
+`PODSTACK_CONFLICT` enquanto o job estiver em andamento. O arquivo final fica
+`0600` (contém a chave privada SSH da machine).
 
 **Logs do console.** `machines.logs` resolve `id` ou nome e lê apenas
 `machines/<id>/console.log`, sem expor o caminho na resposta. O arquivo precisa ser regular

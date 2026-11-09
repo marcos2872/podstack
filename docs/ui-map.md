@@ -104,7 +104,7 @@
 | Compose | projeto, status, serviços, diretório | up, down, restart, logs, abrir YAML/diretório |
 | Builds | imagem, status, duração, origem, plataformas | novo build, cancelar, remover, log |
 | Services (K8s) | planejado (M5) | — |
-| Machines | nome, distro, estado, SSH | criar, start/stop/restart, excluir |
+| Machines | nome, distro, estado, SSH | criar, importar, exportar, start/stop/restart, excluir |
 | Devices | tipo, nome, VID:PID, status | attach/detach |
 
 **Prune com prévia (T2-18):** os diálogos de Imagens e Volumes chamam
@@ -136,7 +136,7 @@ Abas por tipo (estado do M4 após o redesenho do detalhe):
 | **Terminal** | ✅ aba interna do detalhe | ✅ aba interna do detalhe | — | — | `TerminalView`/QTermWidget em placeholder do QML; **Nova sessão em janela** via `ExternalTerminal` |
 | **Inspect** | ✅ overlay | — | — | — | JSON completo via `containers.inspect` |
 
-Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info (incluindo os mounts virtiofs source → target), Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash e mounts `origem:destino[:ro]`), start/stop/restart, expandir o detalhe em overlay, abrir SSH na aba Terminal desse detalhe, gerenciar arquivos na aba Files (listar, baixar para `~/Downloads` e enviar) e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
+Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info (incluindo os mounts virtiofs source → target), Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash e mounts `origem:destino[:ro]`), importar/exportar `.tar.zst` (com progresso e cancelamento), start/stop/restart, expandir o detalhe em overlay, abrir SSH na aba Terminal desse detalhe, gerenciar arquivos na aba Files (listar, baixar para `~/Downloads` e enviar) e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 
@@ -269,8 +269,9 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   `machines.get` (`loadMachineInfo`) e atualiza o card quando `machineInfoChanged`/
   `machinesChanged` chegam. Abrir pela lista usa a aba Info, pelo botão **Expandir**;
   o botão **SSH** do card lateral abre direto na aba Terminal (`tab=3`).
-- Ações de ciclo de vida continuam no cabeçalho; **Excluir** pede confirmação nativa e
-  fecha o overlay após remover.
+- Ações de ciclo de vida continuam no cabeçalho; **Exportar** abre o diálogo de
+  arquivo `.tar.zst` (com progresso e cancelamento) e **Excluir** pede confirmação
+  nativa e fecha o overlay após remover.
 
 ---
 
@@ -282,7 +283,8 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 | Criar rede | nome, driver, subnet4, gateway, IPv6, labels | CIDR válido; sem sobreposição |
 | Criar máquina | distro/versão, nome, CPU/mem/disco, user, user-data, mounts (`origem:destino[:ro]`, até 8), isolado, SSH agent | recursos mínimos; nome único; YAML válido; mounts absolutos/existentes e tags seguras |
 | Clonar máquina | origem, novo nome | nome único |
-| Importar máquina | arquivo, nome | checksum/manifest |
+| Exportar máquina | arquivo `.tar.zst`, substituir | caminho absoluto; padrão em `~/Downloads/<nome>.tar.zst` |
+| Importar máquina | arquivo `.tar.zst`, nome, substituir | checksum/manifesto; nome RFC 1123 |
 | Renomear | novo nome | RFC 1123 |
 | Confirmar remoção | lista + impacto | requer confirmação ou `force` |
 | Reset Docker/K8s | escopo + aviso | digitar nome/`--yes` |

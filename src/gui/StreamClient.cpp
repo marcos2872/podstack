@@ -140,14 +140,29 @@ void StreamClient::startBuild(const QJsonObject &params)
 
 void StreamClient::startMachineCreate(const QJsonObject &params)
 {
+    startMachineJob(QStringLiteral("machines.create"), params);
+}
+
+void StreamClient::startMachineExport(const QJsonObject &params)
+{
+    startMachineJob(QStringLiteral("machines.export"), params);
+}
+
+void StreamClient::startMachineImport(const QJsonObject &params)
+{
+    startMachineJob(QStringLiteral("machines.import"), params);
+}
+
+void StreamClient::startMachineJob(const QString &method, const QJsonObject &params)
+{
     // Não há `machines.unsubscribe`: o daemon remove a subscription ao terminar.
     stop(false);
-    m_kind = QStringLiteral("machine-create");
+    m_kind = QStringLiteral("machine-job");
     m_unsubscribeMethod.clear();
     m_pending = {
         {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
         {QStringLiteral("id"), 1},
-        {QStringLiteral("method"), QStringLiteral("machines.create")},
+        {QStringLiteral("method"), method},
         {QStringLiteral("params"), params},
     };
     m_pendingSend = true;
@@ -221,16 +236,12 @@ void StreamClient::unsubscribe()
 
 void StreamClient::stop(bool sendUnsubscribe)
 {
-    if (sendUnsubscribe && !m_subscriptionId.isEmpty()
+    if (sendUnsubscribe && !m_subscriptionId.isEmpty() && !m_unsubscribeMethod.isEmpty()
         && m_socket.state() == QLocalSocket::ConnectedState) {
         QJsonObject message;
         message.insert(QStringLiteral("jsonrpc"), QStringLiteral("2.0"));
         message.insert(QStringLiteral("id"), 2);
-        message.insert(QStringLiteral("method"),
-                       m_unsubscribeMethod.isEmpty()
-                           ? QStringLiteral("containers.") + m_kind
-                                 + QStringLiteral(".unsubscribe")
-                           : m_unsubscribeMethod);
+        message.insert(QStringLiteral("method"), m_unsubscribeMethod);
         message.insert(QStringLiteral("params"),
                        QJsonObject{{QStringLiteral("subscriptionId"), m_subscriptionId}});
         send(message);

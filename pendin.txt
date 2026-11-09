@@ -1,18 +1,19 @@
 PENDÊNCIAS — PodStack
 Atualizado: 2026-11-09
-Parada solicitada: após a T4-08 (concluída e commitada em 2a48e9e).
+Parada solicitada: após a T4-09 (concluída).
 
 SITUAÇÃO ATUAL
-- Branch feat/m4-machines enviada para origin; PR #11 aberta (feat/m4-machines -> main).
-- Últimos commits: 2a48e9e (T4-08 arquivos SSH/SCP), 29c1350 (T4-07 virtiofs),
-  601a7ce (T4-05 reconciliação/órfãos), da4d3dd (overlay de máquina com SSH).
-- T4-05, T4-07 e T4-08 concluídas e pushadas; a T4-08 tem pendências de UX (ver abaixo).
+- Branch feat/m4-machines; PR #11 aberta (feat/m4-machines -> main).
+- Últimos commits: 0031fcb (pendências pós-T4-08), 2a48e9e (T4-08 arquivos SSH/SCP),
+  29c1350 (T4-07 virtiofs), 601a7ce (T4-05 reconciliação/órfãos) + o commit da T4-09
+  nesta sessão.
+- T4-05, T4-07 e T4-08 concluídas e pushadas; T4-09 concluída (export/import .tar.zst
+  com manifesto/checksums, RPC, CLI e GUI).
 - CI da PR bloqueada por partial outage do GitHub Actions (runs sem job,
   "Internal server error"). Reexecutar quando o Actions normalizar:
   gh run rerun <run-id>
 
 PRÓXIMAS TAREFAS DO M4 (em ordem)
-- T4-09 (P1) — export/import de machine em .tar.zst (pausar, validar integridade/checksum, restaurar).
 - T4-10 (P1) — clone/rename/default (clone independente, novo bloco SSH, default do CLI).
 - T4-11 (P1) — limites de CPU/memória/disco e restart (aplicar no QEMU/qemu-img).
 - T4-12 (P1) — port forwarding da machine (hostfwd extra, persistir portas, GUI/CLI).
@@ -31,6 +32,16 @@ MELHORIAS CONHECIDAS DA T4-08 (não bloqueiam o commit)
   de arquivo existente.
 - CLI de mounts (virtiofs) ficou pendente: `machine create` só aceita mounts pela GUI/RPC.
 - Integração real de arquivos fica atrás de PODSTACK_MACHINE_FILES_INTEGRATION=1 (QSKIP no CI).
+
+MELHORIAS CONHECIDAS DA T4-09 (não bloqueiam o commit)
+- O progresso do `qemu-img convert` fica em 5% durante toda a conversão (sem parsear
+  a saída do qemu-img); vale um pulso por tempo ou `-p` com leitura de stderr.
+- `import --force` remove a machine existente antes de persistir a nova; falha de
+  I/O depois disso pode deixar o usuário sem a antiga e sem a nova (validar/escrever
+  em staging e mover para uma "lixeira" antes de apagar).
+- O pacote contém a chave privada SSH da machine; importar o mesmo arquivo duas vezes
+  duplica a identidade (documentado como credencial).
+- Restos de `.part`/`.export-*`/`.import-*` após crash do daemon não são varridos no reconcile.
 
 CRITÉRIOS DE SAÍDA DO M4 A VALIDAR
 - Ubuntu, Debian e Fedora criadas e acessíveis por SSH em VM real.

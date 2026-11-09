@@ -327,6 +327,12 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.cancel")) {
         return machineCancel(params, error);
     }
+    if (method == QStringLiteral("machines.export")) {
+        return machineExport(params, notify, error);
+    }
+    if (method == QStringLiteral("machines.import")) {
+        return machineImport(params, notify, error);
+    }
     if (method == QStringLiteral("machines.start") || method == QStringLiteral("machines.stop")
         || method == QStringLiteral("machines.restart")) {
         return machineAction(method, params, error);
@@ -568,6 +574,182 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
             payload.insert(QStringLiteral("machine"), machine.toJson());
         } else {
             payload.insert(QStringLiteral("error"), createError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("machines.done"), payload);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+            m_machineSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::machineExport(const QJsonObject &params, const Notify &notify,
+                                  Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString path = params.value(QStringLiteral("path")).toString().trimmed();
+    if (path.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o arquivo de destino do export."));
+        }
+        return {};
+    }
+    if (!QFileInfo(path).isAbsolute()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("O arquivo de export precisa ser absoluto."),
+                                 path);
+        }
+        return {};
+    }
+    const bool force = params.value(QStringLiteral("force")).toBool();
+
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        jobId = QStringLiteral("machine-export-%1-%2")
+                    .arg(QDateTime::currentSecsSinceEpoch())
+                    .arg(m_nextMachineJob++);
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        m_machineSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, id, path, force,
+                             notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("machines.delta"), payload);
+        };
+        const auto cancelled = [subscription] {
+            return subscription->cancel.load();
+        };
+
+        Error exportError;
+        MachineMeta machine =
+            m_machines.exportMachine(id, path, force, progress, cancelled, &exportError);
+        if (exportError.isEmpty() && machine.id.isEmpty()) {
+            exportError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                      QStringLiteral("Falha ao exportar a machine."));
+        }
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        payload.insert(QStringLiteral("path"), path);
+        if (exportError.isEmpty()) {
+            payload.insert(QStringLiteral("machine"), machine.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), exportError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("machines.done"), payload);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+            m_machineSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::machineImport(const QJsonObject &params, const Notify &notify,
+                                  Error *error)
+{
+    const QString path = params.value(QStringLiteral("path")).toString().trimmed();
+    if (path.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o arquivo de machine para importar."));
+        }
+        return {};
+    }
+    if (!QFileInfo(path).isAbsolute()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("O arquivo de import precisa ser absoluto."),
+                                 path);
+        }
+        return {};
+    }
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    const bool force = params.value(QStringLiteral("force")).toBool();
+
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        jobId = QStringLiteral("machine-import-%1-%2")
+                    .arg(QDateTime::currentSecsSinceEpoch())
+                    .arg(m_nextMachineJob++);
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        m_machineSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, path, name, force,
+                             notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("machines.delta"), payload);
+        };
+        const auto cancelled = [subscription] {
+            return subscription->cancel.load();
+        };
+
+        Error importError;
+        MachineMeta machine =
+            m_machines.importMachine(path, name, force, progress, cancelled, &importError);
+        if (importError.isEmpty() && machine.id.isEmpty()) {
+            importError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                      QStringLiteral("Falha ao importar a machine."));
+        }
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        payload.insert(QStringLiteral("path"), path);
+        if (importError.isEmpty()) {
+            payload.insert(QStringLiteral("machine"), machine.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), importError.toJson());
         }
         if (notify) {
             notify(QStringLiteral("machines.done"), payload);

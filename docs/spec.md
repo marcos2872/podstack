@@ -463,9 +463,19 @@ Host <name>.podstack <name>
 
 ### 7.5 Export/import
 
-- Export: parar/pausar máquina; tar.zst de disco + metadata + seed; checksum.
-- Import: validar manifest/checksum; criar nova máquina; não sobrescrever existente sem `--force`.
-- Progresso e cancelamento; limpeza em falha.
+- Export: parar a máquina (se estiver rodando), converter o disco para um qcow2
+  autocontido e gravar `.tar.zst` (zstd) com `disk.qcow2`, `seed.iso`, o par de
+  chaves SSH e `manifest.json`; checksum SHA-256 por artefato no manifesto.
+  Destino absoluto, gravação em `.part` e rename atômico; ao terminar, reiniciar
+  a máquina se ela estava rodando. Mounts do host não entram no arquivo.
+- Import: extrair em diretório temporário dentro de `machinesRoot`, validar o
+  formato `podstack.machine/1`, os nomes de entrada, os tamanhos e os checksums
+  antes de mover para o diretório definitivo; criar uma nova máquina com ID,
+  porta SSH e bloco SSH próprios e estado `stopped`. Nome vazio usa o do
+  manifesto; nome existente retorna `PODSTACK_CONFLICT` sem `force`.
+- Progresso (`machines.delta`/`machines.done`) e cancelamento por checkpoints;
+  em falha/cancelamento, remover `.part`/diretório temporário e restaurar o
+  estado anterior da máquina exportada.
 
 ### 7.6 Limites e recursos
 
