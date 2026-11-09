@@ -21,7 +21,7 @@
   Alternativa Linux ao OrbStack, com Qt 6/QML, daemon de usuário e CLI scriptable.
 </p>
 
-> **Status:** **M3 concluído** — Compose (detecção por labels, up/down/restart/stop/start, logs por serviço/agregados), builds via Libpod com histórico SQLite e eventos globais em toasts. Somam-se ao M2 (imagens, volumes, redes e pods) e ao M1 (containers, logs, stats, files, terminal, batch, health e rootful). **7 testes**, cobertura **82,5%** (gate 80%). Próximo: M4 (machines).
+> **Status:** **M3 concluído** — Compose (detecção por labels, up/down/restart/stop/start, logs por serviço/agregados), builds via Libpod com histórico SQLite e eventos globais em toasts. Somam-se ao M2 (imagens, volumes, redes e pods) e ao M1 (containers, logs, stats, files, terminal, batch, health e rootful). **Bandeja/tray e onboarding** implementados (fechar para a bandeja, Activity Monitor, notificações e setup modal). **13 testes**, cobertura **79,7%** (gate de 80% pendente; ver [`docs/testing.md`](docs/testing.md)). Próximo: M4 (machines).
 > **Ressalvas M1:** terminal abre em janela nativa (embutir no inspector fica no M2); upload de arquivos e seleção múltipla fina também ficam no M2.
 > **Plataforma:** Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10.
 > **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).
@@ -208,6 +208,7 @@ sudo dnf install cmake ninja-build gcc-c++ \
   qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel
 
 # provider Compose (runtime, para projetos Compose)
+# O binário é docker-compose, mas a engine continua sendo Podman (Libpod REST).
 sudo dnf install docker-compose
 
 # build
@@ -227,6 +228,27 @@ O `scripts/dev.sh` usa `$XDG_RUNTIME_DIR/podstack/control.sock`, inicia o daemon
 ```bash
 PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
 ```
+
+O `scripts/dev.sh` **não instala** o `podstack-helper`, que é um serviço root. Para testar
+ações do setup que instalam/removem pacotes (Podman, QEMU, Caddy etc.) em desenvolvimento:
+
+```bash
+./scripts/dev-helper.sh          # instala/reinicia o helper (pede confirmação e usa sudo)
+./scripts/dev-helper.sh --yes    # sem confirmação
+./scripts/dev-helper.sh --uninstall
+```
+
+Ativar o `podman.socket` **não** exige o helper. Detalhes em
+[`docs/packaging.md`](docs/packaging.md) §4.1.
+
+### Por que `docker-compose` e não `podman-compose`?
+
+A **engine** é o Podman (Libpod REST). O `docker-compose` é usado apenas como **provider do
+Compose**, apontando para o socket do Podman via `DOCKER_HOST`
+(`unix://$XDG_RUNTIME_DIR/podman/podman.sock`), conforme o
+[`ADR-0007`](docs/adr/0007-compose-provider.md). O `podman-compose` é um fallback com semântica
+parcial; o provider padrão continua sendo o Docker Compose. Quando disponível, `podman compose`
+pode ser usado como wrapper — ele delega ao provider.
 
 O CLI também pode ser usado separadamente:
 
