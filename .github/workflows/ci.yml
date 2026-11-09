@@ -48,6 +48,7 @@ jobs:
 
       - name: Cobertura (relatório)
         run: |
+          set -o pipefail
           mkdir -p coverage
           gcovr -r . --filter 'src/' --gcov-ignore-parse-errors \
             --merge-mode-functions=separate \
@@ -58,6 +59,7 @@ jobs:
 
       - name: Cobertura (gate 80%)
         run: |
+          set -o pipefail
           gcovr -r . --filter 'src/' --gcov-ignore-parse-errors \
             --merge-mode-functions=separate \
             --txt-metric line --print-summary --fail-under-line 80 \
