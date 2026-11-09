@@ -55,14 +55,23 @@ O PodStack é licenciado sob **GPL-3.0-or-later**. Portanto:
 
 ## Implementação
 
-- `TerminalBackend` (interface) + `QTermWidgetBackend`.
+- `TerminalView` (`QWidget`) encapsula o backend concreto `QTermWidget` já configurado e
+  a barra com **Abrir externo**; uma abstração `TerminalBackend` fica para uma troca
+  futura. O componente é reutilizado no dock da `MainWindow`, na `TerminalWindow`
+  legada e na aba Terminal do modal de detalhe.
 - `MainWindow` (`QMainWindow`) hospeda a UI QML em um `QQuickWidget` e o terminal em um
-  `QDockWidget` "Terminal" com abas de `QTermWidget` (uma sessão por aba).
+  `QDockWidget` "Terminal" com abas de `TerminalView` (uma sessão por aba).
 - Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` após o
   `machines.ssh` devolver host/porta/usuário/chave. O `Backend` apenas emite
-  `terminalRequested`; quem cria o QTermWidget é a `MainWindow`.
-- Testes: TTY, resize, UTF-8, cores, Ctrl+C/D, bracketed paste.
-- Fallback sempre disponível: `xdg-terminal-exec`/terminal preferido.
+  `terminalRequested`; quem cria a sessão é a `MainWindow`.
+- O detalhe do container é um `QDialog` modal (`ContainerDetailDialog`) com as abas
+  **Detalhes** (`ContainerDetail.qml` em `QQuickWidget`) e **Terminal** (`TerminalView`).
+- `ExternalTerminal` relança a mesma sessão fora do app sem shell: prioriza
+  `xdg-terminal-exec` (spec freedesktop), depois `$TERMINAL` e os emuladores comuns
+  (`gnome-terminal`, `kgx`, `konsole`, `xfce4-terminal`, `alacritty`, `kitty`, `foot`,
+  `wezterm`, `xterm`), com os argumentos corretos por emulador.
+- Testes: TTY, resize, UTF-8, cores, Ctrl+C/D, bracketed paste; o lançamento externo é
+  coberto por `ExternalTerminal::commandFor` e por um `xdg-terminal-exec` falso no `PATH`.
 - Cabeçalhos SPDX `GPL-3.0-or-later` em todos os fontes.
 
 ## Referências

@@ -13,6 +13,7 @@ class QTabWidget;
 namespace PodStack {
 
 class Backend;
+class ContainerDetailDialog;
 class NotificationService;
 class SingleInstance;
 class TrayController;
@@ -34,6 +35,8 @@ public:
 
     Q_INVOKABLE void reveal();
     Q_INVOKABLE void hideToTray();
+    Q_INVOKABLE void openContainerDetail(const QString &id);
+    Q_INVOKABLE void openContainerDetailTab(const QString &id, int detailTab);
 
     bool qmlLoaded() const;
     QDockWidget *terminalDock() const { return m_terminalDock; }
@@ -50,6 +53,7 @@ private:
     void loadMainQml();
     void closeTerminalTab(int index);
     void updateQuitOnLastWindowClosed();
+    ContainerDetailDialog *ensureDetailDialog();
 
     Backend *m_backend = nullptr;
     TrayController *m_tray = nullptr;
@@ -59,6 +63,7 @@ private:
     QQuickWidget *m_quickWidget = nullptr;
     QDockWidget *m_terminalDock = nullptr;
     QTabWidget *m_terminalTabs = nullptr;
+    ContainerDetailDialog *m_detailDialog = nullptr;
 };
 
 } // namespace PodStack

@@ -12,7 +12,6 @@ Item {
     property int anchorIndex: -1
     property string currentId: ""
     property string pendingOpenId: ""
-    property string pendingOpenTab: ""
     property string filterText: ""
     property string filter: "all"
 
@@ -107,9 +106,8 @@ Item {
         applyPendingOpen()
     }
 
-    function openContainer(id, tab) {
+    function openContainer(id) {
         pendingOpenId = id
-        pendingOpenTab = tab
         applyPendingOpen()
     }
 
@@ -122,9 +120,7 @@ Item {
                 currentId = pendingOpenId
                 containerList.currentIndex = i
                 selectOnly(i)
-                inspector.openTab(pendingOpenTab.length > 0 ? pendingOpenTab : "info")
                 pendingOpenId = ""
-                pendingOpenTab = ""
                 return
             }
         }

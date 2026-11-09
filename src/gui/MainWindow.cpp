@@ -2,9 +2,10 @@
 #include "gui/MainWindow.h"
 
 #include "gui/Backend.h"
+#include "gui/ContainerDetailDialog.h"
 #include "gui/Notifications.h"
 #include "gui/SingleInstance.h"
-#include "gui/TerminalWindow.h"
+#include "gui/TerminalView.h"
 #include "gui/Tray.h"
 
 #include <QApplication>
@@ -15,8 +16,6 @@
 #include <QQmlError>
 #include <QQuickWidget>
 #include <QTabWidget>
-
-#include <qtermwidget.h>
 
 namespace PodStack {
 
@@ -122,7 +121,8 @@ void MainWindow::openTerminal(const QString &title, const QString &program,
         return;
     }
 
-    auto *terminal = createTerminalWidget(program, args, m_terminalTabs);
+    auto *terminal = new TerminalView(title, program, args, m_terminalTabs);
+    terminal->setTitleVisible(false);
     const QString label = title.isEmpty() ? program : title;
     const int index = m_terminalTabs->addTab(terminal, label);
     m_terminalTabs->setTabToolTip(
@@ -131,7 +131,7 @@ void MainWindow::openTerminal(const QString &title, const QString &program,
 
     m_terminalDock->show();
     m_terminalDock->raise();
-    terminal->setFocus();
+    terminal->focusTerminal();
 }
 
 void MainWindow::closeTerminalTab(int index)
@@ -162,6 +162,30 @@ void MainWindow::reveal()
 void MainWindow::hideToTray()
 {
     hide();
+}
+
+ContainerDetailDialog *MainWindow::ensureDetailDialog()
+{
+    if (!m_detailDialog) {
+        m_detailDialog = new ContainerDetailDialog(m_backend, this);
+    }
+    return m_detailDialog;
+}
+
+void MainWindow::openContainerDetail(const QString &id)
+{
+    if (id.isEmpty()) {
+        return;
+    }
+    ensureDetailDialog()->openContainer(id);
+}
+
+void MainWindow::openContainerDetailTab(const QString &id, int detailTab)
+{
+    if (id.isEmpty()) {
+        return;
+    }
+    ensureDetailDialog()->openContainer(id, detailTab);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

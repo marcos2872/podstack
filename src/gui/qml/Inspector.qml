@@ -65,70 +65,6 @@ Rectangle {
     readonly property bool running: selected !== null && selected.state === "running"
     readonly property bool compact: width < 430
 
-    property int tabIndex: 0
-
-    function openTab(name) {
-        if (name === "logs") {
-            tabIndex = 1
-        } else if (name === "stats") {
-            tabIndex = 2
-        } else if (name === "files") {
-            tabIndex = 3
-        } else {
-            tabIndex = 0
-        }
-    }
-    property string activeContainerId: ""
-
-    onTabIndexChanged: {
-        activeContainerId = selected ? (selected.id || "") : ""
-        syncStreams()
-    }
-
-    Timer {
-        id: selectionSync
-        interval: 100
-        onTriggered: {
-            const id = inspector.selected ? (inspector.selected.id || "") : ""
-            if (id !== inspector.activeContainerId) {
-                inspector.activeContainerId = id
-                inspector.syncStreams()
-            }
-        }
-    }
-
-    function syncStreams() {
-        if (!selected) {
-            backend.unsubscribeLogs()
-            backend.unsubscribeStats()
-            return
-        }
-        if (inspector.tabIndex === 1) {
-            backend.unsubscribeStats()
-            backend.subscribeLogs(selected.id, 200, true)
-        } else if (inspector.tabIndex === 2) {
-            backend.unsubscribeLogs()
-            backend.subscribeStats(selected.id)
-        } else if (inspector.tabIndex === 3) {
-            backend.unsubscribeLogs()
-            backend.unsubscribeStats()
-            backend.listFiles(selected.id, "/")
-        } else {
-            backend.unsubscribeLogs()
-            backend.unsubscribeStats()
-        }
-    }
-
-    onSelectedChanged: selectionSync.restart()
-    Component.onCompleted: {
-        activeContainerId = selected ? (selected.id || "") : ""
-        syncStreams()
-    }
-    Component.onDestruction: {
-        backend.unsubscribeLogs()
-        backend.unsubscribeStats()
-    }
-
     // Estado vazio
     ColumnLayout {
         anchors.centerIn: parent
@@ -232,16 +168,8 @@ Rectangle {
                 }
 
                 ActionButton {
-                    text: inspector.compact ? "" : qsTr("Terminal")
-                    iconName: "terminal"
-                    size: "sm"
-                    onClicked: backend.openTerminal(inspector.selected.id)
-                    Accessible.name: qsTr("Terminal")
-                }
-
-                ActionButton {
                     text: inspector.compact ? "" : qsTr("Expandir")
-                    iconName: "maximize"
+                    iconName: "expand"
                     size: "sm"
                     onClicked: inspector.expandRequested(inspector.selected.id)
                     Accessible.name: qsTr("Expandir detalhe do container")
@@ -268,75 +196,18 @@ Rectangle {
             color: Theme.border
         }
 
-        // Abas segmentadas
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 32
-            Layout.leftMargin: 14
-            Layout.rightMargin: 14
-            Layout.topMargin: 10
-            radius: Theme.radiusSm
-            color: Theme.bgSurface2
-            border.width: 1
-            border.color: Theme.border
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 3
-                spacing: 2
-
-                Repeater {
-                    model: [qsTr("Info"), qsTr("Logs"), qsTr("Stats"), qsTr("Files")]
-
-                    ItemDelegate {
-                        id: inspectorTab
-                        readonly property bool active: inspector.tabIndex === index
-
-                        Layout.fillWidth: true
-                        implicitHeight: 24
-                        hoverEnabled: true
-                        Accessible.name: modelData
-
-                        background: Rectangle {
-                            radius: Theme.radiusXs
-                            color: inspectorTab.active ? Theme.bgElevated
-                                                       : inspectorTab.hovered ? Theme.bgHover
-                                                                              : "transparent"
-                        }
-
-                        contentItem: Text {
-                            text: modelData
-                            color: inspectorTab.active ? Theme.textPrimary : Theme.textTertiary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMeta
-                            font.weight: Font.Medium
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        onClicked: inspector.tabIndex = index
-                    }
-                }
-            }
-        }
-
-        StackLayout {
+        // Conteúdo Info/Ações (logs, stats e files vivem no modal de detalhe)
+        ScrollView {
+            id: infoScroll
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.topMargin: 10
-            currentIndex: inspector.tabIndex
+            contentWidth: availableWidth
+            clip: true
 
-            // Info
-            ScrollView {
-                id: infoScroll
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                contentWidth: availableWidth
-                clip: true
-
-                ColumnLayout {
-                    width: infoScroll.availableWidth
-                    spacing: 0
+            ColumnLayout {
+                width: infoScroll.availableWidth
+                spacing: 0
 
                     GridLayout {
                         Layout.fillWidth: true
@@ -622,30 +493,7 @@ Rectangle {
                     Item { Layout.preferredHeight: 14 }
                 }
             }
-
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                LogsView { anchors.fill: parent; anchors.margins: 14 }
-            }
-
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                StatsView { anchors.fill: parent; anchors.margins: 14 }
-            }
-
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                FilesView {
-                    anchors.fill: parent
-                    anchors.margins: 14
-                    containerId: inspector.selected ? inspector.selected.id : ""
-                }
-            }
         }
-    }
 
     AppDialog {
         id: removeDialog

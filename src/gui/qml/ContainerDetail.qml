@@ -3,17 +3,15 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import PodStack
 
-// Detalhe expandido de um container: overlay que ocupa a janela principal.
-// As abas usam `containers.inspect` para metadados e streams próprios de
-// logs/stats para não disputar a subscription do inspector lateral.
+// Conteúdo do detalhe de um container, hospedado na aba "Detalhes" do
+// ContainerDetailDialog (QDialog modal). As abas usam `containers.inspect`
+// para metadados e streams próprios de logs/stats, separados do stream
+// compartilhado do Backend.
 Rectangle {
     id: root
 
-    visible: false
-    z: 90
     color: Theme.bgBase
     clip: true
-    focus: true
 
     property string containerId: ""
     property int tabIndex: 0
@@ -178,36 +176,38 @@ Rectangle {
     readonly property var mountEntries: root.detail.Mounts || []
     readonly property string inspectText: root.loaded ? JSON.stringify(root.detail, null, 2) : ""
 
-    signal closed()
+    signal closeRequested()
 
     function open(id) {
         if (id.length === 0) {
             return
         }
-        if (root.visible) {
-            backend.stopContainerDetailStats()
-            backend.stopContainerDetailLogs()
-        }
+        backend.stopContainerDetailStats()
+        backend.stopContainerDetailLogs()
+        backend.clearContainerDetailLogs()
         root.containerId = id
         root.tabIndex = 0
         root.removePending = false
         root.reloadPending = false
-        root.visible = true
         backend.loadContainerDetail(id)
         backend.startContainerDetailStats(id)
         backend.startContainerDetailLogs(id, 200, true)
-        root.forceActiveFocus()
+    }
+
+    onTabIndexChanged: {
+        if (root.tabIndex === 6 && root.containerId.length > 0) {
+            backend.listFiles(root.containerId, "/")
+        }
     }
 
     function close() {
-        if (!root.visible) {
+        if (root.containerId.length === 0) {
             return
         }
         backend.stopContainerDetailStats()
         backend.stopContainerDetailLogs()
         backend.clearContainerDetailLogs()
-        root.visible = false
-        root.closed()
+        root.closeRequested()
     }
 
     function lifecycle(action) {
@@ -378,12 +378,6 @@ Rectangle {
         }
     }
 
-    Shortcut {
-        sequence: "Esc"
-        enabled: root.visible
-        onActivated: root.close()
-    }
-
     Connections {
         target: backend
 
@@ -399,7 +393,7 @@ Rectangle {
                 return
             }
             root.reloadPending = false
-            if (!ok || !root.visible || root.containerId.length === 0) {
+            if (!ok || root.containerId.length === 0) {
                 return
             }
             backend.loadContainerDetail(root.containerId)
@@ -439,7 +433,7 @@ Rectangle {
                     variant: "secondary"
                     size: "sm"
                     onClicked: root.close()
-                    Accessible.name: qsTr("Voltar e fechar o detalhe expandido")
+                    Accessible.name: qsTr("Voltar e fechar os detalhes do container")
                 }
 
                 ColumnLayout {
@@ -511,15 +505,6 @@ Rectangle {
                 }
 
                 ActionButton {
-                    text: root.compact ? "" : qsTr("Terminal")
-                    iconName: "terminal"
-                    size: "sm"
-                    enabled: root.containerId.length > 0
-                    onClicked: backend.openTerminal(root.containerId)
-                    Accessible.name: qsTr("Abrir terminal do container")
-                }
-
-                ActionButton {
                     text: root.compact ? "" : qsTr("Remover")
                     iconName: "trash"
                     variant: "danger"
@@ -550,7 +535,7 @@ Rectangle {
 
                 Repeater {
                     model: [qsTr("Visão geral"), qsTr("Logs"), qsTr("Info"), qsTr("Ambiente"),
-                            qsTr("Redes"), qsTr("Volumes"), qsTr("Inspect")]
+                            qsTr("Redes"), qsTr("Volumes"), qsTr("Arquivos"), qsTr("Inspect")]
 
                     ItemDelegate {
                         id: detailTab
@@ -1150,6 +1135,15 @@ Rectangle {
                     }
 
                     Item { Layout.preferredHeight: 16 }
+                }
+            }
+
+            // Arquivos
+            Item {
+                FilesView {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    containerId: root.containerId
                 }
             }
 

@@ -66,11 +66,6 @@ Rectangle {
         id: activityWindow
     }
 
-    ContainerDetail {
-        id: containerDetail
-        anchors.fill: parent
-    }
-
     readonly property var sections: [
         { group: "Engine", items: [
             { key: "containers", label: "Containers", icon: "containers" },
@@ -496,7 +491,7 @@ Rectangle {
                         filterText: window.searchText
                         compact: window.compactLayout
                         onExpandRequested: function(id) {
-                            containerDetail.open(id)
+                            appWindow.openContainerDetail(id)
                         }
                     }
                 }
@@ -938,7 +933,11 @@ Rectangle {
             containersPage.filter = "all"
             window.section = "containers"
             window.reveal()
-            containersPage.openContainer(id, tab)
+            containersPage.openContainer(id)
+            // O tray mantém o atalho de logs: o modal de detalhe abre na aba Logs.
+            if (tab === "logs") {
+                appWindow.openContainerDetailTab(id, 1)
+            }
         }
         function onOpenComposeRequested(project, service, logs) {
             if (!backend.setupCompleted) {

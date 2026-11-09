@@ -96,7 +96,7 @@
 
 | Seção | Colunas principais (implementado) | Ações de toolbar |
 |---|---|---|
-| Containers | nome, status, imagem, portas | criar, start/stop all, lote por seleção, terminal |
+| Containers | nome, status, imagem, portas | criar, start/stop all, lote por seleção, expandir (modal com terminal) |
 | Images | repositório:tag, digest, tamanho, uso | pull, importar, tag, untag, prune (prévia), remover |
 | Volumes | nome, driver, tamanho, links | criar, clone, importar do host, prune (prévia), remover |
 | Networks | nome, driver, subnet, containers | criar, conectar, desconectar, remover |
@@ -125,16 +125,16 @@ quando vazia, mostra uma mensagem. Nenhum mountpoint/path é exposto na prévia.
 
 ## 5. Inspector
 
-Abas por tipo (estado do M2):
+Abas por tipo (estado do M4 após o redesenho do detalhe):
 
 | Aba | Container | Machine | Volume | Image | Observação |
 |---|---|---|---|---|---|
-| **Info** | ✅ | ✅ | planejado | planejado | nome, imagem, portas, estado, health, ações |
-| **Logs** | ✅ | ✅ | — | — | container: streaming/follow; machine: one-shot + Atualizar |
-| **Stats** | ✅ | ✅ | — | — | CPU, memória, rede, disco/PIDs + gráfico; machine via SSH (2 s) |
-| **Files** | ✅ | planejado | planejado | — | listar e baixar para `~/Downloads` |
-| **Terminal** | janela nativa | planejado | — | — | QTermWidget; embutir no inspector no M3 |
-| **Inspect** | ✅ (aba GUI) | — | — | — | JSON completo via `containers.inspect`; também no detalhe expandido |
+| **Info** | ✅ card lateral | ✅ | planejado | planejado | nome, imagem, portas, estado, health, ações |
+| **Logs** | ✅ modal (Detalhes) | ✅ | — | — | container: streaming/follow; machine: one-shot + Atualizar |
+| **Stats** | ✅ modal (Visão geral) | ✅ | — | — | CPU, memória, rede, disco/PIDs + gráfico; machine via SSH (2 s) |
+| **Files** | — | planejado | planejado | — | saiu do card no redesenho; T1-11 segue sem entrada dedicada na GUI |
+| **Terminal** | ✅ aba do modal | SSH no dock | — | — | `TerminalView`/QTermWidget; botão para terminal externo |
+| **Inspect** | ✅ modal | — | — | — | JSON completo via `containers.inspect` |
 
 Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info, Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash), start/stop/restart, abrir SSH em terminal e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
@@ -144,8 +144,9 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - Largura do painel: ~480 px no modo normal e ~320 px no compacto (janela < 1100 px);
   a lista encolhe com `Layout.fillWidth`. As grades de Info/Ações usam uma coluna quando
   não há espaço (limiar de 460 px) para não cortar ID, portas, estado ou botões.
-- Botão **Expandir** (ícone maximize) abre o detalhe dedicado (seção 5.7).
-- Grid de metadados copiáveis: imagem, comando, portas, env, mounts, rede/IP, labels, health, criado/uptime.
+- Botão **Expandir** (ícone expand, quatro setas para fora) abre o modal de detalhe
+  dedicado (seção 5.7). O card lateral mostra somente **Info** e **Ações**.
+- Grid de metadados: ID, portas publicadas, estado, criado e saúde.
 - Ações: abrir no navegador, copiar ID, revelar no gerenciador.
 - **Exposição LAN (T2-15):** na célula de portas, o botão alterna **“Expor na LAN”** /
   **“Fechar LAN”** para containers com portas publicadas (`backend.exposeContainerLan`).
@@ -177,13 +178,16 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 ### 5.4 Terminal
 
 - Emulação completa (cores, cursor, seleção, copy/paste, mouse).
+- Componente reutilizável `TerminalView` (QTermWidget + barra com título e botão
+  **Abrir externo**) usado no dock, na `TerminalWindow` legada e no modal de detalhe.
 - Terminal embutido em painel dockável (`QDockWidget` "Terminal") da janela principal,
   com abas (`QTabWidget`) por sessão; título = container/machine.
 - Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` após
   `machines.ssh`. Fechar a aba encerra a sessão; fechar o dock apenas o esconde
   (as sessões continuam e uma nova sessão reabre o painel).
+- **Abrir externo** relança o mesmo programa/argumentos via `xdg-terminal-exec`,
+  `$TERMINAL` ou os emuladores comuns, sem passar por shell.
 - Menu: copiar tela/seleção (texto/ANSI/HTML), reset, fonte, fechar.
-- Fallback: "Abrir no terminal externo".
 
 ### 5.5 Files
 
@@ -196,14 +200,21 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - JSON viewer com árvore, busca, copiar, exportar.
 - **Diferencial PodStack** (não existe como aba no OrbStack).
 
-### 5.7 Detalhe expandido do container
+### 5.7 Detalhe do container (modal)
 
-- Botão **Expandir** no cabeçalho do inspector abre `ContainerDetail.qml` como overlay
-  full-screen dentro da `MainWindow` (não é janela separada), com `Esc`/**Voltar** para fechar.
-- O overlay cobre sidebar, lista, inspector e barra de status; o terminal continua no dock
-  da janela principal e o inspector lateral mantém suas próprias subscriptions.
-- Cabeçalho: nome, status, imagem, start/stop/restart, terminal e remover com confirmação.
-- Abas:
+- Botão **Expandir** no cabeçalho do inspector abre o `ContainerDetailDialog`, um
+  `QDialog` **modal** (`WindowModal`) de ~1100×760, centralizado na janela principal.
+  O botão Voltar (ou `Esc`/fechar a janela) encerra o diálogo, os streams e a sessão
+  de terminal.
+- O card lateral mantém apenas **Info** e **Ações**; logs, stats, files, ambiente,
+  redes, volumes e inspect vivem no modal.
+- O modal tem duas abas:
+  - **Detalhes** — conteúdo de `ContainerDetail.qml` (sem overlay/fundo de tela cheia).
+  - **Terminal** — `TerminalView` com `podman exec -it <id> /bin/sh`, incluindo o
+    botão **Abrir externo**.
+- Cabeçalho do detalhe: nome, status, imagem, start/stop/restart e remover com
+  confirmação. O terminal não fica mais no cabeçalho.
+- Abas de Detalhes:
   - **Visão geral** — cards de CPU, RAM (usado/total), rede ↓/↑ e disco R/W com sparklines
     de 60 amostras; stats em stream próprio (`containerDetailStats`), ~1 s.
   - **Logs** — `LogsView` em `TextArea` único (seleção multi-linha, Ctrl+C, Copiar, busca,
@@ -217,7 +228,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   - **Inspect** — JSON completo e indentado de `containers.inspect`, com Copiar.
 - Ao abrir: `loadContainerDetail(id)` + streams próprios de stats/logs. Ao fechar: ambos os
   streams são cancelados e os logs do detalhe são limpos. Erros de inspect aparecem no
-  banner do overlay, sem poluir `backend.lastError` do inspector de containers.
+  banner do modal, sem poluir `backend.lastError` do inspector de containers.
 
 ---
 
@@ -305,7 +316,8 @@ enquanto o job está rodando.
 
 **Implementação (2026-11-08):** `TrayController` usa `QSystemTrayIcon` + `QMenu` (SNI via
 DBusMenu no Wayland/Noctalia). O menu entrega **Abrir PodStack**, **Containers** (agrupado por
-projeto Compose, com iniciar/parar/reiniciar/logs/abrir), **Activity Monitor**, **Configurações**
+projeto Compose, com iniciar/parar/reiniciar/logs — abre o modal na aba Logs — e abrir),
+**Activity Monitor**, **Configurações**
 e **Sair**. O ícone reflete normal/atenção (setup pendente ou container unhealthy)/erro (daemon
 indisponível); fechar a janela esconde para a bandeja; a segunda instância foca a primeira; e o
 `SetupWindow` nunca é escondido para o tray. Pendentes: submenus de Machines/Kubernetes (M4/M5) e
@@ -382,7 +394,7 @@ qml/
 ├── FormCheck.qml
 ├── ContainersPage.qml
 ├── Inspector.qml
-├── ContainerDetail.qml   # detalhe expandido (overlay, 7 abas)
+├── ContainerDetail.qml   # conteúdo do modal de detalhe (7 abas)
 ├── LogsView.qml
 ├── StatsView.qml
 ├── Sparkline.qml
@@ -425,7 +437,7 @@ qml/
 | `Ctrl+Enter` | iniciar/parar selecionado |
 | `Ctrl+Shift+L` | abrir logs |
 | `Ctrl+Shift+T` | abrir terminal |
-| `Esc` | desselecionar/fechar (inclui o detalhe expandido do container) |
+| `Esc` | desselecionar/fechar (inclui o modal de detalhe do container) |
 | `Ctrl+Q` | sair |
 
 Atalhos configuráveis (P2); conflitos com o desktop são resolvidos pelo usuário.
