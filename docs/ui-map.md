@@ -143,6 +143,12 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - Cabeçalho: ícone, nome, status, ações (start/stop/ssh/restart/delete).
 - Grid de metadados copiáveis: imagem, comando, portas, env, mounts, rede/IP, labels, health, criado/uptime.
 - Ações: abrir no navegador, copiar ID, revelar no gerenciador.
+- **Exposição LAN (T2-15):** na célula de portas, o botão alterna **“Expor na LAN”** /
+  **“Fechar LAN”** para containers com portas publicadas (`backend.exposeContainerLan`).
+  O aviso lembra que só as portas publicadas são afetadas e que containers antigos em
+  `127.0.0.1` exigem recriação; erros (`PODSTACK_UNSUPPORTED`/`PODSTACK_HELPER_REQUIRED`)
+  aparecem junto ao botão e no rodapé de ações. O diálogo de criação tem o checkbox
+  **“Expor portas na LAN”** com o mesmo aviso; sem ele, o bind é `127.0.0.1`.
 
 ### 5.2 Stats
 
@@ -183,7 +189,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 
 | Diálogo | Campos | Validação |
 |---|---|---|
-| Criar container | imagem, nome, comando, portas, env, volumes, workdir, user, flags, recursos | imagem existente/pull; nome único; portas válidas |
+| Criar container | imagem, nome, comando, portas, env, volumes, workdir, user, flags, recursos, expor na LAN | imagem existente/pull; nome único; portas válidas; helper para LAN |
 | Criar rede | nome, driver, subnet4, gateway, IPv6, labels | CIDR válido; sem sobreposição |
 | Criar máquina | distro/versão, nome, CPU/mem/disco, user, user-data, isolado, SSH agent | recursos mínimos; nome único; YAML válido. M4 não expõe senha nem mounts (T4-04/T4-07) |
 | Clonar máquina | origem, novo nome | nome único |

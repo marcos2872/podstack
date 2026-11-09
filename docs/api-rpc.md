@@ -176,7 +176,8 @@ Regras de normalização:
 |---|---|---|
 | `containers.list` | `{all?, state?: "running"\|"stopped"\|"paused", filter?, limit?, offset?}` | `{items: Container[], total}` |
 | `containers.get` | `{id}` | `Container` |
-| `containers.create` | `{image, name?, command?, env?, ports?, mounts?, workDir?, user?, remove?, init?, privileged?, start?}` | `{id, started}` |
+| `containers.create` | `{image, name?, command?, env?, ports?, mounts?, workDir?, user?, remove?, init?, privileged?, exposeLan?, start?}` | `{id, started, exposeLan}` |
+| `containers.exposeLan` | `{id, expose:bool}` | `{id, expose, ports:[string]}` |
 | `containers.duplicate` | `{id, name?}` | `{id, source, started}` |
 | `containers.start` | `{id}` | `{id, ok:true}` |
 | `containers.stop` | `{id, timeoutSeconds?}` | `{id, ok:true}` |
@@ -207,6 +208,17 @@ Regras de normalização:
 > ao `env` do novo container, sem sobrescrever chaves definidas explicitamente pelo usuário
 > (ou herdadas do container duplicado). A configuração é lida na criação; containers
 > existentes exigem recriação. Ver [`settings.md`](settings.md) e [`spec.md`](spec.md) §6.3.
+
+> **Portas e LAN:** sem `exposeLan`, cada `ports[]` sem `hostIp` explícito usa
+> `hostIp=127.0.0.1`; com `exposeLan:true`, o daemon força `hostIp=0.0.0.0` e chama
+> `OpenPorts` no helper para as host ports (`tcp`/`udp`). A ausência do helper retorna
+> `PODSTACK_HELPER_REQUIRED` **antes** de criar o container; falha ao abrir o firewall
+> remove o container recém-criado e retorna `PODSTACK_IO_ERROR`. `containers.exposeLan`
+> só opera em containers já publicados em `0.0.0.0`; binds em `127.0.0.1`/IP específico
+> retornam `PODSTACK_UNSUPPORTED` com a remediação de recriar o container. No firewalld as
+> regras são runtime (sem `--permanent`) e não sobrevivem a reload/restart; no ufw são
+> persistentes até `ClosePorts`/`ufw delete allow`. Ver
+> [`spec.md`](spec.md) §6.2 e [`security.md`](security.md) §4.2.
 
 ### 4.3 `images.*`
 

@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "daemon/BuildStore.h"
 #include "daemon/ComposeManager.h"
+#include "daemon/HelperClient.h"
 #include "daemon/SetupManager.h"
 #include "machines/CloudImageCache.h"
 #include "machines/MachineManager.h"
@@ -41,6 +42,7 @@ private:
     QJsonObject containerExec(const QJsonObject &params, Error *error);
     QJsonObject containerInspect(const QJsonObject &params, Error *error);
     QJsonObject containerCreate(const QJsonObject &params, Error *error);
+    QJsonObject containerExposeLan(const QJsonObject &params, Error *error);
     QJsonObject containerDuplicate(const QJsonObject &params, Error *error);
     QJsonObject containerFilesList(const QJsonObject &params, Error *error);
     QJsonObject containerFilesDownload(const QJsonObject &params, Error *error);
@@ -116,6 +118,7 @@ private:
     ComposeManager m_compose;
     BuildStore m_buildStore;
     SetupManager m_setup;
+    HelperClient m_helper;
     MachineManager m_machines;
     CloudImageCache m_cloudImages;
     std::mutex m_subscriptionsMutex;

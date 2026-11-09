@@ -1082,6 +1082,8 @@ void Backend::createContainer(const QVariantMap &spec, bool start)
     params.insert(QStringLiteral("init"), spec.value(QStringLiteral("init")).toBool());
     params.insert(QStringLiteral("privileged"),
                   spec.value(QStringLiteral("privileged")).toBool());
+    const bool exposeLan = spec.value(QStringLiteral("exposeLan")).toBool();
+    params.insert(QStringLiteral("exposeLan"), exposeLan);
     params.insert(QStringLiteral("start"), start);
 
     QJsonObject env;
@@ -1123,9 +1125,11 @@ void Backend::createContainer(const QVariantMap &spec, bool start)
         port.insert(QStringLiteral("protocol"), protocol);
         if (parts.size() == 2) {
             port.insert(QStringLiteral("hostPort"), parts.at(0).toInt());
-            port.insert(QStringLiteral("hostIp"), QStringLiteral("0.0.0.0"));
+            port.insert(QStringLiteral("hostIp"), exposeLan ? QStringLiteral("0.0.0.0")
+                                                            : QStringLiteral("127.0.0.1"));
         } else {
-            port.insert(QStringLiteral("hostIp"), parts.at(0));
+            port.insert(QStringLiteral("hostIp"),
+                        exposeLan ? QStringLiteral("0.0.0.0") : parts.at(0));
             port.insert(QStringLiteral("hostPort"), parts.at(1).toInt());
         }
         ports.append(port);
@@ -1150,6 +1154,21 @@ void Backend::createContainer(const QVariantMap &spec, bool start)
     params.insert(QStringLiteral("mounts"), mounts);
 
     runAction(QStringLiteral("containers.create"), params);
+}
+
+void Backend::exposeContainerLan(const QString &id, bool expose)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Container inválido.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    params.insert(QStringLiteral("expose"), expose);
+    runAction(QStringLiteral("containers.exposeLan"), params);
 }
 
 void Backend::subscribeLogs(const QString &id, int tail, bool follow)

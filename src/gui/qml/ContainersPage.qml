@@ -217,6 +217,7 @@ Item {
         createRemove.checked = false
         createInit.checked = false
         createPrivileged.checked = false
+        createExposeLan.checked = false
         createDialog.open()
     }
 
@@ -740,6 +741,21 @@ Item {
                 FormCheck { id: createPrivileged; text: qsTr("Privileged") }
                 Item { Layout.fillWidth: true }
             }
+
+            FormCheck {
+                id: createExposeLan
+                text: qsTr("Expor portas na LAN")
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: createExposeLan.checked
+                text: qsTr("Abre as portas publicadas no firewall (firewalld/ufw) e permite acesso de outros dispositivos da rede. Só portas publicadas são afetadas. O acesso é revertido com \u201cFechar LAN\u201d no inspector.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
         }
         footer: AppFooter {
             Item { Layout.fillWidth: true }
@@ -763,7 +779,8 @@ Item {
                         user: createUser.text,
                         remove: createRemove.checked,
                         init: createInit.checked,
-                        privileged: createPrivileged.checked
+                        privileged: createPrivileged.checked,
+                        exposeLan: createExposeLan.checked
                     }, true)
                     createDialog.close()
                 }

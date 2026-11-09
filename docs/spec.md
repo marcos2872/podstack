@@ -307,14 +307,30 @@ Formato único:
 
 ### 6.2 Exposição LAN
 
-- Toggle por container/rede.
-- Implementação: bind em `0.0.0.0` + regra de firewall (firewalld/ufw) com aviso.
-- Mostrar IPs da LAN e URL de acesso.
+- **Padrão seguro:** portas publicadas em containers novos usam `hostIp=127.0.0.1`
+  (acessíveis só pelo host). O checkbox **“Expor portas na LAN”** do diálogo de criação troca
+  o bind para `0.0.0.0` e pede ao helper a abertura das portas no firewall.
+- **Firewall runtime:** o helper (`OpenPorts`/`ClosePorts`, allowlist + polkit) usa
+  `firewall-cmd --add-port=<porta>/<proto>` ou `ufw allow <porta>/<proto>` **sem**
+  `--permanent`; fechar remove a mesma regra (`--remove-port` / `ufw delete allow`). Só
+  `tcp`/`udp`, 1..65535, no máximo 32 portas por chamada. No firewalld as regras são
+  runtime e não sobrevivem a um reload/restart; no ufw a regra é persistente até
+  `ClosePorts`/`ufw delete allow`.
+- **Container já criado:** `containers.exposeLan {id, expose}` inspeciona o bind. Se as portas
+  estiverem em `0.0.0.0`, abre/fecha o firewall e devolve `{id, expose, ports}`. Se estiverem
+  em `127.0.0.1` (ou IP específico), retorna `PODSTACK_UNSUPPORTED` com a remediação de
+  **recriar o container com “Expor na LAN”** — o bind não é alterado em runtime.
+- **Sem helper:** criar com `exposeLan:true` ou alternar a exposição retorna
+  `PODSTACK_HELPER_REQUIRED` antes de criar/alterar o container. Se a abertura falhar depois
+  da criação, o container novo é removido e o erro é `PODSTACK_IO_ERROR`.
+- **Aviso de segurança:** obrigatório no diálogo de criação e no inspector, informando que só
+  as portas publicadas são afetadas e que containers antigos em `127.0.0.1` exigem recriação.
+- Mostrar IPs da LAN e URL de acesso (o inspector já exibe as portas publicadas).
 
 **Critérios:**
 
-- [ ] Acesso de outro dispositivo funciona após toggle.
-- [ ] Desligar remove a exposição.
+- [ ] Acesso de outro dispositivo funciona após toggle (validação manual em outra máquina).
+- [ ] Desligar remove a exposição (regra runtime removida; bind permanece `0.0.0.0`).
 - [ ] Aviso de segurança exibido na primeira ativação.
 
 ### 6.3 Proxy e VPN

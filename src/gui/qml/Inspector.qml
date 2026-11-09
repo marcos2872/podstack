@@ -24,6 +24,41 @@ Rectangle {
         return String(selected.ports)
     }
 
+    readonly property string selectedId: selected ? (selected.id || "") : ""
+    property var lanOverrides: ({})
+    property bool lanPending: false
+    property string lanPendingId: ""
+    property bool lanTarget: false
+
+    readonly property bool lanExposed: {
+        if (!selected || portsText.length === 0) {
+            return false
+        }
+        if (lanOverrides[selectedId] !== undefined) {
+            return lanOverrides[selectedId]
+        }
+        return portsText.indexOf("127.0.0.1") < 0 && portsText.indexOf("::1") < 0
+    }
+
+    Connections {
+        target: backend
+        function onActionFinished(ok) {
+            if (!inspector.lanPending) {
+                return
+            }
+            inspector.lanPending = false
+            if (ok && inspector.lanPendingId !== "") {
+                var next = {}
+                for (var key in inspector.lanOverrides) {
+                    next[key] = inspector.lanOverrides[key]
+                }
+                next[inspector.lanPendingId] = inspector.lanTarget
+                inspector.lanOverrides = next
+            }
+            inspector.lanPendingId = ""
+        }
+    }
+
     readonly property string health: selected ? (selected.health || "") : ""
     readonly property bool running: selected !== null && selected.state === "running"
     readonly property bool compact: width < 340
@@ -346,6 +381,44 @@ Rectangle {
                                 font.family: Theme.monoFamily
                                 font.pixelSize: Theme.fontMeta
                                 wrapMode: Text.WrapAnywhere
+                            }
+
+                            ActionButton {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 4
+                                visible: inspector.portsText.length > 0
+                                enabled: !inspector.lanPending
+                                text: inspector.lanExposed ? qsTr("Fechar LAN")
+                                                           : qsTr("Expor na LAN")
+                                size: "sm"
+                                onClicked: {
+                                    inspector.lanPendingId = inspector.selected.id
+                                    inspector.lanTarget = !inspector.lanExposed
+                                    inspector.lanPending = true
+                                    backend.exposeContainerLan(inspector.selected.id,
+                                                               inspector.lanTarget)
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: inspector.portsText.length > 0
+                                text: qsTr("Só portas publicadas. Containers antigos em 127.0.0.1 exigem recriação.")
+                                color: Theme.textTertiary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMicro
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: inspector.portsText.length > 0
+                                         && backend.lastError.length > 0
+                                text: backend.lastError
+                                color: Theme.danger
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMicro
+                                wrapMode: Text.WordWrap
                             }
                         }
 

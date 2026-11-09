@@ -95,6 +95,7 @@ add_executable(podstackd
     src/daemon/BuildStore.cpp
     src/daemon/ComposeManager.cpp
     src/daemon/SetupManager.cpp
+    src/daemon/HelperClient.cpp
     src/daemon/StatsCollector.cpp
 )
 target_link_libraries(podstackd PRIVATE
@@ -111,11 +112,12 @@ target_link_libraries(podstackd PRIVATE
 add_executable(podstack-helper
     src/helper/main.cpp
     src/helper/HelperService.cpp
+    src/helper/Firewall.cpp
     src/helper/Polkit.cpp
 )
 target_include_directories(podstack-helper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(podstack-helper PRIVATE PODSTACK_VERSION="${PROJECT_VERSION}")
-target_link_libraries(podstack-helper PRIVATE Qt6::Core Qt6::DBus)
+target_link_libraries(podstack-helper PRIVATE podstack_core Qt6::DBus)
 
 # ---------------------------------------------------------------------------
 # CLI

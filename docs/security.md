@@ -97,8 +97,21 @@ flowchart TB
 | `SetSysctl` | `{key,value}` | Apenas allowlist (`ip_unprivileged_port_start`) |
 | `InstallPackages` | `{packages:[...], reason}` | Instala pacotes **allowlisted** (podman, qemu-kvm, virtiofsd, …) |
 | `RemovePackages` | `{packages:[...], reason}` | Remove pacotes **allowlisted** (ex.: docker-ce) |
+| `OpenPorts` | `{ports:[8080,8443], protocol:"tcp"\|"udp"}` | Abre portas no firewall em modo **runtime** (firewalld/ufw), reversível |
+| `ClosePorts` | `{ports:[...], protocol}` | Remove as regras runtime abertas por `OpenPorts` |
 
 **Proibido:** `Exec`, `Shell`, caminho arbitrário, escrita fora de paths allowlisted; instalação/remoção de pacotes só via `InstallPackages`/`RemovePackages`, com allowlist e consentimento.
+
+**Firewall runtime (LAN):** `OpenPorts`/`ClosePorts` só aceitam listas de portas
+(`1..65535`, até 32 por chamada, sem duplicatas) e `protocol` `tcp`/`udp`. O helper executa
+`firewall-cmd --add-port`/`--remove-port` ou `ufw allow`/`ufw delete allow` **sem**
+`--permanent`, com timeout de 5 s; a abertura parcial é revertida. As ações polkit são
+`dev.podstack.helper.open-ports` (`auth_admin_keep` na sessão ativa) e
+`dev.podstack.helper.close-ports` (`auth_admin`). A auditoria registra uid, método, portas,
+protocolo e resultado, sem comando/caminho sensível. No firewalld as regras são
+deliberadamente **runtime** (um reload/restart as remove); no ufw a regra é persistente
+até `ClosePorts`/`ufw delete allow`. O usuário pode fechá-las pelo inspector ou recriar o
+container em `127.0.0.1`.
 
 > `podman.socket` é habilitado no **systemd do usuário** pelo daemon; não requer root nem helper.
 

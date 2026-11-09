@@ -10,6 +10,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QScopeGuard>
@@ -31,6 +34,7 @@ private slots:
     void backendSuccess();
     void backendError();
     void backendActions();
+    void backendExposeLan();
     void backendStreams();
     void backendCatalog();
     void backendMachines();
@@ -59,6 +63,9 @@ QProcessEnvironment GuiTest::daemonEnvironment() const
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
+    env.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
+               QStringLiteral("unix:path=/tmp/podstack-gui-no-system-bus.sock"));
     env.insert(QStringLiteral("PODSTACK_SSH_CONFIG"),
                m_testDataDir + QStringLiteral("/ssh/config"));
     env.insert(QStringLiteral("XDG_DATA_HOME"), m_testDataDir + QStringLiteral("/data"));
@@ -271,6 +278,45 @@ void GuiTest::backendActions()
     backend.batchIds({}, QStringLiteral("start"));
     QTest::qWait(100);
     QCOMPARE(actionSpy.count(), before);
+}
+
+void GuiTest::backendExposeLan()
+{
+    PodStack::Backend backend;
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    const QVariantMap settingsBefore = backend.settings();
+
+    QVariantMap spec;
+    spec.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    spec.insert(QStringLiteral("name"), QStringLiteral("lan"));
+    spec.insert(QStringLiteral("portsText"), QStringLiteral("8080:80"));
+    spec.insert(QStringLiteral("exposeLan"), true);
+
+    const int createsBefore = m_mock.createCount();
+    backend.createContainer(spec, true);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QVERIFY(!backend.lastError().isEmpty());
+    QCOMPARE(m_mock.createCount(), createsBefore);
+
+    backend.exposeContainerLan(QStringLiteral("abc123"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QVERIFY(!backend.lastError().isEmpty());
+    QVERIFY(backend.settings() == settingsBefore);
+
+    QVariantMap plain;
+    plain.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    plain.insert(QStringLiteral("name"), QStringLiteral("local"));
+    plain.insert(QStringLiteral("portsText"), QStringLiteral("8081:81"));
+    backend.createContainer(plain, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    const QJsonObject body = QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    const QJsonArray mappings = body.value(QStringLiteral("portmappings")).toArray();
+    QCOMPARE(mappings.size(), 1);
+    QCOMPARE(mappings.first().toObject().value(QStringLiteral("host_ip")).toString(),
+             QStringLiteral("127.0.0.1"));
 }
 
 void GuiTest::backendStreams()

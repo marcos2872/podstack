@@ -150,6 +150,12 @@ QByteArray MockPodmanServer::lastCreateBody() const
     return m_lastCreateBody;
 }
 
+int MockPodmanServer::createCount() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_createCount;
+}
+
 void MockPodmanServer::run()
 {
     while (!m_stopping.load()) {
@@ -208,6 +214,7 @@ void MockPodmanServer::handleClient(int clientFd)
         if (method == QStringLiteral("POST")
             && pathOnly.endsWith(QStringLiteral("/containers/create"))) {
             m_lastCreateBody = body;
+            ++m_createCount;
         }
     }
 
@@ -261,6 +268,16 @@ void MockPodmanServer::handleClient(int clientFd)
             "HostConfig":{"PortBindings":{"80/tcp":[{"HostIp":"0.0.0.0","HostPort":"8080"}]}},
             "Mounts":[{"Source":"/tmp","Destination":"/mnt","RW":true}],
             "NetworkSettings":{"IPAddress":"10.0.0.2"}
+        })");
+    } else if (pathOnly.contains(QStringLiteral("/containers/loopback123/json"))) {
+        response = httpResponse(200, "OK", R"({
+            "Id":"loopback123",
+            "Name":"/local",
+            "State":{"Status":"running","Running":true,"Pid":2,"ExitCode":0},
+            "Config":{"Image":"docker.io/library/alpine:3.20"},
+            "HostConfig":{"PortBindings":{"80/tcp":[{"HostIp":"127.0.0.1","HostPort":"8080"}]}},
+            "Mounts":[],
+            "NetworkSettings":{"IPAddress":"10.0.0.3"}
         })");
     } else if (method == QStringLiteral("PUT")
                && pathOnly.contains(QStringLiteral("/archive"))) {

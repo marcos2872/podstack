@@ -27,6 +27,7 @@ private slots:
     void cleanupTestCase();
     void lifecycle();
     void proxyEnvironment();
+    void exposeLan();
     void subscriptions();
     void catalog();
     void machinesDistros();
@@ -92,6 +93,9 @@ void RpcTest::initTestCase()
     environment.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     environment.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     environment.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
+    environment.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
+                       QStringLiteral("unix:path=/tmp/podstack-rpc-no-system-bus.sock"));
     environment.insert(QStringLiteral("PODSTACK_SSH_CONFIG"),
                        m_testDataDir + QStringLiteral("/ssh/config"));
     environment.insert(QStringLiteral("XDG_DATA_HOME"),
@@ -410,6 +414,65 @@ void RpcTest::proxyEnvironment()
 
     QVERIFY(writeConfig(
         QByteArrayLiteral("{\"network\":{\"proxy\":\"auto\",\"proxyExclude\":[]}}")));
+}
+
+void RpcTest::exposeLan()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    QJsonObject port;
+    port.insert(QStringLiteral("hostPort"), 18080);
+    port.insert(QStringLiteral("containerPort"), 80);
+    port.insert(QStringLiteral("protocol"), QStringLiteral("tcp"));
+    QJsonArray ports;
+    ports.append(port);
+
+    QJsonObject createParams;
+    createParams.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    createParams.insert(QStringLiteral("start"), false);
+    createParams.insert(QStringLiteral("ports"), ports);
+
+    const QJsonObject created =
+        client.call(QStringLiteral("containers.create"), createParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.value(QStringLiteral("id")).toString(), QStringLiteral("created123"));
+    const QJsonObject body = QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    const QJsonArray mappings =
+        body.value(QStringLiteral("portmappings")).toArray();
+    QCOMPARE(mappings.size(), 1);
+    QCOMPARE(mappings.first().toObject().value(QStringLiteral("host_ip")).toString(),
+             QStringLiteral("127.0.0.1"));
+
+    const int createsBefore = m_mock.createCount();
+    createParams.insert(QStringLiteral("exposeLan"), true);
+    error = {};
+    const QJsonObject exposed =
+        client.call(QStringLiteral("containers.create"), createParams, &error);
+    QVERIFY(exposed.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_HELPER_REQUIRED"));
+    QCOMPARE(m_mock.createCount(), createsBefore);
+
+    QJsonObject exposeParams;
+    exposeParams.insert(QStringLiteral("id"), QStringLiteral("abc123"));
+    exposeParams.insert(QStringLiteral("expose"), true);
+    error = {};
+    const QJsonObject exposeResult =
+        client.call(QStringLiteral("containers.exposeLan"), exposeParams, &error);
+    QVERIFY(exposeResult.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_HELPER_REQUIRED"));
+
+    exposeParams.insert(QStringLiteral("id"), QStringLiteral("loopback123"));
+    error = {};
+    (void)client.call(QStringLiteral("containers.exposeLan"), exposeParams, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    QVERIFY(error.message.contains(QStringLiteral("Recrie o container")));
+    QVERIFY(!error.remediation.isEmpty());
+
+    exposeParams.insert(QStringLiteral("id"), QStringLiteral("missing"));
+    error = {};
+    (void)client.call(QStringLiteral("containers.exposeLan"), exposeParams, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 }
 
 void RpcTest::subscriptions()

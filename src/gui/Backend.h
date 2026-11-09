@@ -195,6 +195,7 @@ public:
     Q_INVOKABLE void lifecycle(const QString &action, const QString &id);
     Q_INVOKABLE void removeContainer(const QString &id, bool force, bool volumes);
     Q_INVOKABLE void createContainer(const QVariantMap &spec, bool start);
+    Q_INVOKABLE void exposeContainerLan(const QString &id, bool expose);
     Q_INVOKABLE void batchAll(const QString &action);
     Q_INVOKABLE void batchIds(const QStringList &ids, const QString &action);
     Q_INVOKABLE void renameContainer(const QString &id, const QString &name);

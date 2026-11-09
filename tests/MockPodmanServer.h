@@ -24,6 +24,8 @@ public:
     QByteArray lastBody() const;
     /// Corpo do último POST /containers/create (o start seguinte não o apaga).
     QByteArray lastCreateBody() const;
+    /// Quantidade de POST /containers/create recebidos.
+    int createCount() const;
 
 private:
     void run();
@@ -39,4 +41,5 @@ private:
     QString m_lastPath;
     QByteArray m_lastBody;
     QByteArray m_lastCreateBody;
+    int m_createCount = 0;
 };

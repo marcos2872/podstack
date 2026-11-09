@@ -150,6 +150,9 @@
 | `test_machines` | `registry*`, `download*`, `cache*`, `pathsCacheDir`, `pathsMachinesDir`, `machineMeta*`, `machineStore*`, `seed*`, `idsUuidV7`, `machineManager*`, `sshConfigPreserves` | registry pinado (default/versão inválida/arch), download feliz/404/checksum/cancelamento, reuso e rehash do cache, `cloudImagesDir`/`machinesDir` 0700, `machineDir` com id inválido, `meta.json` round-trip/0600/JSON inválido, CRUD e cascade do índice SQLite no mesmo `podstack.db` do BuildStore, seed ISO NoCloud (entradas/label `cidata`, YAML padrão, senha só como hash `$6$`, user-data verbatim, escape/validação e modo 0600), UUIDv7 (versão/variante/unicidade/ordem), manager com runtime falso (create/validação/ciclo de vida/cancelamento/portas) e sincronização idempotente do bloco SSH (preservação, update de porta, `ForwardAgent`, remoção, 0600/0700) |
 | `test_core` | `setupActionsMapPodmanStatus` | `missing` → `install-podman`; `warn` → `enable-socket`; `ok` → sem ação |
 | `test_core` | `setupPolicyMandatoryChecks` | obrigatórios (Podman, systemd-user, SQLite, QEMU/OVMF/virtiofsd) bloqueiam; KVM/Docker/Caddy/k3s não |
+| `test_setup` | `firewall*` | detecção firewalld/ufw, abertura/fechamento runtime (sem `--permanent`), validação 1..65535/tcp-udp/≤32, rollback em falha parcial e ausência de backend → `PODSTACK_HELPER_REQUIRED` |
+| `test_rpc` | `exposeLan` | `containers.create` sem `exposeLan` envia `host_ip=127.0.0.1`; com `exposeLan:true` sem helper → `PODSTACK_HELPER_REQUIRED` e **nenhum** create; `containers.exposeLan` em `0.0.0.0` sem helper → `PODSTACK_HELPER_REQUIRED`, loopback → `PODSTACK_UNSUPPORTED` com remediação e id inexistente → `PODSTACK_NOT_FOUND` |
+| `test_gui` | `backendExposeLan` | `createContainer` com `exposeLan` e `exposeContainerLan` falham sem helper; create sem LAN usa `127.0.0.1`; configurações não mudam |
 
 **Validação manual da bandeja (niri + Noctalia):** fechar a janela mantém o processo e o SNI;
 `podstack-gui` (segunda instância) foca a janela; `--quit` encerra; o DBusMenu expõe Containers com
@@ -255,6 +258,7 @@ Benchmarks rodam no CI noturno; regressão > 20% falha o job.
 |---|---|
 | Socket | permissões, UID errado rejeitado |
 | Helper | métodos allowlisted; sem exec; polkit |
+| Firewall LAN | `OpenPorts`/`ClosePorts` só tcp/udp, 1..65535, ≤32; runtime sem `--permanent`; rollback parcial; sem helper → `PODSTACK_HELPER_REQUIRED` |
 | Setup | detecção read-only; remoção do Docker exige consentimento; sem shell |
 | Redaction | fixtures com tokens/senhas/chaves |
 | Path traversal | `..`, symlink, archive malicioso |

@@ -100,6 +100,21 @@ void applyProxyEnvironment(ContainerCreateSpec &spec)
     }
 }
 
+bool isWildcardHostIp(const QString &hostIp)
+{
+    return hostIp.isEmpty() || hostIp == QStringLiteral("0.0.0.0")
+           || hostIp == QStringLiteral("::");
+}
+
+Error helperRequiredError()
+{
+    return Error::make(
+        QStringLiteral("PODSTACK_HELPER_REQUIRED"),
+        QStringLiteral("O helper privilegiado é necessário para alterar o firewall da LAN."),
+        QStringLiteral("Serviço dev.podstack.Helper1 indisponível ou sem autorização."),
+        QStringLiteral("Instale o podstack-helper e autorize a operação no polkit."));
+}
+
 } // namespace
 
 Daemon::Daemon()
@@ -157,6 +172,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("containers.create")) {
         return containerCreate(params, error);
+    }
+    if (method == QStringLiteral("containers.exposeLan")) {
+        return containerExposeLan(params, error);
     }
     if (method == QStringLiteral("containers.duplicate")) {
         return containerDuplicate(params, error);
@@ -941,6 +959,7 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
     spec.remove = params.value(QStringLiteral("remove")).toBool(false);
     spec.init = params.value(QStringLiteral("init")).toBool(false);
     spec.privileged = params.value(QStringLiteral("privileged")).toBool(false);
+    const bool exposeLan = params.value(QStringLiteral("exposeLan")).toBool(false);
 
     if (spec.image.isEmpty()) {
         if (error) {
@@ -955,16 +974,75 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
         spec.env.insert(it.key(), it.value().toString());
     }
 
+    QMap<QString, QStringList> publishedByProtocol;
     const QJsonArray ports = params.value(QStringLiteral("ports")).toArray();
     for (const QJsonValue &value : ports) {
         const QJsonObject port = value.toObject();
         PortMapping mapping;
         mapping.hostPort = port.value(QStringLiteral("hostPort")).toInt();
         mapping.containerPort = port.value(QStringLiteral("containerPort")).toInt();
-        mapping.protocol = port.value(QStringLiteral("protocol")).toString(QStringLiteral("tcp"));
-        mapping.hostIp = port.value(QStringLiteral("hostIp")).toString(QStringLiteral("0.0.0.0"));
+        mapping.protocol = port.value(QStringLiteral("protocol"))
+                               .toString(QStringLiteral("tcp"))
+                               .trimmed()
+                               .toLower();
+        mapping.hostIp = port.value(QStringLiteral("hostIp"))
+                             .toString(exposeLan ? QStringLiteral("0.0.0.0")
+                                                 : QStringLiteral("127.0.0.1"));
+        if (exposeLan) {
+            mapping.hostIp = QStringLiteral("0.0.0.0");
+        }
         if (mapping.hostPort > 0 && mapping.containerPort > 0) {
+            if (exposeLan) {
+                if (mapping.protocol != QStringLiteral("tcp")
+                    && mapping.protocol != QStringLiteral("udp")) {
+                    if (error) {
+                        *error = Error::make(
+                            QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                            QStringLiteral("Expor na LAN aceita apenas portas tcp ou udp."));
+                    }
+                    return {};
+                }
+                if (mapping.hostPort > 65535) {
+                    if (error) {
+                        *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                             QStringLiteral("Porta do host inválida: %1.")
+                                                 .arg(mapping.hostPort));
+                    }
+                    return {};
+                }
+                publishedByProtocol[mapping.protocol].append(
+                    QString::number(mapping.hostPort));
+            }
             spec.ports.append(mapping);
+        }
+    }
+
+    if (exposeLan) {
+        if (publishedByProtocol.isEmpty()) {
+            if (error) {
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                    QStringLiteral("Informe ao menos uma porta publicada para expor na LAN."));
+            }
+            return {};
+        }
+        int totalPorts = 0;
+        for (const QStringList &hostPorts : publishedByProtocol) {
+            totalPorts += hostPorts.size();
+        }
+        if (totalPorts > 32) {
+            if (error) {
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                    QStringLiteral("No máximo 32 portas podem ser expostas por container."));
+            }
+            return {};
+        }
+        if (!m_helper.available()) {
+            if (error) {
+                *error = helperRequiredError();
+            }
+            return {};
         }
     }
 
@@ -997,9 +1075,163 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
         return {};
     }
 
+    if (exposeLan) {
+        QStringList openedProtocols;
+        for (auto it = publishedByProtocol.constBegin(); it != publishedByProtocol.constEnd();
+             ++it) {
+            QString helperError;
+            const bool ok = m_helper.call(
+                QStringLiteral("OpenPorts"),
+                QVariantList{QVariant::fromValue(it.value()), it.key()}, &helperError);
+            if (!ok) {
+                for (const QString &protocol : openedProtocols) {
+                    QString ignored;
+                    (void)m_helper.call(
+                        QStringLiteral("ClosePorts"),
+                        QVariantList{QVariant::fromValue(publishedByProtocol.value(protocol)),
+                                     protocol},
+                        &ignored);
+                }
+                Error cleanupError;
+                (void)m_podman.removeContainer(id, true, false, &cleanupError);
+                if (error) {
+                    *error = Error::make(
+                        QStringLiteral("PODSTACK_IO_ERROR"),
+                        QStringLiteral("O container foi criado, mas o firewall não abriu as "
+                                       "portas; a criação foi desfeita."),
+                        helperError,
+                        QStringLiteral("Verifique o firewalld/ufw e tente novamente."));
+                }
+                return {};
+            }
+            openedProtocols.append(it.key());
+        }
+    }
+
     QJsonObject result;
     result.insert(QStringLiteral("id"), id);
     result.insert(QStringLiteral("started"), start);
+    result.insert(QStringLiteral("exposeLan"), exposeLan);
+    return result;
+}
+
+QJsonObject Daemon::containerExposeLan(const QJsonObject &params, Error *error)
+{
+    const QString id = requireId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const bool expose = params.value(QStringLiteral("expose")).toBool(false);
+
+    const QJsonObject json = m_podman.inspectContainer(id, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    const QJsonObject bindings =
+        json.value(QStringLiteral("HostConfig"))
+            .toObject()
+            .value(QStringLiteral("PortBindings"))
+            .toObject();
+
+    QMap<QString, QStringList> portsByProtocol;
+    QJsonArray portSpecs;
+    bool anyPort = false;
+    bool wildcardOnly = true;
+    for (auto it = bindings.constBegin(); it != bindings.constEnd(); ++it) {
+        const QStringList keyParts = it.key().split(QLatin1Char('/'));
+        if (keyParts.size() != 2) {
+            continue;
+        }
+        const QString protocol = keyParts.at(1).trimmed().toLower();
+        const QJsonArray hosts = it.value().toArray();
+        for (const QJsonValue &hostValue : hosts) {
+            const QJsonObject host = hostValue.toObject();
+            const int hostPort = host.value(QStringLiteral("HostPort")).toString().toInt();
+            if (hostPort <= 0) {
+                continue;
+            }
+            anyPort = true;
+            const QString hostIp = host.value(QStringLiteral("HostIp")).toString();
+            if (!isWildcardHostIp(hostIp)) {
+                wildcardOnly = false;
+            }
+            if (protocol != QStringLiteral("tcp") && protocol != QStringLiteral("udp")) {
+                if (error) {
+                    *error = Error::make(
+                        QStringLiteral("PODSTACK_UNSUPPORTED"),
+                        QStringLiteral("O firewall da LAN só gerencia portas tcp e udp."));
+                }
+                return {};
+            }
+            portsByProtocol[protocol].append(QString::number(hostPort));
+            portSpecs.append(QStringLiteral("%1/%2").arg(hostPort).arg(protocol));
+        }
+    }
+
+    if (!anyPort) {
+        if (error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                QStringLiteral("O container não publica portas."),
+                QString(), QStringLiteral("Publique portas ao criar o container."));
+        }
+        return {};
+    }
+
+    if (!wildcardOnly) {
+        if (error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_UNSUPPORTED"),
+                QStringLiteral("As portas publicadas não estão em 0.0.0.0. Recrie o container "
+                               "com a opção 'Expor na LAN'."),
+                QStringLiteral("O bind atual aponta para o loopback ou um IP específico."),
+                QStringLiteral("Remova o container e crie-o novamente com 'Expor na LAN'."));
+        }
+        return {};
+    }
+
+    if (!m_helper.available()) {
+        if (error) {
+            *error = helperRequiredError();
+        }
+        return {};
+    }
+
+    const QString method = expose ? QStringLiteral("OpenPorts") : QStringLiteral("ClosePorts");
+    QStringList changedProtocols;
+    for (auto it = portsByProtocol.constBegin(); it != portsByProtocol.constEnd(); ++it) {
+        QString helperError;
+        const bool ok = m_helper.call(
+            method, QVariantList{QVariant::fromValue(it.value()), it.key()}, &helperError);
+        if (!ok) {
+            if (expose) {
+                for (const QString &protocol : changedProtocols) {
+                    QString ignored;
+                    (void)m_helper.call(
+                        QStringLiteral("ClosePorts"),
+                        QVariantList{QVariant::fromValue(portsByProtocol.value(protocol)),
+                                     protocol},
+                        &ignored);
+                }
+            }
+            if (error) {
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_IO_ERROR"),
+                    QStringLiteral("Não foi possível %1 as portas no firewall.")
+                        .arg(expose ? QStringLiteral("abrir") : QStringLiteral("fechar")),
+                    helperError,
+                    QStringLiteral("Verifique o firewalld/ufw e tente novamente."));
+            }
+            return {};
+        }
+        changedProtocols.append(it.key());
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), id);
+    result.insert(QStringLiteral("expose"), expose);
+    result.insert(QStringLiteral("ports"), portSpecs);
     return result;
 }
 
