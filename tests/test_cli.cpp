@@ -33,6 +33,7 @@ private slots:
     void machineDistros();
     void machineCommands();
     void topCommand();
+    void systemDf();
     void composeAndBuild();
     void setupCommand();
     void errorPaths();
@@ -554,6 +555,56 @@ void CliTest::topCommand()
     result = run({QStringLiteral("top"), QStringLiteral("--help")}, env);
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("Uso: podstack top")));
+}
+
+void CliTest::systemDf()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("system"), QStringLiteral("df"),
+                            QStringLiteral("--json")},
+                           env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    const QJsonObject sections = document.object().value(QStringLiteral("sections")).toObject();
+    QCOMPARE(sections.value(QStringLiteral("images"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(sections.value(QStringLiteral("containers"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(sections.value(QStringLiteral("volumes"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+
+    result = run({QStringLiteral("system"), QStringLiteral("df")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("IMAGENS")));
+    QVERIFY(result.out.contains(QStringLiteral("CONTAINERS")));
+    QVERIFY(result.out.contains(QStringLiteral("VOLUMES")));
+    QVERIFY(result.out.contains(QStringLiteral("TOTAL recuperável")));
+
+    result = run({QStringLiteral("system"), QStringLiteral("df"),
+                  QStringLiteral("--detailed")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("<none>:<none>")));
+    QVERIFY(result.out.contains(QStringLiteral("mock-stopped")));
+    QVERIFY(result.out.contains(QStringLiteral("vol1")));
+    QVERIFY(result.out.contains(QStringLiteral("em uso · não será removido")));
+
+    result = run({QStringLiteral("system"), QStringLiteral("df"),
+                  QStringLiteral("--unknown")},
+                 env);
+    QCOMPARE(result.code, 2);
 }
 
 void CliTest::composeAndBuild()

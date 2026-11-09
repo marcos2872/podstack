@@ -68,6 +68,8 @@ void printUsage()
           << "                          Gerencia machines QEMU/KVM\n"
           << "  top [--once] [--interval S] [--json] [--plain]\n"
           << "                          Monitora CPU/memória/containers\n"
+          << "  system df [--detailed] [--json]\n"
+          << "                          Uso de disco e prévia de prune\n"
           << "  setup [--check|--status|--validate]\n"
           << "        [--apply podman|qemu|components|socket]\n"
           << "        [--remove-docker --yes]\n"
@@ -1923,6 +1925,166 @@ int commandTop(const QStringList &args)
     return kExitOk;
 }
 
+QString imageLabel(const QJsonObject &item)
+{
+    const QString repository = item.value(QStringLiteral("repository")).toString();
+    const QString tag = item.value(QStringLiteral("tag")).toString();
+    if (repository.isEmpty() || repository == QStringLiteral("<none>")) {
+        return QStringLiteral("<none>:<none>");
+    }
+    return tag.isEmpty() ? repository : repository + QLatin1Char(':') + tag;
+}
+
+int commandSystem(const QStringList &args)
+{
+    if (args.isEmpty()) {
+        err() << "Uso: podstack system df [--detailed] [--json]\n";
+        return kExitUsage;
+    }
+    const QString sub = args.first();
+    if (sub == QStringLiteral("--help") || sub == QStringLiteral("-h")
+        || sub == QStringLiteral("help")) {
+        out() << "Uso: podstack system df [--detailed] [--json]\n";
+        out().flush();
+        return kExitOk;
+    }
+    if (sub != QStringLiteral("df")) {
+        err() << "subcomando desconhecido: system " << sub << '\n';
+        err() << "Uso: podstack system df [--detailed] [--json]\n";
+        return kExitUsage;
+    }
+
+    bool detailed = false;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--detailed")) {
+            detailed = true;
+        } else if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result = client.call(
+        QStringLiteral("system.df"),
+        QJsonObject{{QStringLiteral("detailed"), detailed}}, &error, 60000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonObject sections = result.value(QStringLiteral("sections")).toObject();
+    const auto section = [&sections](const QString &name) {
+        return sections.value(name).toObject();
+    };
+    const auto printSummaryRow = [](const QString &name, const QJsonObject &value) {
+        out() << QStringLiteral("%1  %2  %3  %4\n")
+                     .arg(name.leftJustified(12))
+                     .arg(QString::number(value.value(QStringLiteral("count")).toInt())
+                              .rightJustified(6))
+                     .arg(humanBytes(static_cast<qint64>(
+                              value.value(QStringLiteral("sizeBytes")).toDouble()))
+                              .rightJustified(11))
+                     .arg(humanBytes(static_cast<qint64>(
+                              value.value(QStringLiteral("reclaimableBytes")).toDouble()))
+                              .rightJustified(11));
+    };
+
+    if (!detailed) {
+        out() << QStringLiteral("%1  %2  %3  %4\n")
+                     .arg(QStringLiteral("SEÇÃO").leftJustified(12))
+                     .arg(QStringLiteral("ITENS").rightJustified(6))
+                     .arg(QStringLiteral("TAMANHO").rightJustified(11))
+                     .arg(QStringLiteral("RECUPERÁVEL").rightJustified(11));
+        printSummaryRow(QStringLiteral("IMAGENS"), section(QStringLiteral("images")));
+        printSummaryRow(QStringLiteral("CONTAINERS"), section(QStringLiteral("containers")));
+        printSummaryRow(QStringLiteral("VOLUMES"), section(QStringLiteral("volumes")));
+        out() << QStringLiteral("TOTAL recuperável: ")
+              << humanBytes(static_cast<qint64>(
+                     result.value(QStringLiteral("totalReclaimableBytes")).toDouble()))
+              << '\n';
+        out().flush();
+        return kExitOk;
+    }
+
+    const auto items = [](const QJsonObject &value) {
+        return value.value(QStringLiteral("items")).toArray();
+    };
+
+    out() << "IMAGENS\n";
+    const QJsonArray images = items(section(QStringLiteral("images")));
+    for (const QJsonValue &value : images) {
+        const QJsonObject item = value.toObject();
+        QStringList flags;
+        if (item.value(QStringLiteral("dangling")).toBool()) {
+            flags.append(QStringLiteral("dangling"));
+        }
+        flags.append(item.value(QStringLiteral("unused")).toBool()
+                         ? QStringLiteral("sem uso")
+                         : QStringLiteral("em uso"));
+        out() << "  " << imageLabel(item).leftJustified(48) << "  "
+              << humanBytes(static_cast<qint64>(
+                     item.value(QStringLiteral("sizeBytes")).toDouble()))
+                     .rightJustified(10)
+              << "  " << flags.join(QStringLiteral(" · ")) << '\n';
+    }
+    if (images.isEmpty()) {
+        out() << "  (nenhuma imagem)\n";
+    }
+
+    out() << "CONTAINERS\n";
+    const QJsonArray containers = items(section(QStringLiteral("containers")));
+    for (const QJsonValue &value : containers) {
+        const QJsonObject item = value.toObject();
+        out() << "  " << item.value(QStringLiteral("name")).toString().leftJustified(48) << "  "
+              << humanBytes(static_cast<qint64>(
+                     item.value(QStringLiteral("sizeBytes")).toDouble()))
+                     .rightJustified(10)
+              << "  " << item.value(QStringLiteral("status")).toString()
+              << (item.value(QStringLiteral("running")).toBool()
+                      ? QStringLiteral(" (em execução)")
+                      : QStringLiteral(" (parado)"))
+              << '\n';
+    }
+    if (containers.isEmpty()) {
+        out() << "  (nenhum container)\n";
+    }
+
+    out() << "VOLUMES\n";
+    const QJsonArray volumes = items(section(QStringLiteral("volumes")));
+    for (const QJsonValue &value : volumes) {
+        const QJsonObject item = value.toObject();
+        const bool inUse = item.value(QStringLiteral("inUse")).toBool();
+        out() << "  " << item.value(QStringLiteral("name")).toString().leftJustified(48) << "  "
+              << humanBytes(static_cast<qint64>(
+                     item.value(QStringLiteral("sizeBytes")).toDouble()))
+                     .rightJustified(10)
+              << "  " << (inUse ? QStringLiteral("em uso · não será removido")
+                                : QStringLiteral("sem uso · será removido"))
+              << '\n';
+    }
+    if (volumes.isEmpty()) {
+        out() << "  (nenhum volume)\n";
+    }
+
+    out() << "TOTAL recuperável: "
+          << humanBytes(static_cast<qint64>(
+                 result.value(QStringLiteral("totalReclaimableBytes")).toDouble()))
+          << '\n';
+    out().flush();
+    return kExitOk;
+}
+
 int commandMachine(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -2278,6 +2440,9 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("setup")) {
         return commandSetup(args);
+    }
+    if (command == QStringLiteral("system")) {
+        return commandSystem(args);
     }
     if (command == QStringLiteral("top")) {
         return commandTop(args);

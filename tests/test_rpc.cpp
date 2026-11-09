@@ -585,6 +585,102 @@ void RpcTest::catalog()
                                      .value(QStringLiteral("ImagesSize"))
                                      .toDouble()),
              7001000);
+    QVERIFY(result.value(QStringLiteral("detailed")).toBool());
+    QJsonObject sections = result.value(QStringLiteral("sections")).toObject();
+    QCOMPARE(sections.value(QStringLiteral("images"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(sections.value(QStringLiteral("images"))
+                 .toObject()
+                 .value(QStringLiteral("items"))
+                 .toArray()
+                 .size(),
+             1);
+    const QJsonObject imageItem = sections.value(QStringLiteral("images"))
+                                      .toObject()
+                                      .value(QStringLiteral("items"))
+                                      .toArray()
+                                      .first()
+                                      .toObject();
+    QVERIFY(imageItem.value(QStringLiteral("dangling")).toBool());
+    QVERIFY(imageItem.value(QStringLiteral("unused")).toBool());
+    QCOMPARE(static_cast<qint64>(
+                 imageItem.value(QStringLiteral("uniqueSizeBytes")).toDouble()),
+             6000000);
+    QCOMPARE(static_cast<qint64>(sections.value(QStringLiteral("images"))
+                                     .toObject()
+                                     .value(QStringLiteral("reclaimableBytes"))
+                                     .toDouble()),
+             6000000);
+    QCOMPARE(sections.value(QStringLiteral("containers"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(static_cast<qint64>(sections.value(QStringLiteral("containers"))
+                                     .toObject()
+                                     .value(QStringLiteral("reclaimableBytes"))
+                                     .toDouble()),
+             1234);
+    QCOMPARE(sections.value(QStringLiteral("volumes"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QVERIFY(sections.value(QStringLiteral("volumes"))
+                .toObject()
+                .value(QStringLiteral("items"))
+                .toArray()
+                .first()
+                .toObject()
+                .value(QStringLiteral("inUse"))
+                .toBool());
+    QCOMPARE(static_cast<qint64>(sections.value(QStringLiteral("volumes"))
+                                     .toObject()
+                                     .value(QStringLiteral("reclaimableBytes"))
+                                     .toDouble()),
+             0);
+    QCOMPARE(static_cast<qint64>(sections.value(QStringLiteral("volumes"))
+                                     .toObject()
+                                     .value(QStringLiteral("items"))
+                                     .toArray()
+                                     .first()
+                                     .toObject()
+                                     .value(QStringLiteral("reclaimableBytes"))
+                                     .toDouble()),
+             0);
+    QCOMPARE(static_cast<qint64>(
+                 result.value(QStringLiteral("totalReclaimableBytes")).toDouble()),
+             6001234);
+
+    result = client.call(QStringLiteral("system.df"),
+                         QJsonObject{{QStringLiteral("detailed"), false}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!result.value(QStringLiteral("detailed")).toBool());
+    sections = result.value(QStringLiteral("sections")).toObject();
+    QCOMPARE(sections.value(QStringLiteral("images"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(sections.value(QStringLiteral("containers"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(sections.value(QStringLiteral("volumes"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QVERIFY(!sections.value(QStringLiteral("images"))
+                 .toObject()
+                 .contains(QStringLiteral("items")));
+    QCOMPARE(static_cast<qint64>(
+                 result.value(QStringLiteral("totalReclaimableBytes")).toDouble()),
+             6001234);
 
     QLocalSocket socket;
     socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);

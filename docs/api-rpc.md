@@ -108,10 +108,67 @@ interface Subscription { subscriptionId: string }
 | `system.status` | `{}` | `{state, engine, mode, version, uptimeSeconds, counts, warnings[]}` |
 | `system.doctor` | `{deep?:bool}` | `{checks:[{id,status,detail,remediation}]}` |
 | `system.report` | `{includeLogs?:bool}` | `{path, bytes, sha256}` |
-| `system.df` | `{}` | `{json:{ImagesSize,Images:[],Containers:[],Volumes:[]}}` |
+| `system.df` | `{detailed?:bool}` | `{json, detailed, sections, totalReclaimableBytes}` |
 | `system.stats.subscribe` | `{intervalSeconds?}` | `Subscription`; notifica `system.stats.delta` |
 | `system.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 | `system.shutdown` | `{stopContainers?:bool}` | `{}` |
+
+#### `system.df`
+
+`params`: `{detailed?: bool}` — padrão `true` para compatibilidade. Com `detailed:false`,
+cada seção mantém `count`, `sizeBytes` e `reclaimableBytes`, mas omite `items`.
+
+O resultado preserva o payload bruto do Libpod em `json` (compatibilidade) e adiciona um bloco
+normalizado:
+
+```json
+{
+  "json": { "ImagesSize": 0, "Images": [], "Containers": [], "Volumes": [] },
+  "detailed": true,
+  "sections": {
+    "images": {
+      "count": 0,
+      "sizeBytes": 0,
+      "reclaimableBytes": 0,
+      "items": [
+        { "id": "", "repository": "", "tag": "", "sizeBytes": 0,
+          "uniqueSizeBytes": 0, "containers": 0, "dangling": false, "unused": true }
+      ]
+    },
+    "containers": {
+      "count": 0,
+      "sizeBytes": 0,
+      "reclaimableBytes": 0,
+      "items": [
+        { "id": "", "name": "", "status": "", "sizeBytes": 0, "running": false }
+      ]
+    },
+    "volumes": {
+      "count": 0,
+      "sizeBytes": 0,
+      "reclaimableBytes": 0,
+      "items": [
+        { "name": "", "sizeBytes": 0, "reclaimableBytes": 0, "inUse": false }
+      ]
+    },
+    "buildCache": { "count": 0, "sizeBytes": 0, "reclaimableBytes": 0, "items": [] }
+  },
+  "totalReclaimableBytes": 0
+}
+```
+
+Regras de normalização:
+
+- `images.dangling`: `Repository` vazio ou `<none>`; `images.unused`: `Containers == 0`.
+- `images.reclaimableBytes`: soma de `UniqueSize` (fallback `Size`) apenas das imagens
+  *dangling*.
+- `containers.running`: `Status`/`State` em `running` ou `paused`;
+  `containers.reclaimableBytes`: soma de `Size` dos containers parados.
+- `volumes.inUse`: `Links > 0`; `volumes.reclaimableBytes`: soma de `ReclaimableSize`
+  (fallback `0`) apenas dos volumes **sem uso** — volumes em uso contribuem com `0`.
+- `totalReclaimableBytes`: imagens + containers + volumes. É uma **estimativa**: camadas
+  compartilhadas podem reduzir o espaço realmente liberado.
+- Entradas malformadas ou sem identificação são ignoradas.
 
 ### 4.2 `containers.*`
 

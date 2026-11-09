@@ -39,6 +39,7 @@ class Backend : public QObject {
     Q_PROPERTY(bool pullActive READ pullActive NOTIFY pullStateChanged)
     Q_PROPERTY(QString pullStatus READ pullStatus NOTIFY pullStateChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
+    Q_PROPERTY(QVariantMap prunePreview READ prunePreview NOTIFY prunePreviewChanged)
     Q_PROPERTY(QVariantList composeProjects READ composeProjects NOTIFY composeProjectsChanged)
     Q_PROPERTY(QStringList composeLogLines READ composeLogLines NOTIFY composeLogsChanged)
     Q_PROPERTY(QVariantList builds READ builds NOTIFY buildsChanged)
@@ -90,6 +91,7 @@ public:
     bool pullActive() const { return m_pullActive; }
     QString pullStatus() const { return m_pullStatus; }
     QVariantMap diskUsage() const { return m_diskUsage; }
+    QVariantMap prunePreview() const { return m_prunePreview; }
     QVariantList composeProjects() const { return m_composeProjects; }
     QStringList composeLogLines() const { return m_composeLogLines; }
     QVariantList builds() const { return m_builds; }
@@ -117,6 +119,7 @@ public:
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
+    Q_INVOKABLE void refreshDiskUsage();
     Q_INVOKABLE void refreshImages();
     Q_INVOKABLE void refreshVolumes();
     Q_INVOKABLE void refreshNetworks();
@@ -203,6 +206,7 @@ signals:
     void podsChanged();
     void pullStateChanged();
     void diskUsageChanged();
+    void prunePreviewChanged();
     void composeProjectsChanged();
     void composeLogsChanged();
     void buildsChanged();
@@ -281,6 +285,7 @@ private:
     bool m_pullActive = false;
     QString m_pullStatus;
     QVariantMap m_diskUsage;
+    QVariantMap m_prunePreview;
     QVariantList m_composeProjects;
     QStringList m_composeLogLines;
     QVariantList m_builds;

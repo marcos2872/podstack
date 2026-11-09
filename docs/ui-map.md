@@ -97,8 +97,8 @@
 | Seção | Colunas principais (implementado) | Ações de toolbar |
 |---|---|---|
 | Containers | nome, status, imagem, portas | criar, start/stop all, lote por seleção, terminal |
-| Images | repositório:tag, digest, tamanho, uso | pull, importar, tag, untag, prune, remover |
-| Volumes | nome, driver, tamanho, links | criar, clone, importar do host, prune, remover |
+| Images | repositório:tag, digest, tamanho, uso | pull, importar, tag, untag, prune (prévia), remover |
+| Volumes | nome, driver, tamanho, links | criar, clone, importar do host, prune (prévia), remover |
 | Networks | nome, driver, subnet, containers | criar, conectar, desconectar, remover |
 | Pods (Podman) | nome, status, containers, ID | criar, start, stop, restart, remover |
 | Compose | projeto, status, serviços, diretório | up, down, restart, logs, abrir YAML/diretório |
@@ -106,6 +106,12 @@
 | Services (K8s) | planejado (M5) | — |
 | Machines | planejado (M4) | — |
 | Devices | tipo, nome, VID:PID, status | attach/detach |
+
+**Prune com prévia (T2-18):** os diálogos de Imagens e Volumes chamam
+`backend.refreshDiskUsage()` ao abrir, consultam `system.df` e listam
+`sections.images.items`/`sections.volumes.items` com nome, tamanho e situação
+(dangling/sem uso/em uso) e o total recuperável estimado. A lista tem altura limitada e,
+quando vazia, mostra uma mensagem. Nenhum mountpoint/path é exposto na prévia.
 
 ### 4.3 Estados
 

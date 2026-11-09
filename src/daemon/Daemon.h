@@ -73,7 +73,7 @@ private:
     QJsonObject podCreate(const QJsonObject &params, Error *error);
     QJsonObject podAction(const QString &method, const QJsonObject &params, Error *error);
     QJsonObject podRemove(const QJsonObject &params, Error *error);
-    QJsonObject systemDf(Error *error);
+    QJsonObject systemDf(const QJsonObject &params, Error *error);
     QJsonObject composeProjects(Error *error);
     QJsonObject composeAction(const QString &method, const QJsonObject &params, Error *error);
     QJsonObject subscribeComposeLogs(const QJsonObject &params, const Notify &notify,

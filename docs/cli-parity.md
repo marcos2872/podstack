@@ -77,6 +77,7 @@
 | `version` | `version` | `--format` | |
 | `report` | `report` | `--include-logs` | Redaction |
 | `top` | `top` | `--once`, `--interval S`, `--json`, `--plain` | ✅ T7-04 — `top --once` espera duas amostras (taxas reais); contínuo até Ctrl+C |
+| — | `system df` | `--detailed`, `--json` | ✅ T2-18 — resumo por seção; `--detailed` lista imagens/containers/volumes e o total recuperável estimado |
 | `completion` | `completion` | `--shell` | bash/zsh/fish |
 
 ### 2.3 Docker/Compose/Builds

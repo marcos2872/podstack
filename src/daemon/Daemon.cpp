@@ -1,6 +1,7 @@
 #include "daemon/Daemon.h"
 
 #include "core/Config.h"
+#include "core/DiskUsage.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
 #include "daemon/StatsCollector.h"
@@ -132,7 +133,7 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
         return containerFilesUpload(params, error);
     }
     if (method == QStringLiteral("system.df")) {
-        return systemDf(error);
+        return systemDf(params, error);
     }
     if (method == QStringLiteral("images.list")) {
         return imagesList(params, error);
@@ -1747,16 +1748,14 @@ QJsonObject Daemon::podRemove(const QJsonObject &params, Error *error)
     return result;
 }
 
-QJsonObject Daemon::systemDf(Error *error)
+QJsonObject Daemon::systemDf(const QJsonObject &params, Error *error)
 {
     const QJsonObject json = m_podman.systemDf(error);
     if (error && !error->isEmpty()) {
         return {};
     }
 
-    QJsonObject result;
-    result.insert(QStringLiteral("json"), json);
-    return result;
+    return normalizeDiskUsage(json, params.value(QStringLiteral("detailed")).toBool(true));
 }
 
 QJsonObject Daemon::composeProjects(Error *error)

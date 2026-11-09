@@ -35,6 +35,7 @@ qt_standard_project_setup(REQUIRES 6.10)
 # Core: errors, paths, config, logging, JSON-RPC client
 # ---------------------------------------------------------------------------
 add_library(podstack_core STATIC
+    src/core/DiskUsage.cpp
     src/core/Error.cpp
     src/core/Ids.cpp
     src/core/Paths.cpp

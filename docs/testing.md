@@ -57,6 +57,10 @@
 - Machines: `list` vazio, `get`/lifecycle/cancel inexistentes → `PODSTACK_NOT_FOUND`,
   `create` sem nome/distro ou com CPUs/memória inválidas → `PODSTACK_INVALID_PARAMS`,
   `mounts`/`isolated:true` → `PODSTACK_UNSUPPORTED` (sem QEMU nem rede).
+- `system.df`: detalhado devolve `sections.images/containers/volumes` com contagens, itens,
+  flags (`dangling`, `unused`, `running`, `inUse`) e totais; `detailed:false` mantém
+  contagens/totais e omite `items`; `json` bruto permanece intacto (fixture do
+  `MockPodmanServer`).
 
 ### 2.4 CLI
 
@@ -69,6 +73,8 @@
   inválido e `machine --help`/usage.
 - `top --once --interval 1 --json` devolve uma amostra com `host`/`containers`/`totals` e
   `--help` funciona; o modo contínuo é interrompido com Ctrl+C.
+- `system df --json` devolve as seções normalizadas; `system df` mostra o resumo e
+  `--detailed` lista imagens/containers/volumes; opção desconhecida sai com 2.
 
 ---
 
@@ -90,6 +96,7 @@
 | Stats | CPU/mem/rede, stream, múltiplos containers |
 | Imagens | pull, tag, remove, prune, load/save |
 | Volumes | create, clone, export/import, prune |
+| Prune/system df | `system.df` com fixture: contagens, itens, flags e total recuperável |
 | Redes | create, subnet, DNS interno, connect/disconnect |
 | Pods | create/start/stop/remove |
 | Eventos | sequência de eventos, reconexão |
@@ -122,10 +129,14 @@
 | `test_rpc` | `setupFlow` | `setup.status/check/validate/complete`, ids dos checks, `PODSTACK_INVALID_PARAMS` e `PODSTACK_CONFIRMATION_REQUIRED` |
 | `test_gui` | `backendSetup` | `setupRefresh`, `setupLoaded`, `setupChecks`, `setupSkip` e `setupComplete`; sem os checks obrigatórios no host (CI), valida a recusa e faz `QSKIP` |
 | `test_cli` | `setupCommand` | `podstack setup --check`, `--validate` e a exigência de `--yes` |
+| `test_cli` | `topCommand` | `podstack top --once --json` (amostra com host/containers/totais) e `--help` |
+| `test_cli` | `systemDf` | `podstack system df`, `--detailed` e `--json` sobre o fixture do `system.df` |
 | `test_tray` | `containersMenu*`, `status*` | menu Abrir/Containers/Activity/Sair, agrupamento por projeto, overflow, status normal/atenção/erro e defaults de config |
 | `test_single_instance` | `secondInstance*` | primária/secundária, comandos `show`/`quit`, socket órfão e permissões 0600 |
 | `test_autostart` | `enablesAndDisables` | `.desktop` com `--hidden`, remoção e preservação de arquivo alheio |
 | `test_stats` | `parses*` | parsers de `/proc/stat`, `/proc/meminfo`, `/proc/net/dev` e `/proc/diskstats` |
+| `test_rpc` | `catalog` | `system.df` detalhado/resumido, contagens, flags, itens e total recuperável (fixture) |
+| `test_gui` | `backendCatalog` | `prunePreview` populado via `refreshCatalog`/`refreshDiskUsage` |
 | `test_notifications` | `summaryFor*`, `cooldown*` | falha/OOM/unhealthy, eventos normais ignorados e cooldown |
 | `test_setup` | `check*`, `status*`, `validate*`, `rejectsInvalidActions` | checks read-only, resumo de status e validação de ações inválidas |
 | `test_machines` | `registry*`, `download*`, `cache*`, `pathsCacheDir`, `pathsMachinesDir`, `machineMeta*`, `machineStore*`, `seed*`, `idsUuidV7`, `machineManager*` | registry pinado (default/versão inválida/arch), download feliz/404/checksum/cancelamento, reuso e rehash do cache, `cloudImagesDir`/`machinesDir` 0700, `machineDir` com id inválido, `meta.json` round-trip/0600/JSON inválido, CRUD e cascade do índice SQLite no mesmo `podstack.db` do BuildStore, seed ISO NoCloud (entradas/label `cidata`, YAML padrão, senha só como hash `$6$`, user-data verbatim, escape/validação e modo 0600), UUIDv7 (versão/variante/unicidade/ordem) e manager com runtime falso (create/validação/ciclo de vida/cancelamento/portas) |
@@ -195,6 +206,9 @@ gera `Notify` com “Container falhou”.
 ## 7. E2E (GUI)
 
 - QML Test para componentes (estados, validação, foco).
+- Diálogos de prune de Imagens/Volumes: `refreshDiskUsage()` ao abrir popula
+  `Backend.prunePreview` a partir de `system.df`; a lista mostra nome, tamanho, situação e
+  total recuperável, e fica vazia com mensagem quando não há itens (`test_gui/backendCatalog`).
 - Testes de fluxo com `qmltestrunner` + daemon real:
   1. abrir app → listar containers;
   2. criar container → start → logs → terminal → stop → remove;

@@ -87,7 +87,7 @@
 | T2-15 | P1 | Expor portas na LAN | T2-08 | ⬜ M3 (helper/firewall) |
 | T2-16 | P1 | Proxy global e exclusões | T2-08 | ⬜ M3 |
 | T2-17 | P2 | Multi-arch/platform selection | T2-02 | ◐ pull aceita `platform`; seletor visual no M3 |
-| T2-18 | P2 | Prune avançado (system df) | T2-03 | ◐ `system.df` + prune; prévia detalhada no M3 |
+| T2-18 | P2 | Prune avançado (system df) | T2-03 | ✅ `system.df` detalhado + prévia nos diálogos de Imagens/Volumes + `podstack system df [--detailed|--json]`; coberto por `test_rpc/catalog`, `test_gui/backendCatalog` e `test_cli/systemDf` |
 
 **Saída M2:** catálogo completo navegável e operável.
 

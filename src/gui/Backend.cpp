@@ -1,6 +1,7 @@
 #include "gui/Backend.h"
 
 #include "core/Config.h"
+#include "core/DiskUsage.h"
 #include "core/Error.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
@@ -402,6 +403,11 @@ void Backend::refreshCatalog()
     refreshSection(QStringLiteral("df"));
 }
 
+void Backend::refreshDiskUsage()
+{
+    refreshSection(QStringLiteral("df"));
+}
+
 void Backend::refreshImages()
 {
     refreshSection(QStringLiteral("images"));
@@ -458,10 +464,15 @@ void Backend::startNextCatalog()
         return;
     }
 
-    m_catalogWatcher.setFuture(QtConcurrent::run([method] {
+    QJsonObject params;
+    if (m_catalogSection == QStringLiteral("df")) {
+        params.insert(QStringLiteral("detailed"), true);
+    }
+
+    m_catalogWatcher.setFuture(QtConcurrent::run([method, params] {
         RpcClient client;
         Error error;
-        const QJsonObject result = client.call(method, {}, &error);
+        const QJsonObject result = client.call(method, params, &error);
         if (!error.isEmpty()) {
             QJsonObject payload;
             payload.insert(QStringLiteral("error"), error.toJson());
@@ -478,6 +489,10 @@ void Backend::onCatalogFinished()
         const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
         m_lastError = errorObject.value(QStringLiteral("message")).toString();
         emit lastErrorChanged();
+        if (m_catalogSection == QStringLiteral("df")) {
+            m_prunePreview.clear();
+            emit prunePreviewChanged();
+        }
         startNextCatalog();
         return;
     }
@@ -566,6 +581,19 @@ void Backend::onCatalogFinished()
         m_diskUsage.insert(QStringLiteral("volumes"), humanBytes(volumesSize));
         m_diskUsage.insert(QStringLiteral("containers"), humanBytes(containersSize));
         emit diskUsageChanged();
+
+        QJsonObject sections = result.value(QStringLiteral("sections")).toObject();
+        double totalReclaimable =
+            result.value(QStringLiteral("totalReclaimableBytes")).toDouble();
+        if (sections.isEmpty()) {
+            const QJsonObject normalized = normalizeDiskUsage(df, true);
+            sections = normalized.value(QStringLiteral("sections")).toObject();
+            totalReclaimable =
+                normalized.value(QStringLiteral("totalReclaimableBytes")).toDouble();
+        }
+        m_prunePreview = sections.toVariantMap();
+        m_prunePreview.insert(QStringLiteral("totalReclaimableBytes"), totalReclaimable);
+        emit prunePreviewChanged();
     } else if (m_catalogSection == QStringLiteral("compose")) {
         m_composeProjects.clear();
         for (const QJsonValue &value : items) {

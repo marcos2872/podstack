@@ -309,6 +309,31 @@ void GuiTest::backendCatalog()
     QTRY_VERIFY_WITH_TIMEOUT(diskSpy.count() > 0, 5000);
     QVERIFY(backend.diskUsage().contains(QStringLiteral("images")));
 
+    const QVariantMap preview = backend.prunePreview();
+    QVERIFY(preview.contains(QStringLiteral("images")));
+    QVERIFY(preview.contains(QStringLiteral("volumes")));
+    QCOMPARE(preview.value(QStringLiteral("images"))
+                 .toMap()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(preview.value(QStringLiteral("volumes"))
+                 .toMap()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QVERIFY(preview.value(QStringLiteral("totalReclaimableBytes")).toDouble() > 0);
+
+    const int diskCount = diskSpy.count();
+    backend.refreshDiskUsage();
+    QTRY_VERIFY_WITH_TIMEOUT(diskSpy.count() > diskCount, 5000);
+    QCOMPARE(backend.prunePreview()
+                 .value(QStringLiteral("images"))
+                 .toMap()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+
     QCOMPARE(backend.images().size(), 2);
     QCOMPARE(backend.volumes().size(), 1);
     QCOMPARE(backend.networks().size(), 1);
