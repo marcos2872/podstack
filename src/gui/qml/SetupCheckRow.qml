@@ -79,7 +79,7 @@ Rectangle {
 
                 Text {
                     visible: (root.check.version || "").length > 0
-                    text: root.check.version
+                    text: String(root.check.version || "")
                     color: Theme.textTertiary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -99,7 +99,7 @@ Rectangle {
                 Layout.fillWidth: true
                 visible: root.showRemediation && root.checkState !== "ok"
                          && (root.check.remediation || "").length > 0
-                text: root.check.remediation
+                text: String(root.check.remediation || "")
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro

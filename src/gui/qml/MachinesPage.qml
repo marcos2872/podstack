@@ -90,7 +90,7 @@ ColumnLayout {
         if (items.length === 0) {
             selectedMachineId = ""
         }
-        machineList.currentIndex = index
+        machineList.currentRow = index
         if (index >= 0) {
             backend.loadMachineInfo(selectedMachineId)
             backend.loadMachineLogs(selectedMachineId, 200)

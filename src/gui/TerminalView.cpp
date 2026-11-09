@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QProcessEnvironment>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -24,9 +25,9 @@ TerminalView::TerminalView(const QString &title, const QString &program,
     , m_program(program)
     , m_arguments(args)
 {
-    auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
+    m_layout = new QVBoxLayout(this);
+    m_layout->setContentsMargins(0, 0, 0, 0);
+    m_layout->setSpacing(0);
 
     m_toolbar = new QWidget(this);
     m_toolbar->setObjectName(QStringLiteral("terminalToolbar"));
@@ -52,17 +53,30 @@ TerminalView::TerminalView(const QString &title, const QString &program,
     connect(m_externalButton, &QToolButton::clicked, this, &TerminalView::openExternal);
     toolbarLayout->addWidget(m_externalButton);
 
-    layout->addWidget(m_toolbar);
+    m_layout->addWidget(m_toolbar);
 
     m_terminal = new QTermWidget(0, this);
-    m_terminal->setObjectName(QStringLiteral("terminal"));
-    m_terminal->setColorScheme(QStringLiteral("DarkPastels"));
-    m_terminal->setTerminalSizeHint(true);
-    m_terminal->setScrollBarPosition(QTermWidgetInterface::ScrollBarRight);
+    configureTerminal(m_terminal);
+    m_layout->addWidget(m_terminal, 1);
+    startShell();
+    connect(m_terminal, SIGNAL(finished()), this, SLOT(handleTerminalFinished()));
+}
+
+void TerminalView::handleTerminalFinished()
+{
+    restartSession();
+}
+
+void TerminalView::configureTerminal(QTermWidget *terminal)
+{
+    terminal->setObjectName(QStringLiteral("terminal"));
+    terminal->setColorScheme(QStringLiteral("DarkPastels"));
+    terminal->setTerminalSizeHint(true);
+    terminal->setScrollBarPosition(QTermWidgetInterface::ScrollBarRight);
 
     // O keytab "default" manda Backspace como ^H (\b), que aparece literal em
     // shells cujo erase é ^? (readline/podman/ssh). O keytab "linux" manda \x7f.
-    m_terminal->setKeyBindings(QStringLiteral("linux"));
+    terminal->setKeyBindings(QStringLiteral("linux"));
 
     QStringList environment;
     for (const QString &entry : QProcessEnvironment::systemEnvironment().toStringList()) {
@@ -73,19 +87,64 @@ TerminalView::TerminalView(const QString &title, const QString &program,
     }
     environment.append(QStringLiteral("TERM=xterm-256color"));
     environment.append(QStringLiteral("COLORTERM=truecolor"));
-    m_terminal->setEnvironment(environment);
+    terminal->setEnvironment(environment);
 
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     font.setPointSize(11);
-    m_terminal->setTerminalFont(font);
+    terminal->setTerminalFont(font);
+}
 
-    if (!m_program.isEmpty()) {
-        m_terminal->setShellProgram(m_program);
-        m_terminal->setArgs(m_arguments);
-        m_terminal->startShellProgram();
+void TerminalView::startShell()
+{
+    if (!m_terminal || m_program.isEmpty()) {
+        return;
+    }
+    m_terminal->setShellProgram(m_program);
+    m_terminal->setArgs(m_arguments);
+    m_terminal->startShellProgram();
+    m_lastStart.restart();
+}
+
+void TerminalView::restartSession()
+{
+    if (!m_restartEnabled || m_program.isEmpty() || !m_terminal) {
+        return;
     }
 
-    layout->addWidget(m_terminal, 1);
+    // Um shell que sai logo após iniciar (container parado, comando inválido)
+    // não deve gerar um loop infinito de reinícios. `exit` normal, após alguns
+    // segundos, reinicia imediatamente.
+    if (m_lastStart.isValid() && m_lastStart.elapsed() < 1000) {
+        if (++m_fastExits >= 3) {
+            m_restartEnabled = false;
+            emit sessionEnded();
+            return;
+        }
+    } else {
+        m_fastExits = 0;
+    }
+
+    QTimer::singleShot(120, this, &TerminalView::rebuildTerminal);
+}
+
+void TerminalView::rebuildTerminal()
+{
+    if (!m_terminal || !m_layout) {
+        return;
+    }
+
+    m_terminal->disconnect(this);
+    m_layout->removeWidget(m_terminal);
+    m_terminal->deleteLater();
+
+    m_terminal = new QTermWidget(0, this);
+    configureTerminal(m_terminal);
+    m_layout->addWidget(m_terminal, 1);
+    startShell();
+    connect(m_terminal, SIGNAL(finished()), this, SLOT(handleTerminalFinished()));
+    ++m_restartCount;
+    focusTerminal();
+    emit sessionRestarted();
 }
 
 void TerminalView::setTitleVisible(bool visible)

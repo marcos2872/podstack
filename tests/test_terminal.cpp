@@ -33,6 +33,7 @@ private slots:
     void cleanupTestCase();
     void constructsWindow();
     void terminalViewConfiguration();
+    void terminalViewRestartsOnExit();
     void externalTerminalCommands();
     void externalTerminalDetection();
     void externalTerminalDesktopFallback();
@@ -101,6 +102,14 @@ void TerminalTest::terminalViewConfiguration()
     auto *external = view.findChild<QToolButton *>(QStringLiteral("terminalExternalButton"));
     QVERIFY(external != nullptr);
     QVERIFY(!external->text().isEmpty());
+}
+
+void TerminalTest::terminalViewRestartsOnExit()
+{
+    PodStack::TerminalView view(QStringLiteral("restart"),
+                                QStringLiteral("/bin/sh"),
+                                {QStringLiteral("-c"), QStringLiteral("exit 0")});
+    QTRY_VERIFY_WITH_TIMEOUT(view.restartCount() > 0, 5000);
 }
 
 void TerminalTest::externalTerminalCommands()

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <QElapsedTimer>
 #include <QString>
 #include <QStringList>
 #include <QWidget>
@@ -8,6 +9,7 @@
 class QLabel;
 class QTermWidget;
 class QToolButton;
+class QVBoxLayout;
 
 namespace PodStack {
 
@@ -37,19 +39,40 @@ public:
 
     QTermWidget *terminal() const { return m_terminal; }
 
+    /// Quantas vezes a sessão foi reiniciada após o shell terminar (`exit`).
+    int restartCount() const { return m_restartCount; }
+
     /// Dá foco de teclado ao terminal (ao trocar para a aba/dock).
     void focusTerminal();
 
+signals:
+    /// O shell foi reiniciado após `exit`.
+    void sessionRestarted();
+    /// O shell terminou rápido demais repetidas vezes; o reinício foi desativado.
+    void sessionEnded();
+
+private slots:
+    void handleTerminalFinished();
+
 private:
     void openExternal();
+    void configureTerminal(QTermWidget *terminal);
+    void startShell();
+    void restartSession();
+    void rebuildTerminal();
 
     QString m_title;
     QString m_program;
     QStringList m_arguments;
+    QVBoxLayout *m_layout = nullptr;
     QWidget *m_toolbar = nullptr;
     QLabel *m_titleLabel = nullptr;
     QToolButton *m_externalButton = nullptr;
     QTermWidget *m_terminal = nullptr;
+    QElapsedTimer m_lastStart;
+    int m_fastExits = 0;
+    int m_restartCount = 0;
+    bool m_restartEnabled = true;
 };
 
 } // namespace PodStack
