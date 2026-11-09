@@ -336,7 +336,10 @@ Formato único:
 
 1. Resolver imagem cloud (URL + checksum) e cache local.
 2. Criar disco qcow2 (mínimo 1 GiB; default 20 GiB).
-3. Gerar seed ISO (cloud-init NoCloud): `meta-data`, `user-data`, `network-config`.
+3. Gerar seed ISO (cloud-init NoCloud) com label `cidata`: `meta-data` (`instance-id`,
+   `local-hostname`), `user-data` (`#cloud-config`, usuário com sudo NOPASSWD, chaves SSH e senha
+   apenas como hash SHA-512 crypt) e `network-config` v2 (DHCP em `en*`). O arquivo é `0600` e os
+   três nomes ficam na raiz da ISO.
 4. Iniciar QEMU (KVM se disponível) com:
    - `-M q35 -cpu host -smp N -m M`
    - disco virtio, seed ISO, virtiofs (se mounts), rede user/passt com hostfwd SSH.

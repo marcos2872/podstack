@@ -65,7 +65,7 @@ target_link_libraries(test_notifications PRIVATE podstack_gui_lib Qt6::Test)
 add_test(NAME notifications COMMAND test_notifications)
 
 qt_add_executable(test_machines test_machines.cpp MockHttpServer.cpp)
-target_link_libraries(test_machines PRIVATE podstack_machines Qt6::Test)
+target_link_libraries(test_machines PRIVATE podstack_machines LibArchive::LibArchive Qt6::Test)
 add_test(NAME machines COMMAND test_machines)
 
 qt_add_executable(test_setup test_setup.cpp

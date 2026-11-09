@@ -23,6 +23,12 @@ find_package(qtermwidget6 REQUIRED)
 find_package(LibArchive REQUIRED)
 find_package(SQLite3 REQUIRED)
 
+find_library(CRYPT_LIBRARY crypt)
+if(NOT CRYPT_LIBRARY)
+    message(FATAL_ERROR
+        "libcrypt não encontrada. Instale libxcrypt-devel (Fedora) ou libcrypt-dev (Debian/Ubuntu).")
+endif()
+
 qt_standard_project_setup(REQUIRES 6.10)
 
 # ---------------------------------------------------------------------------
@@ -56,6 +62,7 @@ add_library(podstack_machines STATIC
     src/machines/DistroRegistry.cpp
     src/machines/HttpDownloader.cpp
     src/machines/CloudImageCache.cpp
+    src/machines/CloudInit.cpp
 )
 target_include_directories(podstack_machines PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_machines PUBLIC
@@ -63,6 +70,8 @@ target_link_libraries(podstack_machines PUBLIC
     Qt6::Core
     Qt6::Network
     CURL::libcurl
+    LibArchive::LibArchive
+    ${CRYPT_LIBRARY}
 )
 
 # ---------------------------------------------------------------------------

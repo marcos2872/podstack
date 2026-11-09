@@ -217,7 +217,11 @@ src/
   `<distro>-<version>-<arch>-<checksum[0..12]>.qcow2` + sidecar `.json`, lock por imagem,
   `.part` e rename atômico. Ubuntu/Debian não publicam tamanho fixo; o sidecar registra o
   tamanho real após o download.
-- seed ISO via `cloud-localds` com `meta-data`, `user-data`, `network-config`.
+- seed ISO **NoCloud** gerada com **libarchive** (formato ISO9660, label `cidata`, Rock Ridge
+  `strict` + Joliet), contendo `meta-data`, `user-data` e `network-config` na raiz. Motivo: não
+  depender do `cloud-localds`/`genisoimage` no host; libarchive já é usada pelo projeto e é a
+  única dependência adicional. Os arquivos entram como `0600` (preservados pelo Rock Ridge
+  `strict`), a ISO final é publicada por rename atômico e fica `0600`.
 - QEMU:
 
 ```bash

@@ -120,7 +120,7 @@
 | `test_stats` | `parses*` | parsers de `/proc/stat`, `/proc/meminfo`, `/proc/net/dev` e `/proc/diskstats` |
 | `test_notifications` | `summaryFor*`, `cooldown*` | falha/OOM/unhealthy, eventos normais ignorados e cooldown |
 | `test_setup` | `check*`, `status*`, `validate*`, `rejectsInvalidActions` | checks read-only, resumo de status e validação de ações inválidas |
-| `test_machines` | `registry*`, `download*`, `cache*`, `pathsCacheDir` | registry pinado (default/versão inválida/arch), download feliz/404/checksum/cancelamento, reuso e rehash do cache e `cloudImagesDir` 0700 |
+| `test_machines` | `registry*`, `download*`, `cache*`, `pathsCacheDir`, `seed*` | registry pinado (default/versão inválida/arch), download feliz/404/checksum/cancelamento, reuso e rehash do cache, `cloudImagesDir` 0700 e seed ISO NoCloud (entradas/label `cidata`, YAML padrão, senha só como hash `$6$`, user-data verbatim, escape/validação e modo 0600) |
 | `test_core` | `setupActionsMapPodmanStatus` | `missing` → `install-podman`; `warn` → `enable-socket`; `ok` → sem ação |
 | `test_core` | `setupPolicyMandatoryChecks` | obrigatórios (Podman, systemd-user, SQLite, QEMU/OVMF/virtiofsd) bloqueiam; KVM/Docker/Caddy/k3s não |
 
@@ -138,6 +138,7 @@ gera `Notify` com “Container falhou”.
 
 | Teste | Verificação |
 |---|---|
+| Seed ISO (`test_machines`) | label `cidata` no PVD, exatamente `meta-data`/`user-data`/`network-config` na raiz, YAML padrão, `network-config` v2/DHCP, senha só como hash `$6$`, user-data verbatim, escape YAML, entradas inválidas e ISO `0600` |
 | Criar Ubuntu 24.04 | SSH responde ≤ 60 s; hostname/user corretos |
 | cloud-init | arquivo criado, pacote instalado, comando executado |
 | Stop/start | estado consistente; sem QEMU órfão |

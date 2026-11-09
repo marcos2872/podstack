@@ -143,7 +143,7 @@ encerra a janela da instância já em execução.
 | Chaves SSH das máquinas | `~/.local/share/podstack/machines/<id>/id_ed25519` (0600) | daemon, `ssh` |
 | Chave da CA | `~/.local/share/podstack/ca/key.pem` (0600) | Caddy/daemon |
 | Tokens de update | keyring | daemon |
-| Senhas de máquina | cloud-init seed (apagada após boot) / keyring | daemon |
+| Senhas de máquina | cloud-init seed (`seed.iso` e arquivos internos `0600`, senha só como hash SHA-512 crypt; apagada após o boot) / keyring | daemon |
 
 - Nunca em `config.json`, logs, relatório ou argv (visível em `ps`).
 - Redaction: chaves que casam `(?i)(token|password|secret|authorization|key)` em env/labels são mascaradas.

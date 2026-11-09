@@ -4,6 +4,7 @@
 
 #include "core/Paths.h"
 #include "machines/CloudImageCache.h"
+#include "machines/CloudInit.h"
 #include "machines/DistroRegistry.h"
 
 #include <QCryptographicHash>
@@ -14,7 +15,12 @@
 #include <QJsonObject>
 #include <QTest>
 
+#include <archive.h>
+#include <archive_entry.h>
+
 using PodStack::CloudImageCache;
+using PodStack::CloudInit;
+using PodStack::CloudInitOptions;
 using PodStack::DistroImage;
 using PodStack::DistroRegistry;
 
@@ -23,6 +29,109 @@ namespace {
 QString hexHash(const QByteArray &data, QCryptographicHash::Algorithm algorithm)
 {
     return QString::fromLatin1(QCryptographicHash::hash(data, algorithm).toHex());
+}
+
+CloudInitOptions seedOptions(const QString &machineId, const QString &hostname)
+{
+    CloudInitOptions options;
+    options.machineId = machineId;
+    options.hostname = hostname;
+    options.sshAuthorizedKeys = {
+        QStringLiteral("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPODSTACK podstack")};
+    return options;
+}
+
+QString normalizedIsoName(const char *pathname)
+{
+    QString name = QString::fromUtf8(pathname);
+    while (name.startsWith(QStringLiteral("./"))) {
+        name.remove(0, 2);
+    }
+    if (name.endsWith(QStringLiteral(";1"))) {
+        name.chop(2);
+    }
+    return name;
+}
+
+bool readIsoEntry(const QString &isoPath, const QString &wanted, QByteArray *data)
+{
+    archive *reader = archive_read_new();
+    if (!reader) {
+        return false;
+    }
+    archive_read_support_format_iso9660(reader);
+    archive_read_support_filter_all(reader);
+
+    const QByteArray nativePath = QFile::encodeName(isoPath);
+    if (archive_read_open_filename(reader, nativePath.constData(), 10240) != ARCHIVE_OK) {
+        archive_read_free(reader);
+        return false;
+    }
+
+    bool found = false;
+    archive_entry *entry = nullptr;
+    while (archive_read_next_header(reader, &entry) == ARCHIVE_OK) {
+        if (normalizedIsoName(archive_entry_pathname(entry)) != wanted) {
+            archive_read_data_skip(reader);
+            continue;
+        }
+
+        QByteArray content;
+        char buffer[4096];
+        la_ssize_t count = 0;
+        while ((count = archive_read_data(reader, buffer, sizeof(buffer))) > 0) {
+            content.append(buffer, static_cast<int>(count));
+        }
+        if (count < 0) {
+            break;
+        }
+        if (data) {
+            *data = content;
+        }
+        found = true;
+        break;
+    }
+
+    archive_read_free(reader);
+    return found;
+}
+
+QStringList isoEntryNames(const QString &isoPath)
+{
+    QStringList names;
+    archive *reader = archive_read_new();
+    if (!reader) {
+        return names;
+    }
+    archive_read_support_format_iso9660(reader);
+    archive_read_support_filter_all(reader);
+
+    const QByteArray nativePath = QFile::encodeName(isoPath);
+    if (archive_read_open_filename(reader, nativePath.constData(), 10240) == ARCHIVE_OK) {
+        archive_entry *entry = nullptr;
+        while (archive_read_next_header(reader, &entry) == ARCHIVE_OK) {
+            if (archive_entry_filetype(entry) == AE_IFREG) {
+                names.append(normalizedIsoName(archive_entry_pathname(entry)));
+            }
+            archive_read_data_skip(reader);
+        }
+    }
+
+    archive_read_free(reader);
+    names.sort();
+    return names;
+}
+
+QByteArray volumeIdentifier(const QString &isoPath)
+{
+    QFile file(isoPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    if (!file.seek(0x8000 + 40)) {
+        return {};
+    }
+    return file.read(32);
 }
 
 bool ownerOnly(const QFileDevice::Permissions &permissions, bool directory)
@@ -55,6 +164,11 @@ private slots:
     void downloadChecksumMismatch();
     void cacheSidecarMissing();
     void downloadCancelled();
+    void seedIsoEntries();
+    void seedYamlDefaults();
+    void seedPasswordHashed();
+    void seedVerbatimUserData();
+    void seedEscapesYaml();
 
 private:
     QString cacheDirFor(const QString &name) const;
@@ -344,6 +458,194 @@ void MachinesTest::downloadCancelled()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
     QVERIFY(!QFileInfo::exists(cache.cachedPath(image)));
     QVERIFY(!QFileInfo::exists(cache.cachedPath(image) + QStringLiteral(".part")));
+}
+
+void MachinesTest::seedIsoEntries()
+{
+    const QString directory = m_root + QStringLiteral("/seed-entries");
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+    const QString seedPath = directory + QStringLiteral("/seed.iso");
+
+    const CloudInitOptions options =
+        seedOptions(QStringLiteral("machine-iso"), QStringLiteral("podstack-iso"));
+    PodStack::Error error;
+    QVERIFY2(CloudInit::writeSeedIso(seedPath, options, &error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+    QVERIFY(QFileInfo(seedPath).isFile());
+    const QFileDevice::Permissions seedPermissions = QFileInfo(seedPath).permissions();
+    QVERIFY(ownerOnly(seedPermissions, false));
+    QVERIFY(!seedPermissions.testFlag(QFileDevice::ExeOwner));
+    QVERIFY(!QFileInfo::exists(seedPath + QStringLiteral(".tmp")));
+
+    QCOMPARE(isoEntryNames(seedPath),
+             QStringList({QStringLiteral("meta-data"), QStringLiteral("network-config"),
+                          QStringLiteral("user-data")}));
+
+    QByteArray metadata;
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("meta-data"), &metadata));
+    QCOMPARE(QString::fromUtf8(metadata),
+             QStringLiteral("instance-id: 'machine-iso'\n"
+                            "local-hostname: 'podstack-iso'\n"));
+
+    QByteArray userData;
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("user-data"), &userData));
+    QVERIFY(userData.contains("#cloud-config\n"));
+    QVERIFY(userData.contains("name: 'podstack'\n"));
+
+    QByteArray networkConfig;
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("network-config"), &networkConfig));
+    QVERIFY(networkConfig.contains("version: 2\n"));
+
+    const QByteArray label = volumeIdentifier(seedPath);
+    QVERIFY(!label.isEmpty());
+    QCOMPARE(QString::fromLatin1(label.trimmed()).toUpper(), QStringLiteral("CIDATA"));
+}
+
+void MachinesTest::seedYamlDefaults()
+{
+    const QString directory = m_root + QStringLiteral("/seed-defaults");
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+    const QString seedPath = directory + QStringLiteral("/seed.iso");
+
+    const CloudInitOptions options =
+        seedOptions(QStringLiteral("machine-default"), QStringLiteral("podstack-default"));
+    PodStack::Error error;
+    QVERIFY2(CloudInit::writeSeedIso(seedPath, options, &error), qPrintable(error.message));
+
+    QByteArray metadata;
+    QByteArray userData;
+    QByteArray networkConfig;
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("meta-data"), &metadata));
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("user-data"), &userData));
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("network-config"), &networkConfig));
+
+    const QString yaml = QString::fromUtf8(userData);
+    QVERIFY(yaml.startsWith(QStringLiteral("#cloud-config\n")));
+    QVERIFY(yaml.contains(QStringLiteral("  - name: 'podstack'\n")));
+    QVERIFY(yaml.contains(QStringLiteral("    shell: /bin/bash\n")));
+    QVERIFY(yaml.contains(QStringLiteral("    sudo: 'ALL=(ALL) NOPASSWD:ALL'\n")));
+    QVERIFY(yaml.contains(QStringLiteral("    lock_passwd: true\n")));
+    QVERIFY(yaml.contains(QStringLiteral("    ssh_authorized_keys:\n")));
+    QVERIFY(yaml.contains(QStringLiteral("      - 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI"
+                                         "PODSTACK podstack'\n")));
+    QVERIFY(yaml.contains(QStringLiteral("ssh_pwauth: false\n")));
+    QVERIFY(!yaml.contains(QStringLiteral("    passwd:")));
+
+    QCOMPARE(QString::fromUtf8(networkConfig),
+             QStringLiteral("version: 2\n"
+                            "ethernets:\n"
+                            "  eth0:\n"
+                            "    match:\n"
+                            "      name: 'en*'\n"
+                            "    dhcp4: true\n"));
+}
+
+void MachinesTest::seedPasswordHashed()
+{
+    const QString directory = m_root + QStringLiteral("/seed-password");
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+    const QString seedPath = directory + QStringLiteral("/seed.iso");
+
+    CloudInitOptions options =
+        seedOptions(QStringLiteral("machine-password"), QStringLiteral("podstack-password"));
+    options.password = QStringLiteral("Senha-Muito-Secreta-42");
+    PodStack::Error error;
+    QVERIFY2(CloudInit::writeSeedIso(seedPath, options, &error), qPrintable(error.message));
+
+    QByteArray userData;
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("user-data"), &userData));
+    const QString yaml = QString::fromUtf8(userData);
+    QVERIFY(yaml.contains(QStringLiteral("    lock_passwd: false\n")));
+    QVERIFY(yaml.contains(QStringLiteral("    passwd: '$6$")));
+    QVERIFY(!yaml.contains(options.password));
+
+    const QStringList entries = {
+        QStringLiteral("meta-data"),
+        QStringLiteral("user-data"),
+        QStringLiteral("network-config"),
+    };
+    for (const QString &entry : entries) {
+        QByteArray content;
+        QVERIFY(readIsoEntry(seedPath, entry, &content));
+        QVERIFY2(!content.contains(options.password.toUtf8()),
+                 qPrintable(QStringLiteral("senha em claro em %1").arg(entry)));
+    }
+}
+
+void MachinesTest::seedVerbatimUserData()
+{
+    const QString directory = m_root + QStringLiteral("/seed-verbatim");
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+    const QString seedPath = directory + QStringLiteral("/seed.iso");
+
+    CloudInitOptions options =
+        seedOptions(QStringLiteral("machine-verbatim"), QStringLiteral("podstack-verbatim"));
+    options.userData =
+        QStringLiteral("#cloud-config\nruncmd:\n  - echo podstack-verbatim\n");
+    PodStack::Error error;
+    QVERIFY2(CloudInit::writeSeedIso(seedPath, options, &error), qPrintable(error.message));
+
+    QByteArray userData;
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("user-data"), &userData));
+    QCOMPARE(QString::fromUtf8(userData), options.userData);
+}
+
+void MachinesTest::seedEscapesYaml()
+{
+    const QString directory = m_root + QStringLiteral("/seed-invalid");
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+    const QString seedPath = directory + QStringLiteral("/seed.iso");
+
+    const CloudInitOptions valid =
+        seedOptions(QStringLiteral("machine-valid"), QStringLiteral("podstack-valid"));
+    PodStack::Error error;
+
+    CloudInitOptions options = valid;
+    options.hostname = QStringLiteral("host name");
+    QVERIFY(!CloudInit::writeSeedIso(seedPath, options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    options = valid;
+    options.hostname = QStringLiteral("-podstack");
+    QVERIFY(!CloudInit::writeSeedIso(seedPath, options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    options = valid;
+    options.hostname = QStringLiteral("podstack_underscore");
+    QVERIFY(!CloudInit::writeSeedIso(seedPath, options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    options = valid;
+    options.user = QStringLiteral("Bad User");
+    QVERIFY(!CloudInit::writeSeedIso(seedPath, options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    options = valid;
+    options.user = QStringLiteral("9user");
+    QVERIFY(!CloudInit::writeSeedIso(seedPath, options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    options = valid;
+    options.machineId.clear();
+    QVERIFY(!CloudInit::writeSeedIso(seedPath, options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY(!QFileInfo::exists(seedPath));
+
+    options = valid;
+    options.sshAuthorizedKeys = {QStringLiteral("ssh-ed25519 AAA'BBB comment")};
+    QVERIFY2(CloudInit::writeSeedIso(seedPath, options, &error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+
+    QByteArray userData;
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("user-data"), &userData));
+    QVERIFY2(userData.contains(
+                 QByteArrayLiteral("      - 'ssh-ed25519 AAA''BBB comment'\n")),
+             userData.constData());
 }
 
 QTEST_GUILESS_MAIN(MachinesTest)

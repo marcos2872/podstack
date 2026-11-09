@@ -205,7 +205,7 @@ Detalhes e critérios de saída em [`docs/roadmap.md`](docs/roadmap.md).
 # dependências (Fedora)
 sudo dnf install cmake ninja-build gcc-c++ \
   qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
-  qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel
+  qtermwidget-devel libarchive-devel libcurl-devel libxcrypt-devel sqlite-devel
 
 # provider Compose (runtime, para projetos Compose)
 # O binário é docker-compose, mas a engine continua sendo Podman (Libpod REST).

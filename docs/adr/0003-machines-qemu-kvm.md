@@ -54,3 +54,8 @@ Usar **QEMU/KVM diretamente**:
 - `MachineManager` isola QEMU/QMP; `meta.json` é recuperável.
 - Limpeza de processos órfãos no start.
 - PoC de virtiofs e cloud-init no início do M4.
+- Seed ISO (T4-02): `CloudInit::writeSeedIso` monta a ISO9660 com libarchive
+  (`volume-id=cidata`, Rock Ridge `strict` e Joliet), sem `cloud-localds`/`genisoimage`. As
+  entradas `meta-data`, `user-data` e `network-config` ficam na raiz em modo `0600`; a senha é
+  convertida para hash `$6$` com `crypt_r` (libxcrypt) e nunca aparece em texto claro. A ISO é
+  gravada em `<path>.tmp`, restringida a `0600` e publicada por rename atômico.

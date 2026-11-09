@@ -29,7 +29,8 @@ jobs:
         run: |
           dnf install -y cmake ninja-build gcc-c++ gcovr \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
-            qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel
+            qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
+            libxcrypt-devel
 
       - name: Configurar (coverage)
         run: cmake --preset coverage
