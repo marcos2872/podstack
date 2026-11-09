@@ -36,6 +36,7 @@ private slots:
     void backendActions();
     void backendExposeLan();
     void backendStreams();
+    void backendContainerDetail();
     void backendCatalog();
     void backendMachines();
     void backendMachineStats();
@@ -388,9 +389,85 @@ void GuiTest::backendStreams()
     QCOMPARE(backend.files().size(), 2);
 }
 
-void GuiTest::backendCatalog()
+void GuiTest::backendContainerDetail()
 {
     PodStack::Backend backend;
+    QSignalSpy detailSpy(&backend, &PodStack::Backend::containerDetailChanged);
+
+    backend.loadContainerDetail(QStringLiteral("abc123"));
+    QVERIFY(backend.containerDetailLoading());
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.containerDetailLoading(), 5000);
+    QVERIFY2(backend.containerDetailError().isEmpty(),
+             qPrintable(backend.containerDetailError()));
+    QVERIFY(detailSpy.count() > 0);
+
+    const QVariantMap detail = backend.containerDetail();
+    QCOMPARE(detail.value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
+    const QVariantMap config = detail.value(QStringLiteral("Config")).toMap();
+    const QVariantList env = config.value(QStringLiteral("Env")).toList();
+    QCOMPARE(env.size(), 3);
+    QCOMPARE(env.first().toString(), QStringLiteral("A=B"));
+    QCOMPARE(env.at(1).toString(), QStringLiteral("TOKEN=super-secret"));
+
+    const QVariantList mounts = detail.value(QStringLiteral("Mounts")).toList();
+    QCOMPARE(mounts.size(), 2);
+    QCOMPARE(mounts.first().toMap().value(QStringLiteral("Destination")).toString(),
+             QStringLiteral("/mnt"));
+    QCOMPARE(mounts.at(1).toMap().value(QStringLiteral("Name")).toString(),
+             QStringLiteral("data"));
+
+    const QVariantMap networks =
+        detail.value(QStringLiteral("NetworkSettings"))
+            .toMap()
+            .value(QStringLiteral("Networks"))
+            .toMap();
+    QVERIFY(networks.contains(QStringLiteral("podman")));
+    QCOMPARE(networks.value(QStringLiteral("podman"))
+                 .toMap()
+                 .value(QStringLiteral("Gateway"))
+                 .toString(),
+             QStringLiteral("10.0.0.1"));
+
+    // Sem QGuiApplication (suíte guiless) o clipboard é nulo; a chamada não pode quebrar.
+    backend.copyContainerInspect();
+
+    backend.loadContainerDetail(QStringLiteral("missing123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.containerDetailLoading(), 5000);
+    QVERIFY(!backend.containerDetailError().isEmpty());
+
+    backend.startContainerDetailStats(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        backend.containerDetailStats().value(QStringLiteral("cpu_percent")).toString().contains(
+            QStringLiteral("1.5")),
+        5000);
+    QCOMPARE(backend.containerDetailCpuHistory().size(), 1);
+    QCOMPARE(backend.containerDetailMemHistory().size(), 1);
+    QCOMPARE(backend.containerDetailNetRxHistory().size(), 1);
+    QCOMPARE(backend.containerDetailNetTxHistory().size(), 1);
+    QCOMPARE(backend.containerDetailDiskReadHistory().size(), 1);
+    QCOMPARE(backend.containerDetailDiskWriteHistory().size(), 1);
+    QVERIFY(backend.containerDetailStats()
+                .value(QStringLiteral("netRxBytes"))
+                .toLongLong()
+            > 0);
+    QVERIFY(backend.containerDetailStatsError().isEmpty());
+    backend.stopContainerDetailStats();
+
+    QSignalSpy logsSpy(&backend, &PodStack::Backend::containerDetailLogsChanged);
+    backend.startContainerDetailLogs(QStringLiteral("abc123"), 10, false);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.containerDetailLogLines().size() >= 2, 5000);
+    QVERIFY(logsSpy.count() > 0);
+    QVERIFY(backend.containerDetailLogsError().isEmpty());
+    backend.clearContainerDetailLogs();
+    QVERIFY(backend.containerDetailLogLines().isEmpty());
+    backend.stopContainerDetailLogs();
+
+    backend.containerDetailLifecycle(QStringLiteral("invalid"), QStringLiteral("abc123"));
+    QVERIFY(!backend.lastError().isEmpty());
+}
+
+void GuiTest::backendCatalog()
+{    PodStack::Backend backend;
     QSignalSpy imagesSpy(&backend, &PodStack::Backend::imagesChanged);
     QSignalSpy volumesSpy(&backend, &PodStack::Backend::volumesChanged);
     QSignalSpy networksSpy(&backend, &PodStack::Backend::networksChanged);
@@ -695,6 +772,17 @@ void GuiTest::backendMachineStats()
     const int samplesAfterStop = backend.machineCpuHistory().size();
     QTest::qWait(2300);
     QCOMPARE(backend.machineCpuHistory().size(), samplesAfterStop);
+
+    // Erros do stream de stats da machine não vazam para o lastError global
+    // (o inspector lateral de containers exibe backend.lastError).
+    PodStack::Backend statsOnly;
+    QSignalSpy statsOnlyErrorSpy(&statsOnly, &PodStack::Backend::lastErrorChanged);
+    statsOnly.startMachineStats(QStringLiteral("missing-machine-stats"));
+    QTRY_VERIFY_WITH_TIMEOUT(!statsOnly.machineStatsError().isEmpty(), 5000);
+    QVERIFY(statsOnly.lastError().isEmpty());
+    QCOMPARE(statsOnlyErrorSpy.count(), 0);
+    statsOnly.stopMachineStats();
+    QVERIFY(statsOnly.machineStatsError().isEmpty());
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();

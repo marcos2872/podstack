@@ -263,11 +263,17 @@ void MockPodmanServer::handleClient(int clientFd)
         response = httpResponse(200, "OK", R"({
             "Id":"abc123",
             "Name":"/demo",
-            "State":{"Status":"running","Running":true,"Pid":1,"ExitCode":0},
-            "Config":{"Image":"docker.io/library/alpine:3.20","Env":["A=B"],"Cmd":["sleep","10"],"WorkingDir":"/tmp","User":"0:0"},
-            "HostConfig":{"PortBindings":{"80/tcp":[{"HostIp":"0.0.0.0","HostPort":"8080"}]}},
-            "Mounts":[{"Source":"/tmp","Destination":"/mnt","RW":true}],
-            "NetworkSettings":{"IPAddress":"10.0.0.2"}
+            "Created":"2026-01-01T00:00:00Z",
+            "Image":"sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "ImageName":"docker.io/library/alpine:3.20",
+            "State":{"Status":"running","Running":true,"Pid":1,"ExitCode":0,"OOMKilled":false,"StartedAt":"2026-01-01T00:00:01Z","Health":{"Status":"healthy"}},
+            "Config":{"Image":"docker.io/library/alpine:3.20","Env":["A=B","TOKEN=super-secret","EMPTY="],"Entrypoint":["/entrypoint.sh"],"Cmd":["sleep","10"],"WorkingDir":"/tmp","User":"0:0","Labels":{"dev.podstack.test":"1","com.example.role":"demo"}},
+            "HostConfig":{"PortBindings":{"80/tcp":[{"HostIp":"0.0.0.0","HostPort":"8080"}]},"RestartPolicy":{"Name":"unless-stopped","MaximumRetryCount":0}},
+            "Mounts":[
+                {"Type":"bind","Name":"","Source":"/tmp","Destination":"/mnt","Driver":"","RW":true,"Propagation":"rprivate"},
+                {"Type":"volume","Name":"data","Source":"/var/lib/containers/storage/volumes/data/_data","Destination":"/data","Driver":"local","RW":false,"Propagation":""}
+            ],
+            "NetworkSettings":{"IPAddress":"10.0.0.2","Networks":{"podman":{"IPAddress":"10.0.0.2","Gateway":"10.0.0.1","MacAddress":"02:42:ac:11:00:02","Aliases":["demo"],"NetworkID":"net123"}},"Ports":{"80/tcp":[{"HostIp":"0.0.0.0","HostPort":"8080"}]}}
         })");
     } else if (pathOnly.contains(QStringLiteral("/containers/loopback123/json"))) {
         response = httpResponse(200, "OK", R"({
@@ -303,7 +309,7 @@ void MockPodmanServer::handleClient(int clientFd)
         const QByteArray statsPayload = QByteArrayLiteral(
             "{\"cpu_percent\":\"1.5%\",\"mem_percent\":\"50.0%\","
             "\"mem_usage\":\"1MB / 1GB\","
-            "\"net_io\":\"0B / 0B\",\"block_io\":\"0B / 0B\",\"pids\":\"1\"}\n");
+            "\"net_io\":\"1.00kB / 2.00kB\",\"block_io\":\"30B / 40B\",\"pids\":\"1\"}\n");
         response = httpResponse(200, "OK", statsPayload);
     } else if (pathOnly.contains(QStringLiteral("/logs"))) {
         const auto frame = [](const QByteArray &payload) {

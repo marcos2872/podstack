@@ -6,13 +6,25 @@ import PodStack
 ColumnLayout {
     id: logsView
 
+    // Quando `lines` é definido, a tela usa essa fonte (ex.: detalhe expandido)
+    // em vez de `backend.logLines`. `clearRequested` permite que o dono da
+    // fonte externa decida como limpar.
+    property var lines: null
+    property string emptyText: qsTr("Sem logs. Assine os logs do container para acompanhar a saída.")
+
+    signal clearRequested()
+
     spacing: 8
+
+    readonly property var sourceLines: logsView.lines !== null ? logsView.lines
+                                                              : backend.logLines
 
     FormField {
         id: search
         Layout.fillWidth: true
         Layout.preferredHeight: 30
         placeholderText: qsTr("Filtrar logs…")
+        Accessible.name: qsTr("Filtrar logs")
         onTextChanged: logsView.rebuild()
     }
 
@@ -24,27 +36,52 @@ ColumnLayout {
             id: follow
             text: qsTr("Seguir")
             checked: true
+            onCheckedChanged: if (checked) logsView.scrollToEnd()
         }
 
         FormCheck {
             id: wrapLines
             text: qsTr("Wrap")
             checked: true
+            onCheckedChanged: logsView.rebuild()
         }
 
         FormCheck {
             id: timestamps
             text: qsTr("Timestamp")
             checked: true
+            onCheckedChanged: logsView.rebuild()
         }
 
         Item { Layout.fillWidth: true }
 
         ActionButton {
+            text: qsTr("Copiar")
+            iconName: "copy"
+            variant: "secondary"
+            size: "sm"
+            enabled: logArea.text.length > 0
+            onClicked: {
+                logArea.selectAll()
+                logArea.copy()
+                logArea.deselect()
+                logArea.cursorPosition = logArea.length
+            }
+            Accessible.name: qsTr("Copiar logs")
+        }
+
+        ActionButton {
             text: qsTr("Limpar")
             variant: "secondary"
             size: "sm"
-            onClicked: backend.clearLogs()
+            onClicked: {
+                if (logsView.lines !== null) {
+                    logsView.clearRequested()
+                } else {
+                    backend.clearLogs()
+                }
+            }
+            Accessible.name: qsTr("Limpar logs")
         }
     }
 
@@ -57,64 +94,115 @@ ColumnLayout {
         border.color: Theme.border
         clip: true
 
-        ListView {
-            id: logsList
+        ScrollView {
+            id: logScroll
             anchors.fill: parent
             clip: true
-            model: ListModel { id: logModel }
+            ScrollBar.horizontal.policy: wrapLines.checked ? ScrollBar.AlwaysOff
+                                                           : ScrollBar.AsNeeded
             ScrollBar.vertical: ScrollBar {}
 
-            delegate: Text {
-                width: logsList.width
-                text: {
-                    const line = model.line
-                    if (timestamps.checked) {
-                        return line
-                    }
-                    const space = line.indexOf(" ")
-                    return space > 0 ? line.substring(space + 1) : line
-                }
+            TextArea {
+                id: logArea
+                readOnly: true
+                selectByMouse: true
+                persistentSelection: true
+                textFormat: TextEdit.PlainText
                 color: Theme.textSecondary
+                selectionColor: Theme.indigo500
+                selectedTextColor: Theme.textPrimary
                 font.family: Theme.monoFamily
                 font.pixelSize: Theme.fontMeta
-                textFormat: Text.PlainText
-                wrapMode: wrapLines.checked ? Text.WrapAnywhere : Text.NoWrap
+                wrapMode: wrapLines.checked ? TextEdit.WrapAnywhere : TextEdit.NoWrap
+                width: wrapLines.checked
+                       ? logScroll.availableWidth
+                       : Math.max(logScroll.availableWidth, implicitWidth)
                 padding: 10
-            }
-
-            Text {
-                anchors.centerIn: parent
-                width: parent.width - 32
-                visible: logsList.count === 0
-                horizontalAlignment: Text.AlignHCenter
-                text: qsTr("Sem logs. Assine os logs do container para acompanhar a saída.")
-                color: Theme.textTertiary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMeta
-                wrapMode: Text.WordWrap
+                background: null
+                Accessible.name: qsTr("Saída dos logs")
             }
         }
+
+        Text {
+            anchors.centerIn: parent
+            width: parent.width - 32
+            visible: logArea.text.length === 0
+            horizontalAlignment: Text.AlignHCenter
+            text: logsView.emptyText
+            color: Theme.textTertiary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMeta
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    function formattedLine(line) {
+        if (timestamps.checked) {
+            return line
+        }
+        const space = line.indexOf(" ")
+        return space > 0 ? line.substring(space + 1) : line
     }
 
     function rebuild() {
-        logModel.clear()
-        const lines = backend.logLines
+        const source = logsView.sourceLines || []
+        const flick = logScroll.contentItem
+        const previousY = flick ? flick.contentY : 0
+        const wasAtEnd = !flick
+                          || previousY >= Math.max(0, logScroll.contentHeight - flick.height) - 4
+        const selectedStart = logArea.selectionStart
+        const selectedEnd = logArea.selectionEnd
+        const hadSelection = selectedEnd > selectedStart
         const needle = search.text
-        for (let i = 0; i < lines.length; ++i) {
-            const line = lines[i]
+        const filtered = []
+
+        for (let i = 0; i < source.length; ++i) {
+            const line = String(source[i])
             if (needle === "" || line.indexOf(needle) >= 0) {
-                logModel.append({ line: line })
+                filtered.push(formattedLine(line))
             }
         }
-        if (follow.checked) {
-            logsList.positionViewAtEnd()
+
+        const nextText = filtered.join("\n")
+        if (logArea.text !== nextText) {
+            logArea.text = nextText
+            if (hadSelection) {
+                const start = Math.min(selectedStart, nextText.length)
+                const end = Math.min(selectedEnd, nextText.length)
+                logArea.select(start, end)
+            } else {
+                logArea.cursorPosition = logArea.length
+            }
+        }
+
+        if (hadSelection) {
+            return
+        }
+        if (follow.checked && wasAtEnd) {
+            Qt.callLater(logsView.scrollToEnd)
+        } else if (flick) {
+            Qt.callLater(function() {
+                flick.contentY = Math.min(previousY,
+                                           Math.max(0, logScroll.contentHeight - flick.height))
+            })
         }
     }
+
+    function scrollToEnd() {
+        const flick = logScroll.contentItem
+        if (flick) {
+            flick.contentY = Math.max(0, logScroll.contentHeight - flick.height)
+        }
+    }
+
+    onLinesChanged: Qt.callLater(logsView.rebuild)
 
     Connections {
         target: backend
         function onLogsChanged() {
-            logsView.rebuild()
+            if (logsView.lines === null) {
+                logsView.rebuild()
+            }
         }
     }
 

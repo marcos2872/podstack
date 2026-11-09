@@ -24,6 +24,30 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantMap stats READ stats NOTIFY statsChanged)
     Q_PROPERTY(QVariantList cpuHistory READ cpuHistory NOTIFY statsChanged)
     Q_PROPERTY(QVariantList memHistory READ memHistory NOTIFY statsChanged)
+    Q_PROPERTY(QVariantMap containerDetail READ containerDetail NOTIFY containerDetailChanged)
+    Q_PROPERTY(QString containerDetailError READ containerDetailError NOTIFY containerDetailChanged)
+    Q_PROPERTY(bool containerDetailLoading READ containerDetailLoading
+               NOTIFY containerDetailChanged)
+    Q_PROPERTY(QVariantMap containerDetailStats READ containerDetailStats
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailCpuHistory READ containerDetailCpuHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailMemHistory READ containerDetailMemHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailNetRxHistory READ containerDetailNetRxHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailNetTxHistory READ containerDetailNetTxHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailDiskReadHistory READ containerDetailDiskReadHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailDiskWriteHistory READ containerDetailDiskWriteHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QString containerDetailStatsError READ containerDetailStatsError
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QStringList containerDetailLogLines READ containerDetailLogLines
+               NOTIFY containerDetailLogsChanged)
+    Q_PROPERTY(QString containerDetailLogsError READ containerDetailLogsError
+               NOTIFY containerDetailLogsChanged)
     Q_PROPERTY(QVariantMap activityStats READ activityStats NOTIFY activityChanged)
     Q_PROPERTY(QVariantList activityCpuHistory READ activityCpuHistory NOTIFY activityChanged)
     Q_PROPERTY(QVariantList activityMemHistory READ activityMemHistory NOTIFY activityChanged)
@@ -99,6 +123,25 @@ public:
     QVariantMap stats() const { return m_stats; }
     QVariantList cpuHistory() const { return m_cpuHistory; }
     QVariantList memHistory() const { return m_memHistory; }
+    QVariantMap containerDetail() const { return m_containerDetail; }
+    QString containerDetailError() const { return m_containerDetailError; }
+    bool containerDetailLoading() const { return m_containerDetailLoading; }
+    QVariantMap containerDetailStats() const { return m_containerDetailStats; }
+    QVariantList containerDetailCpuHistory() const { return m_containerDetailCpuHistory; }
+    QVariantList containerDetailMemHistory() const { return m_containerDetailMemHistory; }
+    QVariantList containerDetailNetRxHistory() const { return m_containerDetailNetRxHistory; }
+    QVariantList containerDetailNetTxHistory() const { return m_containerDetailNetTxHistory; }
+    QVariantList containerDetailDiskReadHistory() const
+    {
+        return m_containerDetailDiskReadHistory;
+    }
+    QVariantList containerDetailDiskWriteHistory() const
+    {
+        return m_containerDetailDiskWriteHistory;
+    }
+    QString containerDetailStatsError() const { return m_containerDetailStatsError; }
+    QStringList containerDetailLogLines() const { return m_containerDetailLogLines; }
+    QString containerDetailLogsError() const { return m_containerDetailLogsError; }
     QVariantMap activityStats() const { return m_activityStats; }
     QVariantList activityCpuHistory() const { return m_activityCpuHistory; }
     QVariantList activityMemHistory() const { return m_activityMemHistory; }
@@ -212,6 +255,16 @@ public:
     Q_INVOKABLE void cancelMachineCreate();
     Q_INVOKABLE void lifecycle(const QString &action, const QString &id);
     Q_INVOKABLE void removeContainer(const QString &id, bool force, bool volumes);
+    Q_INVOKABLE void loadContainerDetail(const QString &id);
+    Q_INVOKABLE void copyContainerInspect();
+    Q_INVOKABLE void startContainerDetailStats(const QString &id);
+    Q_INVOKABLE void stopContainerDetailStats();
+    Q_INVOKABLE void startContainerDetailLogs(const QString &id, int tail = 200,
+                                              bool follow = true);
+    Q_INVOKABLE void stopContainerDetailLogs();
+    Q_INVOKABLE void clearContainerDetailLogs();
+    Q_INVOKABLE void containerDetailLifecycle(const QString &action, const QString &id);
+    Q_INVOKABLE void removeContainerDetail(const QString &id, bool force);
     Q_INVOKABLE void createContainer(const QVariantMap &spec, bool start);
     Q_INVOKABLE void exposeContainerLan(const QString &id, bool expose);
     Q_INVOKABLE void batchAll(const QString &action);
@@ -252,6 +305,9 @@ signals:
     void actionFinished(bool ok, const QString &error);
     void logsChanged();
     void statsChanged();
+    void containerDetailChanged();
+    void containerDetailStatsChanged();
+    void containerDetailLogsChanged();
     void activityChanged();
     void filesChanged();
     void imagesChanged();
@@ -283,6 +339,7 @@ signals:
 private:
     void onRefreshFinished();
     void onActionFinished();
+    void onContainerDetailFinished();
     void onFilesFinished();
     void onCatalogFinished();
     void onSetupFinished();
@@ -308,6 +365,7 @@ private:
 
     QFutureWatcher<QJsonObject> m_watcher;
     QFutureWatcher<QJsonObject> m_actionWatcher;
+    QFutureWatcher<QJsonObject> m_containerDetailWatcher;
     QFutureWatcher<QJsonObject> m_filesWatcher;
     QFutureWatcher<QJsonObject> m_catalogWatcher;
     QFutureWatcher<QJsonObject> m_setupWatcher;
@@ -320,6 +378,8 @@ private:
     QString m_catalogSection;
     QStringList m_catalogQueue;
     StreamClient m_stream;
+    StreamClient m_detailStatsStream;
+    StreamClient m_detailLogsStream;
     StreamClient m_activityStream;
     StreamClient m_pullStream;
     StreamClient m_composeStream;
@@ -330,6 +390,7 @@ private:
     StreamClient m_eventsStream;
     QTimer m_eventTimer;
     QTimer m_logsTimer;
+    QTimer m_detailLogsTimer;
     QTimer m_refreshTimer;
     QTimer m_eventsRetryTimer;
     int m_eventsRetryDelayMs = 1000;
@@ -344,6 +405,22 @@ private:
     QVariantMap m_stats;
     QVariantList m_cpuHistory;
     QVariantList m_memHistory;
+    QVariantMap m_containerDetail;
+    QJsonObject m_containerDetailJson;
+    QString m_containerDetailError;
+    bool m_containerDetailLoading = false;
+    QString m_pendingContainerDetailId;
+    QVariantMap m_containerDetailStats;
+    QVariantList m_containerDetailCpuHistory;
+    QVariantList m_containerDetailMemHistory;
+    QVariantList m_containerDetailNetRxHistory;
+    QVariantList m_containerDetailNetTxHistory;
+    QVariantList m_containerDetailDiskReadHistory;
+    QVariantList m_containerDetailDiskWriteHistory;
+    QString m_containerDetailStatsError;
+    QStringList m_containerDetailLogLines;
+    QString m_containerDetailLogsError;
+    bool m_detailLogsPending = false;
     QVariantMap m_activityStats;
     QVariantList m_activityCpuHistory;
     QVariantList m_activityMemHistory;

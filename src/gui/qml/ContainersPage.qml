@@ -16,6 +16,8 @@ Item {
     property string filterText: ""
     property string filter: "all"
 
+    signal expandRequested(string id)
+
     readonly property int containerCount: allItems.length
     readonly property int runningCount: {
         let count = 0
@@ -646,13 +648,16 @@ Item {
             }
 
             Inspector {
-                Layout.preferredWidth: containersPage.compact ? 300 : 366
-                Layout.minimumWidth: containersPage.compact ? 276 : 300
+                Layout.preferredWidth: containersPage.compact ? 320 : 480
+                Layout.minimumWidth: containersPage.compact ? 280 : 360
                 Layout.fillHeight: true
                 selected: containerList.currentIndex >= 0
                           && containerList.currentIndex < containersPage.visibleItems.length
                           ? containersPage.visibleItems[containerList.currentIndex]
                           : null
+                onExpandRequested: function(id) {
+                    containersPage.expandRequested(id)
+                }
             }
         }
     }

@@ -8,6 +8,8 @@ Rectangle {
 
     property var selected: null
 
+    signal expandRequested(string id)
+
     color: Theme.bgSurface
     radius: Theme.radiusLg
     border.width: 1
@@ -61,7 +63,7 @@ Rectangle {
 
     readonly property string health: selected ? (selected.health || "") : ""
     readonly property bool running: selected !== null && selected.state === "running"
-    readonly property bool compact: width < 340
+    readonly property bool compact: width < 430
 
     property int tabIndex: 0
 
@@ -237,6 +239,14 @@ Rectangle {
                     Accessible.name: qsTr("Terminal")
                 }
 
+                ActionButton {
+                    text: inspector.compact ? "" : qsTr("Expandir")
+                    iconName: "maximize"
+                    size: "sm"
+                    onClicked: inspector.expandRequested(inspector.selected.id)
+                    Accessible.name: qsTr("Expandir detalhe do container")
+                }
+
                 Item { Layout.fillWidth: true }
 
                 ActionButton {
@@ -332,12 +342,13 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
-                        columns: 2
+                        columns: infoScroll.availableWidth >= 460 ? 2 : 1
                         columnSpacing: 12
                         rowSpacing: 10
 
                         ColumnLayout {
                             Layout.fillWidth: true
+                            Layout.maximumWidth: Math.max(0, infoScroll.availableWidth - 28)
                             spacing: 2
 
                             Text {
@@ -362,6 +373,7 @@ Rectangle {
 
                         ColumnLayout {
                             Layout.fillWidth: true
+                            Layout.maximumWidth: Math.max(0, infoScroll.availableWidth - 28)
                             spacing: 2
 
                             Text {
@@ -424,6 +436,7 @@ Rectangle {
 
                         ColumnLayout {
                             Layout.fillWidth: true
+                            Layout.maximumWidth: Math.max(0, infoScroll.availableWidth - 28)
                             spacing: 2
 
                             Text {
@@ -447,6 +460,7 @@ Rectangle {
 
                         ColumnLayout {
                             Layout.fillWidth: true
+                            Layout.maximumWidth: Math.max(0, infoScroll.availableWidth - 28)
                             spacing: 2
 
                             Text {
@@ -533,7 +547,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
-                        columns: 2
+                        columns: infoScroll.availableWidth >= 460 ? 2 : 1
                         columnSpacing: 6
                         rowSpacing: 6
 

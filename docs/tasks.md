@@ -59,6 +59,7 @@
 | T1-16 | P2 | gVisor/runsc | T1-04 | Runtime selecionável |
 | T1-17 | P2 | Debug shell | T1-06 | Shell efêmero |
 | T1-18 | P0 | Modo rootful opt-in (socket, confirmação, badge) | T0-09 | Troca de modo funcional; aviso exibido |
+| T1-19 | P1 | Detalhe expandido do container (overlay com dash, logs, info, env, redes, volumes e inspect) | T1-08, T1-12 | ✅ Overlay full-screen na `MainWindow` (`ContainerDetail.qml`), aberto pelo botão **Expandir** do inspector; streams próprios de stats/logs (não disputam `m_stream`), logs em `TextArea` único com seleção/cópia, env mascarado por padrão e inspect copiável. Backend: `loadContainerDetail`/`containerDetail*` em worker thread + `copyContainerInspect`. Evidência: build dev sem warnings novos; `ctest --preset dev` **14/14**; `test_gui` **21 passed** (novo `backendContainerDetail`); `qmllint` sem erros; `git diff --check` limpo |
 
 **Saída M1:** ciclo de vida completo + logs + terminal + stats; E2E verde.
 

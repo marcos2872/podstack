@@ -193,6 +193,7 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/LogsView.qml
         src/gui/qml/StatsView.qml
         src/gui/qml/Inspector.qml
+        src/gui/qml/ContainerDetail.qml
         src/gui/qml/FilesView.qml
         src/gui/qml/CatalogList.qml
         src/gui/qml/ContainersPage.qml

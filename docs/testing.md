@@ -178,6 +178,7 @@ plataforma continua no Libpod e não usa o override.
 | `test_setup` | `firewall*` | detecção firewalld/ufw, abertura/fechamento runtime (sem `--permanent`), validação 1..65535/tcp-udp/≤32, rollback em falha parcial e ausência de backend → `PODSTACK_HELPER_REQUIRED` |
 | `test_rpc` | `exposeLan` | `containers.create` sem `exposeLan` envia `host_ip=127.0.0.1`; com `exposeLan:true` sem helper → `PODSTACK_HELPER_REQUIRED` e **nenhum** create; `containers.exposeLan` em `0.0.0.0` sem helper → `PODSTACK_HELPER_REQUIRED`, loopback → `PODSTACK_UNSUPPORTED` com remediação e id inexistente → `PODSTACK_NOT_FOUND` |
 | `test_gui` | `backendExposeLan` | `createContainer` com `exposeLan` e `exposeContainerLan` falham sem helper; create sem LAN usa `127.0.0.1`; configurações não mudam |
+| `test_gui` | `backendContainerDetail` | `loadContainerDetail("abc123")` desembrulha `containers.inspect` (Config.Env, Mounts, Networks); id inexistente → `containerDetailError`; `copyContainerInspect` não quebra em suíte guiless; stats dedicados populam CPU/RAM/rede/disco e logs dedicados populam/limpam as linhas; ação inválida → `lastError` |
 | `test_gui` | `backendTerminal` | `openTerminal` emite `terminalRequested` com título/id, `podman` e `exec -it <id> /bin/sh`; id vazio → erro; `openMachineSsh` inexistente → erro e nenhuma sessão |
 | `test_terminal` | `constructsWindow`, `mainWindowTerminalDock` | QTermWidget na janela legada e dock "Terminal" + abas da `MainWindow` (sem QML): criação de sessão, título da aba e visibilidade do dock |
 | `test_core` | `buildStorePlatforms` | `platforms` no insert/get/list/JSON e migração de banco sem a coluna |
@@ -187,7 +188,11 @@ plataforma continua no Libpod e não usa o override.
 | `test_gui` | `backendM3` | `startBuild` com `platforms` separadas por vírgula e `platforms` no item do histórico |
 | `test_machines` | `machineStats` | fake de `PODSTACK_SSH_BINARY` imprime os marcadores e dados de `/proc`/`df`: CPU/memória/disco/df na primeira amostra, taxas na segunda, `reset()` zera as taxas, machine parada → `PODSTACK_CONFLICT`, chave ausente/SSH falhando → `PODSTACK_IO_ERROR` e SSH ausente → `PODSTACK_UNSUPPORTED`; valida `-i/-p`, `BatchMode`, `ConnectTimeout` e o comando remoto fixo |
 | `test_rpc` | `machineStats` | `machines.stats` com machine semeada (chave + fake SSH) devolve campos, inexistente → `PODSTACK_NOT_FOUND`; `machines.stats.subscribe` entrega `machines.stats.delta` com `subscriptionId`/`id` e `unsubscribe` cancela |
-| `test_gui` | `backendMachineStats` | `startMachineStats` popula `machineStats` e os quatro históricos via fake SSH do daemon; `stopMachineStats` encerra o stream; id vazio → erro em `lastError` |
+| `test_gui` | `backendMachineStats` | `startMachineStats` popula `machineStats` e os quatro históricos via fake SSH do daemon; `stopMachineStats` encerra o stream e limpa o erro; erro de stream de machine não vaza para `lastError` (inspector de containers) |
+
+O detalhe expandido do container (`ContainerDetail.qml`) é validado por `qmllint` e pelo
+smoke `guiStartsAndQuits`; a navegação visual pelas sete abas e a seleção/cópia de logs são
+verificadas manualmente (a suíte `test_gui` é guiless e cobre o Backend/streams).
 
 **Validação manual da bandeja (niri + Noctalia):** fechar a janela mantém o processo e o SNI;
 `podstack-gui` (segunda instância) foca a janela; `--quit` encerra; o DBusMenu expõe Containers com

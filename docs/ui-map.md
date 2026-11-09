@@ -21,7 +21,7 @@
 ┌────────────────────────────────────────────────────────────────────────────┐
 │ Toolbar  [☰] PodStack   [+ Criar] [Importar] [Abrir]   [🔍 Buscar] [⚙]    │
 ├───────────────┬──────────────────────────────────────┬─────────────────────┤
-│ Sidebar (220) │ Lista (flex)                         │ Inspector (360)     │
+│ Sidebar (220) │ Lista (flex)                         │ Inspector (480)     │
 │               │                                      │                     │
 │ ENGINE        │ Tabs: Todos | Rodando | Parados      │ [Info][Stats][Logs] │
 │  Containers 12│ Filtro: [todos ▾]  Ordenar: [nome ▾] │ [Terminal][Files]   │
@@ -134,13 +134,17 @@ Abas por tipo (estado do M2):
 | **Stats** | ✅ | ✅ | — | — | CPU, memória, rede, disco/PIDs + gráfico; machine via SSH (2 s) |
 | **Files** | ✅ | planejado | planejado | — | listar e baixar para `~/Downloads` |
 | **Terminal** | janela nativa | planejado | — | — | QTermWidget; embutir no inspector no M3 |
-| **Inspect** | CLI `podstack inspect` | — | — | — | aba GUI no M2 |
+| **Inspect** | ✅ (aba GUI) | — | — | — | JSON completo via `containers.inspect`; também no detalhe expandido |
 
 Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info, Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash), start/stop/restart, abrir SSH em terminal e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 
 - Cabeçalho: ícone, nome, status, ações (start/stop/ssh/restart/delete).
+- Largura do painel: ~480 px no modo normal e ~320 px no compacto (janela < 1100 px);
+  a lista encolhe com `Layout.fillWidth`. As grades de Info/Ações usam uma coluna quando
+  não há espaço (limiar de 460 px) para não cortar ID, portas, estado ou botões.
+- Botão **Expandir** (ícone maximize) abre o detalhe dedicado (seção 5.7).
 - Grid de metadados copiáveis: imagem, comando, portas, env, mounts, rede/IP, labels, health, criado/uptime.
 - Ações: abrir no navegador, copiar ID, revelar no gerenciador.
 - **Exposição LAN (T2-15):** na célula de portas, o botão alterna **“Expor na LAN”** /
@@ -191,6 +195,29 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 
 - JSON viewer com árvore, busca, copiar, exportar.
 - **Diferencial PodStack** (não existe como aba no OrbStack).
+
+### 5.7 Detalhe expandido do container
+
+- Botão **Expandir** no cabeçalho do inspector abre `ContainerDetail.qml` como overlay
+  full-screen dentro da `MainWindow` (não é janela separada), com `Esc`/**Voltar** para fechar.
+- O overlay cobre sidebar, lista, inspector e barra de status; o terminal continua no dock
+  da janela principal e o inspector lateral mantém suas próprias subscriptions.
+- Cabeçalho: nome, status, imagem, start/stop/restart, terminal e remover com confirmação.
+- Abas:
+  - **Visão geral** — cards de CPU, RAM (usado/total), rede ↓/↑ e disco R/W com sparklines
+    de 60 amostras; stats em stream próprio (`containerDetailStats`), ~1 s.
+  - **Logs** — `LogsView` em `TextArea` único (seleção multi-linha, Ctrl+C, Copiar, busca,
+    wrap, timestamps, seguir e limpar) alimentado por `containerDetailLogLines`.
+  - **Info** — estado, PID/exit, health, criado/iniciado, restart policy, imagem/digest,
+    entrypoint/comando, workdir, usuário, portas publicadas e labels.
+  - **Ambiente** — todas as `Config.Env` (`KEY=VALUE`); chaves com token/password/secret/
+    authorization/key ficam mascaradas até **Mostrar valores**; Copiar respeita o mascaramento.
+  - **Redes** — `NetworkSettings.Networks` (IP, gateway, MAC, aliases, NetworkID) e portas publicadas.
+  - **Volumes** — `Mounts` (tipo, nome, source, destination, driver, RW e propagação).
+  - **Inspect** — JSON completo e indentado de `containers.inspect`, com Copiar.
+- Ao abrir: `loadContainerDetail(id)` + streams próprios de stats/logs. Ao fechar: ambos os
+  streams são cancelados e os logs do detalhe são limpos. Erros de inspect aparecem no
+  banner do overlay, sem poluir `backend.lastError` do inspector de containers.
 
 ---
 
@@ -355,6 +382,7 @@ qml/
 ├── FormCheck.qml
 ├── ContainersPage.qml
 ├── Inspector.qml
+├── ContainerDetail.qml   # detalhe expandido (overlay, 7 abas)
 ├── LogsView.qml
 ├── StatsView.qml
 ├── Sparkline.qml
@@ -397,7 +425,7 @@ qml/
 | `Ctrl+Enter` | iniciar/parar selecionado |
 | `Ctrl+Shift+L` | abrir logs |
 | `Ctrl+Shift+T` | abrir terminal |
-| `Esc` | desselecionar/fechar |
+| `Esc` | desselecionar/fechar (inclui o detalhe expandido do container) |
 | `Ctrl+Q` | sair |
 
 Atalhos configuráveis (P2); conflitos com o desktop são resolvidos pelo usuário.

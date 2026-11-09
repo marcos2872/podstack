@@ -66,6 +66,11 @@ Rectangle {
         id: activityWindow
     }
 
+    ContainerDetail {
+        id: containerDetail
+        anchors.fill: parent
+    }
+
     readonly property var sections: [
         { group: "Engine", items: [
             { key: "containers", label: "Containers", icon: "containers" },
@@ -490,6 +495,9 @@ Rectangle {
                         anchors.fill: parent
                         filterText: window.searchText
                         compact: window.compactLayout
+                        onExpandRequested: function(id) {
+                            containerDetail.open(id)
+                        }
                     }
                 }
 

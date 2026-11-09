@@ -11,12 +11,14 @@
 #include "gui/TerminalWindow.h"
 
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaMethod>
 #include <QRegularExpression>
@@ -41,6 +43,57 @@ QString humanBytes(qint64 bytes)
     }
     return QString::number(value, 'f', unit == 0 ? 0 : 1) + QLatin1Char(' ')
            + QString::fromLatin1(units[unit]);
+}
+
+double parsePercent(const QString &text)
+{
+    QString copy = text.trimmed();
+    copy.remove(QLatin1Char('%'));
+    bool ok = false;
+    const double value = copy.toDouble(&ok);
+    return ok ? value : 0.0;
+}
+
+qint64 parseHumanBytes(const QString &text)
+{
+    static const QRegularExpression pattern(
+        QStringLiteral(R"(^\s*([0-9]+(?:\.[0-9]+)?)\s*([kKmMgGtT]?[bB])\s*$)"));
+    const QRegularExpressionMatch match = pattern.match(text);
+    if (!match.hasMatch()) {
+        return 0;
+    }
+
+    double value = match.captured(1).toDouble();
+    const QString unit = match.captured(2).toLower();
+    if (unit == QStringLiteral("kb")) {
+        value *= 1000.0;
+    } else if (unit == QStringLiteral("mb")) {
+        value *= 1000.0 * 1000.0;
+    } else if (unit == QStringLiteral("gb")) {
+        value *= 1000.0 * 1000.0 * 1000.0;
+    } else if (unit == QStringLiteral("tb")) {
+        value *= 1000.0 * 1000.0 * 1000.0 * 1000.0;
+    }
+    return static_cast<qint64>(value);
+}
+
+void parseBytePair(const QString &text, qint64 *first, qint64 *second)
+{
+    const int separator = text.indexOf(QStringLiteral(" / "));
+    if (first) {
+        *first = parseHumanBytes(separator >= 0 ? text.left(separator) : text);
+    }
+    if (second) {
+        *second = separator >= 0 ? parseHumanBytes(text.mid(separator + 3)) : 0;
+    }
+}
+
+void appendHistory(QVariantList &list, double value)
+{
+    list.append(value);
+    if (list.size() > 60) {
+        list.removeFirst();
+    }
 }
 
 QJsonObject runBatchAction(const QString &action, const QStringList &ids)
@@ -99,6 +152,8 @@ Backend::Backend(QObject *parent)
             &Backend::onRefreshFinished);
     connect(&m_actionWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onActionFinished);
+    connect(&m_containerDetailWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onContainerDetailFinished);
     connect(&m_filesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onFilesFinished);
     connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -232,6 +287,71 @@ Backend::Backend(QObject *parent)
         emit lastErrorChanged();
     });
 
+    m_detailLogsTimer.setSingleShot(true);
+    m_detailLogsTimer.setInterval(50);
+    connect(&m_detailLogsTimer, &QTimer::timeout, this, [this] {
+        m_detailLogsPending = false;
+        emit containerDetailLogsChanged();
+    });
+
+    connect(&m_detailStatsStream, &StreamClient::stats, this,
+            [this](const QJsonObject &stats) {
+                m_containerDetailStats = stats.toVariantMap();
+
+                qint64 memUsed = 0;
+                qint64 memLimit = 0;
+                parseBytePair(stats.value(QStringLiteral("mem_usage")).toString(),
+                              &memUsed, &memLimit);
+                m_containerDetailStats.insert(QStringLiteral("memUsedBytes"), memUsed);
+                m_containerDetailStats.insert(QStringLiteral("memLimitBytes"), memLimit);
+
+                qint64 netRx = 0;
+                qint64 netTx = 0;
+                parseBytePair(stats.value(QStringLiteral("net_io")).toString(), &netRx,
+                              &netTx);
+                m_containerDetailStats.insert(QStringLiteral("netRxBytes"), netRx);
+                m_containerDetailStats.insert(QStringLiteral("netTxBytes"), netTx);
+
+                qint64 diskRead = 0;
+                qint64 diskWrite = 0;
+                parseBytePair(stats.value(QStringLiteral("block_io")).toString(), &diskRead,
+                              &diskWrite);
+                m_containerDetailStats.insert(QStringLiteral("diskReadBytes"), diskRead);
+                m_containerDetailStats.insert(QStringLiteral("diskWriteBytes"), diskWrite);
+
+                appendHistory(m_containerDetailCpuHistory,
+                              parsePercent(stats.value(QStringLiteral("cpu_percent")).toString()));
+                appendHistory(m_containerDetailMemHistory,
+                              parsePercent(stats.value(QStringLiteral("mem_percent")).toString()));
+                appendHistory(m_containerDetailNetRxHistory, static_cast<double>(netRx));
+                appendHistory(m_containerDetailNetTxHistory, static_cast<double>(netTx));
+                appendHistory(m_containerDetailDiskReadHistory, static_cast<double>(diskRead));
+                appendHistory(m_containerDetailDiskWriteHistory, static_cast<double>(diskWrite));
+                m_containerDetailStatsError.clear();
+                emit containerDetailStatsChanged();
+            });
+    connect(&m_detailStatsStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                m_containerDetailStatsError = message;
+                emit containerDetailStatsChanged();
+            });
+
+    connect(&m_detailLogsStream, &StreamClient::logLine, this, [this](const QString &line) {
+        m_containerDetailLogLines.append(line);
+        if (m_containerDetailLogLines.size() > 5000) {
+            m_containerDetailLogLines = m_containerDetailLogLines.mid(1000);
+        }
+        if (!m_detailLogsPending) {
+            m_detailLogsPending = true;
+            m_detailLogsTimer.start();
+        }
+    });
+    connect(&m_detailLogsStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                m_containerDetailLogsError = message;
+                emit containerDetailLogsChanged();
+            });
+
     connect(&m_activityStream, &StreamClient::systemStats, this,
             [this](const QJsonObject &sample) {
                 m_activityStats = sample.toVariantMap();
@@ -276,8 +396,6 @@ Backend::Backend(QObject *parent)
     connect(&m_machineStatsStream, &StreamClient::error, this,
             [this](const QString &message) {
                 m_machineStatsError = message;
-                m_lastError = message;
-                emit lastErrorChanged();
                 emit machineStatsChanged();
             });
 
@@ -1116,6 +1234,167 @@ void Backend::removeContainer(const QString &id, bool force, bool volumes)
     runAction(QStringLiteral("containers.remove"), params);
 }
 
+void Backend::loadContainerDetail(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_containerDetail.clear();
+        m_containerDetailJson = {};
+        m_containerDetailError = QStringLiteral("Container inválido.");
+        m_containerDetailLoading = false;
+        emit containerDetailChanged();
+        return;
+    }
+
+    if (m_containerDetailWatcher.isRunning()) {
+        m_pendingContainerDetailId = id;
+        return;
+    }
+
+    m_containerDetail.clear();
+    m_containerDetailJson = {};
+    m_containerDetailError.clear();
+    m_containerDetailLoading = true;
+    emit containerDetailChanged();
+
+    m_containerDetailWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("containers.inspect"),
+                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onContainerDetailFinished()
+{
+    const QJsonObject result = m_containerDetailWatcher.result();
+    m_containerDetailLoading = false;
+
+    if (result.value(QStringLiteral("error")).isObject()) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_containerDetailError = errorObject.value(QStringLiteral("message")).toString();
+        if (m_containerDetailError.isEmpty()) {
+            m_containerDetailError = QStringLiteral("Falha ao carregar o inspect.");
+        }
+    } else {
+        const QJsonObject json = result.value(QStringLiteral("json")).toObject();
+        if (json.isEmpty()) {
+            m_containerDetailError = QStringLiteral("Inspect vazio ou inválido.");
+        } else {
+            m_containerDetailJson = json;
+            m_containerDetail = json.toVariantMap();
+            m_containerDetailError.clear();
+        }
+    }
+    emit containerDetailChanged();
+
+    if (!m_pendingContainerDetailId.isEmpty()) {
+        const QString next = m_pendingContainerDetailId;
+        m_pendingContainerDetailId.clear();
+        loadContainerDetail(next);
+    }
+}
+
+void Backend::copyContainerInspect()
+{
+    if (m_containerDetailJson.isEmpty()) {
+        return;
+    }
+    // Sem QGuiApplication (ex.: suíte guiless) o clipboard não existe.
+    if (!qobject_cast<QGuiApplication *>(QCoreApplication::instance())) {
+        return;
+    }
+    if (QClipboard *clipboard = QGuiApplication::clipboard()) {
+        clipboard->setText(QJsonDocument(m_containerDetailJson).toJson(QJsonDocument::Indented));
+    }
+    emit actionFinished(true, {});
+}
+
+void Backend::startContainerDetailStats(const QString &id)
+{
+    m_containerDetailStats.clear();
+    m_containerDetailCpuHistory.clear();
+    m_containerDetailMemHistory.clear();
+    m_containerDetailNetRxHistory.clear();
+    m_containerDetailNetTxHistory.clear();
+    m_containerDetailDiskReadHistory.clear();
+    m_containerDetailDiskWriteHistory.clear();
+    m_containerDetailStatsError.clear();
+    emit containerDetailStatsChanged();
+
+    if (id.isEmpty()) {
+        m_containerDetailStatsError = QStringLiteral("Container inválido.");
+        emit containerDetailStatsChanged();
+        return;
+    }
+
+    m_detailStatsStream.subscribeStats(id);
+}
+
+void Backend::stopContainerDetailStats()
+{
+    m_detailStatsStream.unsubscribe();
+}
+
+void Backend::startContainerDetailLogs(const QString &id, int tail, bool follow)
+{
+    m_detailLogsTimer.stop();
+    m_containerDetailLogLines.clear();
+    m_containerDetailLogsError.clear();
+    m_detailLogsPending = false;
+    emit containerDetailLogsChanged();
+
+    if (id.isEmpty()) {
+        m_containerDetailLogsError = QStringLiteral("Container inválido.");
+        emit containerDetailLogsChanged();
+        return;
+    }
+
+    if (tail <= 0) {
+        tail = 200;
+    }
+    tail = qBound(1, tail, 2000);
+    m_detailLogsStream.subscribeLogs(id, tail, follow);
+}
+
+void Backend::stopContainerDetailLogs()
+{
+    m_detailLogsTimer.stop();
+    m_detailLogsPending = false;
+    m_detailLogsStream.unsubscribe();
+}
+
+void Backend::clearContainerDetailLogs()
+{
+    m_detailLogsTimer.stop();
+    m_containerDetailLogLines.clear();
+    m_detailLogsPending = false;
+    emit containerDetailLogsChanged();
+}
+
+void Backend::containerDetailLifecycle(const QString &action, const QString &id)
+{
+    if (id.isEmpty()
+        || (action != QStringLiteral("start") && action != QStringLiteral("stop")
+            && action != QStringLiteral("restart") && action != QStringLiteral("pause")
+            && action != QStringLiteral("unpause") && action != QStringLiteral("kill"))) {
+        m_lastError = QStringLiteral("Ação ou container inválido.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+    lifecycle(action, id);
+}
+
+void Backend::removeContainerDetail(const QString &id, bool force)
+{
+    removeContainer(id, force, false);
+}
+
 void Backend::createContainer(const QVariantMap &spec, bool start)
 {
     QJsonObject params;
@@ -1290,6 +1569,15 @@ void Backend::startMachineStats(const QString &id)
 void Backend::stopMachineStats()
 {
     m_machineStatsStream.unsubscribe();
+
+    const bool clearGlobalError = !m_machineStatsError.isEmpty()
+                                  && m_lastError == m_machineStatsError;
+    m_machineStatsError.clear();
+    emit machineStatsChanged();
+    if (clearGlobalError) {
+        m_lastError.clear();
+        emit lastErrorChanged();
+    }
 }
 
 QVariantMap Backend::settings() const
