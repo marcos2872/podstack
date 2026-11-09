@@ -110,7 +110,9 @@ fi
 "${SUDO[@]}" install -Dm644 "$DBUS_SRC" "$DBUS_DST"
 
 "${SUDO[@]}" systemctl daemon-reload
-if ! "${SUDO[@]}" systemctl enable --now podstack-helper.service; then
+"${SUDO[@]}" systemctl enable podstack-helper.service
+# `enable --now` não reinicia um serviço já ativo; restart carrega o binário novo.
+if ! "${SUDO[@]}" systemctl restart podstack-helper.service; then
     echo "Falha ao iniciar o podstack-helper." >&2
     echo "Se o D-Bus ainda não carregou a política, reinicie a máquina e rode:" >&2
     echo "  systemctl status podstack-helper.service" >&2
