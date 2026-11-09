@@ -67,6 +67,8 @@
 - Machines: `machine list --json` vazio, `machine info` inexistente (exit 1), `machine create`
   com nome inválido (exit 1, validação síncrona sem download), tamanho de memória/disco
   inválido e `machine --help`/usage.
+- `top --once --interval 1 --json` devolve uma amostra com `host`/`containers`/`totals` e
+  `--help` funciona; o modo contínuo é interrompido com Ctrl+C.
 
 ---
 

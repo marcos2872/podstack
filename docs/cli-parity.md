@@ -76,7 +76,7 @@
 | `update` | `update` | `--check` | Pacote/assinatura |
 | `version` | `version` | `--format` | |
 | `report` | `report` | `--include-logs` | Redaction |
-| `top` | `top` | `--interval` | TUI |
+| `top` | `top` | `--once`, `--interval S`, `--json`, `--plain` | ✅ T7-04 — `top --once` espera duas amostras (taxas reais); contínuo até Ctrl+C |
 | `completion` | `completion` | `--shell` | bash/zsh/fish |
 
 ### 2.3 Docker/Compose/Builds

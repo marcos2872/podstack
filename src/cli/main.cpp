@@ -14,6 +14,7 @@
 #include <QVector>
 
 #include <limits>
+#include <unistd.h>
 
 namespace {
 
@@ -65,6 +66,8 @@ void printUsage()
           << "  builds [ls|rm]        Histórico de builds\n"
           << "  machine <list|info|create|start|stop|restart|delete|distros>\n"
           << "                          Gerencia machines QEMU/KVM\n"
+          << "  top [--once] [--interval S] [--json] [--plain]\n"
+          << "                          Monitora CPU/memória/containers\n"
           << "  setup [--check|--status|--validate]\n"
           << "        [--apply podman|qemu|components|socket]\n"
           << "        [--remove-docker --yes]\n"
@@ -1785,6 +1788,141 @@ int machineDeleteCommand(const QStringList &args)
     return kExitOk;
 }
 
+void printTopSample(const QJsonObject &sample)
+{
+    const QJsonObject host = sample.value(QStringLiteral("host")).toObject();
+    const QJsonObject totals = sample.value(QStringLiteral("totals")).toObject();
+
+    out() << "HOST   cpu " << QString::number(host.value(QStringLiteral("cpuPercent")).toDouble(),
+                                             'f', 1)
+          << "%  mem " << humanBytes(host.value(QStringLiteral("memUsed")).toInteger()) << " / "
+          << humanBytes(host.value(QStringLiteral("memTotal")).toInteger()) << "  net "
+          << humanBytes(host.value(QStringLiteral("netRx")).toInteger()) << "/s rx, "
+          << humanBytes(host.value(QStringLiteral("netTx")).toInteger()) << "/s tx\n";
+    out() << "TOTAL  cpu "
+          << QString::number(totals.value(QStringLiteral("cpuPercent")).toDouble(), 'f', 1)
+          << "%  mem " << humanBytes(totals.value(QStringLiteral("memUsed")).toInteger())
+          << " / " << humanBytes(totals.value(QStringLiteral("memLimit")).toInteger())
+          << "  pids " << totals.value(QStringLiteral("pids")).toInt() << '\n';
+
+    struct Row {
+        QString name;
+        double cpu = 0.0;
+        qint64 mem = 0;
+        int pids = 0;
+        qint64 rx = 0;
+        qint64 tx = 0;
+    };
+    QVector<Row> rows;
+    int nameWidth = 4;
+    for (const QJsonValue &value : sample.value(QStringLiteral("containers")).toArray()) {
+        const QJsonObject container = value.toObject();
+        Row row;
+        row.name = container.value(QStringLiteral("name")).toString();
+        if (row.name.isEmpty()) {
+            row.name = container.value(QStringLiteral("id")).toString().left(12);
+        }
+        row.cpu = container.value(QStringLiteral("cpuPercent")).toDouble();
+        row.mem = container.value(QStringLiteral("memUsed")).toInteger();
+        row.pids = container.value(QStringLiteral("pids")).toInt();
+        row.rx = container.value(QStringLiteral("netRx")).toInteger();
+        row.tx = container.value(QStringLiteral("netTx")).toInteger();
+        nameWidth = qMax(nameWidth, row.name.size());
+        rows.append(row);
+    }
+
+    out() << QStringLiteral("%1  %2  %3  %4  %5\n")
+                 .arg(QStringLiteral("NOME").leftJustified(nameWidth))
+                 .arg(QStringLiteral("CPU%").rightJustified(6))
+                 .arg(QStringLiteral("MEM").rightJustified(10))
+                 .arg(QStringLiteral("PIDS").rightJustified(5))
+                 .arg(QStringLiteral("NET RX/TX"));
+    for (const Row &row : rows) {
+        out() << QStringLiteral("%1  %2  %3  %4  %5/%6\n")
+                     .arg(row.name.leftJustified(nameWidth))
+                     .arg(QString::number(row.cpu, 'f', 1).rightJustified(6))
+                     .arg(humanBytes(row.mem).rightJustified(10))
+                     .arg(QString::number(row.pids).rightJustified(5))
+                     .arg(humanBytes(row.rx), humanBytes(row.tx));
+    }
+    out().flush();
+}
+
+int commandTop(const QStringList &args)
+{
+    bool once = false;
+    bool json = false;
+    bool plain = false;
+    int interval = 2;
+
+    for (int i = 0; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--once")) {
+            once = true;
+        } else if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--plain")) {
+            plain = true;
+        } else if (arg == QStringLiteral("--interval") && i + 1 < args.size()) {
+            bool ok = false;
+            interval = args.at(++i).toInt(&ok);
+            if (!ok) {
+                err() << "--interval exige um número inteiro\n";
+                return kExitUsage;
+            }
+        } else if (arg == QStringLiteral("--help") || arg == QStringLiteral("-h")) {
+            out() << "Uso: podstack top [--once] [--interval S] [--json] [--plain]\n";
+            out().flush();
+            return kExitOk;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    interval = qBound(1, interval, 10);
+
+    int samples = 0;
+    bool printed = false;
+    const int timeoutMs = once ? interval * 1000 + 3000 : 0;
+    const bool clearScreen = !json && !plain && ::isatty(STDOUT_FILENO);
+
+    PodStack::RpcStream stream;
+    PodStack::Error error;
+    const bool ok = stream.run(
+        QStringLiteral("system.stats.subscribe"),
+        QJsonObject{{QStringLiteral("intervalSeconds"), interval}},
+        [&](const QString &method, const QJsonObject &payload) {
+            if (method != QStringLiteral("system.stats.delta")) {
+                return;
+            }
+            ++samples;
+            if (once && samples < 2) {
+                return;
+            }
+            if (json) {
+                out() << QJsonDocument(payload).toJson(QJsonDocument::Compact) << '\n';
+            } else {
+                if (clearScreen) {
+                    out() << "\033[2J\033[H";
+                }
+                printTopSample(payload);
+            }
+            out().flush();
+            printed = true;
+        },
+        &error, timeoutMs, false);
+
+    if (!ok && !(once && error.code == QStringLiteral("PODSTACK_TIMEOUT") && printed)) {
+        return fail(error);
+    }
+    if (once && !printed) {
+        err() << "nenhuma amostra de stats recebida\n";
+        err().flush();
+        return kExitError;
+    }
+    return kExitOk;
+}
+
 int commandMachine(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -2140,6 +2278,9 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("setup")) {
         return commandSetup(args);
+    }
+    if (command == QStringLiteral("top")) {
+        return commandTop(args);
     }
     if (command == QStringLiteral("doctor")) {
         return commandDoctor();

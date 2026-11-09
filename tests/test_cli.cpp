@@ -32,6 +32,7 @@ private slots:
     void catalog();
     void machineDistros();
     void machineCommands();
+    void topCommand();
     void composeAndBuild();
     void setupCommand();
     void errorPaths();
@@ -527,6 +528,32 @@ void CliTest::machineCommands()
         QCOMPARE(result.code, 1);
         QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
     }
+}
+
+void CliTest::topCommand()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("top"), QStringLiteral("--once"),
+                            QStringLiteral("--interval"), QStringLiteral("1"),
+                            QStringLiteral("--json")},
+                           env);
+    QCOMPARE(result.code, 0);
+
+    const QStringList lines = result.out.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QVERIFY(!lines.isEmpty());
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(lines.last().toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QVERIFY(document.isObject());
+    const QJsonObject sample = document.object();
+    QVERIFY(sample.contains(QStringLiteral("host")));
+    QVERIFY(sample.contains(QStringLiteral("containers")));
+    QVERIFY(sample.contains(QStringLiteral("totals")));
+
+    result = run({QStringLiteral("top"), QStringLiteral("--help")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("Uso: podstack top")));
 }
 
 void CliTest::composeAndBuild()
