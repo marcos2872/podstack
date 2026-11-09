@@ -94,6 +94,9 @@ public:
     /// Aplica CPUs/memória/disco; para a machine se preciso e reinicia ao final.
     MachineMeta update(const QString &idOrName, const UpdateMachineRequest &request,
                        Error *error = nullptr);
+    /// Substitui as portas não-SSH; preserva a SSH e reinicia a machine se preciso.
+    MachineMeta setPorts(const QString &idOrName, const QVector<MachinePort> &ports,
+                         Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
     bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
     /// Renomeia a machine, atualiza o bloco SSH e a máquina default do Config.
@@ -128,6 +131,9 @@ private:
     QString virtiofsSocketPath(const QString &machineId, const QString &tag) const;
     bool normalizeMounts(const QVector<MachineMount> &mounts,
                          QVector<MachineMount> *normalized, Error *error) const;
+    bool normalizePorts(const QString &machineId, const QVector<MachinePort> &ports,
+                        const QVector<MachineMeta> &existing,
+                        QVector<MachinePort> *normalized, Error *error) const;
     bool startVirtiofs(const MachineMeta &meta, Error *error);
     bool stopVirtiofs(const QString &machineId, Error *error = nullptr);
     QemuSpec specFor(const MachineMeta &meta, bool forStart, Error *error);

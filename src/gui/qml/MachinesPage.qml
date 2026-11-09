@@ -12,6 +12,9 @@ ColumnLayout {
     property string pendingRenameId: ""
     property string pendingCloneId: ""
     property string pendingResourcesId: ""
+    property string pendingPortsId: ""
+    property bool portsActionPending: false
+    property var portsDraft: []
     property bool resourcesActionPending: false
     property int resourcesOriginalCpus: 0
     property int resourcesOriginalMemoryGiB: 0
@@ -105,6 +108,88 @@ ColumnLayout {
             backend.loadMachineInfo(selectedMachineId)
             backend.loadMachineLogs(selectedMachineId, 200)
         }
+    }
+
+    function openPortsDialog(id) {
+        pendingPortsId = id
+        portsActionPending = false
+        portsDraft = []
+        let machine = selectedMachine
+        for (let i = 0; i < backend.machines.length; ++i) {
+            if (String(backend.machines[i].id) === id) {
+                machine = backend.machines[i]
+                break
+            }
+        }
+        const ports = machine && machine.ports ? machine.ports : []
+        const draft = []
+        for (let i = 0; i < ports.length; ++i) {
+            const port = ports[i]
+            const protocol = port.protocol ? String(port.protocol) : "tcp"
+            if (protocol === "tcp" && Number(port.guestPort) === 22) {
+                continue
+            }
+            draft.push({
+                "id": port.id ? String(port.id) : "",
+                "hostPort": Number(port.hostPort || 0),
+                "guestPort": Number(port.guestPort || 0),
+                "protocol": protocol,
+                "exposeLan": Boolean(port.exposeLan),
+                "label": port.label ? String(port.label) : ""
+            })
+        }
+        portsDraft = draft
+        portsHost.text = ""
+        portsGuest.text = ""
+        portsProtocol.currentIndex = 0
+        portsLabel.text = ""
+        portsLan.checked = false
+        portsError.text = ""
+        portsDialog.open()
+    }
+
+    function addPortDraft() {
+        const hostPort = parseInt(portsHost.text)
+        const guestPort = parseInt(portsGuest.text)
+        if (isNaN(hostPort) || hostPort < 1 || hostPort > 65535) {
+            portsError.text = qsTr("Informe a porta do host (1..65535).")
+            return
+        }
+        if (isNaN(guestPort) || guestPort < 1 || guestPort > 65535) {
+            portsError.text = qsTr("Informe a porta do guest (1..65535).")
+            return
+        }
+        const protocol = portsProtocol.currentText
+        for (let i = 0; i < portsDraft.length; ++i) {
+            if (Number(portsDraft[i].hostPort) === hostPort
+                    && String(portsDraft[i].protocol) === protocol) {
+                portsError.text = qsTr("Essa porta do host já está na lista para o protocolo.")
+                return
+            }
+        }
+        portsDraft = portsDraft.concat([{
+            "id": "",
+            "hostPort": hostPort,
+            "guestPort": guestPort,
+            "protocol": protocol,
+            "exposeLan": portsLan.checked,
+            "label": portsLabel.text.trim()
+        }])
+        portsHost.text = ""
+        portsGuest.text = ""
+        portsLabel.text = ""
+        portsLan.checked = false
+        portsError.text = ""
+    }
+
+    function removePortDraft(index) {
+        const next = []
+        for (let i = 0; i < portsDraft.length; ++i) {
+            if (i !== index) {
+                next.push(portsDraft[i])
+            }
+        }
+        portsDraft = next
     }
 
     function stageLabel(stage) {
@@ -316,6 +401,9 @@ ColumnLayout {
                 backend.resetMachineCreateState()
                 cloneDialog.open()
             }
+            onPortsRequested: function(id) {
+                machinesPage.openPortsDialog(id)
+            }
             onResourcesRequested: function(id) {
                 machinesPage.pendingResourcesId = id
                 machinesPage.resourcesActionPending = false
@@ -367,6 +455,15 @@ ColumnLayout {
         }
 
         function onActionFinished(ok, message) {
+            if (machinesPage.portsActionPending && portsDialog.opened) {
+                machinesPage.portsActionPending = false
+                if (ok) {
+                    portsDialog.close()
+                } else {
+                    portsError.text = message.length > 0 ? message : backend.lastError
+                }
+                return
+            }
             if (!machinesPage.resourcesActionPending || !resourcesDialog.opened) {
                 return
             }
@@ -1023,6 +1120,223 @@ ColumnLayout {
                          && backend.machineCreateStage !== "done"
                 onClicked: backend.cloneMachine(machinesPage.pendingCloneId,
                                                 cloneName.text.trim())
+            }
+        }
+    }
+
+    AppDialog {
+        id: portsDialog
+        title: qsTr("Portas da machine")
+        modal: true
+        width: 560
+        anchors.centerIn: parent
+        closePolicy: machinesPage.portsActionPending ? Popup.NoAutoClose
+                                                     : Popup.CloseOnEscape
+                                                       | Popup.CloseOnPressOutside
+        onClosed: {
+            machinesPage.pendingPortsId = ""
+            machinesPage.portsActionPending = false
+            machinesPage.portsDraft = []
+            portsError.text = ""
+        }
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 9
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("A porta SSH (22/tcp) é gerenciada automaticamente e não aparece na lista.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(170, machinesPage.portsDraft.length * 36 + 8)
+                visible: machinesPage.portsDraft.length > 0
+                radius: Theme.radiusSm
+                color: Theme.bgSurface2
+                border.width: 1
+                border.color: Theme.border
+
+                ListView {
+                    id: portsDraftList
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    clip: true
+                    model: machinesPage.portsDraft
+                    spacing: 2
+
+                    delegate: RowLayout {
+                        required property var modelData
+                        required property int index
+
+                        width: portsDraftList.width
+                        spacing: 8
+
+                        Text {
+                            Layout.preferredWidth: 76
+                            text: modelData.hostPort + " → " + modelData.guestPort
+                            color: Theme.textSecondary
+                            font.family: Theme.monoFamily
+                            font.pixelSize: Theme.fontMicro
+                        }
+
+                        Text {
+                            Layout.preferredWidth: 40
+                            text: modelData.protocol
+                            color: Theme.textTertiary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMicro
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.exposeLan ? qsTr("0.0.0.0 (LAN)")
+                                                      : qsTr("127.0.0.1")
+                            color: modelData.exposeLan ? Theme.warning : Theme.textTertiary
+                            font.family: Theme.monoFamily
+                            font.pixelSize: Theme.fontMicro
+                        }
+
+                        Text {
+                            Layout.preferredWidth: 110
+                            text: modelData.label
+                            color: Theme.textSecondary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMicro
+                            elide: Text.ElideRight
+                        }
+
+                        ActionButton {
+                            text: qsTr("Remover")
+                            size: "sm"
+                            variant: "ghost"
+                            enabled: !machinesPage.portsActionPending
+                            onClicked: machinesPage.removePortDraft(index)
+                        }
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: machinesPage.portsDraft.length === 0
+                text: qsTr("Nenhuma porta extra configurada.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: 12
+                rowSpacing: 7
+
+                Text { text: qsTr("Porta do host"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                FormField {
+                    id: portsHost
+                    Layout.fillWidth: true
+                    enabled: !machinesPage.portsActionPending
+                    validator: IntValidator { bottom: 1; top: 65535 }
+                }
+
+                Text { text: qsTr("Porta do guest"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                FormField {
+                    id: portsGuest
+                    Layout.fillWidth: true
+                    enabled: !machinesPage.portsActionPending
+                    validator: IntValidator { bottom: 1; top: 65535 }
+                }
+
+                Text { text: qsTr("Protocolo"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                AppSelect {
+                    id: portsProtocol
+                    Layout.fillWidth: true
+                    model: ["tcp", "udp"]
+                    currentIndex: 0
+                    enabled: !machinesPage.portsActionPending
+                }
+
+                Text { text: qsTr("Rótulo"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                FormField {
+                    id: portsLabel
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("opcional (até 64 caracteres)")
+                    enabled: !machinesPage.portsActionPending
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                FormCheck {
+                    id: portsLan
+                    text: qsTr("Expor na LAN (0.0.0.0)")
+                    enabled: !machinesPage.portsActionPending
+                }
+
+                Item { Layout.fillWidth: true }
+
+                ActionButton {
+                    text: qsTr("Adicionar")
+                    size: "sm"
+                    variant: "secondary"
+                    enabled: !machinesPage.portsActionPending
+                    onClicked: machinesPage.addPortDraft()
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Aviso: expor na LAN faz o QEMU escutar em 0.0.0.0 e permite que outros dispositivos acessem a porta; o firewall do host também precisa liberá-la.")
+                color: Theme.warning
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                id: portsError
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: ""
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: qsTr("Cancelar")
+                variant: "secondary"
+                enabled: !machinesPage.portsActionPending
+                onClicked: portsDialog.close()
+            }
+            ActionButton {
+                text: qsTr("Aplicar")
+                variant: "primary"
+                enabled: !machinesPage.portsActionPending
+                         && machinesPage.pendingPortsId.length > 0
+                onClicked: {
+                    portsError.text = ""
+                    machinesPage.portsActionPending = true
+                    backend.setMachinePorts(machinesPage.pendingPortsId,
+                                            machinesPage.portsDraft)
+                }
             }
         }
     }

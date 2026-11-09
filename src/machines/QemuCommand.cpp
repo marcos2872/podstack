@@ -102,6 +102,43 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
         invalid(error, QStringLiteral("A porta SSH deve ser maior que zero."));
         return {};
     }
+    if (spec.ports.isEmpty()) {
+        invalid(error, QStringLiteral("A machine precisa de ao menos uma porta encaminhada."));
+        return {};
+    }
+
+    QSet<QString> forwardedPorts;
+    for (const QemuPort &port : spec.ports) {
+        const QString protocol = port.protocol.trimmed().toLower();
+        if (protocol != QStringLiteral("tcp") && protocol != QStringLiteral("udp")) {
+            invalid(error, QStringLiteral("Protocolo de porta inválido."),
+                    QStringLiteral("%1 (use tcp ou udp)").arg(port.protocol));
+            return {};
+        }
+        if (port.hostPort < 1 || port.hostPort > 65535) {
+            invalid(error, QStringLiteral("Porta do host fora do intervalo 1..65535."),
+                    QString::number(port.hostPort));
+            return {};
+        }
+        if (port.guestPort < 1 || port.guestPort > 65535) {
+            invalid(error, QStringLiteral("Porta do guest fora do intervalo 1..65535."),
+                    QString::number(port.guestPort));
+            return {};
+        }
+        if (port.hostAddress != QStringLiteral("127.0.0.1")
+            && port.hostAddress != QStringLiteral("0.0.0.0")) {
+            invalid(error, QStringLiteral("Endereço de bind inválido para a porta."),
+                    QStringLiteral("%1 (use 127.0.0.1 ou 0.0.0.0)").arg(port.hostAddress));
+            return {};
+        }
+        const QString key = protocol + QLatin1Char(':') + QString::number(port.hostPort);
+        if (forwardedPorts.contains(key)) {
+            invalid(error, QStringLiteral("Porta do host duplicada no protocolo."),
+                    QStringLiteral("%1/%2").arg(port.hostPort).arg(protocol));
+            return {};
+        }
+        forwardedPorts.insert(key);
+    }
 
     const bool hasOvmfCode = !spec.ovmfCodePath.isEmpty();
     const bool hasOvmfVars = !spec.ovmfVarsPath.isEmpty();
@@ -164,8 +201,12 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
     args << QStringLiteral("-drive")
          << QStringLiteral("file=%1,format=raw,if=virtio,readonly=on").arg(spec.seedPath);
 
-    QString netdev =
-        QStringLiteral("user,id=net0,hostfwd=tcp:127.0.0.1:%1-:22").arg(spec.sshPort);
+    QString netdev = QStringLiteral("user,id=net0");
+    for (const QemuPort &port : spec.ports) {
+        netdev += QStringLiteral(",hostfwd=%1:%2:%3-:%4")
+                      .arg(port.protocol.trimmed().toLower(), port.hostAddress,
+                           QString::number(port.hostPort), QString::number(port.guestPort));
+    }
     if (spec.isolateNetwork) {
         netdev += QStringLiteral(",restrict=on");
     }

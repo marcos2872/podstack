@@ -35,6 +35,7 @@ private slots:
     void machineDistros();
     void machineCommands();
     void machineSsh();
+    void machinePorts();
     void machineFiles();
     void topCommand();
     void systemDf();
@@ -754,6 +755,124 @@ void CliTest::machineSsh()
     QVERIFY(store.remove(meta.id));
     QFile::remove(meta.sshKeyPath);
     QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+}
+
+void CliTest::machinePorts()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("machine"), QStringLiteral("port"),
+                            QStringLiteral("ls")},
+                           env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("port"),
+                  QStringLiteral("add")},
+                 env);
+    QCOMPARE(result.code, 2);
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("cli-machine-ports");
+    meta.name = QStringLiteral("cli-ports");
+    meta.distro = QStringLiteral("fedora");
+    meta.distroVersion = QStringLiteral("44");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("stopped");
+    meta.sshPort = 32222;
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    meta.ports = {PodStack::MachinePort{QStringLiteral("ssh-port-cli"),
+                                       32222,
+                                       22,
+                                       QStringLiteral("tcp"),
+                                       false,
+                                       QStringLiteral("ssh")}};
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("add"),
+                  QStringLiteral("cli-ports"), QStringLiteral("--host"), QStringLiteral("0"),
+                  QStringLiteral("--guest"), QStringLiteral("80")},
+                 env);
+    QCOMPARE(result.code, 2);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("add"),
+                  QStringLiteral("cli-ports"), QStringLiteral("--host"),
+                  QStringLiteral("18080"), QStringLiteral("--guest"), QStringLiteral("80"),
+                  QStringLiteral("--label"), QStringLiteral("web")},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QVERIFY(result.out.contains(QStringLiteral("adicionada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("ls"),
+                  QStringLiteral("cli-ports"), QStringLiteral("--json")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    const QJsonArray items = document.object().value(QStringLiteral("items")).toArray();
+    QCOMPARE(items.size(), 2);
+    bool sawWeb = false;
+    bool sawSsh = false;
+    for (const QJsonValue &value : items) {
+        const QJsonObject port = value.toObject();
+        if (port.value(QStringLiteral("hostPort")).toInt() == 18080) {
+            sawWeb = port.value(QStringLiteral("guestPort")).toInt() == 80
+                     && port.value(QStringLiteral("label")).toString() == QStringLiteral("web");
+        }
+        if (port.value(QStringLiteral("guestPort")).toInt() == 22) {
+            sawSsh = port.value(QStringLiteral("hostPort")).toInt() == 32222;
+        }
+    }
+    QVERIFY(sawWeb);
+    QVERIFY(sawSsh);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("ls"),
+                  QStringLiteral("cli-ports")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("HOST")));
+    QVERIFY(result.out.contains(QStringLiteral("18080")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("rm"),
+                  QStringLiteral("cli-ports"), QStringLiteral("18080")},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("ls"),
+                  QStringLiteral("cli-ports"), QStringLiteral("--json")},
+                 env);
+    QCOMPARE(result.code, 0);
+    const QJsonDocument afterDocument =
+        QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    const QJsonArray after = afterDocument.object().value(QStringLiteral("items")).toArray();
+    QCOMPARE(after.size(), 1);
+    QCOMPARE(after.at(0).toObject().value(QStringLiteral("guestPort")).toInt(), 22);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("rm"),
+                  QStringLiteral("cli-ports"), QStringLiteral("32222")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("SSH")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("rm"),
+                  QStringLiteral("cli-ports"), QStringLiteral("9999")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
 }
 
 void CliTest::machineFiles()

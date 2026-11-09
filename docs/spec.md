@@ -376,7 +376,8 @@ Formato único:
    três nomes ficam na raiz da ISO.
 4. Iniciar QEMU (KVM se disponível) com:
    - `-M q35 -cpu host -smp N -m M`
-   - disco virtio, seed ISO, virtiofs (se mounts), rede user/passt com hostfwd SSH.
+   - disco virtio, seed ISO, virtiofs (se mounts), rede user/passt com `hostfwd` de cada
+     porta configurada (SSH 22/tcp sempre presente; extras em §11.5).
    - QMP socket para controle.
 5. Aguardar SSH (timeout 120 s); validar cloud-init (`cloud-init status --wait`).
 6. Registrar em SQLite; retornar.
@@ -606,9 +607,16 @@ Domains=~podstack.local
 
 ### 11.5 Port forwarding de máquinas
 
-- Hostfwd QEMU para portas configuradas (HTTP/HTTPS/SSH).
+- Cada porta configurada vira um `hostfwd` do `-netdev user` do QEMU:
+  `hostfwd=<tcp|udp>:<bind>:<hostPort>-:<guestPort>`. A porta SSH (22/tcp) é gerenciada
+  automaticamente e sempre existe; as demais são adicionadas/removidas pelo usuário.
+- Bind padrão em `127.0.0.1` (acessível só pelo host). O toggle **Expor na LAN** usa
+  `0.0.0.0`, com aviso de segurança; o firewall do host ainda precisa liberar a porta.
+- Protocolos `tcp` e `udp`; `hostPort` único por protocolo entre todas as machines.
+- Alterar as portas exige reiniciar a machine: o `hostfwd` é parte da linha de comando do
+  QEMU. O daemon para e reinicia automaticamente quando a machine está rodando e persiste
+  `meta.json`+SQLite antes do restart.
 - Detectar serviços no guest via `ss`/`netstat` (opcional) e sugerir.
-- Expor na LAN com toggle.
 
 ---
 

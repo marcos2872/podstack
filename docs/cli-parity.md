@@ -57,6 +57,9 @@
 | `rename M NEW` | `machine rename M NEW` | `--json` | Atualiza o bloco SSH e a default | ✅ T4-10 |
 | `default [M]` | `machine default [M]` | `--json` | Get/set; `machine ssh` sem id usa a default | ✅ T4-10 |
 | — | `machine update <id\|nome>` | `--cpus`, `--memory`, `--disk`, `--json` | Ao menos um recurso; para/reinicia se rodando; disco só cresce (`qemu-img resize` offline) | ✅ T4-11 |
+| — | `machine port ls <id\|nome>` | `--json` | Lista host/guest/protocolo/bind/rótulo; a SSH aparece mas é gerenciada | ✅ T4-12 |
+| — | `machine port add <id\|nome>` | `--host N`, `--guest N`, `--udp`, `--lan`, `--label L`, `--json` | Envia a lista completa não-SSH; para/reinicia se rodando | ✅ T4-12 |
+| — | `machine port rm <id\|nome> <portId\|hostPort>` | `--json` | Remove por ID ou hostPort; recusa a porta SSH e hostPort ambíguo | ✅ T4-12 |
 | — | `machine distros` | `--json` | Lista imagens cloud pinadas (ubuntu/debian/fedora), checksum e cache local; não baixa | ✅ T4-01 |
 | `serial list` | `device serial list` | `--format` | | ⬜ T4-15 |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
@@ -302,6 +305,10 @@ Apenas IDs ou nomes, um por linha.
 ```bash
 # criar máquina
 podstack machine create ubuntu:24.04 dev --cpus 2 --memory 4G --disk 20G
+podstack machine port add dev --host 8080 --guest 80 --label web
+podstack machine port add dev --host 5353 --guest 53 --udp --lan
+podstack machine port ls dev
+podstack machine port rm dev 8080
 
 # listar e inspecionar
 podstack machine list

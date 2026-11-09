@@ -147,7 +147,8 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - Botão **Expandir** (ícone expand, quatro setas para fora) abre o detalhe do container
   em overlay integrado (seção 5.7). O card lateral mostra somente **Info** e **Ações**.
 - Machines: o botão **Expandir** abre o overlay da machine (seção 5.8); o botão **SSH**
-  do card lateral abre o mesmo overlay já na aba **Terminal**.
+  do card lateral abre o mesmo overlay já na aba **Terminal**. **Portas** abre o diálogo de
+  port forwarding da machine.
 - Grid de metadados: ID, portas publicadas, estado, criado e saúde.
 - Ações: abrir no navegador, copiar ID, revelar no gerenciador.
 - **Exposição LAN (T2-15):** na célula de portas, o botão alterna **“Expor na LAN”** /
@@ -276,7 +277,11 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   mesmo bloco de progresso/erro do export/import (`archiveStageLabel` + `machineCreate*`).
   **Recursos** abre o diálogo “Editar recursos” (`machines.update`): CPUs, memória e disco
   em GiB preenchidos da machine, com aviso de que o disco só cresce e que CPU/memória
-  exigem restart; erro permanece inline e o diálogo fecha só no sucesso.
+  exigem restart; erro permanece inline e o diálogo fecha só no sucesso. **Portas** abre o
+  diálogo “Portas da machine” (`machines.ports.list/set`): lista as portas extras com
+  host→guest/protocolo/bind/rótulo e remover, campos host/guest/protocolo/LAN/rótulo com
+  **Adicionar**, aviso de segurança para LAN e erro inline. A lista enviada exclui a SSH
+  (gerenciada pelo daemon) e o diálogo fecha só no sucesso.
 
 ---
 
@@ -292,6 +297,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 | Importar máquina | arquivo `.tar.zst`, nome, substituir | checksum/manifesto; nome RFC 1123 |
 | Renomear | novo nome | nome único; RFC 1123 |
 | Editar recursos | CPUs, memória (GiB), disco (GiB) | 1..256 CPUs; memória/disco ≥ 1 GiB; disco só cresce |
+| Portas da machine | lista de portas (host/guest/protocolo/bind/rótulo), host, guest, protocolo, LAN, rótulo | 1..65535; hostPort único por protocolo; SSH preservada; aviso para LAN |
 | Confirmar remoção | lista + impacto | requer confirmação ou `force` |
 | Reset Docker/K8s | escopo + aviso | digitar nome/`--yes` |
 | Instalar helper/CLI | explicação + polkit | consentimento |

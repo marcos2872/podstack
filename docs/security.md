@@ -199,6 +199,10 @@ encerra a janela da instância já em execução.
   `/etc/environment` (cloud-init) em machines novas; credenciais da URL não aparecem em logs,
   erros ou argv. Recursos existentes exigem recriação.
 - Exposição LAN é opt-in, com aviso e firewall (firewalld/ufw).
+- Port forwarding de machines: o bind padrão é `127.0.0.1`; `exposeLan=true` faz o QEMU
+  escutar em `0.0.0.0` e expõe a porta a qualquer dispositivo da rede. A GUI avisa no
+  diálogo **Portas da machine**, a CLI usa `--lan` e o firewall do host precisa ser liberado
+  separadamente (o PodStack não abre buracos automaticamente).
 - `*.localhost` não requer privilégio e não altera o sistema.
 - `*.podstack.local` via helper: drop-in gerenciado, reversível, com backup.
 - Não usar mDNS/Avahi por padrão (conflito na LAN e spoofing).

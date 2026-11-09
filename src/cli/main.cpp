@@ -72,7 +72,7 @@ void printUsage()
           << "        [--platform p1,p2]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
-          << "  machine <list|info|logs|create|start|stop|restart|delete|rename|clone|default|distros|ssh|files|pull|push>\n"
+          << "  machine <list|info|logs|create|start|stop|restart|delete|rename|clone|default|distros|ssh|files|pull|push|port|update>\n"
           << "                          Gerencia machines QEMU/KVM\n"
           << "  ssh [id|nome] [-- cmd...]\n"
           << "                          Abre SSH (sem id usa a machine default)\n"
@@ -1372,6 +1372,12 @@ void printMachineUsage(QTextStream &stream)
            << "                          Cria uma cópia independente da machine\n"
            << "  update <id|nome> [--cpus N] [--memory 4G] [--disk 40G] [--json]\n"
            << "                          Atualiza recursos (para/reinicia se preciso)\n"
+           << "  port ls <id|nome> [--json]\n"
+           << "                          Lista as portas encaminhadas da machine\n"
+           << "  port add <id|nome> --host N --guest N [--udp] [--lan] [--label L]\n"
+           << "                          Adiciona uma porta (reinicia se rodando)\n"
+           << "  port rm <id|nome> <portId|hostPort> [--json]\n"
+           << "                          Remove uma porta (a SSH é gerenciada)\n"
            << "  default [<id|nome>] [--json]\n"
            << "                          Mostra ou define a machine default\n"
            << "  ssh [id|nome] [-- cmd...]\n"
@@ -2247,6 +2253,344 @@ int machineUpdateCommand(const QStringList &args)
     return kExitOk;
 }
 
+bool machinePortIsSsh(const QJsonObject &port)
+{
+    if (port.value(QStringLiteral("guestPort")).toInt() != 22) {
+        return false;
+    }
+    const QString protocol = port.value(QStringLiteral("protocol")).toString();
+    return protocol.isEmpty() || protocol.compare(QStringLiteral("tcp"), Qt::CaseInsensitive) == 0;
+}
+
+QJsonArray machinePortsWithoutSsh(const QJsonArray &ports)
+{
+    QJsonArray result;
+    for (const QJsonValue &value : ports) {
+        const QJsonObject port = value.toObject();
+        if (!machinePortIsSsh(port)) {
+            result.append(port);
+        }
+    }
+    return result;
+}
+
+QString machinePortLabel(const QJsonObject &machine)
+{
+    const QString name = machine.value(QStringLiteral("name")).toString();
+    return name.isEmpty() ? machine.value(QStringLiteral("id")).toString() : name;
+}
+
+int machinePortListCommand(const QStringList &args)
+{
+    QString id;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.ports.list"),
+                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonArray ports = result.value(QStringLiteral("items")).toArray();
+    int idWidth = 2;
+    int hostWidth = 4;
+    int guestWidth = 5;
+    int protoWidth = 5;
+    int bindWidth = 9;
+    int labelWidth = 5;
+    for (const QJsonValue &value : ports) {
+        const QJsonObject port = value.toObject();
+        idWidth = qMax(idWidth, port.value(QStringLiteral("id")).toString().size());
+        hostWidth = qMax(hostWidth,
+                         QString::number(port.value(QStringLiteral("hostPort")).toInt()).size());
+        guestWidth = qMax(guestWidth,
+                          QString::number(port.value(QStringLiteral("guestPort")).toInt()).size());
+        protoWidth = qMax(protoWidth,
+                          port.value(QStringLiteral("protocol")).toString().size());
+        bindWidth = qMax(bindWidth,
+                         (port.value(QStringLiteral("exposeLan")).toBool()
+                              ? QStringLiteral("0.0.0.0 (LAN)")
+                              : QStringLiteral("127.0.0.1"))
+                             .size());
+        labelWidth = qMax(labelWidth, port.value(QStringLiteral("label")).toString().size());
+    }
+
+    out() << QStringLiteral("%1  %2  %3  %4  %5  %6\n")
+                 .arg(QStringLiteral("ID").leftJustified(idWidth),
+                      QStringLiteral("HOST").leftJustified(hostWidth),
+                      QStringLiteral("GUEST").leftJustified(guestWidth),
+                      QStringLiteral("PROTO").leftJustified(protoWidth),
+                      QStringLiteral("BIND").leftJustified(bindWidth),
+                      QStringLiteral("LABEL"));
+    for (const QJsonValue &value : ports) {
+        const QJsonObject port = value.toObject();
+        out() << QStringLiteral("%1  %2  %3  %4  %5  %6\n")
+                     .arg(port.value(QStringLiteral("id")).toString().leftJustified(idWidth),
+                          QString::number(port.value(QStringLiteral("hostPort")).toInt())
+                              .leftJustified(hostWidth),
+                          QString::number(port.value(QStringLiteral("guestPort")).toInt())
+                              .leftJustified(guestWidth),
+                          port.value(QStringLiteral("protocol")).toString()
+                              .leftJustified(protoWidth),
+                          (port.value(QStringLiteral("exposeLan")).toBool()
+                               ? QStringLiteral("0.0.0.0 (LAN)")
+                               : QStringLiteral("127.0.0.1"))
+                              .leftJustified(bindWidth),
+                          port.value(QStringLiteral("label")).toString());
+    }
+    out().flush();
+    return kExitOk;
+}
+
+int machinePortAddCommand(const QStringList &args)
+{
+    QString id;
+    QString label;
+    int hostPort = 0;
+    int guestPort = 0;
+    bool hasHost = false;
+    bool hasGuest = false;
+    bool udp = false;
+    bool exposeLan = false;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--host") && i + 1 < args.size()) {
+            bool ok = false;
+            hostPort = args.at(++i).toInt(&ok);
+            if (!ok || hostPort < 1 || hostPort > 65535) {
+                err() << "--host exige uma porta 1..65535\n";
+                return kExitUsage;
+            }
+            hasHost = true;
+        } else if (arg == QStringLiteral("--guest") && i + 1 < args.size()) {
+            bool ok = false;
+            guestPort = args.at(++i).toInt(&ok);
+            if (!ok || guestPort < 1 || guestPort > 65535) {
+                err() << "--guest exige uma porta 1..65535\n";
+                return kExitUsage;
+            }
+            hasGuest = true;
+        } else if (arg == QStringLiteral("--udp")) {
+            udp = true;
+        } else if (arg == QStringLiteral("--lan")) {
+            exposeLan = true;
+        } else if (arg == QStringLiteral("--label") && i + 1 < args.size()) {
+            label = args.at(++i);
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() || !hasHost || !hasGuest) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject listed =
+        client.call(QStringLiteral("machines.ports.list"),
+                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    QJsonArray ports =
+        machinePortsWithoutSsh(listed.value(QStringLiteral("items")).toArray());
+    QJsonObject port;
+    port.insert(QStringLiteral("hostPort"), hostPort);
+    port.insert(QStringLiteral("guestPort"), guestPort);
+    port.insert(QStringLiteral("protocol"),
+                udp ? QStringLiteral("udp") : QStringLiteral("tcp"));
+    port.insert(QStringLiteral("exposeLan"), exposeLan);
+    port.insert(QStringLiteral("label"), label);
+    ports.append(port);
+
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.ports.set"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("ports"), ports}},
+                    &error, 180000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    out() << "porta " << hostPort << " → " << guestPort << '/'
+          << (udp ? QStringLiteral("udp") : QStringLiteral("tcp")) << " adicionada à machine "
+          << machinePortLabel(result) << " (" << result.value(QStringLiteral("state")).toString()
+          << ")\n";
+    out().flush();
+    return kExitOk;
+}
+
+int machinePortRemoveCommand(const QStringList &args)
+{
+    QString id;
+    QString target;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && target.isEmpty()) {
+            target = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() || target.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject listed =
+        client.call(QStringLiteral("machines.ports.list"),
+                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    const QJsonArray ports = listed.value(QStringLiteral("items")).toArray();
+    bool numeric = false;
+    const int hostPort = target.toInt(&numeric);
+    for (int index = 0; index < ports.size(); ++index) {
+        const QJsonObject port = ports.at(index).toObject();
+        if (!machinePortIsSsh(port)) {
+            continue;
+        }
+        if (port.value(QStringLiteral("id")).toString() == target
+            || (numeric && port.value(QStringLiteral("hostPort")).toInt() == hostPort)) {
+            return fail(PodStack::Error::make(
+                QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                QStringLiteral("A porta SSH é gerenciada pela machine e não pode ser removida."),
+                target, QStringLiteral("Use o SSH da machine para acesso remoto.")));
+        }
+    }
+
+    int removeIndex = -1;
+    for (int index = 0; index < ports.size(); ++index) {
+        const QJsonObject port = ports.at(index).toObject();
+        if (machinePortIsSsh(port)) {
+            continue;
+        }
+        if (port.value(QStringLiteral("id")).toString() == target) {
+            removeIndex = index;
+            break;
+        }
+    }
+    if (removeIndex < 0 && numeric) {
+        for (int index = 0; index < ports.size(); ++index) {
+            const QJsonObject port = ports.at(index).toObject();
+            if (machinePortIsSsh(port)) {
+                continue;
+            }
+            if (port.value(QStringLiteral("hostPort")).toInt() != hostPort) {
+                continue;
+            }
+            if (removeIndex >= 0) {
+                return fail(PodStack::Error::make(
+                    QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                    QStringLiteral("Mais de uma porta usa esse hostPort; use o ID."),
+                    target));
+            }
+            removeIndex = index;
+        }
+    }
+    if (removeIndex < 0) {
+        return fail(PodStack::Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                          QStringLiteral("Porta não encontrada na machine."),
+                                          target));
+    }
+
+    QJsonArray remaining;
+    for (int index = 0; index < ports.size(); ++index) {
+        if (index != removeIndex && !machinePortIsSsh(ports.at(index).toObject())) {
+            remaining.append(ports.at(index));
+        }
+    }
+
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.ports.set"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("ports"), remaining}},
+                    &error, 180000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    out() << "porta " << target << " removida da machine " << machinePortLabel(result) << " ("
+          << result.value(QStringLiteral("state")).toString() << ")\n";
+    out().flush();
+    return kExitOk;
+}
+
+int machinePortCommand(const QStringList &args)
+{
+    if (args.isEmpty() || args.first() == QStringLiteral("--help")
+        || args.first() == QStringLiteral("-h") || args.first() == QStringLiteral("help")) {
+        printMachineUsage(args.isEmpty() ? err() : out());
+        return args.isEmpty() ? kExitUsage : kExitOk;
+    }
+    const QString action = args.first();
+    if (action == QStringLiteral("ls") || action == QStringLiteral("list")) {
+        return machinePortListCommand(args);
+    }
+    if (action == QStringLiteral("add")) {
+        return machinePortAddCommand(args);
+    }
+    if (action == QStringLiteral("rm") || action == QStringLiteral("remove")) {
+        return machinePortRemoveCommand(args);
+    }
+    printMachineUsage(err());
+    return kExitUsage;
+}
+
 int machineDefaultCommand(const QStringList &args)
 {
     QString name;
@@ -2887,6 +3231,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("update")) {
         return machineUpdateCommand(args);
+    }
+    if (subcommand == QStringLiteral("port") || subcommand == QStringLiteral("ports")) {
+        return machinePortCommand(args.mid(1));
     }
     if (subcommand == QStringLiteral("default")) {
         return machineDefaultCommand(args);

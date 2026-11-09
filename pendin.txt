@@ -1,19 +1,19 @@
 PENDÊNCIAS — PodStack
 Atualizado: 2026-11-09
-Parada solicitada: após a T4-11 (concluída), antes da T4-12.
+Parada solicitada: após a T4-12 (concluída), antes da T4-13.
 
 SITUAÇÃO ATUAL
 - Branch feat/m4-machines; PR #11 aberta (feat/m4-machines -> main).
 - Últimos commits: 53a33b8 (T4-10 clone/rename/default), b982643 (T4-09 export/import),
-  0031fcb (pendências pós-T4-08), 2a48e9e (T4-08 arquivos SSH/SCP) + o commit da T4-11.
-- T4-05, T4-07, T4-08, T4-09 e T4-10 concluídas e pushadas. T4-11 concluída nesta
-  sessão (limites de CPU/memória/disco + restart de machines).
+  0031fcb (pendências pós-T4-08), 2a48e9e (T4-08 arquivos SSH/SCP) + os commits da
+  T4-11 e T4-12.
+- T4-05, T4-07, T4-08, T4-09, T4-10, T4-11 e T4-12 concluídas. T4-12 nesta
+  sessão (port forwarding de machines: hostfwd por porta, persistência, RPC/CLI/GUI).
 - CI da PR bloqueada por partial outage do GitHub Actions (runs sem job,
   "Internal server error"). Reexecutar quando o Actions normalizar:
   gh run rerun <run-id>
 
 PRÓXIMAS TAREFAS DO M4 (em ordem)
-- T4-12 (P1) — port forwarding da machine (hostfwd extra, persistir portas, GUI/CLI).
 - T4-13 (P1) — SSH agent forwarding (ForwardAgent, flag no meta/CLI/GUI).
 - T4-14 (P1) — modo isolado (sem mounts/host, rede restrita; remover o UNSUPPORTED de isolated).
 - T4-15 (P2) — console serial/VNC para troubleshooting.
@@ -47,6 +47,15 @@ MELHORIAS CONHECIDAS DA T4-11 (não bloqueiam o commit)
   (`growpart`/`resize2fs`).
 - Falha de persistência após o resize deixa o disco maior que o metadado; a mensagem orienta
   repetir a atualização, mas não há reconciliação automática do tamanho.
+
+MELHORIAS CONHECIDAS DA T4-12 (não bloqueiam o commit)
+- `machines.ports.set` é síncrono e reinicia a machine quando running; sem progresso no CLI/GUI.
+- `exposeLan` bind em `0.0.0.0` não abre o firewall do host (firewalld/ufw) automaticamente;
+  o usuário precisa liberar a porta.
+- A porta SSH não pode ser exposta na LAN nem editada (gerenciada); não há ainda diagnóstico
+  de conflito com processos do host fora do PodStack (só entre machines).
+- A lista de portas é reordenada por `host_port` ao reler do SQLite; a GUI/CLI não dependem da
+  ordem, mas a SSH pode aparecer no meio da lista.
 
 CRITÉRIOS DE SAÍDA DO M4 A VALIDAR
 - Ubuntu, Debian e Fedora criadas e acessíveis por SSH em VM real.

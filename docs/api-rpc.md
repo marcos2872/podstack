@@ -264,11 +264,11 @@ Regras de normalização:
 
 ### 4.6 `machines.*`
 
-Implementados na T4-03 (M4), T4-06, T4-07, T4-08, T4-10 e T4-11: registry, listagem,
-inspeção, criação assíncrona, logs do console, ciclo de vida, mounts virtiofs, arquivos,
-clone/rename, limites de CPU/memória/disco e a machine default do CLI. A T4-04 adiciona
-`machines.ssh` (chave ed25519 e bloco gerenciado no `~/.ssh/config`). Os demais métodos
-continuam planejados para as tarefas seguintes.
+Implementados na T4-03 (M4), T4-06, T4-07, T4-08, T4-10, T4-11 e T4-12: registry,
+listagem, inspeção, criação assíncrona, logs do console, ciclo de vida, mounts virtiofs,
+arquivos, clone/rename, limites de CPU/memória/disco, port forwarding e a machine default do
+CLI. A T4-04 adiciona `machines.ssh` (chave ed25519 e bloco gerenciado no `~/.ssh/config`). Os
+demais métodos continuam planejados para as tarefas seguintes.
 
 | Método | Params | Result |
 |---|---|---|
@@ -286,6 +286,8 @@ continuam planejados para as tarefas seguintes.
 | `machines.rename` | `{id, name}` | `Machine` |
 | `machines.clone` | `{id, name}` | `JobRef` + `Subscription` |
 | `machines.update` | `{id, cpus?, memoryBytes?, diskBytes?}` | `Machine` |
+| `machines.ports.list` | `{id}` | `{items: MachinePort[]}` |
+| `machines.ports.set` | `{id, ports}` | `Machine` |
 | `machines.default` | `{name?}` | `{name}` (sem `name` = get; com `name` = set) |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile}` |
@@ -300,7 +302,6 @@ continuam planejados para as tarefas seguintes.
 
 | Método | Params | Result | Tarefa |
 |---|---|---|---|
-| `machines.ports.list` / `set` | `{id, ports?}` | `{items}` | T4-12 |
 | `machines.console` | `{id}` | `Subscription` (stream serial) | T4-15 |
 
 ```ts
@@ -392,6 +393,24 @@ menor que `diskBytes` atual é recusado. A máquina é parada se estiver `runnin
 offline com `qemu-img resize` e só então os metadados são persistidos; se a persistência
 falhar depois do resize, o erro informa que o disco já cresceu. Growpart/filesystem dentro
 do guest é manual. Progresso não é emitido (operação síncrona).
+
+**Port forwarding (T4-12).** `machines.ports.list {id}` devolve
+`{items: MachinePort[]}`; `machines.ports.set {id, ports}` é síncrono e devolve o `Machine`
+atualizado. `ports` é a lista **completa das portas não-SSH** — a porta SSH (guest 22/tcp) é
+gerenciada pelo daemon, sempre preservada na resposta e não pode ser removida nem alterada;
+um item com `guestPort: 22` e `protocol: "tcp"` só é aceito se repetir o `hostPort` atual da
+SSH (e é ignorado/deduplicado). Cada porta aceita `{id?, hostPort, guestPort, protocol?,
+exposeLan?, label?}`: `hostPort`/`guestPort` em 1..65535, `protocol` `tcp` (default) ou
+`udp`, `exposeLan` default `false` (bind `127.0.0.1`; `true` usa `0.0.0.0`), `label` até 64
+caracteres sem controles e `id` gerado (UUIDv7) quando ausente. `hostPort` é único por
+protocolo entre **todas** as machines (`PODSTACK_CONFLICT`), inclusive contra a SSH de cada
+uma; ids repetidos, protocolo/porta/label inválidos retornam `PODSTACK_INVALID_PARAMS`. Se a
+machine estiver rodando, ela é parada e reiniciada para aplicar os novos `hostfwd` (a linha de
+comando do QEMU é imutável); machine parada apenas persiste `meta.json`+SQLite. Metadados
+antigos sem `ports` continuam válidos: o daemon sintetiza a porta SSH a partir de `sshPort`.
+A validação ocorre antes de parar a machine; o `meta.json`+SQLite é persistido após o stop e
+antes do restart. Erro de restart devolve `PODSTACK_CONFLICT` informando que as portas já
+foram salvas.
 
 **Logs do console.** `machines.logs` resolve `id` ou nome e lê apenas
 `machines/<id>/console.log`, sem expor o caminho na resposta. O arquivo precisa ser regular

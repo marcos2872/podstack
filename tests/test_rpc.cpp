@@ -34,6 +34,7 @@ private slots:
     void machinesFlow();
     void machineLogs();
     void machineSsh();
+    void machinePorts();
     void machineStats();
     void machineFiles();
     void composeAndBuilds();
@@ -1464,6 +1465,144 @@ void RpcTest::machineFiles()
     QFile::remove(sourcePath);
     QFile::remove(m_downloadDir + QStringLiteral("/rpc.txt"));
     QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+}
+
+void RpcTest::machinePorts()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.ports.list"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-ports-1");
+    meta.name = QStringLiteral("ports-rpc");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("stopped");
+    meta.sshPort = 32222;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    meta.ports = {PodStack::MachinePort{QStringLiteral("ssh-rpc"),
+                                       32222,
+                                       22,
+                                       QStringLiteral("tcp"),
+                                       false,
+                                       QStringLiteral("ssh")}};
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QJsonObject initial =
+        client.call(QStringLiteral("machines.ports.list"),
+                    QJsonObject{{QStringLiteral("id"), meta.name}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(initial.value(QStringLiteral("items")).toArray().size(), 1);
+
+    PodStack::Error invalidType;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("ports"), QStringLiteral("8080")}},
+                &invalidType);
+    QCOMPARE(invalidType.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error invalidMissing;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id}}, &invalidMissing);
+    QCOMPARE(invalidMissing.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error invalidHostType;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("ports"),
+                             QJsonArray{QJsonObject{{QStringLiteral("hostPort"),
+                                                     QStringLiteral("8080")},
+                                                   {QStringLiteral("guestPort"), 80}}}}},
+                &invalidHostType);
+    QCOMPARE(invalidHostType.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error invalidHost;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("ports"),
+                             QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 0},
+                                                   {QStringLiteral("guestPort"), 80}}}}},
+                &invalidHost);
+    QCOMPARE(invalidHost.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QJsonObject configured =
+        client.call(QStringLiteral("machines.ports.set"),
+                    QJsonObject{
+                        {QStringLiteral("id"), meta.id},
+                        {QStringLiteral("ports"),
+                         QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 18080},
+                                               {QStringLiteral("guestPort"), 80},
+                                               {QStringLiteral("protocol"),
+                                                QStringLiteral("tcp")},
+                                               {QStringLiteral("exposeLan"), false},
+                                               {QStringLiteral("label"),
+                                                QStringLiteral("web")}}}}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonArray configuredPorts = configured.value(QStringLiteral("ports")).toArray();
+    QCOMPARE(configuredPorts.size(), 2);
+    bool sawSsh = false;
+    bool sawWeb = false;
+    for (const QJsonValue &value : configuredPorts) {
+        const QJsonObject port = value.toObject();
+        if (port.value(QStringLiteral("guestPort")).toInt() == 22) {
+            sawSsh = port.value(QStringLiteral("id")).toString() == QStringLiteral("ssh-rpc");
+        } else if (port.value(QStringLiteral("hostPort")).toInt() == 18080) {
+            sawWeb = port.value(QStringLiteral("guestPort")).toInt() == 80
+                     && port.value(QStringLiteral("label")).toString() == QStringLiteral("web")
+                     && !port.value(QStringLiteral("id")).toString().isEmpty();
+        }
+    }
+    QVERIFY(sawSsh);
+    QVERIFY(sawWeb);
+
+    const QJsonObject listed =
+        client.call(QStringLiteral("machines.ports.list"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(listed.value(QStringLiteral("items")).toArray().size(), 2);
+
+    // Enviar só as portas não-SSH mantém a SSH; alterar a SSH é recusado.
+    const QJsonObject cleared =
+        client.call(QStringLiteral("machines.ports.set"),
+                    QJsonObject{{QStringLiteral("id"), meta.id},
+                                {QStringLiteral("ports"), QJsonArray{}}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cleared.value(QStringLiteral("ports")).toArray().size(), 1);
+    QCOMPARE(cleared.value(QStringLiteral("ports"))
+                 .toArray()
+                 .at(0)
+                 .toObject()
+                 .value(QStringLiteral("id"))
+                 .toString(),
+             QStringLiteral("ssh-rpc"));
+
+    PodStack::Error alteredSsh;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("ports"),
+                             QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 32223},
+                                                   {QStringLiteral("guestPort"), 22},
+                                                   {QStringLiteral("protocol"),
+                                                    QStringLiteral("tcp")}}}}},
+                &alteredSsh);
+    QCOMPARE(alteredSsh.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(store.remove(meta.id));
+    QDir(m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id)
+        .removeRecursively();
 }
 
 void RpcTest::machineStats()

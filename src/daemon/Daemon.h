@@ -95,6 +95,8 @@ private:
     QJsonObject machineImport(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject machineRename(const QJsonObject &params, Error *error);
     QJsonObject machineUpdate(const QJsonObject &params, Error *error);
+    QJsonObject machinePortsList(const QJsonObject &params, Error *error);
+    QJsonObject machinePortsSet(const QJsonObject &params, Error *error);
     QJsonObject machineClone(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject machineDefault(const QJsonObject &params, Error *error);
     QJsonObject machineAction(const QString &method, const QJsonObject &params, Error *error);

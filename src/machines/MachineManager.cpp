@@ -91,6 +91,26 @@ QString errorText(const Error &error)
     return QStringLiteral("%1: %2").arg(error.message, error.detail);
 }
 
+QString normalizedPortProtocol(const QString &protocol)
+{
+    const QString normalized = protocol.trimmed().toLower();
+    return normalized.isEmpty() ? QStringLiteral("tcp") : normalized;
+}
+
+bool isSshPort(const MachinePort &port)
+{
+    return port.guestPort == 22
+           && normalizedPortProtocol(port.protocol) == QStringLiteral("tcp");
+}
+
+bool samePort(const MachinePort &left, const MachinePort &right)
+{
+    return left.id == right.id && left.hostPort == right.hostPort
+           && left.guestPort == right.guestPort
+           && normalizedPortProtocol(left.protocol) == normalizedPortProtocol(right.protocol)
+           && left.exposeLan == right.exposeLan && left.label == right.label;
+}
+
 QStringList proxyExcludesFromConfig(const Config &config)
 {
     QStringList excludes;
@@ -341,11 +361,14 @@ int MachineManager::findFreePort(const QVector<MachineMeta> &existing, Error *er
 
     QSet<int> usedPorts;
     for (const MachineMeta &meta : existing) {
+        // A porta SSH é TCP; portas UDP no mesmo número não bloqueiam o hostfwd TCP.
         if (meta.sshPort > 0) {
             usedPorts.insert(meta.sshPort);
         }
         for (const MachinePort &port : meta.ports) {
-            if (port.hostPort > 0) {
+            if (port.hostPort > 0
+                && (port.protocol.isEmpty()
+                    || port.protocol.compare(QStringLiteral("tcp"), Qt::CaseInsensitive) == 0)) {
                 usedPorts.insert(port.hostPort);
             }
         }
@@ -483,6 +506,142 @@ bool MachineManager::normalizeMounts(const QVector<MachineMount> &mounts,
         mount.readOnly = input.readOnly;
         mount.tag = input.tag.trimmed().isEmpty() ? nextDefaultTag() : input.tag.trimmed();
         result.append(mount);
+    }
+
+    if (normalized) {
+        *normalized = result;
+    }
+    return true;
+}
+
+bool MachineManager::normalizePorts(const QString &machineId, const QVector<MachinePort> &ports,
+                                    const QVector<MachineMeta> &existing,
+                                    QVector<MachinePort> *normalized, Error *error) const
+{
+    if (normalized) {
+        normalized->clear();
+    }
+
+    QSet<QString> usedHostPorts;
+    QSet<QString> usedIds;
+    int managedSshHostPort = 0;
+    for (const MachineMeta &meta : existing) {
+        const bool current = meta.id == machineId;
+        for (const MachinePort &port : meta.ports) {
+            if (port.hostPort > 0) {
+                if (!current || isSshPort(port)) {
+                    usedHostPorts.insert(normalizedPortProtocol(port.protocol) + QLatin1Char(':')
+                                         + QString::number(port.hostPort));
+                }
+            }
+            if (!current && !port.id.isEmpty()) {
+                usedIds.insert(port.id);
+            } else if (current && isSshPort(port) && !port.id.isEmpty()) {
+                usedIds.insert(port.id);
+            }
+        }
+        if (meta.sshPort > 0) {
+            usedHostPorts.insert(QStringLiteral("tcp:") + QString::number(meta.sshPort));
+            if (current && managedSshHostPort == 0) {
+                managedSshHostPort = meta.sshPort;
+            }
+        }
+    }
+    for (const MachineMeta &meta : existing) {
+        if (meta.id != machineId) {
+            continue;
+        }
+        for (const MachinePort &port : meta.ports) {
+            if (isSshPort(port) && port.hostPort > 0) {
+                managedSshHostPort = port.hostPort;
+                break;
+            }
+        }
+    }
+
+    QSet<QString> seenHostPorts;
+    QSet<QString> seenIds;
+    QVector<MachinePort> result;
+    result.reserve(ports.size());
+    for (const MachinePort &input : ports) {
+        MachinePort port;
+        port.protocol = normalizedPortProtocol(input.protocol);
+        if (port.protocol != QStringLiteral("tcp") && port.protocol != QStringLiteral("udp")) {
+            return fails(error,
+                         invalidParams(QStringLiteral("Protocolo de porta inválido."),
+                                       input.protocol, QStringLiteral("Use tcp ou udp.")));
+        }
+        port.hostPort = input.hostPort;
+        if (port.hostPort < 1 || port.hostPort > 65535) {
+            return fails(error,
+                         invalidParams(
+                             QStringLiteral("Porta do host fora do intervalo 1..65535."),
+                             QString::number(port.hostPort)));
+        }
+        port.guestPort = input.guestPort;
+        if (port.guestPort < 1 || port.guestPort > 65535) {
+            return fails(error,
+                         invalidParams(
+                             QStringLiteral("Porta do guest fora do intervalo 1..65535."),
+                             QString::number(port.guestPort)));
+        }
+        port.label = input.label.trimmed();
+        if (port.label.size() > 64) {
+            return fails(error,
+                         invalidParams(QStringLiteral("O rótulo da porta excede 64 caracteres."),
+                                       QString::number(port.label.size())));
+        }
+        for (const QChar character : port.label) {
+            if (character.unicode() < 0x20
+                || (character.unicode() >= 0x7f && character.unicode() <= 0x9f)) {
+                return fails(error,
+                             invalidParams(QStringLiteral("O rótulo da porta contém "
+                                                          "caracteres de controle.")));
+            }
+        }
+        port.exposeLan = input.exposeLan;
+
+        if (isSshPort(port)) {
+            if (managedSshHostPort <= 0 || port.hostPort != managedSshHostPort) {
+                return fails(
+                    error,
+                    invalidParams(QStringLiteral("A porta SSH é gerenciada pela machine e não "
+                                                 "pode ser alterada."),
+                                  QStringLiteral("%1/tcp -> 22").arg(port.hostPort),
+                                  QStringLiteral("Remova a porta da lista; a SSH é preservada "
+                                                 "automaticamente.")));
+            }
+            continue;
+        }
+
+        const QString hostKey =
+            port.protocol + QLatin1Char(':') + QString::number(port.hostPort);
+        if (usedHostPorts.contains(hostKey)) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                     QStringLiteral("A porta do host já está em uso."),
+                                     QStringLiteral("%1/%2").arg(port.hostPort).arg(port.protocol),
+                                     QStringLiteral("Escolha outra porta ou protocolo.")));
+        }
+        if (seenHostPorts.contains(hostKey)) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                     QStringLiteral("Porta do host duplicada na lista."),
+                                     QStringLiteral("%1/%2").arg(port.hostPort).arg(port.protocol)));
+        }
+        seenHostPorts.insert(hostKey);
+
+        port.id = input.id.trimmed();
+        if (port.id.isEmpty()) {
+            port.id = newUuidV7();
+        }
+        if (usedIds.contains(port.id) || seenIds.contains(port.id)) {
+            return fails(error,
+                         invalidParams(QStringLiteral("Identificador de porta duplicado."),
+                                       port.id));
+        }
+        seenIds.insert(port.id);
+        result.append(port);
     }
 
     if (normalized) {
@@ -1195,6 +1354,21 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
         }
     }
 
+    for (const MachinePort &port : meta.ports) {
+        QemuPort qemuPort;
+        qemuPort.protocol = normalizedPortProtocol(port.protocol);
+        qemuPort.hostPort = port.hostPort;
+        qemuPort.guestPort = port.guestPort;
+        qemuPort.hostAddress =
+            port.exposeLan ? QStringLiteral("0.0.0.0") : QStringLiteral("127.0.0.1");
+        spec.ports.append(qemuPort);
+    }
+    if (spec.ports.isEmpty() && meta.sshPort > 0) {
+        // Metadados antigos (anteriores à T4-12) guardavam só a porta SSH.
+        spec.ports.append(QemuPort{QStringLiteral("tcp"), meta.sshPort, 22,
+                                   QStringLiteral("127.0.0.1")});
+    }
+
     if (!forStart) {
         return spec;
     }
@@ -1852,6 +2026,185 @@ MachineMeta MachineManager::update(const QString &idOrName,
 
     if (!updateError.isEmpty() && error) {
         *error = updateError;
+    }
+    return result;
+}
+
+MachineMeta MachineManager::setPorts(const QString &idOrName, const QVector<MachinePort> &ports,
+                                     Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    MachineMeta meta = load(idOrName, error);
+    if (meta.id.isEmpty()) {
+        return {};
+    }
+    if (meta.state == QStringLiteral("provisioning")
+        || meta.state == QStringLiteral("deleting")
+        || meta.state == QStringLiteral("deleted")) {
+        fails(error,
+              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                          QStringLiteral("A machine está em transição; tente novamente."),
+                          meta.id));
+        return meta;
+    }
+
+    std::shared_ptr<std::recursive_mutex> lockHolder;
+    std::unique_lock<std::recursive_mutex> machineGuard;
+    if (!tryLockMachine(meta.id, &lockHolder, &machineGuard)) {
+        fails(error,
+              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                          QStringLiteral("A machine está em outra operação."), meta.id,
+                          QStringLiteral("Aguarde a operação atual terminar.")));
+        return meta;
+    }
+
+    Error existingError;
+    QVector<MachineMeta> existing = existingMachines(&existingError);
+    if (!existingError.isEmpty()) {
+        if (error) {
+            *error = existingError;
+        }
+        return meta;
+    }
+    bool found = false;
+    for (MachineMeta &candidate : existing) {
+        if (candidate.id == meta.id) {
+            candidate = meta;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        existing.append(meta);
+    }
+
+    QVector<MachinePort> normalized;
+    if (!normalizePorts(meta.id, ports, existing, &normalized, error)) {
+        return meta;
+    }
+
+    MachinePort sshPort;
+    bool hasSshPort = false;
+    for (const MachinePort &port : meta.ports) {
+        if (isSshPort(port)) {
+            sshPort = port;
+            hasSshPort = true;
+            break;
+        }
+    }
+    if (!hasSshPort) {
+        if (meta.sshPort <= 0) {
+            fails(error,
+                  invalidParams(QStringLiteral("A machine não tem porta SSH para preservar."),
+                                meta.id));
+            return meta;
+        }
+        sshPort.id = newUuidV7();
+        sshPort.hostPort = meta.sshPort;
+        sshPort.guestPort = 22;
+        sshPort.protocol = QStringLiteral("tcp");
+        sshPort.exposeLan = false;
+        sshPort.label = QStringLiteral("ssh");
+    }
+    sshPort.protocol = QStringLiteral("tcp");
+    sshPort.guestPort = 22;
+    if (sshPort.hostPort <= 0) {
+        sshPort.hostPort = meta.sshPort;
+    }
+    if (sshPort.hostPort < 1 || sshPort.hostPort > 65535) {
+        fails(error,
+              invalidParams(QStringLiteral("A machine não tem uma porta SSH válida."),
+                            QString::number(sshPort.hostPort)));
+        return meta;
+    }
+    if (sshPort.id.isEmpty()) {
+        sshPort.id = newUuidV7();
+    }
+
+    QVector<MachinePort> next;
+    next.reserve(normalized.size() + 1);
+    next.append(sshPort);
+    next += normalized;
+
+    bool changed = next.size() != meta.ports.size();
+    if (!changed) {
+        QVector<MachinePort> remaining = meta.ports;
+        for (const MachinePort &port : next) {
+            int match = -1;
+            for (int index = 0; index < remaining.size(); ++index) {
+                if (samePort(port, remaining.at(index))) {
+                    match = index;
+                    break;
+                }
+            }
+            if (match < 0) {
+                changed = true;
+                break;
+            }
+            remaining.removeAt(match);
+        }
+    }
+    if (!changed) {
+        return meta;
+    }
+
+    const QemuSpec spec = specFor(meta, false, error);
+    if (spec.machineId.isEmpty()) {
+        return meta;
+    }
+    const bool wasRunning = meta.state == QStringLiteral("running")
+                            || meta.state == QStringLiteral("starting")
+                            || m_runtime->isRunning(spec, nullptr);
+
+    if (wasRunning) {
+        Error stopError;
+        meta = stop(meta.id, false, &stopError);
+        if (!stopError.isEmpty()) {
+            if (error) {
+                *error = stopError;
+            }
+            return meta;
+        }
+    }
+
+    const QVector<MachinePort> previousPorts = meta.ports;
+    meta.ports = next;
+    meta.sshPort = sshPort.hostPort;
+
+    Error changeError;
+    Error persistError;
+    if (!persist(meta, &persistError)) {
+        meta.ports = previousPorts;
+        changeError = persistError;
+    }
+
+    MachineMeta result = meta;
+    if (wasRunning) {
+        Error restartError;
+        const MachineMeta restarted = start(meta.id, &restartError);
+        if (!restarted.id.isEmpty()) {
+            result = restarted;
+        }
+        if (!restartError.isEmpty()) {
+            if (changeError.isEmpty()) {
+                changeError = Error::make(
+                    QStringLiteral("PODSTACK_CONFLICT"),
+                    QStringLiteral("As portas foram atualizadas, mas a machine não reiniciou."),
+                    errorText(restartError),
+                    QStringLiteral("Inicie a machine manualmente; os metadados já foram "
+                                   "salvos."));
+            } else {
+                qCWarning(lcCore) << "Falha ao reiniciar a machine" << meta.id
+                                  << "após a atualização de portas:" << restartError.code;
+            }
+        }
+    }
+
+    if (!changeError.isEmpty() && error) {
+        *error = changeError;
     }
     return result;
 }

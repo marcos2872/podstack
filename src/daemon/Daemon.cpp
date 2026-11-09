@@ -43,6 +43,20 @@ QString engineMode()
     return config.get(QStringLiteral("engine.mode")).toString(QStringLiteral("rootless"));
 }
 
+bool portNumberFromJson(const QJsonValue &value, int *number)
+{
+    if (!value.isDouble()) {
+        return false;
+    }
+    const double raw = value.toDouble();
+    if (raw < 1.0 || raw > 65535.0
+        || raw != static_cast<double>(static_cast<int>(raw))) {
+        return false;
+    }
+    *number = static_cast<int>(raw);
+    return true;
+}
+
 QMap<QString, QString> labelsFromParams(const QJsonObject &params)
 {
     QMap<QString, QString> labels;
@@ -338,6 +352,12 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("machines.update")) {
         return machineUpdate(params, error);
+    }
+    if (method == QStringLiteral("machines.ports.list")) {
+        return machinePortsList(params, error);
+    }
+    if (method == QStringLiteral("machines.ports.set")) {
+        return machinePortsSet(params, error);
     }
     if (method == QStringLiteral("machines.clone")) {
         return machineClone(params, notify, error);
@@ -825,6 +845,114 @@ QJsonObject Daemon::machineUpdate(const QJsonObject &params, Error *error)
     }
 
     const MachineMeta machine = m_machines.update(id, request, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machinePortsList(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("items"),
+                        machine.toJson().value(QStringLiteral("ports")).toArray()}};
+}
+
+QJsonObject Daemon::machinePortsSet(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QJsonValue portsValue = params.value(QStringLiteral("ports"));
+    if (!portsValue.isArray()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("O campo ports deve ser um array."),
+                                 QStringLiteral("Envie a lista completa de portas não-SSH."));
+        }
+        return {};
+    }
+
+    QVector<MachinePort> ports;
+    const QJsonArray array = portsValue.toArray();
+    ports.reserve(array.size());
+    for (int index = 0; index < array.size(); ++index) {
+        const QJsonValue entry = array.at(index);
+        if (!entry.isObject()) {
+            if (error) {
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                    QStringLiteral("Cada item de ports deve ser um objeto."),
+                    QStringLiteral("ports[%1]").arg(index));
+            }
+            return {};
+        }
+        const QJsonObject object = entry.toObject();
+        const auto invalidField = [error, index](const QString &field,
+                                                 const QString &expected) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("Campo inválido em ports."),
+                                     QStringLiteral("ports[%1].%2 (esperado %3)")
+                                         .arg(index)
+                                         .arg(field, expected));
+            }
+            return QJsonObject{};
+        };
+
+        MachinePort port;
+        const QJsonValue idValue = object.value(QStringLiteral("id"));
+        if (!idValue.isUndefined() && !idValue.isNull()) {
+            if (!idValue.isString()) {
+                return invalidField(QStringLiteral("id"), QStringLiteral("string"));
+            }
+            port.id = idValue.toString();
+        }
+        if (!portNumberFromJson(object.value(QStringLiteral("hostPort")), &port.hostPort)) {
+            return invalidField(QStringLiteral("hostPort"),
+                                QStringLiteral("inteiro 1..65535"));
+        }
+        if (!portNumberFromJson(object.value(QStringLiteral("guestPort")), &port.guestPort)) {
+            return invalidField(QStringLiteral("guestPort"),
+                                QStringLiteral("inteiro 1..65535"));
+        }
+
+        const QJsonValue protocolValue = object.value(QStringLiteral("protocol"));
+        if (!protocolValue.isUndefined() && !protocolValue.isNull()) {
+            if (!protocolValue.isString()) {
+                return invalidField(QStringLiteral("protocol"),
+                                    QStringLiteral("string tcp|udp"));
+            }
+            port.protocol = protocolValue.toString();
+        }
+        const QJsonValue exposeValue = object.value(QStringLiteral("exposeLan"));
+        if (!exposeValue.isUndefined() && !exposeValue.isNull()) {
+            if (!exposeValue.isBool()) {
+                return invalidField(QStringLiteral("exposeLan"), QStringLiteral("boolean"));
+            }
+            port.exposeLan = exposeValue.toBool();
+        }
+        const QJsonValue labelValue = object.value(QStringLiteral("label"));
+        if (!labelValue.isUndefined() && !labelValue.isNull()) {
+            if (!labelValue.isString()) {
+                return invalidField(QStringLiteral("label"), QStringLiteral("string"));
+            }
+            port.label = labelValue.toString();
+        }
+        ports.append(port);
+    }
+
+    const MachineMeta machine = m_machines.setPorts(id, ports, error);
     if (machine.id.isEmpty() || (error && !error->isEmpty())) {
         return {};
     }

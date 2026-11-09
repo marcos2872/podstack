@@ -67,6 +67,7 @@ using PodStack::UpdateMachineRequest;
 using PodStack::MachineStore;
 using PodStack::QemuCommand;
 using PodStack::QemuMount;
+using PodStack::QemuPort;
 using PodStack::QemuProcessRuntime;
 using PodStack::QemuRuntime;
 using PodStack::QemuSpec;
@@ -212,6 +213,7 @@ QemuSpec qemuSpec(const QString &root)
     spec.consoleLogPath = root + QStringLiteral("/qemu/console.log");
     spec.pidFile = root + QStringLiteral("/qemu/qemu.pid");
     spec.sshPort = 32222;
+    spec.ports = {QemuPort{QStringLiteral("tcp"), 32222, 22, QStringLiteral("127.0.0.1")}};
     spec.kvm = true;
     return spec;
 }
@@ -758,6 +760,7 @@ private slots:
     void qemuCommandUefi();
     void qemuCommandIsolated();
     void qemuCommandMounts();
+    void qemuCommandPorts();
     void qemuCommandInvalid();
     void qmpHandshake();
     void qmpQueryStatus();
@@ -781,6 +784,7 @@ private slots:
     void machineManagerImportChecksum();
     void machineManagerCancelled();
     void machineManagerPort();
+    void machineManagerPorts();
     void qemuRuntimeFallback();
     void machineManagerReconcile();
     void machineManagerStartFallback();
@@ -1776,6 +1780,63 @@ void MachinesTest::qemuCommandMounts()
         spec.mounts.append(
             QemuMount{tag, m_root + QStringLiteral("/qemu/virtiofs-%1.sock").arg(tag), false});
     }
+    QVERIFY(rejects(spec));
+}
+
+void MachinesTest::qemuCommandPorts()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.ports.append(QemuPort{QStringLiteral("tcp"), 8080, 80, QStringLiteral("127.0.0.1")});
+    spec.ports.append(QemuPort{QStringLiteral("udp"), 5353, 53, QStringLiteral("0.0.0.0")});
+
+    PodStack::Error error;
+    QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QString netdev = valueAfter(args, QStringLiteral("-netdev"));
+    QCOMPARE(netdev,
+             QStringLiteral("user,id=net0,hostfwd=tcp:127.0.0.1:32222-:22,"
+                            "hostfwd=tcp:127.0.0.1:8080-:80,"
+                            "hostfwd=udp:0.0.0.0:5353-:53"));
+    QCOMPARE(netdev.count(QStringLiteral("hostfwd=tcp:127.0.0.1:32222-:22")), 1);
+    QVERIFY(!netdev.contains(QStringLiteral("restrict=on")));
+
+    spec.isolateNetwork = true;
+    args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QString isolated = valueAfter(args, QStringLiteral("-netdev"));
+    QVERIFY(isolated.endsWith(QStringLiteral(",restrict=on")));
+    QCOMPARE(isolated.count(QStringLiteral("restrict=on")), 1);
+    QCOMPARE(isolated.count(QStringLiteral("hostfwd=")), 3);
+
+    const auto rejects = [](QemuSpec candidate) {
+        PodStack::Error candidateError;
+        return QemuCommand::arguments(candidate, &candidateError).isEmpty()
+               && candidateError.code == QStringLiteral("PODSTACK_INVALID_PARAMS");
+    };
+
+    spec = qemuSpec(m_root);
+    spec.ports = {QemuPort{QStringLiteral("sctp"), 8080, 80, QStringLiteral("127.0.0.1")}};
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.ports = {QemuPort{QStringLiteral("tcp"), 0, 80, QStringLiteral("127.0.0.1")}};
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.ports = {QemuPort{QStringLiteral("tcp"), 8080, 70000, QStringLiteral("127.0.0.1")}};
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.ports = {QemuPort{QStringLiteral("tcp"), 8080, 80, QStringLiteral("localhost")}};
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.ports = {QemuPort{QStringLiteral("tcp"), 8080, 80, QStringLiteral("127.0.0.1")},
+                  QemuPort{QStringLiteral("tcp"), 8080, 81, QStringLiteral("127.0.0.1")}};
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.ports.clear();
     QVERIFY(rejects(spec));
 }
 
@@ -3606,6 +3667,270 @@ void MachinesTest::machineManagerPort()
     QVERIFY(second.sshPort != first.sshPort);
 }
 
+void MachinesTest::machineManagerPorts()
+{
+    const QString root = m_root + QStringLiteral("/manager-ports");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'f');
+    m_server.setResponse(QStringLiteral("/manager-ports.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-ports.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    const QString storePath = options.storePath;
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    request.name = QStringLiteral("ports-a");
+    const MachineMeta first = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(first.state, QStringLiteral("running"));
+    QCOMPARE(first.ports.size(), 1);
+    QCOMPARE(first.ports.at(0).guestPort, 22);
+    QCOMPARE(first.ports.at(0).protocol, QStringLiteral("tcp"));
+    QCOMPARE(first.ports.at(0).hostPort, first.sshPort);
+    QVERIFY(!first.ports.at(0).id.isEmpty());
+
+    request.name = QStringLiteral("ports-b");
+    const MachineMeta second = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(second.state, QStringLiteral("running"));
+
+    QSet<int> reserved{first.sshPort, second.sshPort};
+    const auto nextPort = [&reserved]() {
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            QTcpServer probe;
+            if (!probe.listen(QHostAddress::LocalHost, 0)) {
+                continue;
+            }
+            const int port = probe.serverPort();
+            probe.close();
+            if (port > 0 && !reserved.contains(port)) {
+                reserved.insert(port);
+                return port;
+            }
+        }
+        return 0;
+    };
+
+    const int extraTcpPort = nextPort();
+    const int extraUdpPort = nextPort();
+    QVERIFY(extraTcpPort > 0);
+    QVERIFY(extraUdpPort > 0);
+    QVERIFY(extraTcpPort != extraUdpPort);
+
+    MachinePort extraTcp;
+    extraTcp.hostPort = extraTcpPort;
+    extraTcp.guestPort = 8080;
+    extraTcp.protocol = QStringLiteral("tcp");
+    extraTcp.label = QStringLiteral("web");
+
+    MachinePort extraUdp;
+    extraUdp.hostPort = extraUdpPort;
+    extraUdp.guestPort = 5353;
+    extraUdp.protocol = QStringLiteral("udp");
+    extraUdp.exposeLan = true;
+    extraUdp.label = QStringLiteral("dns");
+
+    const auto portByHost = [](const QVector<MachinePort> &ports, const QString &protocol,
+                               int hostPort) {
+        for (const MachinePort &port : ports) {
+            if (port.hostPort == hostPort
+                && port.protocol.compare(protocol, Qt::CaseInsensitive) == 0) {
+                return port;
+            }
+        }
+        return MachinePort{};
+    };
+    const auto sshPortOf = [](const QVector<MachinePort> &ports) {
+        for (const MachinePort &port : ports) {
+            if (port.guestPort == 22
+                && port.protocol.compare(QStringLiteral("tcp"), Qt::CaseInsensitive) == 0) {
+                return port;
+            }
+        }
+        return MachinePort{};
+    };
+    const auto qemuPortByHost = [](const QVector<QemuPort> &ports, int hostPort) {
+        for (const QemuPort &port : ports) {
+            if (port.hostPort == hostPort) {
+                return port;
+            }
+        }
+        return QemuPort{};
+    };
+
+    const int stopsBefore = fake->stopCount;
+    const int startsBefore = fake->startCount;
+    MachineMeta updated = manager.setPorts(first.id, {extraTcp, extraUdp}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(updated.state, QStringLiteral("running"));
+    QCOMPARE(updated.ports.size(), 3);
+    const MachinePort updatedSsh = sshPortOf(updated.ports);
+    QCOMPARE(updatedSsh.id, first.ports.at(0).id);
+    QCOMPARE(updatedSsh.hostPort, first.sshPort);
+    const MachinePort updatedTcp = portByHost(updated.ports, QStringLiteral("tcp"),
+                                               extraTcpPort);
+    QCOMPARE(updatedTcp.guestPort, 8080);
+    QVERIFY(!updatedTcp.id.isEmpty());
+    QCOMPARE(updatedTcp.label, QStringLiteral("web"));
+    QVERIFY(!updatedTcp.exposeLan);
+    const MachinePort updatedUdp = portByHost(updated.ports, QStringLiteral("udp"),
+                                               extraUdpPort);
+    QCOMPARE(updatedUdp.guestPort, 5353);
+    QCOMPARE(updatedUdp.label, QStringLiteral("dns"));
+    QVERIFY(updatedUdp.exposeLan);
+    QCOMPARE(fake->stopCount, stopsBefore + 1);
+    QCOMPARE(fake->startCount, startsBefore + 1);
+    QCOMPARE(fake->lastSpec.ports.size(), 3);
+    QCOMPARE(qemuPortByHost(fake->lastSpec.ports, first.sshPort).guestPort, 22);
+    QCOMPARE(qemuPortByHost(fake->lastSpec.ports, extraTcpPort).hostAddress,
+             QStringLiteral("127.0.0.1"));
+    QCOMPARE(qemuPortByHost(fake->lastSpec.ports, extraUdpPort).hostAddress,
+             QStringLiteral("0.0.0.0"));
+
+    QCOMPARE(manager.get(first.id, &error).ports.size(), 3);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QString firstMetaPath =
+        root + QStringLiteral("/machines/") + first.id + QStringLiteral("/meta.json");
+    PodStack::Error metaError;
+    QCOMPARE(MachineMetaFile::read(firstMetaPath, &metaError).ports.size(), 3);
+    QVERIFY2(metaError.isEmpty(), qPrintable(metaError.message));
+    QCOMPARE(machineRowCount(storePath, QStringLiteral("machine_ports"), first.id), 3);
+
+    // A lista enviada não contém a SSH; ela continua preservada.
+    const int stopsBeforeRemoval = fake->stopCount;
+    MachineMeta trimmed = manager.setPorts(first.id, {updatedUdp}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(trimmed.state, QStringLiteral("running"));
+    QCOMPARE(trimmed.ports.size(), 2);
+    QCOMPARE(sshPortOf(trimmed.ports).id, first.ports.at(0).id);
+    QCOMPARE(sshPortOf(trimmed.ports).guestPort, 22);
+    QCOMPARE(portByHost(trimmed.ports, QStringLiteral("udp"), extraUdpPort).id, updatedUdp.id);
+    QVERIFY(portByHost(trimmed.ports, QStringLiteral("tcp"), extraTcpPort).id.isEmpty());
+    QCOMPARE(fake->stopCount, stopsBeforeRemoval + 1);
+    QCOMPARE(machineRowCount(storePath, QStringLiteral("machine_ports"), first.id), 2);
+
+    // Alterar a porta SSH (mesmo guest 22 com outro hostPort) é recusado.
+    const int startsBeforeSsh = fake->startCount;
+    MachinePort alteredSsh;
+    alteredSsh.hostPort = first.sshPort + 1;
+    alteredSsh.guestPort = 22;
+    alteredSsh.protocol = QStringLiteral("tcp");
+    (void)manager.setPorts(first.id, {alteredSsh}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QCOMPARE(fake->startCount, startsBeforeSsh);
+    QCOMPARE(manager.get(first.id, &error).state, QStringLiteral("running"));
+
+    // hostPort já usado por outra machine no mesmo protocolo → conflito.
+    MachinePort conflict;
+    conflict.hostPort = extraUdpPort;
+    conflict.guestPort = 9090;
+    conflict.protocol = QStringLiteral("udp");
+    const int stopsBeforeConflict = fake->stopCount;
+    const int startsBeforeConflict = fake->startCount;
+    (void)manager.setPorts(second.id, {conflict}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QCOMPARE(fake->stopCount, stopsBeforeConflict);
+    QCOMPARE(fake->startCount, startsBeforeConflict);
+    QCOMPARE(manager.get(second.id, &error).state, QStringLiteral("running"));
+
+    // Mesmo hostPort em outro protocolo é permitido.
+    MachinePort crossProtocol;
+    crossProtocol.hostPort = extraUdpPort;
+    crossProtocol.guestPort = 9090;
+    crossProtocol.protocol = QStringLiteral("tcp");
+    const MachineMeta cross = manager.setPorts(second.id, {crossProtocol}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cross.ports.size(), 2);
+    const MachinePort storedCross = portByHost(cross.ports, QStringLiteral("tcp"), extraUdpPort);
+    QCOMPARE(storedCross.hostPort, extraUdpPort);
+    QVERIFY(!storedCross.id.isEmpty());
+    QVERIFY(!sshPortOf(cross.ports).id.isEmpty());
+
+    const auto rejects = [&manager, &second, &fake, &error](const MachinePort &port,
+                                                             const QString &code) {
+        const int stops = fake->stopCount;
+        const int starts = fake->startCount;
+        (void)manager.setPorts(second.id, {port}, &error);
+        return error.code == code && fake->stopCount == stops && fake->startCount == starts;
+    };
+
+    MachinePort invalidHost;
+    invalidHost.hostPort = 0;
+    invalidHost.guestPort = 80;
+    invalidHost.protocol = QStringLiteral("tcp");
+    QVERIFY(rejects(invalidHost, QStringLiteral("PODSTACK_INVALID_PARAMS")));
+
+    MachinePort invalidGuest;
+    invalidGuest.hostPort = nextPort();
+    invalidGuest.guestPort = 70000;
+    invalidGuest.protocol = QStringLiteral("tcp");
+    QVERIFY(rejects(invalidGuest, QStringLiteral("PODSTACK_INVALID_PARAMS")));
+
+    MachinePort invalidProtocol;
+    invalidProtocol.hostPort = nextPort();
+    invalidProtocol.guestPort = 80;
+    invalidProtocol.protocol = QStringLiteral("sctp");
+    QVERIFY(rejects(invalidProtocol, QStringLiteral("PODSTACK_INVALID_PARAMS")));
+
+    // Machine parada recebe as portas sem start.
+    const MachineMeta stopped = manager.stop(second.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stopped.state, QStringLiteral("stopped"));
+    const int stopsBeforeStopped = fake->stopCount;
+    const int startsBeforeStopped = fake->startCount;
+    MachinePort stoppedPort;
+    stoppedPort.hostPort = nextPort();
+    stoppedPort.guestPort = 8443;
+    stoppedPort.protocol = QStringLiteral("tcp");
+    stoppedPort.label = QStringLiteral("https");
+    const MachineMeta stoppedUpdated = manager.setPorts(second.id, {storedCross, stoppedPort},
+                                                        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stoppedUpdated.state, QStringLiteral("stopped"));
+    QCOMPARE(stoppedUpdated.ports.size(), 3);
+    QCOMPARE(portByHost(stoppedUpdated.ports, QStringLiteral("tcp"), extraUdpPort).id,
+             storedCross.id);
+    QCOMPARE(portByHost(stoppedUpdated.ports, QStringLiteral("tcp"), stoppedPort.hostPort)
+                 .guestPort,
+             8443);
+    QCOMPARE(sshPortOf(stoppedUpdated.ports).hostPort, second.sshPort);
+    QCOMPARE(fake->stopCount, stopsBeforeStopped);
+    QCOMPARE(fake->startCount, startsBeforeStopped);
+    QCOMPARE(manager.get(second.id, &error).ports.size(), 3);
+
+    QVERIFY2(manager.remove(first.id, true, &error), qPrintable(error.message));
+    QVERIFY2(manager.remove(second.id, true, &error), qPrintable(error.message));
+}
+
 void MachinesTest::qemuRuntimeFallback()
 {
     const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000001101");
@@ -4515,6 +4840,8 @@ void MachinesTest::qemuRuntimeIntegration()
     QemuSpec spec = base;
     spec.kvm = true;
     spec.sshPort = static_cast<quint16>(freePortHint());
+    spec.ports = {QemuPort{QStringLiteral("tcp"), spec.sshPort, 22,
+                           QStringLiteral("127.0.0.1")}};
     spec.ovmfCodePath = ovmfCode;
     spec.ovmfVarsPath = varsTarget;
 

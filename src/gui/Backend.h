@@ -269,6 +269,7 @@ public:
     Q_INVOKABLE void renameMachine(const QString &id, const QString &name);
     Q_INVOKABLE void cloneMachine(const QString &id, const QString &name);
     Q_INVOKABLE void updateMachine(const QVariantMap &spec);
+    Q_INVOKABLE void setMachinePorts(const QString &id, const QVariantList &ports);
     Q_INVOKABLE void createMachine(const QVariantMap &spec);
     Q_INVOKABLE void cancelMachineCreate();
     Q_INVOKABLE void resetMachineCreateState();

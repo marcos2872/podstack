@@ -2855,6 +2855,67 @@ void Backend::updateMachine(const QVariantMap &spec)
     runAction(QStringLiteral("machines.update"), params, 180000);
 }
 
+void Backend::setMachinePorts(const QString &id, const QVariantList &ports)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (id.isEmpty()) {
+        fail(QStringLiteral("Machine inválida."));
+        return;
+    }
+
+    QJsonArray array;
+    for (const QVariant &value : ports) {
+        const QVariantMap entry = value.toMap();
+        bool hostOk = false;
+        bool guestOk = false;
+        const int hostPort = entry.value(QStringLiteral("hostPort")).toInt(&hostOk);
+        const int guestPort = entry.value(QStringLiteral("guestPort")).toInt(&guestOk);
+        if (!hostOk || hostPort < 1 || hostPort > 65535) {
+            fail(QStringLiteral("Porta do host fora do intervalo 1..65535."));
+            return;
+        }
+        if (!guestOk || guestPort < 1 || guestPort > 65535) {
+            fail(QStringLiteral("Porta do guest fora do intervalo 1..65535."));
+            return;
+        }
+
+        QString protocol =
+            entry.value(QStringLiteral("protocol"), QStringLiteral("tcp")).toString().trimmed()
+                .toLower();
+        if (protocol.isEmpty()) {
+            protocol = QStringLiteral("tcp");
+        }
+        if (protocol != QStringLiteral("tcp") && protocol != QStringLiteral("udp")) {
+            fail(QStringLiteral("Protocolo de porta inválido; use tcp ou udp."));
+            return;
+        }
+
+        QJsonObject object;
+        const QString portId = entry.value(QStringLiteral("id")).toString().trimmed();
+        if (!portId.isEmpty()) {
+            object.insert(QStringLiteral("id"), portId);
+        }
+        object.insert(QStringLiteral("hostPort"), hostPort);
+        object.insert(QStringLiteral("guestPort"), guestPort);
+        object.insert(QStringLiteral("protocol"), protocol);
+        object.insert(QStringLiteral("exposeLan"),
+                      entry.value(QStringLiteral("exposeLan")).toBool());
+        object.insert(QStringLiteral("label"),
+                      entry.value(QStringLiteral("label")).toString());
+        array.append(object);
+    }
+
+    runAction(QStringLiteral("machines.ports.set"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("ports"), array}},
+              180000);
+}
+
 void Backend::createMachine(const QVariantMap &spec)
 {
     const auto fail = [this](const QString &message) {

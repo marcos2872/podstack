@@ -17,6 +17,14 @@ struct QemuMount {
     bool readOnly = false;
 };
 
+/// Uma porta encaminhada do host para o guest via `-netdev user,hostfwd=...`.
+struct QemuPort {
+    QString protocol = QStringLiteral("tcp"); // tcp|udp
+    int hostPort = 0;
+    int guestPort = 0;
+    QString hostAddress = QStringLiteral("127.0.0.1"); // 127.0.0.1|0.0.0.0
+};
+
 /// Parâmetros imutáveis de uma máquina QEMU/KVM.
 struct QemuSpec {
     QString machineId;  // UUIDv7
@@ -35,6 +43,7 @@ struct QemuSpec {
     QString ovmfCodePath;
     QString ovmfVarsPath;
     QVector<QemuMount> mounts;
+    QVector<QemuPort> ports;
 };
 
 class QemuCommand {
