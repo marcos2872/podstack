@@ -96,7 +96,7 @@
 
 | Seção | Colunas principais (implementado) | Ações de toolbar |
 |---|---|---|
-| Containers | nome, status, imagem, portas | criar, start/stop all, lote por seleção, expandir (modal com terminal) |
+| Containers | nome, status, imagem, portas | criar, start/stop all, lote por seleção, expandir (overlay com terminal) |
 | Images | repositório:tag, digest, tamanho, uso | pull, importar, tag, untag, prune (prévia), remover |
 | Volumes | nome, driver, tamanho, links | criar, clone, importar do host, prune (prévia), remover |
 | Networks | nome, driver, subnet, containers | criar, conectar, desconectar, remover |
@@ -130,11 +130,11 @@ Abas por tipo (estado do M4 após o redesenho do detalhe):
 | Aba | Container | Machine | Volume | Image | Observação |
 |---|---|---|---|---|---|
 | **Info** | ✅ card lateral | ✅ | planejado | planejado | nome, imagem, portas, estado, health, ações |
-| **Logs** | ✅ modal (Detalhes) | ✅ | — | — | container: streaming/follow; machine: one-shot + Atualizar |
-| **Stats** | ✅ modal (Visão geral) | ✅ | — | — | CPU, memória, rede, disco/PIDs + gráfico; machine via SSH (2 s) |
-| **Files** | — | planejado | planejado | — | saiu do card no redesenho; T1-11 segue sem entrada dedicada na GUI |
-| **Terminal** | ✅ aba do modal | SSH no dock | — | — | `TerminalView`/QTermWidget; botão para terminal externo |
-| **Inspect** | ✅ modal | — | — | — | JSON completo via `containers.inspect` |
+| **Logs** | ✅ overlay (Detalhes) | ✅ | — | — | container: streaming/follow; machine: one-shot + Atualizar |
+| **Stats** | ✅ overlay (Visão geral) | ✅ | — | — | CPU, memória, rede, disco/PIDs + gráfico; machine via SSH (2 s) |
+| **Files** | ✅ overlay (Detalhes) | planejado | planejado | — | enviar, baixar e navegar via `FilesView` no detalhe; saiu do card lateral |
+| **Terminal** | ✅ aba do overlay | SSH no dock | — | — | `TerminalView`/QTermWidget; botão para terminal externo |
+| **Inspect** | ✅ overlay | — | — | — | JSON completo via `containers.inspect` |
 
 Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info, Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash), start/stop/restart, abrir SSH em terminal e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
@@ -144,8 +144,8 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - Largura do painel: ~480 px no modo normal e ~320 px no compacto (janela < 1100 px);
   a lista encolhe com `Layout.fillWidth`. As grades de Info/Ações usam uma coluna quando
   não há espaço (limiar de 460 px) para não cortar ID, portas, estado ou botões.
-- Botão **Expandir** (ícone expand, quatro setas para fora) abre o modal de detalhe
-  dedicado (seção 5.7). O card lateral mostra somente **Info** e **Ações**.
+- Botão **Expandir** (ícone expand, quatro setas para fora) abre o detalhe do container
+  em overlay integrado (seção 5.7). O card lateral mostra somente **Info** e **Ações**.
 - Grid de metadados: ID, portas publicadas, estado, criado e saúde.
 - Ações: abrir no navegador, copiar ID, revelar no gerenciador.
 - **Exposição LAN (T2-15):** na célula de portas, o botão alterna **“Expor na LAN”** /
@@ -179,7 +179,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 
 - Emulação completa (cores, cursor, seleção, copy/paste, mouse).
 - Componente reutilizável `TerminalView` (QTermWidget + barra com título e botão
-  **Abrir externo**) usado no dock, na `TerminalWindow` legada e no modal de detalhe.
+  **Abrir externo**) usado no dock, na `TerminalWindow` legada e no overlay de detalhe.
 - Terminal embutido em painel dockável (`QDockWidget` "Terminal") da janela principal,
   com abas (`QTabWidget`) por sessão; título = container/machine.
 - Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` após
@@ -200,20 +200,21 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - JSON viewer com árvore, busca, copiar, exportar.
 - **Diferencial PodStack** (não existe como aba no OrbStack).
 
-### 5.7 Detalhe do container (modal)
+### 5.7 Detalhe do container (overlay integrado)
 
 - Botão **Expandir** no cabeçalho do inspector abre o `ContainerDetailDialog`, um
-  `QDialog` **modal** (`WindowModal`) de ~1100×760, centralizado na janela principal.
-  O botão Voltar (ou `Esc`/fechar a janela) encerra o diálogo, os streams e a sessão
-  de terminal.
+  `QWidget` **filho da `MainWindow`** que cobre a janela inteira (sem frame nem janela
+  separada) com fundo escurecido e um card central de margens ~24 px e cantos
+  arredondados. O botão **x** do cabeçalho (ou `Esc`) encerra o overlay, os streams e a
+  sessão de terminal. Ao redimensionar a janela, um event filter reajusta o overlay.
 - O card lateral mantém apenas **Info** e **Ações**; logs, stats, files, ambiente,
-  redes, volumes e inspect vivem no modal.
-- O modal tem duas abas:
-  - **Detalhes** — conteúdo de `ContainerDetail.qml` (sem overlay/fundo de tela cheia).
+  redes, volumes e inspect vivem no overlay.
+- O overlay tem duas abas:
+  - **Detalhes** — conteúdo de `ContainerDetail.qml` dentro do card do overlay.
   - **Terminal** — `TerminalView` com `podman exec -it <id> /bin/sh`, incluindo o
-    botão **Abrir externo**.
-- Cabeçalho do detalhe: nome, status, imagem, start/stop/restart e remover com
-  confirmação. O terminal não fica mais no cabeçalho.
+    botão **Abrir externo**; só esse botão abre um terminal em janela separada.
+- Cabeçalho do detalhe: nome, status, imagem, start/stop/restart, remover com
+  confirmação e **x** para fechar. O terminal não fica mais no cabeçalho.
 - Abas de Detalhes:
   - **Visão geral** — cards de CPU, RAM (usado/total), rede ↓/↑ e disco R/W com sparklines
     de 60 amostras; stats em stream próprio (`containerDetailStats`), ~1 s.
@@ -228,7 +229,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   - **Inspect** — JSON completo e indentado de `containers.inspect`, com Copiar.
 - Ao abrir: `loadContainerDetail(id)` + streams próprios de stats/logs. Ao fechar: ambos os
   streams são cancelados e os logs do detalhe são limpos. Erros de inspect aparecem no
-  banner do modal, sem poluir `backend.lastError` do inspector de containers.
+  banner do overlay, sem poluir `backend.lastError` do inspector de containers.
 
 ---
 
@@ -394,7 +395,7 @@ qml/
 ├── FormCheck.qml
 ├── ContainersPage.qml
 ├── Inspector.qml
-├── ContainerDetail.qml   # conteúdo do modal de detalhe (7 abas)
+├── ContainerDetail.qml   # conteúdo do overlay de detalhe (7 abas)
 ├── LogsView.qml
 ├── StatsView.qml
 ├── Sparkline.qml
@@ -437,7 +438,7 @@ qml/
 | `Ctrl+Enter` | iniciar/parar selecionado |
 | `Ctrl+Shift+L` | abrir logs |
 | `Ctrl+Shift+T` | abrir terminal |
-| `Esc` | desselecionar/fechar (inclui o modal de detalhe do container) |
+| `Esc` | desselecionar/fechar (inclui o overlay de detalhe do container) |
 | `Ctrl+Q` | sair |
 
 Atalhos configuráveis (P2); conflitos com o desktop são resolvidos pelo usuário.

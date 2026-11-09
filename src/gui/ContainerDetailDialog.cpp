@@ -4,8 +4,12 @@
 #include "gui/Backend.h"
 #include "gui/TerminalView.h"
 
+#include <QColor>
 #include <QDebug>
+#include <QEvent>
+#include <QFrame>
 #include <QLabel>
+#include <QPalette>
 #include <QQmlContext>
 #include <QQmlError>
 #include <QQuickItem>
@@ -14,33 +18,72 @@
 #include <QVBoxLayout>
 #include <QVariant>
 
+namespace {
+
+constexpr int kOverlayMargin = 24;
+constexpr int kCardPadding = 8;
+
+} // namespace
+
 namespace PodStack {
 
 ContainerDetailDialog::ContainerDetailDialog(Backend *backend, QWidget *parent, bool loadQml)
-    : QDialog(parent)
+    : QWidget(parent)
     , m_backend(backend)
 {
     setObjectName(QStringLiteral("containerDetailDialog"));
-    setModal(true);
-    setWindowModality(Qt::WindowModal);
-    setWindowTitle(tr("Detalhes do container"));
-    resize(1100, 760);
-    setMinimumSize(720, 480);
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(QStringLiteral(
+        "QWidget#containerDetailDialog { background-color: rgba(0, 0, 0, 160); }"));
+
+    // A UI QML e o QTermWidget são escuros; alinhe os widgets nativos do card
+    // (barra de abas, páginas e terminal) com o restante do app.
+    QPalette darkPalette = palette();
+    darkPalette.setColor(QPalette::Window, QColor(QStringLiteral("#0e1118")));
+    darkPalette.setColor(QPalette::WindowText, QColor(QStringLiteral("#e7eaf0")));
+    darkPalette.setColor(QPalette::Base, QColor(QStringLiteral("#12161f")));
+    darkPalette.setColor(QPalette::AlternateBase, QColor(QStringLiteral("#171c27")));
+    darkPalette.setColor(QPalette::Text, QColor(QStringLiteral("#e7eaf0")));
+    darkPalette.setColor(QPalette::Button, QColor(QStringLiteral("#171c27")));
+    darkPalette.setColor(QPalette::ButtonText, QColor(QStringLiteral("#e7eaf0")));
+    darkPalette.setColor(QPalette::Highlight, QColor(QStringLiteral("#6366f1")));
+    darkPalette.setColor(QPalette::HighlightedText, QColor(QStringLiteral("#ffffff")));
+    darkPalette.setColor(QPalette::Mid, QColor(QStringLiteral("#1d2330")));
+    setPalette(darkPalette);
 
     setupInterface(loadQml);
-    connect(this, &QDialog::finished, this, &ContainerDetailDialog::handleFinished);
+
+    if (QWidget *anchor = parentWidget()) {
+        anchor->installEventFilter(this);
+        applyOverlayGeometry();
+    }
+    hide();
 }
 
 void ContainerDetailDialog::setupInterface(bool loadQml)
 {
-    auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
+    auto *outerLayout = new QVBoxLayout(this);
+    outerLayout->setContentsMargins(kOverlayMargin, kOverlayMargin, kOverlayMargin,
+                                    kOverlayMargin);
+    outerLayout->setSpacing(0);
 
-    m_tabs = new QTabWidget(this);
+    m_card = new QFrame(this);
+    m_card->setObjectName(QStringLiteral("containerDetailCard"));
+    m_card->setAttribute(Qt::WA_StyledBackground, true);
+    m_card->setStyleSheet(QStringLiteral("QFrame#containerDetailCard {"
+                                         " background-color: #12161f;"
+                                         " border: 1px solid #1d2330;"
+                                         " border-radius: 14px; }"));
+    outerLayout->addWidget(m_card);
+
+    auto *cardLayout = new QVBoxLayout(m_card);
+    cardLayout->setContentsMargins(kCardPadding, kCardPadding, kCardPadding, kCardPadding);
+    cardLayout->setSpacing(0);
+
+    m_tabs = new QTabWidget(m_card);
     m_tabs->setObjectName(QStringLiteral("containerDetailTabs"));
     m_tabs->setDocumentMode(true);
-    layout->addWidget(m_tabs);
+    cardLayout->addWidget(m_tabs);
 
     auto *detailsTab = new QWidget(m_tabs);
     auto *detailsLayout = new QVBoxLayout(detailsTab);
@@ -83,7 +126,12 @@ void ContainerDetailDialog::setupInterface(bool loadQml)
     m_tabs->addTab(m_terminalTab, tr("Terminal"));
 
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
-        if (index == 1 && m_terminal) {
+        if (!isVisible()) {
+            return;
+        }
+        if (index == 0 && m_quickWidget) {
+            m_quickWidget->setFocus(Qt::OtherFocusReason);
+        } else if (index == 1 && m_terminal) {
             m_terminal->focusTerminal();
         }
     });
@@ -99,7 +147,7 @@ void ContainerDetailDialog::connectQmlSignals()
         return;
     }
     m_qmlSignalsConnected = true;
-    connect(root, SIGNAL(closeRequested()), this, SLOT(reject()));
+    connect(root, SIGNAL(closeRequested()), this, SLOT(handleCloseRequested()));
 }
 
 bool ContainerDetailDialog::qmlLoaded() const
@@ -110,7 +158,7 @@ bool ContainerDetailDialog::qmlLoaded() const
 
 void ContainerDetailDialog::openContainer(const QString &id, int detailTab)
 {
-    if (id.isEmpty()) {
+    if (id.isEmpty() || !parentWidget()) {
         return;
     }
 
@@ -121,7 +169,6 @@ void ContainerDetailDialog::openContainer(const QString &id, int detailTab)
     }
 
     m_containerId = id;
-    setWindowTitle(tr("Detalhes — %1").arg(id));
     resetTerminalSession();
 
     if (m_tabs) {
@@ -136,10 +183,13 @@ void ContainerDetailDialog::openContainer(const QString &id, int detailTab)
         }
     }
 
-    centerOnParent();
+    applyOverlayGeometry();
     show();
     raise();
-    activateWindow();
+    // Mantém o teclado no overlay (o QML da MainWindow continua por baixo).
+    if (m_quickWidget) {
+        m_quickWidget->setFocus(Qt::OtherFocusReason);
+    }
 }
 
 void ContainerDetailDialog::resetTerminalSession()
@@ -171,9 +221,24 @@ void ContainerDetailDialog::stopTerminalSession()
     m_terminal = nullptr;
 }
 
-void ContainerDetailDialog::handleFinished(int result)
+void ContainerDetailDialog::closeOverlay()
 {
-    Q_UNUSED(result)
+    teardownSession();
+    hide();
+}
+
+void ContainerDetailDialog::hideOverlay()
+{
+    closeOverlay();
+}
+
+void ContainerDetailDialog::handleCloseRequested()
+{
+    closeOverlay();
+}
+
+void ContainerDetailDialog::teardownSession()
+{
     if (m_backend) {
         m_backend->stopContainerDetailStats();
         m_backend->stopContainerDetailLogs();
@@ -190,16 +255,19 @@ void ContainerDetailDialog::handleFinished(int result)
     m_containerId.clear();
 }
 
-void ContainerDetailDialog::centerOnParent()
+void ContainerDetailDialog::applyOverlayGeometry()
 {
-    QWidget *anchor = parentWidget();
-    if (!anchor) {
-        return;
+    if (QWidget *anchor = parentWidget()) {
+        setGeometry(anchor->rect());
     }
-    const QRect parentRect = anchor->window()->frameGeometry();
-    const QPoint topLeft(parentRect.center().x() - width() / 2,
-                         parentRect.center().y() - height() / 2);
-    move(topLeft);
+}
+
+bool ContainerDetailDialog::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == parentWidget() && event->type() == QEvent::Resize) {
+        applyOverlayGeometry();
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 } // namespace PodStack

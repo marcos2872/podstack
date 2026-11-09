@@ -11,6 +11,7 @@
 
 #include <QDockWidget>
 #include <QFile>
+#include <QFrame>
 #include <QLabel>
 #include <QQuickWidget>
 #include <QTabWidget>
@@ -166,51 +167,70 @@ void TerminalTest::externalTerminalDetection()
 void TerminalTest::containerDetailDialog()
 {
     PodStack::Backend backend;
-    PodStack::ContainerDetailDialog dialog(&backend, nullptr, /*loadQml=*/false);
+    QWidget host;
+    host.resize(1200, 800);
+    PodStack::ContainerDetailDialog overlay(&backend, &host, /*loadQml=*/false);
 
-    QVERIFY(dialog.isModal());
-    QCOMPARE(dialog.windowModality(), Qt::WindowModal);
-    QVERIFY(dialog.tabs() != nullptr);
-    QCOMPARE(dialog.tabs()->count(), 2);
-    QCOMPARE(dialog.tabs()->tabText(0), QStringLiteral("Detalhes"));
-    QCOMPARE(dialog.tabs()->tabText(1), QStringLiteral("Terminal"));
-    QCOMPARE(dialog.containerId(), QString());
+    // Integrado: o detalhe é um widget filho, não uma janela flutuante.
+    QVERIFY(!overlay.isWindow());
+    QCOMPARE(overlay.parentWidget(), &host);
+    QVERIFY(overlay.isHidden());
+    QVERIFY(overlay.testAttribute(Qt::WA_StyledBackground));
+    QCOMPARE(overlay.geometry(), host.rect());
+    QVERIFY(overlay.findChild<QFrame *>(QStringLiteral("containerDetailCard")) != nullptr);
 
-    dialog.openContainer(QString());
-    QCOMPARE(dialog.containerId(), QString());
+    QVERIFY(overlay.tabs() != nullptr);
+    QCOMPARE(overlay.tabs()->count(), 2);
+    QCOMPARE(overlay.tabs()->tabText(0), QStringLiteral("Detalhes"));
+    QCOMPARE(overlay.tabs()->tabText(1), QStringLiteral("Terminal"));
+    QCOMPARE(overlay.containerId(), QString());
 
-    dialog.openContainer(QStringLiteral("abc123"));
-    QCOMPARE(dialog.containerId(), QStringLiteral("abc123"));
-    auto *terminal = dialog.terminalView();
+    overlay.openContainer(QString());
+    QCOMPARE(overlay.containerId(), QString());
+    QVERIFY(overlay.isHidden());
+
+    host.show();
+    overlay.openContainer(QStringLiteral("abc123"));
+    QCOMPARE(overlay.containerId(), QStringLiteral("abc123"));
+    QVERIFY(!overlay.isHidden());
+    QCOMPARE(overlay.geometry(), host.rect());
+    auto *terminal = overlay.terminalView();
     QVERIFY(terminal != nullptr);
     QCOMPARE(terminal->program(), QStringLiteral("podman"));
     QCOMPARE(terminal->arguments(),
              QStringList({QStringLiteral("exec"), QStringLiteral("-it"),
                           QStringLiteral("abc123"), QStringLiteral("/bin/sh")}));
 
-    // Reabrir reaproveita o diálogo e recria a sessão do terminal.
-    dialog.openContainer(QStringLiteral("def456"));
-    QCOMPARE(dialog.containerId(), QStringLiteral("def456"));
-    QCOMPARE(dialog.findChildren<PodStack::TerminalView *>().size(), 1);
-    QCOMPARE(dialog.terminalView()->arguments().at(2), QStringLiteral("def456"));
+    // Reabrir reaproveita o overlay e recria a sessão do terminal.
+    overlay.openContainer(QStringLiteral("def456"));
+    QCOMPARE(overlay.containerId(), QStringLiteral("def456"));
+    QCOMPARE(overlay.findChildren<PodStack::TerminalView *>().size(), 1);
+    QCOMPARE(overlay.terminalView()->arguments().at(2), QStringLiteral("def456"));
 
-    dialog.reject();
-    QCOMPARE(dialog.containerId(), QString());
-    QVERIFY(dialog.terminalView() == nullptr);
-    QVERIFY(dialog.findChild<PodStack::TerminalView *>() == nullptr);
+    // O overlay acompanha o tamanho da janela principal.
+    host.resize(1000, 700);
+    QCOMPARE(overlay.geometry(), host.rect());
+
+    overlay.closeOverlay();
+    QCOMPARE(overlay.containerId(), QString());
+    QVERIFY(overlay.isHidden());
+    QVERIFY(overlay.terminalView() == nullptr);
+    QVERIFY(overlay.findChild<PodStack::TerminalView *>() == nullptr);
 }
 
 void TerminalTest::containerDetailDialogQml()
 {
     PodStack::Backend backend;
-    PodStack::ContainerDetailDialog dialog(&backend, nullptr, /*loadQml=*/true);
-    if (!dialog.qmlLoaded()) {
+    QWidget host;
+    PodStack::ContainerDetailDialog overlay(&backend, &host, /*loadQml=*/true);
+    if (!overlay.qmlLoaded()) {
         QSKIP("Módulo QML PodStack indisponível neste binário de teste.");
     }
-    QVERIFY(dialog.findChild<QQuickWidget *>() != nullptr);
-    dialog.openContainer(QStringLiteral("abc123"));
-    QCOMPARE(dialog.containerId(), QStringLiteral("abc123"));
-    dialog.reject();
+    QVERIFY(overlay.findChild<QQuickWidget *>() != nullptr);
+    overlay.openContainer(QStringLiteral("abc123"));
+    QCOMPARE(overlay.containerId(), QStringLiteral("abc123"));
+    overlay.closeOverlay();
+    QCOMPARE(overlay.containerId(), QString());
 }
 
 void TerminalTest::mainWindowTerminalDock()

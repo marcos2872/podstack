@@ -4,9 +4,9 @@ import QtQuick.Layouts
 import PodStack
 
 // Conteúdo do detalhe de um container, hospedado na aba "Detalhes" do
-// ContainerDetailDialog (QDialog modal). As abas usam `containers.inspect`
-// para metadados e streams próprios de logs/stats, separados do stream
-// compartilhado do Backend.
+// ContainerDetailDialog (overlay integrado à MainWindow). As abas usam
+// `containers.inspect` para metadados e streams próprios de logs/stats,
+// separados do stream compartilhado do Backend.
 Rectangle {
     id: root
 
@@ -177,6 +177,12 @@ Rectangle {
     readonly property string inspectText: root.loaded ? JSON.stringify(root.detail, null, 2) : ""
 
     signal closeRequested()
+
+    Shortcut {
+        sequence: "Esc"
+        enabled: root.containerId.length > 0 && !removeDialog.opened
+        onActivated: root.close()
+    }
 
     function open(id) {
         if (id.length === 0) {
@@ -428,14 +434,6 @@ Rectangle {
                 anchors.rightMargin: 20
                 spacing: 10
 
-                ActionButton {
-                    text: qsTr("Voltar")
-                    variant: "secondary"
-                    size: "sm"
-                    onClicked: root.close()
-                    Accessible.name: qsTr("Voltar e fechar os detalhes do container")
-                }
-
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 160
@@ -512,6 +510,15 @@ Rectangle {
                     enabled: root.containerId.length > 0 && !backend.actionActive
                     onClicked: removeDialog.open()
                     Accessible.name: qsTr("Remover container")
+                }
+
+                ActionButton {
+                    text: ""
+                    iconName: "x"
+                    variant: "ghost"
+                    size: "sm"
+                    onClicked: root.close()
+                    Accessible.name: qsTr("Fechar")
                 }
             }
         }
