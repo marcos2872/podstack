@@ -121,6 +121,7 @@
 | `test_notifications` | `summaryFor*`, `cooldown*` | falha/OOM/unhealthy, eventos normais ignorados e cooldown |
 | `test_setup` | `check*`, `status*`, `validate*`, `rejectsInvalidActions` | checks read-only, resumo de status e validação de ações inválidas |
 | `test_core` | `setupActionsMapPodmanStatus` | `missing` → `install-podman`; `warn` → `enable-socket`; `ok` → sem ação |
+| `test_core` | `setupPolicyMandatoryChecks` | obrigatórios (Podman, systemd-user, SQLite, QEMU/OVMF/virtiofsd) bloqueiam; KVM/Docker/Caddy/k3s não |
 
 **Validação manual da bandeja (niri + Noctalia):** fechar a janela mantém o processo e o SNI;
 `podstack-gui` (segunda instância) foca a janela; `--quit` encerra; o DBusMenu expõe Containers com

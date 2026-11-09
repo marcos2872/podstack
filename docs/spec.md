@@ -102,7 +102,7 @@ Formato único:
 3. **Podman** — instala/atualiza o Podman e ativa `podman.socket` rootless. **O Docker não é removido por padrão**; a remoção é uma ação separada, opt-in, com confirmação e aviso de perda.
 4. **QEMU/KVM** — instala QEMU, OVMF, virtiofsd e libvirt opcional; sem `/dev/kvm`, avisa e permite TCG.
 5. **Componentes** — socket/rootless/SQLite obrigatórios; Caddy e k3s opcionais (k3s desmarcado).
-6. **Validação** — checklist final; obrigatórios vs. opcionais; permite abrir com avisos.
+6. **Validação** — checklist final; obrigatórios vs. opcionais; a tela principal fica bloqueada enquanto os obrigatórios não estiverem OK.
 7. **Pronto** — resumo e abertura do app; persiste `setup.completed`.
 
 **Regras:**
@@ -112,7 +112,7 @@ Formato único:
 - Docker e Podman **coexistem** (sockets diferentes); o PodStack usa Podman e não exige a remoção do Docker.
 - A remoção do Docker exige `confirm: true`, lista o impacto e não migra dados automaticamente; pode ser ignorada.
 - Jobs de setup têm progresso, log, cancelamento e retry; o estado é persistido (`setup.completed`, `dockerPolicy`).
-- O setup é reexecutável; o app pode abrir com avisos (ex.: KVM ausente, Caddy opcional).
+- O setup é reexecutável; avisos em itens não obrigatórios (KVM/TCG, Docker, Caddy, k3s) não bloqueiam. Os checks obrigatórios — Podman com socket, systemd de usuário, SQLite e QEMU/OVMF/virtiofsd — precisam estar `ok` para liberar a tela principal.
 
 **Critérios de aceite:**
 
@@ -120,7 +120,7 @@ Formato único:
 - [ ] A matriz Docker (presente/ausente) × Podman (ausente/desatualizado/atualizado) exibe a ação correta.
 - [ ] Remover o Docker só ocorre após confirmação explícita; cancelar não altera o sistema.
 - [ ] Sem `/dev/kvm`, o setup avisa e permite TCG; machines ficam marcadas como lentas.
-- [ ] A validação distingue obrigatórios de opcionais e permite “abrir mesmo assim”.
+- [ ] A validação distingue obrigatórios de opcionais e não libera a tela principal enquanto os obrigatórios não passarem.
 - [ ] O setup pode ser reexecutado por Settings/CLI e não repete ações já aplicadas.
 
 ---

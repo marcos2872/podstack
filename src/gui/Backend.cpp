@@ -4,6 +4,7 @@
 #include "core/Error.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
+#include "core/SetupPolicy.h"
 #include "gui/Autostart.h"
 #include "gui/TerminalWindow.h"
 
@@ -1165,16 +1166,18 @@ void Backend::onSetupFinished()
         emit setupChanged();
     } else if (m_setupPendingMethod == QStringLiteral("setup.validate")) {
         m_setupChecks = result.value(QStringLiteral("checks")).toArray().toVariantList();
-        int missing = 0;
-        for (const QVariant &check : m_setupChecks) {
-            if (check.toMap().value(QStringLiteral("status")).toString()
-                == QStringLiteral("missing")) {
-                ++missing;
+        bool ready = true;
+        for (const QVariant &checkValue : m_setupChecks) {
+            const QVariantMap check = checkValue.toMap();
+            if (!SetupPolicy::isCheckSatisfied(check.value(QStringLiteral("id")).toString(),
+                                               check.value(QStringLiteral("status")).toString())) {
+                ready = false;
+                break;
             }
         }
-        m_setupSummary.insert(QStringLiteral("ready"), missing == 0);
-        m_setupStatus = missing == 0 ? QStringLiteral("Tudo pronto.")
-                                     : QStringLiteral("Alguns itens precisam de atenção.");
+        m_setupSummary.insert(QStringLiteral("ready"), ready);
+        m_setupStatus = ready ? QStringLiteral("Tudo pronto.")
+                              : QStringLiteral("Alguns itens precisam de atenção.");
         emit setupChanged();
     } else if (m_setupPendingMethod == QStringLiteral("setup.complete")) {
         m_setupCompleted = result.value(QStringLiteral("completed")).toBool();
@@ -1244,6 +1247,22 @@ QString Backend::setupPodmanAction() const
     return {};
 }
 
+bool Backend::setupMandatoryOk() const
+{
+    if (m_setupChecks.isEmpty()) {
+        return false;
+    }
+    for (const QVariant &value : m_setupChecks) {
+        const QVariantMap check = value.toMap();
+        const QString id = check.value(QStringLiteral("id")).toString();
+        const QString status = check.value(QStringLiteral("status")).toString();
+        if (!SetupPolicy::isCheckSatisfied(id, status)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void Backend::setupRefresh()
 {
     runSetupRequest(QStringLiteral("setup.status"), {});
@@ -1309,6 +1328,15 @@ void Backend::setupCancel()
 
 void Backend::setupComplete()
 {
+    if (!setupMandatoryOk()) {
+        m_setupError = QStringLiteral(
+            "Conclua os itens obrigatórios antes de abrir o PodStack.");
+        emit setupChanged();
+        return;
+    }
+
+    m_setupError.clear();
+    emit setupChanged();
     QJsonObject params;
     params.insert(QStringLiteral("skipped"), false);
     runSetupRequest(QStringLiteral("setup.complete"), params);

@@ -6,21 +6,26 @@ import PodStack
 
 // Assistente de primeira execução: 7 etapas, detecção read-only e ações
 // privilegiadas somente via helper allowlisted (nunca shell na GUI).
-Window {
+// É um overlay modal dentro da MainWindow: enquanto os checks obrigatórios
+// não passarem, o conteúdo do app fica desabilitado atrás dele.
+Item {
     id: setupWindow
 
+    property bool manuallyOpen: false
     property int step: 0
     property bool installCaddy: false
     property bool installK3s: false
-    property bool forceClose: false
 
     readonly property var checks: backend.setupChecks
     readonly property bool jobActive: backend.setupJobActive
     readonly property bool podmanReady: podmanCheck.status === "ok"
     readonly property bool dockerPresent: (dockerCheck.detail || "").indexOf("coexistindo") >= 0
     readonly property bool kvmReady: kvmCheck.status === "ok"
-    readonly property bool validated: backend.setupStatus === "Tudo pronto."
-                                 || backend.setupStatus === "Alguns itens precisam de atenção."
+    readonly property bool validated: backend.setupMandatoryOk
+
+    // O overlay só fecha sozinho quando o setup foi concluído; reconfigurar
+    // abre via Settings e pode ser fechado pelo X.
+    visible: manuallyOpen || !backend.setupCompleted
 
     function checkFor(id) {
         for (let index = 0; index < checks.length; ++index) {
@@ -43,12 +48,18 @@ Window {
     readonly property var k3sCheck: checkFor("k3s")
 
     function openSetup(refresh) {
+        manuallyOpen = true
+        step = 0
         if (refresh) {
             backend.setupRefresh()
         }
-        show()
-        raise()
-        requestActivate()
+        forceActiveFocus()
+    }
+
+    function closeOverlay() {
+        if (backend.setupCompleted) {
+            manuallyOpen = false
+        }
     }
 
     function next() {
@@ -57,23 +68,6 @@ Window {
         } else {
             backend.setupComplete()
         }
-    }
-
-    width: Math.min(1020, Math.max(760, Screen.desktopAvailableWidth - 60))
-    height: Math.min(680, Math.max(520, Screen.desktopAvailableHeight - 60))
-    x: Screen.virtualX + Math.round((Screen.desktopAvailableWidth - width) / 2)
-    y: Screen.virtualY + Math.round((Screen.desktopAvailableHeight - height) / 2)
-
-    title: qsTr("PodStack Setup")
-    color: Theme.bgBase
-    visible: false
-
-    onClosing: function(close) {
-        if (setupWindow.forceClose || backend.setupCompleted) {
-            return
-        }
-        close.accepted = false
-        skipDialog.open()
     }
 
     component SetupCard: Rectangle {
@@ -166,11 +160,34 @@ Window {
         }
     }
 
-    ColumnLayout {
+    Rectangle {
+        id: overlayBackground
         anchors.fill: parent
-        spacing: 0
+        color: Theme.overlay
 
-        // Header
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onWheel: function(wheel) {
+                wheel.accepted = true
+            }
+        }
+
+        Rectangle {
+            id: panel
+            anchors.fill: parent
+            anchors.margins: 10
+            radius: Theme.radiusLg
+            color: Theme.bgBase
+            border.width: 1
+            border.color: Theme.border
+            clip: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+
+                // Header
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 48
@@ -228,11 +245,12 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 ActionButton {
+                    visible: backend.setupCompleted
                     text: ""
                     iconName: "x"
                     size: "sm"
                     variant: "ghost"
-                    onClicked: setupWindow.close()
+                    onClicked: setupWindow.closeOverlay()
                     Accessible.name: qsTr("Fechar")
                 }
             }
@@ -775,8 +793,12 @@ Window {
                             Layout.alignment: Qt.AlignHCenter
                             Layout.preferredWidth: Math.min(560, donePage.availableWidth - 48)
                             centered: true
-                            title: qsTr("Tudo pronto")
-                            subtitle: qsTr("Revise o resumo e abra o PodStack.")
+                            title: backend.setupMandatoryOk ? qsTr("Tudo pronto")
+                                                            : qsTr("Itens obrigatórios pendentes")
+                            subtitle: backend.setupMandatoryOk
+                                      ? qsTr("Revise o resumo e abra o PodStack.")
+                                      : qsTr("Volte às etapas anteriores e conclua os itens "
+                                             + "obrigatórios para abrir o PodStack.")
                         }
 
                         GridLayout {
@@ -944,11 +966,16 @@ Window {
                 spacing: 8
 
                 Text {
+                    readonly property bool gateBlocked: setupWindow.step === 6
+                                                        && !backend.setupCompleted
+                                                        && !backend.setupMandatoryOk
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
                     text: backend.setupError.length > 0 ? backend.setupError
-                                                        : qsTr("Etapa %1 de 7").arg(setupWindow.step + 1)
-                    color: backend.setupError.length > 0 ? Theme.danger : Theme.textTertiary
+                          : gateBlocked ? qsTr("Conclua os itens obrigatórios para abrir o PodStack.")
+                          : qsTr("Etapa %1 de 7").arg(setupWindow.step + 1)
+                    color: backend.setupError.length > 0 ? Theme.danger
+                           : gateBlocked ? Theme.warning : Theme.textTertiary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
                     elide: Text.ElideRight
@@ -981,25 +1008,23 @@ Window {
                 ActionButton {
                     visible: setupWindow.step === 6
                     Layout.alignment: Qt.AlignVCenter
-                    text: qsTr("Abrir PodStack")
                     iconName: "check"
                     variant: "primary"
-                    enabled: !setupWindow.jobActive
-                    onClicked: backend.setupComplete()
+                    enabled: backend.setupCompleted || backend.setupMandatoryOk
+                    text: backend.setupCompleted ? qsTr("Fechar") : qsTr("Abrir PodStack")
+                    onClicked: {
+                        if (backend.setupCompleted) {
+                            setupWindow.closeOverlay()
+                        } else {
+                            setupWindow.manuallyOpen = false
+                            backend.setupComplete()
+                        }
+                    }
                 }
             }
         }
-    }
-
-    Connections {
-        target: backend
-
-        function onSetupChanged() {
-            if (backend.setupCompleted && setupWindow.visible) {
-                setupWindow.forceClose = true
-                setupWindow.close()
-            }
         }
+    }
     }
 
     AppDialog {
@@ -1034,36 +1059,4 @@ Window {
         }
     }
 
-    AppDialog {
-        id: skipDialog
-        title: qsTr("Continuar sem configurar?")
-
-        Text {
-            Layout.fillWidth: true
-            text: qsTr("Você pode abrir o PodStack agora e executar a configuração depois em "
-                       + "Settings → Executar configuração novamente.")
-            color: Theme.textSecondary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
-        }
-
-        footer: AppFooter {
-            Item { Layout.fillWidth: true }
-            ActionButton {
-                text: qsTr("Voltar ao setup")
-                onClicked: skipDialog.close()
-            }
-            ActionButton {
-                text: qsTr("Abrir mesmo assim")
-                variant: "primary"
-                onClicked: {
-                    skipDialog.close()
-                    setupWindow.forceClose = true
-                    backend.setupSkip()
-                    setupWindow.close()
-                }
-            }
-        }
-    }
 }

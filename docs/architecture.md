@@ -100,7 +100,7 @@ flowchart LR
 - **`SetupManager`** (daemon) detecta Podman, Docker, QEMU/KVM, `/dev/kvm`, OVMF, virtiofsd, systemd de usuário, SQLite, Caddy e k3s; expõe `setup.status/check/apply/removeDocker/cancel/complete/subscribe/validate`.
 - Ações são **jobs** internos com progresso/log/cancelamento e eventos `setup.delta`/`setup.done`; o job continua se a janela fechar e pode ser retomado por `setup.subscribe`.
 - Ações privilegiadas (pacotes, remoção do Docker) passam pelo **`podstack-helper`** (`dev.podstack.Helper1`, polkit, allowlist); a GUI nunca executa `sudo`/shell. O socket do Podman de usuário é ativado pelo daemon.
-- **`Backend`** (GUI) expõe `setupCompleted/setupPending/setupChecks/setupProgress/setupLog` e os invokables `setupRefresh/setupCheck/setupValidate/setupApply/setupComplete/setupSkip`; **`SetupWindow.qml`** conduz as 7 etapas e é aberto pelo `Main` somente quando `setupPending`.
+- **`Backend`** (GUI) expõe `setupCompleted/setupPending/setupChecks/setupProgress/setupLog/setupMandatoryOk` e os invokables `setupRefresh/setupCheck/setupValidate/setupApply/setupComplete`; **`SetupWindow.qml`** é um overlay modal dentro da `MainWindow` que conduz as 7 etapas e bloqueia o app enquanto `setup.completed=false`. A conclusão é recusada no `Backend` se os checks obrigatórios não estiverem `ok` (`core/SetupPolicy.h`).
 - O estado é persistido em `setup.completed`/`completedAt`/`dockerPolicy`/`lastValidation`; `app.showOnboarding=false` registra que o usuário optou por continuar depois.
 - Docker e Podman coexistem; a remoção do Docker é opt-in e não faz parte do fluxo principal.
 

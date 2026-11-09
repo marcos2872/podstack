@@ -23,8 +23,7 @@ ApplicationWindow {
         const available = Screen.desktopAvailableHeight
         return Math.min(780, Math.max(560, available > 0 ? available - 80 : 780))
     }
-    visible: !trayHidden && (backend.setupCompleted || !backend.setupPending
-             || (backend.setupLoaded && backend.setupError.length > 0))
+    visible: !trayHidden
     title: qsTr("PodStack")
     color: Theme.bgBase
 
@@ -62,10 +61,6 @@ ApplicationWindow {
     }
 
     function reveal() {
-        if (backend.setupPending && !backend.setupCompleted) {
-            setupWindow.openSetup(false)
-            return
-        }
         trayHidden = false
         show()
         raise()
@@ -84,8 +79,6 @@ ApplicationWindow {
         backend.setupRefresh()
     }
 
-    property bool setupOpened: false
-
     Connections {
         target: backend
 
@@ -93,15 +86,13 @@ ApplicationWindow {
             if (backend.setupError.length > 0 && !backend.setupCompleted) {
                 trayHidden = false
             }
-            if (backend.setupPending && !backend.setupCompleted && !setupOpened) {
-                setupOpened = true
-                setupWindow.openSetup(false)
-            }
         }
     }
 
     SetupWindow {
         id: setupWindow
+        anchors.fill: parent
+        z: 100
     }
 
     ActivityMonitorWindow {
@@ -207,7 +198,9 @@ ApplicationWindow {
     }
 
     RowLayout {
+        id: mainContent
         anchors.fill: parent
+        enabled: !setupWindow.visible
         spacing: 0
 
         // Sidebar
@@ -697,7 +690,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: StandardKey.Find
-        enabled: window.section === "containers"
+        enabled: !setupWindow.visible && window.section === "containers"
         onActivated: searchField.forceActiveFocus()
     }
 
@@ -842,16 +835,19 @@ ApplicationWindow {
             window.reveal()
         }
         function onActivityMonitorRequested() {
-            activityWindow.open()
+            window.reveal()
+            if (backend.setupCompleted) {
+                activityWindow.open()
+            }
         }
         function onSettingsRequested() {
             window.reveal()
-            if (!backend.setupPending || backend.setupCompleted) {
+            if (backend.setupCompleted) {
                 settingsDialog.open()
             }
         }
         function onOpenContainerRequested(id, tab) {
-            if (backend.setupPending && !backend.setupCompleted) {
+            if (!backend.setupCompleted) {
                 window.reveal()
                 return
             }
@@ -862,7 +858,7 @@ ApplicationWindow {
             containersPage.openContainer(id, tab)
         }
         function onOpenComposeRequested(project, service, logs) {
-            if (backend.setupPending && !backend.setupCompleted) {
+            if (!backend.setupCompleted) {
                 window.reveal()
                 return
             }
@@ -872,7 +868,9 @@ ApplicationWindow {
         }
         function onOpenViewRequested(section) {
             window.reveal()
-            window.section = section
+            if (backend.setupCompleted) {
+                window.section = section
+            }
         }
     }
 

@@ -4,6 +4,7 @@
 #include "core/Paths.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
+#include "core/SetupPolicy.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -30,6 +31,7 @@ private slots:
     void configSetupDefaults();
     void configInvalidFallsBack();
     void setupActionsMapPodmanStatus();
+    void setupPolicyMandatoryChecks();
     void pathOverrides();
     void rpcClientUnavailable();
     void loggingInit();
@@ -173,6 +175,26 @@ void CoreTest::setupActionsMapPodmanStatus()
              QStringLiteral("enable-socket"));
     QVERIFY(PodStack::SetupActions::podmanActionForStatus(QStringLiteral("ok")).isEmpty());
     QVERIFY(PodStack::SetupActions::podmanActionForStatus(QString()).isEmpty());
+}
+
+void CoreTest::setupPolicyMandatoryChecks()
+{
+    for (const QString &id : {QStringLiteral("podman"), QStringLiteral("systemd-user"),
+                              QStringLiteral("sqlite"), QStringLiteral("qemu"),
+                              QStringLiteral("ovmf"), QStringLiteral("virtiofsd")}) {
+        QVERIFY2(PodStack::SetupPolicy::isMandatoryCheck(id), qPrintable(id));
+        QVERIFY2(PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("ok")),
+                 qPrintable(id));
+        QVERIFY2(!PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("missing")),
+                 qPrintable(id));
+    }
+
+    for (const QString &id : {QStringLiteral("kvm"), QStringLiteral("docker"),
+                              QStringLiteral("caddy"), QStringLiteral("k3s")}) {
+        QVERIFY2(!PodStack::SetupPolicy::isMandatoryCheck(id), qPrintable(id));
+        QVERIFY2(PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("warn")),
+                 qPrintable(id));
+    }
 }
 
 void CoreTest::pathOverrides()

@@ -4,6 +4,7 @@
 
 #include "core/Config.h"
 #include "core/Paths.h"
+#include "core/SetupPolicy.h"
 #include "daemon/DbusUtils.h"
 
 #include <QDBusConnection>
@@ -361,12 +362,20 @@ QJsonObject SetupManager::status()
         checkArray.append(checkJson(check));
     }
 
+    bool ready = true;
+    for (const SetupCheck &check : checks) {
+        if (!SetupPolicy::isCheckSatisfied(check.id, check.status)) {
+            ready = false;
+            break;
+        }
+    }
+
     QJsonObject summary;
     summary.insert(QStringLiteral("ok"), ok);
     summary.insert(QStringLiteral("warnings"), warn);
     summary.insert(QStringLiteral("missing"), missing);
     summary.insert(QStringLiteral("optional"), optional);
-    summary.insert(QStringLiteral("ready"), missing == 0);
+    summary.insert(QStringLiteral("ready"), ready);
 
     QJsonObject result;
     result.insert(QStringLiteral("completed"),
@@ -390,7 +399,7 @@ QJsonObject SetupManager::validate()
     QJsonArray warnings;
     QJsonArray checkArray;
     for (const SetupCheck &check : checks) {
-        if (check.status == QStringLiteral("missing")) {
+        if (!SetupPolicy::isCheckSatisfied(check.id, check.status)) {
             ok = false;
         }
         if (check.status == QStringLiteral("warn")) {

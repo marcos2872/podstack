@@ -227,11 +227,12 @@ Janela separada, aberta no primeiro uso, por `podstack setup` ou Settings → �
 - Detecção é read-only; toda alteração exige consentimento.
 - Docker e Podman coexistem (sockets diferentes); o PodStack usa Podman.
 
-**Implementação:** `SetupWindow.qml` (janela 1020×680 limitada à tela), `SetupRail.qml`
-(rail das 7 etapas) e `SetupCheckRow.qml` (linha de check com versão, detalhe e remediação).
-O `Main` abre a janela quando `setupPending` (`!setup.completed && app.showOnboarding`); o X
-pergunta se o usuário quer continuar depois (`app.showOnboarding=false`) e o botão
-**Executar configuração novamente** em Settings reabre o assistente.
+**Implementação:** `SetupWindow.qml` é um **overlay modal dentro da MainWindow** (painel
+1020×680 limitado à janela), com `SetupRail.qml` (rail das 7 etapas) e `SetupCheckRow.qml`.
+Enquanto `setup.completed=false`, o overlay cobre o app e o conteúdo fica desabilitado; não há
+“abrir mesmo assim”. O X só aparece ao reconfigurar um setup já concluído, e o botão
+**Executar configuração novamente** em Settings reabre o overlay. A conclusão só é liberada
+quando os checks obrigatórios estão `ok`.
 
 ---
 

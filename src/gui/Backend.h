@@ -51,6 +51,7 @@ class Backend : public QObject {
     Q_PROPERTY(bool setupCompleted READ setupCompleted NOTIFY setupChanged)
     Q_PROPERTY(bool setupPending READ setupPending NOTIFY setupChanged)
     Q_PROPERTY(QString setupPodmanAction READ setupPodmanAction NOTIFY setupChanged)
+    Q_PROPERTY(bool setupMandatoryOk READ setupMandatoryOk NOTIFY setupChanged)
     Q_PROPERTY(QVariantList setupChecks READ setupChecks NOTIFY setupChanged)
     Q_PROPERTY(QVariantMap setupSummary READ setupSummary NOTIFY setupChanged)
     Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
@@ -101,6 +102,7 @@ public:
     bool setupCompleted() const { return m_setupCompleted; }
     bool setupPending() const { return !m_setupCompleted && m_setupShowOnboarding; }
     QString setupPodmanAction() const;
+    bool setupMandatoryOk() const;
     QVariantList setupChecks() const { return m_setupChecks; }
     QVariantMap setupSummary() const { return m_setupSummary; }
     QString setupDockerPolicy() const { return m_setupDockerPolicy; }
