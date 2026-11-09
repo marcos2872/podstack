@@ -14,6 +14,7 @@ namespace PodStack {
 
 class Backend;
 class ContainerDetailDialog;
+class MachineDetailDialog;
 class NotificationService;
 class SingleInstance;
 class TrayController;
@@ -37,6 +38,7 @@ public:
     Q_INVOKABLE void hideToTray();
     Q_INVOKABLE void openContainerDetail(const QString &id);
     Q_INVOKABLE void openContainerDetailTab(const QString &id, int detailTab);
+    Q_INVOKABLE void openMachineDetail(const QString &id, int tab = 0);
 
     bool qmlLoaded() const;
     QDockWidget *terminalDock() const { return m_terminalDock; }
@@ -54,6 +56,7 @@ private:
     void closeTerminalTab(int index);
     void updateQuitOnLastWindowClosed();
     ContainerDetailDialog *ensureDetailDialog();
+    MachineDetailDialog *ensureMachineDetailDialog();
 
     Backend *m_backend = nullptr;
     TrayController *m_tray = nullptr;
@@ -64,6 +67,7 @@ private:
     QDockWidget *m_terminalDock = nullptr;
     QTabWidget *m_terminalTabs = nullptr;
     ContainerDetailDialog *m_detailDialog = nullptr;
+    MachineDetailDialog *m_machineDetailDialog = nullptr;
 };
 
 } // namespace PodStack

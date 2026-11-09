@@ -65,9 +65,12 @@ O PodStack é licenciado sob **GPL-3.0-or-later**. Portanto:
   como fallback. Nunca usa shell.
 - `MainWindow` (`QMainWindow`) hospeda a UI QML em um `QQuickWidget` e o terminal em um
   `QDockWidget` "Terminal" com abas de `TerminalView` (uma sessão por aba).
-- Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` após o
-  `machines.ssh` devolver host/porta/usuário/chave. O `Backend` apenas emite
-  `terminalRequested`; quem cria a sessão é a `MainWindow`.
+- Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` na aba Terminal
+  do `MachineDetailDialog`, montada a partir de `sshKeyPath`/`sshPort`/`sshUser` do
+  `machines.list/get` (`IdentitiesOnly=yes`, `StrictHostKeyChecking=accept-new`,
+  `user@127.0.0.1`). O `Backend::openMachineSsh` continua emitindo `terminalRequested`
+  (dock/`TerminalWindow`) como registro de compatibilidade; a GUI usa
+  `MainWindow::openMachineDetail`.
 - O detalhe do container é um **overlay integrado** (`ContainerDetailDialog`, um
   `QWidget` filho da `MainWindow`) cujo card hospeda `ContainerDetail.qml`
   diretamente em um `QQuickWidget`, sem `QTabWidget` nativo. O terminal é uma **aba
@@ -77,6 +80,12 @@ O PodStack é licenciado sob **GPL-3.0-or-later**. Portanto:
   botão **Nova sessão em janela** do QML abre uma nova sessão via `ExternalTerminal`,
   sem shell; o **Abrir externo** do `TerminalView` continua no dock e na
   `TerminalWindow`.
+- O detalhe da machine segue o mesmo desenho (`MachineDetailDialog`): overlay filho da
+  `MainWindow`, `MachineInspector.qml` em `QQuickWidget` com `showTerminalTab=true` e a
+  sessão SSH (`TerminalView`) filha do `QQuickWidget`, posicionada sobre o placeholder da
+  aba Terminal. O card lateral mantém `showTerminalTab=false`; o botão **SSH** abre o
+  overlay direto na aba Terminal e o **Expandir** na aba Info. Fechar o overlay
+  interrompe a subscription de stats e destrói a sessão.
 - `ExternalTerminal` relança a mesma sessão fora do app sem shell: prioriza
   `xdg-terminal-exec` (spec freedesktop), depois `$TERMINAL` e os emuladores comuns
   (`gnome-terminal`, `kgx`, `konsole`, `xfce4-terminal`, `alacritty`, `kitty`, `foot`,

@@ -139,6 +139,7 @@ add_library(podstack_gui_lib STATIC
     src/gui/ContainerDetailDialog.cpp
     src/gui/ContainerListModel.cpp
     src/gui/ExternalTerminal.cpp
+    src/gui/MachineDetailDialog.cpp
     src/gui/MainWindow.cpp
     src/gui/Notifications.cpp
     src/gui/SingleInstance.cpp

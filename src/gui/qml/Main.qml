@@ -572,6 +572,9 @@ Rectangle {
                     MachinesPage {
                         id: machinesPage
                         anchors.fill: parent
+                        onMachineExpandRequested: function(id, tab) {
+                            appWindow.openMachineDetail(id, tab)
+                        }
                     }
                 }
             }

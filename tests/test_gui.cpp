@@ -698,6 +698,9 @@ void GuiTest::backendMachines()
     QCOMPARE(backend.machineLogLines().first(), QStringLiteral("gui boot 2"));
     QCOMPARE(backend.machineLogLines().last(), QStringLiteral("gui boot 3"));
 
+    // Compatibilidade: o Backend continua emitindo `terminalRequested` (dock/
+    // TerminalWindow); a GUI usa `MainWindow::openMachineDetail`, coberto em
+    // `test_terminal::machineDetailDialog*`.
     QSignalSpy terminalSpy(&backend, &PodStack::Backend::terminalRequested);
     backend.openMachineSsh(meta.id);
     QTRY_COMPARE_WITH_TIMEOUT(terminalSpy.count(), 1, 5000);

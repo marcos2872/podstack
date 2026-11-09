@@ -9,6 +9,8 @@ ColumnLayout {
     property string selectedMachineId: ""
     property string pendingDeleteId: ""
 
+    signal machineExpandRequested(string id, int tab)
+
     readonly property int machineCount: backend.machines.length
     readonly property int runningCount: {
         let count = 0
@@ -223,6 +225,9 @@ ColumnLayout {
             Layout.minimumWidth: 300
             Layout.fillHeight: true
             machine: machinesPage.selectedMachine
+            onExpandRequested: function(id, tab) {
+                machinesPage.machineExpandRequested(id, tab)
+            }
             onDeleteRequested: function(id) {
                 machinesPage.pendingDeleteId = id
                 deleteMachineDialog.open()

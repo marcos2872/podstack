@@ -4,13 +4,36 @@ import QtQuick.Layouts
 import PodStack
 
 // Detalhe de uma machine: Info, Logs, Stats e ações de ciclo de vida.
+// No card lateral (showTerminalTab=false) as abas são Info/Logs/Stats; no
+// overlay de detalhe (showTerminalTab=true) a aba Terminal é adicionada e o
+// C++ sobrepõe a sessão SSH sobre `terminalPlaceholder`.
 Rectangle {
     id: root
 
     property var machine: ({})
     property string tab: "info"
+    property bool showTerminalTab: false
+    property string terminalError: ""
+
+    readonly property int terminalTabIndex: 3
+    readonly property var tabs: root.showTerminalTab
+        ? [
+            { key: "info", label: qsTr("Info") },
+            { key: "logs", label: qsTr("Logs") },
+            { key: "stats", label: qsTr("Stats") },
+            { key: "terminal", label: qsTr("Terminal") }
+        ]
+        : [
+            { key: "info", label: qsTr("Info") },
+            { key: "logs", label: qsTr("Logs") },
+            { key: "stats", label: qsTr("Stats") }
+        ]
 
     signal deleteRequested(string id)
+    signal closeRequested()
+    signal expandRequested(string id, int tab)
+    signal terminalAreaChanged(rect area, bool visible)
+    signal externalTerminalRequested()
 
     readonly property string machineId: machine && machine.id ? String(machine.id) : ""
     readonly property string machineName: machine && machine.name ? String(machine.name)
@@ -65,6 +88,44 @@ Rectangle {
         }
     }
 
+    // Emite a área do placeholder da aba Terminal para o C++ posicionar o
+    // TerminalView sobre ele. Fora da aba (ou sem tamanho) emite visible=false
+    // e a sessão continua viva, apenas oculta.
+    function syncTerminalArea() {
+        if (!root.showTerminalTab || root.machineId.length === 0
+                || root.tab !== "terminal" || terminalPlaceholder.width <= 0
+                || terminalPlaceholder.height <= 0) {
+            root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
+            return
+        }
+        const point = terminalPlaceholder.mapToItem(root, 0, 0)
+        root.terminalAreaChanged(Qt.rect(point.x, point.y, terminalPlaceholder.width,
+                                         terminalPlaceholder.height), true)
+    }
+
+    function openExternalTerminal() {
+        root.externalTerminalRequested()
+    }
+
+    function close() {
+        if (root.machineId.length === 0) {
+            return
+        }
+        root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
+        root.closeRequested()
+    }
+
+    onTabChanged: root.syncTerminalArea()
+    onWidthChanged: root.syncTerminalArea()
+    onHeightChanged: root.syncTerminalArea()
+
+    onShowTerminalTabChanged: {
+        if (!root.showTerminalTab && root.tab === "terminal") {
+            root.selectTab("info")
+        }
+        root.syncTerminalArea()
+    }
+
     onMachineIdChanged: {
         if (root.tab === "stats") {
             backend.stopMachineStats()
@@ -72,6 +133,7 @@ Rectangle {
                 backend.startMachineStats(root.machineId)
             }
         }
+        root.syncTerminalArea()
     }
 
     Component.onDestruction: {
@@ -241,8 +303,10 @@ Rectangle {
     }
 
     color: Theme.bgSurface
-    radius: Theme.radiusLg
-    border.width: 1
+    // O card lateral tem contorno próprio; no overlay ele já vive dentro do
+    // card do MachineDetailDialog.
+    radius: root.showTerminalTab ? 0 : Theme.radiusLg
+    border.width: root.showTerminalTab ? 0 : 1
     border.color: Theme.border
     clip: true
 
@@ -289,6 +353,16 @@ Rectangle {
                 text: root.stateLabel(root.machineState)
                 tone: root.stateTone(root.machineState)
             }
+
+            ActionButton {
+                visible: root.showTerminalTab
+                text: ""
+                iconName: "x"
+                size: "sm"
+                variant: "ghost"
+                onClicked: root.close()
+                Accessible.name: qsTr("Fechar detalhe da machine")
+            }
         }
 
         RowLayout {
@@ -317,13 +391,26 @@ Rectangle {
                 onClicked: backend.machineLifecycle("stop", root.machineId, false)
             }
 
+            // No card lateral o SSH abre o detalhe da machine já na aba
+            // Terminal; no overlay a aba já está visível e este atalho some.
             ActionButton {
+                visible: !root.showTerminalTab
                 text: qsTr("SSH")
                 iconName: "terminal"
                 size: "sm"
                 enabled: root.machineId.length > 0 && root.machineState === "running"
                          && backend.actionActive === false
-                onClicked: backend.openMachineSsh(root.machineId)
+                onClicked: root.expandRequested(root.machineId, root.terminalTabIndex)
+            }
+
+            ActionButton {
+                visible: !root.showTerminalTab
+                text: qsTr("Expandir")
+                iconName: "expand"
+                size: "sm"
+                enabled: root.machineId.length > 0
+                onClicked: root.expandRequested(root.machineId, 0)
+                Accessible.name: qsTr("Expandir detalhe da machine")
             }
 
             ActionButton {
@@ -354,25 +441,17 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
-            ActionButton {
-                text: qsTr("Info")
-                size: "sm"
-                variant: root.tab === "info" ? "primary" : "ghost"
-                onClicked: root.selectTab("info")
-            }
+            Repeater {
+                model: root.tabs
 
-            ActionButton {
-                text: qsTr("Logs")
-                size: "sm"
-                variant: root.tab === "logs" ? "primary" : "ghost"
-                onClicked: root.selectTab("logs")
-            }
+                delegate: ActionButton {
+                    required property var modelData
 
-            ActionButton {
-                text: qsTr("Stats")
-                size: "sm"
-                variant: root.tab === "stats" ? "primary" : "ghost"
-                onClicked: root.selectTab("stats")
+                    text: modelData.label
+                    size: "sm"
+                    variant: root.tab === modelData.key ? "primary" : "ghost"
+                    onClicked: root.selectTab(modelData.key)
+                }
             }
         }
 
@@ -385,7 +464,9 @@ Rectangle {
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: root.tab === "logs" ? 1 : (root.tab === "stats" ? 2 : 0)
+            currentIndex: root.tab === "logs" ? 1
+                          : root.tab === "stats" ? 2
+                          : root.tab === "terminal" ? 3 : 0
 
             Flickable {
                 id: infoFlick
@@ -733,7 +814,71 @@ Rectangle {
                     }
                 }
             }
+
+            // Terminal — o QTermWidget é sobreposto pelo C++ (overlay QWidget)
+            Item {
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 14
+                    anchors.topMargin: 8
+                    anchors.bottomMargin: 14
+                    spacing: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.machine.ssh
+                                  ? qsTr("Sessão SSH — %1").arg(String(root.machine.ssh))
+                                  : qsTr("Sessão SSH")
+                            color: Theme.textSecondary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMeta
+                            elide: Text.ElideRight
+                        }
+
+                        ActionButton {
+                            text: qsTr("Nova sessão em janela")
+                            iconName: "external"
+                            size: "sm"
+                            variant: "secondary"
+                            enabled: root.machineId.length > 0
+                            onClicked: root.openExternalTerminal()
+                            Accessible.name: qsTr("Abrir uma nova sessão SSH em janela")
+                        }
+                    }
+
+                    Item {
+                        id: terminalPlaceholder
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        onWidthChanged: root.syncTerminalArea()
+                        onHeightChanged: root.syncTerminalArea()
+
+                        Text {
+                            anchors.centerIn: parent
+                            width: parent.width - 40
+                            horizontalAlignment: Text.AlignHCenter
+                            visible: root.terminalError.length > 0
+                            text: root.terminalError
+                            color: Theme.danger
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    Shortcut {
+        sequence: "Esc"
+        enabled: root.showTerminalTab && root.machineId.length > 0
+        onActivated: root.close()
     }
 
     Connections {

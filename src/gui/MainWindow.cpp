@@ -3,6 +3,7 @@
 
 #include "gui/Backend.h"
 #include "gui/ContainerDetailDialog.h"
+#include "gui/MachineDetailDialog.h"
 #include "gui/Notifications.h"
 #include "gui/SingleInstance.h"
 #include "gui/TerminalView.h"
@@ -186,6 +187,22 @@ void MainWindow::openContainerDetailTab(const QString &id, int detailTab)
         return;
     }
     ensureDetailDialog()->openContainer(id, detailTab);
+}
+
+MachineDetailDialog *MainWindow::ensureMachineDetailDialog()
+{
+    if (!m_machineDetailDialog) {
+        m_machineDetailDialog = new MachineDetailDialog(m_backend, this);
+    }
+    return m_machineDetailDialog;
+}
+
+void MainWindow::openMachineDetail(const QString &id, int tab)
+{
+    if (id.isEmpty()) {
+        return;
+    }
+    ensureMachineDetailDialog()->openMachine(id, tab);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
