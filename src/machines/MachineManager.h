@@ -34,6 +34,7 @@ struct CreateMachineRequest {
     int cpus = 2;
     qint64 memoryBytes = 4294967296LL;
     qint64 diskBytes = 21474836480LL;
+    bool isolated = false;
     bool isolateNetwork = false;
     bool forwardSshAgent = false;
     QVector<MachineMount> mounts;

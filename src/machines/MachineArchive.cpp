@@ -236,6 +236,7 @@ QJsonObject MachineArchiveManifest::toJson() const
         {QStringLiteral("memoryBytes"), memoryBytes},
         {QStringLiteral("diskBytes"), diskBytes},
         {QStringLiteral("sshUser"), sshUser},
+        {QStringLiteral("isolated"), isolated},
         {QStringLiteral("isolateNetwork"), isolateNetwork},
         {QStringLiteral("forwardSshAgent"), forwardSshAgent},
         {QStringLiteral("artifacts"), artifactArray},
@@ -267,6 +268,8 @@ MachineArchiveManifest MachineArchiveManifest::fromJson(const QJsonObject &objec
     manifest.diskBytes =
         static_cast<qint64>(object.value(QStringLiteral("diskBytes")).toDouble());
     manifest.sshUser = object.value(QStringLiteral("sshUser")).toString();
+    // Campo opcional: arquivos anteriores à T4-14 não têm `isolated`.
+    manifest.isolated = object.value(QStringLiteral("isolated")).toBool(false);
     manifest.isolateNetwork = object.value(QStringLiteral("isolateNetwork")).toBool();
     manifest.forwardSshAgent = object.value(QStringLiteral("forwardSshAgent")).toBool();
 

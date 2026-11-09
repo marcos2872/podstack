@@ -772,6 +772,7 @@ private slots:
     void qmpConnectMissing();
     void idsUuidV7();
     void machineManagerCreate();
+    void machineManagerIsolated();
     void machineManagerMounts();
     void machineManagerValidation();
     void machineManagerLifecycle();
@@ -2245,6 +2246,149 @@ void MachinesTest::machineManagerCreate()
     QCOMPARE(stages.last(), QStringLiteral("running"));
 
     QVERIFY(QFileInfo(storePath).isFile());
+}
+
+void MachinesTest::machineManagerIsolated()
+{
+    const QString root = m_root + QStringLiteral("/manager-isolated");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 's');
+    m_server.setResponse(QStringLiteral("/manager-isolated.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-isolated.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("isolated-vm");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+    request.isolated = true;
+
+    PodStack::Error error;
+    const auto expectInvalid = [&manager, &request](const CreateMachineRequest &invalid,
+                                                    const QString &message) {
+        PodStack::Error validateError;
+        const bool valid = manager.validate(invalid, &validateError);
+        return !valid && validateError.code == QStringLiteral("PODSTACK_INVALID_PARAMS")
+               && !validateError.remediation.isEmpty()
+               && validateError.message.contains(message);
+    };
+
+    CreateMachineRequest withMount = request;
+    MachineMount mount;
+    mount.source = root;
+    mount.target = QStringLiteral("/mnt/host");
+    withMount.mounts = {mount};
+    QVERIFY(expectInvalid(withMount, QStringLiteral("mounts")));
+
+    CreateMachineRequest withAgent = request;
+    withAgent.forwardSshAgent = true;
+    QVERIFY(expectInvalid(withAgent, QStringLiteral("agent")));
+
+    const int startsBefore = fake->startCount;
+    const MachineMeta meta = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QCOMPARE(meta.state, QStringLiteral("running"));
+    QVERIFY(meta.isolated);
+    QVERIFY(meta.isolateNetwork);
+    QVERIFY(!meta.forwardSshAgent);
+    QVERIFY(meta.mounts.isEmpty());
+    QCOMPARE(meta.ports.size(), 1);
+    QCOMPARE(meta.ports.at(0).hostPort, meta.sshPort);
+    QCOMPARE(meta.ports.at(0).guestPort, 22);
+    QVERIFY(!meta.ports.at(0).exposeLan);
+    QCOMPARE(fake->startCount, startsBefore + 1);
+    QVERIFY(fake->lastSpec.isolateNetwork);
+    QVERIFY(fake->lastSpec.mounts.isEmpty());
+    QCOMPARE(fake->lastSpec.ports.size(), 1);
+    QCOMPARE(fake->lastSpec.ports.at(0).hostAddress, QStringLiteral("127.0.0.1"));
+    QCOMPARE(static_cast<int>(fake->lastSpec.sshPort), meta.sshPort);
+
+    PodStack::Error qemuError;
+    const QStringList args = QemuCommand::arguments(fake->lastSpec, &qemuError);
+    QVERIFY2(qemuError.isEmpty(), qPrintable(qemuError.message));
+    const QString netdev = valueAfter(args, QStringLiteral("-netdev"));
+    QVERIFY(netdev.endsWith(QStringLiteral(",restrict=on")));
+    QCOMPARE(netdev.count(QStringLiteral("restrict=on")), 1);
+    QCOMPARE(netdev.count(QStringLiteral("hostfwd=")), 1);
+    QVERIFY(netdev.contains(QStringLiteral("hostfwd=tcp:127.0.0.1:%1-:22")
+                                .arg(meta.sshPort)));
+    QVERIFY(!netdev.contains(QStringLiteral("0.0.0.0")));
+
+    const int stopsBeforePorts = fake->stopCount;
+    const int startsBeforePorts = fake->startCount;
+    MachinePort exposed;
+    exposed.hostPort = 8080;
+    exposed.guestPort = 80;
+    exposed.protocol = QStringLiteral("tcp");
+    exposed.exposeLan = true;
+    (void)manager.setPorts(meta.id, {exposed}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY(!error.remediation.isEmpty());
+    QCOMPARE(fake->stopCount, stopsBeforePorts);
+    QCOMPARE(fake->startCount, startsBeforePorts);
+    QCOMPARE(manager.get(meta.id, &error).ports.size(), 1);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const MachineMeta clone =
+        manager.clone(meta.id, QStringLiteral("isolated-clone"), {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QCOMPARE(clone.state, QStringLiteral("stopped"));
+    QVERIFY(clone.id != meta.id);
+    QVERIFY(clone.isolated);
+    QVERIFY(clone.isolateNetwork);
+    QVERIFY(!clone.forwardSshAgent);
+    QVERIFY(clone.mounts.isEmpty());
+    QCOMPARE(clone.ports.size(), 1);
+
+    const QString archive = root + QStringLiteral("/isolated.tar.zst");
+    const MachineMeta exported =
+        manager.exportMachine(meta.id, archive, false, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QCOMPARE(exported.state, QStringLiteral("running"));
+    QVERIFY(QFileInfo(archive).isFile());
+
+    const MachineMeta imported =
+        manager.importMachine(archive, QStringLiteral("isolated-copy"), false, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QCOMPARE(imported.state, QStringLiteral("stopped"));
+    QVERIFY(imported.id != meta.id);
+    QVERIFY(imported.isolated);
+    QVERIFY(imported.isolateNetwork);
+    QVERIFY(!imported.forwardSshAgent);
+    QVERIFY(imported.mounts.isEmpty());
+    QCOMPARE(imported.ports.size(), 1);
+    QCOMPARE(imported.ports.at(0).guestPort, 22);
+    QVERIFY(!imported.ports.at(0).exposeLan);
+
+    QVERIFY2(manager.remove(imported.id, true, &error), qPrintable(error.message));
+    QVERIFY2(manager.remove(clone.id, true, &error), qPrintable(error.message));
+    QVERIFY2(manager.remove(meta.id, true, &error), qPrintable(error.message));
 }
 
 void MachinesTest::machineManagerMounts()

@@ -30,6 +30,7 @@ struct MachineArchiveManifest {
     qint64 memoryBytes = 0;
     qint64 diskBytes = 0;
     QString sshUser;
+    bool isolated = false;
     bool isolateNetwork = false;
     bool forwardSshAgent = false;
     QVector<MachineArchiveArtifact> artifacts;

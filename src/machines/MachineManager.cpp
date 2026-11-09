@@ -296,6 +296,24 @@ bool MachineManager::validate(const CreateMachineRequest &request, Error *error)
     if (request.distro.trimmed().isEmpty()) {
         return fails(error, invalidParams(QStringLiteral("Informe a distro da machine.")));
     }
+    if (request.isolated) {
+        if (!request.mounts.isEmpty()) {
+            return fails(error,
+                         invalidParams(
+                             QStringLiteral("O modo isolado não permite mounts do host."),
+                             QString::number(request.mounts.size()),
+                             QStringLiteral("Remova os mounts ou desative o modo isolado.")));
+        }
+        if (request.forwardSshAgent) {
+            return fails(error,
+                         invalidParams(
+                             QStringLiteral("O modo isolado não permite encaminhar o SSH "
+                                            "agent."),
+                             {},
+                             QStringLiteral("Desative o encaminhamento do agent ou o modo "
+                                            "isolado.")));
+        }
+    }
     return normalizeMounts(request.mounts, nullptr, error);
 }
 
@@ -1571,16 +1589,16 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     meta.sshPort = sshPort;
     meta.sshUser = seed.user;
     meta.state = QStringLiteral("provisioning");
-    meta.isolated = false;
-    meta.isolateNetwork = request.isolateNetwork;
-    meta.forwardSshAgent = request.forwardSshAgent;
+    meta.isolated = request.isolated;
+    meta.isolateNetwork = request.isolateNetwork || request.isolated;
+    meta.forwardSshAgent = request.isolated ? false : request.forwardSshAgent;
     meta.createdAt = timestamp;
     meta.updatedAt = timestamp;
     meta.ports = {
         MachinePort{newUuidV7(), sshPort, 22, QStringLiteral("tcp"), false,
                     QStringLiteral("ssh")},
     };
-    meta.mounts = mounts;
+    meta.mounts = request.isolated ? QVector<MachineMount>() : mounts;
 
     if (!persist(meta, error)) {
         m_store.remove(meta.id, nullptr);
@@ -1589,7 +1607,7 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     }
 
     Error sshConfigError;
-    if (!m_sshConfig.sync(meta, request.forwardSshAgent, &sshConfigError)) {
+    if (!m_sshConfig.sync(meta, meta.forwardSshAgent, &sshConfigError)) {
         m_store.remove(meta.id, nullptr);
         cleanupDirectory(directory);
         if (error) {
@@ -2095,6 +2113,20 @@ MachineMeta MachineManager::setPorts(const QString &idOrName, const QVector<Mach
     if (meta.id.isEmpty()) {
         return {};
     }
+    if (meta.isolated) {
+        for (const MachinePort &port : ports) {
+            if (port.exposeLan) {
+                fails(error,
+                      invalidParams(
+                          QStringLiteral("A machine está em modo isolado e não pode expor "
+                                         "portas na LAN."),
+                          QStringLiteral("hostPort=%1").arg(port.hostPort),
+                          QStringLiteral("Desative exposeLan ou recrie a machine sem o modo "
+                                         "isolado.")));
+                return meta;
+            }
+        }
+    }
     if (meta.state == QStringLiteral("provisioning")
         || meta.state == QStringLiteral("deleting")
         || meta.state == QStringLiteral("deleted")) {
@@ -2528,6 +2560,7 @@ MachineMeta MachineManager::exportMachine(
     manifest.memoryBytes = meta.memoryBytes;
     manifest.diskBytes = meta.diskBytes;
     manifest.sshUser = meta.sshUser;
+    manifest.isolated = meta.isolated;
     manifest.isolateNetwork = meta.isolateNetwork;
     manifest.forwardSshAgent = meta.forwardSshAgent;
 
@@ -2783,9 +2816,9 @@ MachineMeta MachineManager::importMachine(
     meta.sshPort = sshPort;
     meta.sshUser = manifest.sshUser;
     meta.state = QStringLiteral("stopped");
-    meta.isolated = false;
-    meta.isolateNetwork = manifest.isolateNetwork;
-    meta.forwardSshAgent = manifest.forwardSshAgent;
+    meta.isolated = manifest.isolated;
+    meta.isolateNetwork = manifest.isolated || manifest.isolateNetwork;
+    meta.forwardSshAgent = manifest.isolated ? false : manifest.forwardSshAgent;
     meta.createdAt = timestamp;
     meta.updatedAt = timestamp;
     meta.ports = {
@@ -3174,9 +3207,9 @@ MachineMeta MachineManager::clone(
     meta.sshPort = sshPort;
     meta.sshUser = source.sshUser;
     meta.state = QStringLiteral("stopped");
-    meta.isolated = false;
-    meta.isolateNetwork = source.isolateNetwork;
-    meta.forwardSshAgent = source.forwardSshAgent;
+    meta.isolated = source.isolated;
+    meta.isolateNetwork = source.isolateNetwork || source.isolated;
+    meta.forwardSshAgent = source.isolated ? false : source.forwardSshAgent;
     meta.createdAt = timestamp;
     meta.updatedAt = timestamp;
     meta.ports = {

@@ -503,17 +503,6 @@ QJsonObject Daemon::machineGet(const QJsonObject &params, Error *error)
 QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notify,
                                   Error *error)
 {
-    if (params.value(QStringLiteral("isolated")).toBool()) {
-        if (error) {
-            *error = Error::make(
-                QStringLiteral("PODSTACK_UNSUPPORTED"),
-                QStringLiteral("O modo isolado ainda não é suportado."),
-                QStringLiteral("machines.create recebeu isolated=true."),
-                QStringLiteral("O isolamento de machines chega na tarefa T4-14."));
-        }
-        return {};
-    }
-
     CreateMachineRequest request;
     request.name = params.value(QStringLiteral("name")).toString().trimmed();
     request.distro = params.value(QStringLiteral("distro")).toString().trimmed();
@@ -530,6 +519,7 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
         params.value(QStringLiteral("isolateNetwork")).toBool(request.isolateNetwork);
     request.forwardSshAgent =
         params.value(QStringLiteral("forwardSshAgent")).toBool(request.forwardSshAgent);
+    request.isolated = params.value(QStringLiteral("isolated")).toBool(request.isolated);
 
     const QJsonValue mountsValue = params.value(QStringLiteral("mounts"));
     if (!mountsValue.isUndefined() && !mountsValue.isNull()) {

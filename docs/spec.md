@@ -499,7 +499,17 @@ Host <name>.podstack <name>
 
 ### 7.7 Isolamento
 
-- `--isolated`: sem mounts do host, sem SSH agent, sem rede para host/outras máquinas (opcional `--isolate-network`).
+- `--isolated` (CLI) / `isolated:true` (RPC/GUI): sem mounts do host, sem SSH agent e
+  sem rede para o host ou outras máquinas. Implica `isolateNetwork=true`,
+  `forwardSshAgent=false` e `mounts` vazio; o backend força essa combinação.
+- Rejeitar com `PODSTACK_INVALID_PARAMS` e remediação quando `isolated=true` vier junto
+  com mounts ou com `forwardSshAgent=true`; `isolateNetwork` é aceito (redundante).
+- A porta SSH local continua ativa: o `hostfwd` da administração fica em `127.0.0.1`
+  e não é afetado pelo isolamento. Nenhuma porta pode ter `exposeLan=true`;
+  `machines.ports.set`/`machine port add` recusam essa combinação na machine isolada.
+- Clone preserva `isolated`/`isolateNetwork` e zera o agent/mounts; export/import leva o
+  campo `isolated` no manifesto `podstack.machine/1` (opcional, default `false`) e o
+  import força `isolateNetwork=true`, `forwardSshAgent=false` e mounts vazio.
 - Aviso: não é fronteira de segurança contra malware (kernel do guest é separado; QEMU é o limite).
 
 ---

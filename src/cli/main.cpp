@@ -1358,7 +1358,7 @@ void printMachineUsage(QTextStream &stream)
            << "                          Mostra as últimas linhas do console.log\n"
            << "  create DISTRO[:VER] NOME [--cpus N] [--memory 4G] [--disk 20G]\n"
            << "         [--user U] [--user-data ARQUIVO] [--isolate-network]\n"
-           << "         [--forward-ssh-agent]\n"
+           << "         [--forward-ssh-agent] [--isolated]\n"
            << "                          Cria uma machine (a senha entra na T4-04)\n"
            << "  start <id|nome> [--json] Inicia uma machine\n"
            << "  stop <id|nome> [--force] [--json]\n"
@@ -1673,6 +1673,7 @@ int machineCreateCommand(const QStringList &args)
     QString userDataPath;
     bool isolateNetwork = false;
     bool forwardSshAgent = false;
+    bool isolated = false;
     QStringList positional;
 
     for (int i = 1; i < args.size(); ++i) {
@@ -1700,6 +1701,8 @@ int machineCreateCommand(const QStringList &args)
             userDataPath = args.at(++i);
         } else if (arg == QStringLiteral("--isolate-network")) {
             isolateNetwork = true;
+        } else if (arg == QStringLiteral("--isolated")) {
+            isolated = true;
         } else if (arg == QStringLiteral("--forward-ssh-agent")) {
             forwardSshAgent = true;
         } else if (arg.startsWith(QLatin1Char('-'))) {
@@ -1741,6 +1744,9 @@ int machineCreateCommand(const QStringList &args)
     }
     if (isolateNetwork) {
         params.insert(QStringLiteral("isolateNetwork"), true);
+    }
+    if (isolated) {
+        params.insert(QStringLiteral("isolated"), true);
     }
     if (forwardSshAgent) {
         params.insert(QStringLiteral("forwardSshAgent"), true);

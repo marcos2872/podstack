@@ -38,7 +38,7 @@
 
 | `orb` | `podstack` | Flags | Notas Linux | Status |
 |---|---|---|---|---|
-| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` | `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network`, `--forward-ssh-agent` | QEMU/KVM + cloud-init; sem Rosetta. Senha via GUI/JSON-RPC (nunca argv); mounts via GUI/JSON-RPC na T4-07; flags de mounts, `--arch` e `--isolated` no CLI ficam pendentes (T4-07/T4-14) | ✅ T4-03 (SSH/chave na T4-04; mounts na T4-07; agent na T4-13) |
+| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` | `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network`, `--forward-ssh-agent`, `--isolated` | QEMU/KVM + cloud-init; sem Rosetta. Senha via GUI/JSON-RPC (nunca argv); mounts via GUI/JSON-RPC na T4-07; `--arch` e flags de mounts no CLI ficam pendentes (T4-07) | ✅ T4-03 (SSH/chave na T4-04; mounts na T4-07; agent na T4-13; isolado na T4-14) |
 | `start [MACHINE...]` | `machine start <id\|nome>` | — | Uma machine por vez nesta etapa | ✅ T4-03 |
 | `stop [MACHINE...]` | `machine stop <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
 | `restart [MACHINE...]` | `machine restart <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
@@ -64,12 +64,13 @@
 | `serial list` | `device serial list` | `--format` | | ⬜ T4-15 |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
 
-> No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11/T4-12/T4-13) o CLI cobre `distros`,
+> No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11/T4-12/T4-13/T4-14) o CLI cobre `distros`,
 > `list`, `info`, `create`, `start`, `stop`, `restart`, `delete`, `logs`, `ssh`
 > (alias `machine ssh`), `export`/`import`, `rename`, `clone`, `default`, `update`,
 > `port ls/add/rm`, `files ls`, `pull` e `push`. A criação aceita `--cpus`, `--memory`
-> (bytes ou K/M/G/T), `--disk`, `--user`, `--user-data ARQUIVO`, `--isolate-network` e
-> `--forward-ssh-agent`; `machine update` aceita `--forward-agent`/`--no-forward-agent` e
+> (bytes ou K/M/G/T), `--disk`, `--user`, `--user-data ARQUIVO`, `--isolate-network`,
+> `--forward-ssh-agent` e `--isolated` (sem mounts/agent, rede restrita e SSH local);
+> `machine update` aceita `--forward-agent`/`--no-forward-agent` e
 > `machine ssh` acrescenta `-A` quando o agent está encaminhado. A senha continua **fora**
 > de argv (visível em `ps`/histórico) e o acesso padrão é por chave ed25519 gerada pelo
 > daemon. `files`, `pull` e `push` usam SSH/SCP reais (o daemon nunca abre shell local).
@@ -306,6 +307,7 @@ Apenas IDs ou nomes, um por linha.
 ```bash
 # criar máquina
 podstack machine create ubuntu:24.04 dev --cpus 2 --memory 4G --disk 20G
+podstack machine create debian:12 sandbox --isolated
 podstack machine port add dev --host 8080 --guest 80 --label web
 podstack machine port add dev --host 5353 --guest 53 --udp --lan
 podstack machine port ls dev

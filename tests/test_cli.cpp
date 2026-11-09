@@ -731,7 +731,8 @@ void CliTest::machineCreateForwardAgent()
                               QStringLiteral("ubuntu:24.04"),
                               QStringLiteral("agent-create"),
                               QStringLiteral("--isolate-network"),
-                              QStringLiteral("--forward-ssh-agent")});
+                              QStringLiteral("--forward-ssh-agent"),
+                              QStringLiteral("--isolated")});
     QVERIFY(process.waitForStarted(3000));
     QElapsedTimer timer;
     timer.start();
@@ -751,6 +752,7 @@ void CliTest::machineCreateForwardAgent()
              QStringLiteral("agent-create"));
     QCOMPARE(captured.value(QStringLiteral("forwardSshAgent")).toBool(), true);
     QCOMPARE(captured.value(QStringLiteral("isolateNetwork")).toBool(), true);
+    QCOMPARE(captured.value(QStringLiteral("isolated")).toBool(), true);
 }
 
 void CliTest::machineSsh()

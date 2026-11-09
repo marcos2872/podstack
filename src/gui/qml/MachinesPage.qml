@@ -277,6 +277,7 @@ ColumnLayout {
             password: machinePassword.text,
             userData: machineUserData.text,
             mountsText: machineMounts.text,
+            isolated: isolatedBox.checked,
             isolateNetwork: isolateNetworkBox.checked,
             forwardSshAgent: forwardSshAgentBox.checked
         })
@@ -308,6 +309,7 @@ ColumnLayout {
                 machinePassword.text = ""
                 machineUserData.text = ""
                 machineMounts.text = ""
+                isolatedBox.checked = false
                 isolateNetworkBox.checked = false
                 forwardSshAgentBox.checked = false
                 distroSelect.currentIndex = 0
@@ -586,6 +588,21 @@ ColumnLayout {
                 }
             }
 
+            FormCheck {
+                id: isolatedBox
+                text: qsTr("Modo isolado (sem mounts, agent SSH nem rede para o host)")
+                enabled: !backend.machineCreateActive
+                onToggled: {
+                    if (checked) {
+                        machineMounts.text = ""
+                        forwardSshAgentBox.checked = false
+                        isolateNetworkBox.checked = true
+                    } else {
+                        isolateNetworkBox.checked = false
+                    }
+                }
+            }
+
             Text {
                 text: qsTr("Mounts do host (origem:destino[:ro], um por linha)")
                 color: Theme.textSecondary
@@ -597,7 +614,7 @@ ColumnLayout {
                 id: machineMounts
                 Layout.fillWidth: true
                 Layout.preferredHeight: 64
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machineCreateActive && !isolatedBox.checked
                 placeholderText: "/home/voce/projetos:/mnt/podstack/projetos\n/dados:/dados:ro"
                 color: Theme.textPrimary
                 placeholderTextColor: Theme.textTertiary
@@ -619,13 +636,13 @@ ColumnLayout {
             FormCheck {
                 id: isolateNetworkBox
                 text: qsTr("Isolar a rede da machine")
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machineCreateActive && !isolatedBox.checked
             }
 
             FormCheck {
                 id: forwardSshAgentBox
                 text: qsTr("Encaminhar o SSH agent")
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machineCreateActive && !isolatedBox.checked
             }
 
             ColumnLayout {

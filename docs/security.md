@@ -216,6 +216,22 @@ encerra a janela da instância já em execução.
 - HTTPS: CA local com chave protegida; certificados on-the-fly; remoção fácil.
 - Containers recebem a CA apenas se opt-in; documentar implicações.
 
+### 7.1 Modo isolado de machines (T4-14)
+
+- `isolated:true`/`--isolated` força `isolateNetwork=true`, `forwardSshAgent=false` e nenhum
+  mount do host; `mounts`/`forwardSshAgent` enviados junto retornam
+  `PODSTACK_INVALID_PARAMS`. Nenhuma porta pode usar `exposeLan=true` (recusado por
+  `machines.ports.set` antes de persistir/parar).
+- O QEMU usa rede user-mode com `restrict=on`: o guest não contata o host nem roteia
+  pacotes para fora, e nenhuma máquina/host da rede local é alcançável. A única exceção é
+  o `hostfwd` de administração, publicado **somente** em `127.0.0.1` (SSH), que continua
+  disponível para o dono do host.
+- **O que não isola:** não é sandbox contra malware nem fronteira contra falhas do QEMU ou
+  do kernel do host; o usuário do daemon continua podendo ler o disco, o `console.log`, o
+  seed e a chave SSH da machine, e o host pode iniciar/parar/exportar a machine. Canais
+  laterais de CPU e a imagem base compartilhada (backing file somente leitura) também não
+  são isolados. Para dados não confiáveis, trate o guest como comprometível.
+
 ---
 
 ## 8. Operações de arquivo

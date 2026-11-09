@@ -264,11 +264,12 @@ Regras de normalização:
 
 ### 4.6 `machines.*`
 
-Implementados na T4-03 (M4), T4-06, T4-07, T4-08, T4-10, T4-11 e T4-12: registry,
-listagem, inspeção, criação assíncrona, logs do console, ciclo de vida, mounts virtiofs,
-arquivos, clone/rename, limites de CPU/memória/disco, port forwarding e a machine default do
-CLI. A T4-04 adiciona `machines.ssh` (chave ed25519 e bloco gerenciado no `~/.ssh/config`). Os
-demais métodos continuam planejados para as tarefas seguintes.
+Implementados na T4-03 (M4), T4-06, T4-07, T4-08, T4-10, T4-11, T4-12, T4-13 e
+T4-14: registry, listagem, inspeção, criação assíncrona, logs do console, ciclo de vida,
+mounts virtiofs, arquivos, clone/rename, limites de CPU/memória/disco, port forwarding,
+SSH agent e o modo isolado. A T4-04 adiciona `machines.ssh` (chave ed25519 e bloco
+gerenciado no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas
+seguintes.
 
 | Método | Params | Result |
 |---|---|---|
@@ -333,8 +334,17 @@ Progresso e resultado chegam como notificações:
 `machines.cancel` apenas sinaliza o job; o cancelamento é observado no próximo checkpoint
 (download, disco, seed ou início) e o job termina com `machines.done`/`PODSTACK_CANCELLED`.
 A subscription é removida quando o job termina; cancelar um job inexistente retorna
-`PODSTACK_NOT_FOUND`. `isolated:true` ainda retorna `PODSTACK_UNSUPPORTED` (T4-14);
-`isolateNetwork` e `forwardSshAgent` são persistidos no metadado.
+`PODSTACK_NOT_FOUND`.
+
+**Modo isolado (T4-14).** `isolated:true` é aceito e implica `isolateNetwork:true`,
+`forwardSshAgent:false` e `mounts` vazio (o backend também zera os mounts). A porta SSH
+local (`hostfwd` em `127.0.0.1`) continua disponível para administração, mas nenhuma porta
+pode ter `exposeLan:true`. Enviar `mounts` não vazio ou `forwardSshAgent:true` junto com
+`isolated:true` retorna `PODSTACK_INVALID_PARAMS` na validação síncrona, com remediação, sem
+iniciar o job; `isolateNetwork` pode ser enviado (é redundante). `machines.ports.set` recusa
+`exposeLan:true` em machine isolada com `PODSTACK_INVALID_PARAMS` antes de persistir ou
+parar a machine. O campo `isolated` é exportado no manifesto `podstack.machine/1` e
+restaurado no import; `clone` preserva o modo da origem.
 
 **Mounts virtiofs (T4-07).** `mounts` é um array de até **8** objetos
 `{source, target, readOnly?, tag?}`. `source` precisa ser um diretório absoluto existente no

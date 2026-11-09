@@ -2947,6 +2947,7 @@ void Backend::createMachine(const QVariantMap &spec)
         fail(QStringLiteral("Informe a distro da machine."));
         return;
     }
+    const bool isolated = spec.value(QStringLiteral("isolated")).toBool();
 
     const int cpus = spec.value(QStringLiteral("cpus"), 2).toInt();
     if (cpus < 1 || cpus > 256) {
@@ -2988,10 +2989,15 @@ void Backend::createMachine(const QVariantMap &spec)
     if (!password.isEmpty()) {
         params.insert(QStringLiteral("password"), password);
     }
+    params.insert(QStringLiteral("isolated"), isolated);
+    // O modo isolado implica rede restrita e sem SSH agent; o daemon reforça.
     params.insert(QStringLiteral("isolateNetwork"),
-                  spec.value(QStringLiteral("isolateNetwork")).toBool());
+                  isolated
+                      || spec.value(QStringLiteral("isolateNetwork")).toBool());
     params.insert(QStringLiteral("forwardSshAgent"),
-                  spec.value(QStringLiteral("forwardSshAgent")).toBool());
+                  isolated
+                      ? false
+                      : spec.value(QStringLiteral("forwardSshAgent")).toBool());
 
     QJsonArray mounts;
     const QString mountsText = spec.value(QStringLiteral("mountsText")).toString();
@@ -3025,6 +3031,10 @@ void Backend::createMachine(const QVariantMap &spec)
         mounts.append(mount);
     }
     if (!mounts.isEmpty()) {
+        if (isolated) {
+            fail(QStringLiteral("O modo isolado não permite mounts do host."));
+            return;
+        }
         params.insert(QStringLiteral("mounts"), mounts);
     }
 

@@ -1092,13 +1092,42 @@ void RpcTest::machinesFlow()
     }
     expectInvalidMounts(tooManyMounts);
 
-    PodStack::Error unsupported;
+    PodStack::Error isolatedAgent;
     client.call(QStringLiteral("machines.create"),
-                QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("isolated-agent")},
                             {QStringLiteral("distro"), QStringLiteral("ubuntu")},
-                            {QStringLiteral("isolated"), true}},
-                &unsupported);
-    QCOMPARE(unsupported.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+                            {QStringLiteral("isolated"), true},
+                            {QStringLiteral("forwardSshAgent"), true}},
+                &isolatedAgent);
+    QCOMPARE(isolatedAgent.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY(!isolatedAgent.remediation.isEmpty());
+
+    PodStack::Error isolatedMount;
+    client.call(QStringLiteral("machines.create"),
+                QJsonObject{
+                    {QStringLiteral("name"), QStringLiteral("isolated-mount")},
+                    {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+                    {QStringLiteral("isolated"), true},
+                    {QStringLiteral("mounts"),
+                     QJsonArray{QJsonObject{
+                         {QStringLiteral("source"), sharedSource},
+                         {QStringLiteral("target"), QStringLiteral("/mnt/isolated")}}}}},
+                &isolatedMount);
+    QCOMPARE(isolatedMount.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY(!isolatedMount.remediation.isEmpty());
+
+    // `isolated` não é mais recusado de forma síncrona: o job inicia e falha
+    // depois na resolução da distro desconhecida.
+    PodStack::Error isolatedAcceptedError;
+    const QJsonObject isolatedJob =
+        client.call(QStringLiteral("machines.create"),
+                    QJsonObject{{QStringLiteral("name"), QStringLiteral("isolated-accepted")},
+                                {QStringLiteral("distro"),
+                                 QStringLiteral("distro-inexistente")},
+                                {QStringLiteral("isolated"), true}},
+                    &isolatedAcceptedError);
+    QVERIFY2(isolatedAcceptedError.isEmpty(), qPrintable(isolatedAcceptedError.message));
+    QVERIFY(!isolatedJob.value(QStringLiteral("jobId")).toString().isEmpty());
 
     // Com mounts válidos o create síncrono precisa aceitar o array e iniciar o
     // job. A distro desconhecida falha antes de qualquer download/QEMU.

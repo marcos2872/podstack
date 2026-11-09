@@ -1,20 +1,16 @@
 PENDÊNCIAS — PodStack
 Atualizado: 2026-11-09
-Parada solicitada: após a T4-13 (concluída), antes da T4-14.
+Parada solicitada: após a T4-14 (concluída), antes da T4-15.
 
 SITUAÇÃO ATUAL
 - Branch feat/m4-machines; PR #11 aberta (feat/m4-machines -> main).
 - Últimos commits: 53a33b8 (T4-10 clone/rename/default), b982643 (T4-09 export/import),
   0031fcb (pendências pós-T4-08), 2a48e9e (T4-08 arquivos SSH/SCP) + os commits da
-  T4-11, T4-12 e T4-13.
-- T4-05, T4-07, T4-08, T4-09, T4-10, T4-11, T4-12 e T4-13 concluídas. T4-13 nesta
-  sessão (SSH agent forwarding: flag no meta, toggle sem restart, `-A` no CLI/GUI).
-- CI da PR bloqueada por partial outage do GitHub Actions (runs sem job,
-  "Internal server error"). Reexecutar quando o Actions normalizar:
-  gh run rerun <run-id>
+  T4-11, T4-12, T4-13 e T4-14.
+- T4-05, T4-07, T4-08, T4-09, T4-10, T4-11, T4-12, T4-13 e T4-14 concluídas. T4-14 nesta
+  sessão (modo isolado: sem mounts/agent, rede restrita e SSH local).
 
 PRÓXIMAS TAREFAS DO M4 (em ordem)
-- T4-14 (P1) — modo isolado (sem mounts/host, rede restrita; remover o UNSUPPORTED de isolated).
 - T4-15 (P2) — console serial/VNC para troubleshooting.
 - T4-16 (P2) — snapshots de disco (criar/restaurar).
 
@@ -67,6 +63,16 @@ MELHORIAS CONHECIDAS DA T4-13 (não bloqueiam o commit)
   não recebe a flag explicitamente.
 - Não há validação se o host tem `SSH_AUTH_SOCK` ativo; com o flag ligado e sem agent, o
   guest simplesmente não vê chaves (o `ssh` continua funcionando).
+
+MELHORIAS CONHECIDAS DA T4-14 (não bloqueiam o commit)
+- `isolated` só pode ser definido na criação; `machines.update` ainda não alterna o modo
+  (exigiria recriar/ajustar mounts e portas com segurança).
+- A CLI não expõe mounts, então `--isolated` é validado pelo daemon junto com
+  `--forward-ssh-agent`; combinações inválidas retornam `PODSTACK_INVALID_PARAMS`.
+- Importar arquivo antigo (sem o campo `isolated`) mantém o comportamento anterior
+  (`isolateNetwork`/`forwardSshAgent` do manifesto) e não infere isolamento.
+- O modo cobre rede user-mode (`restrict=on`) e mounts/agent, mas não adiciona cgroups,
+  seccomp, limites de I/O ou proteção contra falhas do QEMU/kernel do host.
 
 CRITÉRIOS DE SAÍDA DO M4 A VALIDAR
 - Ubuntu, Debian e Fedora criadas e acessíveis por SSH em VM real.
