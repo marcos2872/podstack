@@ -112,7 +112,7 @@
 |---|---|---|
 | `test_core` | `configSetupDefaults`, `configMergePreservesDefaults` | defaults de `setup.*`/`app.showOnboarding` e merge recursivo |
 | `test_rpc` | `setupFlow` | `setup.status/check/validate/complete`, ids dos checks, `PODSTACK_INVALID_PARAMS` e `PODSTACK_CONFIRMATION_REQUIRED` |
-| `test_gui` | `backendSetup` | `setupRefresh`, `setupLoaded`, `setupChecks`, `setupSkip` e `setupComplete` |
+| `test_gui` | `backendSetup` | `setupRefresh`, `setupLoaded`, `setupChecks`, `setupSkip` e `setupComplete`; sem os checks obrigatórios no host (CI), valida a recusa e faz `QSKIP` |
 | `test_cli` | `setupCommand` | `podstack setup --check`, `--validate` e a exigência de `--yes` |
 | `test_tray` | `containersMenu*`, `status*` | menu Abrir/Containers/Activity/Sair, agrupamento por projeto, overflow, status normal/atenção/erro e defaults de config |
 | `test_single_instance` | `secondInstance*` | primária/secundária, comandos `show`/`quit`, socket órfão e permissões 0600 |

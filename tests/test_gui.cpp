@@ -626,6 +626,13 @@ void GuiTest::backendSetup()
     QVERIFY(!backend.setupCompleted());
 
     backend.setupComplete();
+    if (!backend.setupMandatoryOk()) {
+        // O host (ex.: container do CI) não tem QEMU/OVMF/virtiofsd. A recusa é
+        // parte do contrato; o caminho de sucesso é coberto onde os checks passam.
+        QVERIFY(!backend.setupError().isEmpty());
+        QVERIFY(!backend.setupCompleted());
+        QSKIP("Checks obrigatórios indisponíveis no host; conclusão bloqueada.");
+    }
     QTRY_VERIFY_WITH_TIMEOUT(backend.setupCompleted(), 10000);
     QVERIFY(!backend.setupPending());
 }
