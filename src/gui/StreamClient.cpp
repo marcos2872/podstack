@@ -66,6 +66,23 @@ void StreamClient::subscribeSystemStats(int intervalSeconds)
     connectSocket();
 }
 
+void StreamClient::subscribeMachineStats(const QString &id, int intervalSeconds)
+{
+    stop(true);
+    m_kind = QStringLiteral("machine-stats");
+    m_unsubscribeMethod = QStringLiteral("machines.stats.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("machines.stats.subscribe")},
+        {QStringLiteral("params"),
+         QJsonObject{{QStringLiteral("id"), id},
+                     {QStringLiteral("intervalSeconds"), intervalSeconds}}},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
 void StreamClient::pullImage(const QString &reference, const QString &platform)
 {
     stop(true);
@@ -303,6 +320,8 @@ void StreamClient::onReadyRead()
             emit stats(params);
         } else if (method == QStringLiteral("system.stats.delta")) {
             emit systemStats(params);
+        } else if (method == QStringLiteral("machines.stats.delta")) {
+            emit machineStats(params);
         } else if (method == QStringLiteral("images.pull.delta")) {
             emit pullEvent(params);
         } else if (method == QStringLiteral("compose.logs.delta")) {
@@ -353,6 +372,17 @@ void StreamClient::onReadyRead()
                            .toObject()
                            .value(QStringLiteral("message"))
                            .toString());
+        } else if (method == QStringLiteral("machines.stats.error")) {
+            const QJsonObject errorObject = params.value(QStringLiteral("error")).toObject();
+            QString text = errorObject.value(QStringLiteral("message")).toString();
+            const QString remediation = errorObject.value(QStringLiteral("remediation")).toString();
+            if (!remediation.isEmpty()) {
+                text += QStringLiteral(" ") + remediation;
+            }
+            emit error(text);
+            m_subscriptionId.clear();
+            m_kind.clear();
+            m_socket.abort();
         }
     }
 }

@@ -74,6 +74,7 @@ add_library(podstack_machines STATIC
     src/machines/QmpClient.cpp
     src/machines/QemuRuntime.cpp
     src/machines/MachineManager.cpp
+    src/machines/MachineStats.cpp
 )
 target_include_directories(podstack_machines PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_machines PUBLIC

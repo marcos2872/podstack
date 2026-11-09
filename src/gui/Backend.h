@@ -53,6 +53,16 @@ class Backend : public QObject {
     Q_PROPERTY(QStringList machineLogLines READ machineLogLines NOTIFY machineLogsChanged)
     Q_PROPERTY(QString machineLogsCapturedAt READ machineLogsCapturedAt
                NOTIFY machineLogsChanged)
+    Q_PROPERTY(QVariantMap machineStats READ machineStats NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineCpuHistory READ machineCpuHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineMemHistory READ machineMemHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineNetRxHistory READ machineNetRxHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineNetTxHistory READ machineNetTxHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QString machineStatsError READ machineStatsError NOTIFY machineStatsChanged)
     Q_PROPERTY(bool machineCreateActive READ machineCreateActive NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateJobId READ machineCreateJobId NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateStage READ machineCreateStage NOTIFY machineCreateStateChanged)
@@ -117,6 +127,12 @@ public:
     QVariantMap machineInfo() const { return m_machineInfo; }
     QStringList machineLogLines() const { return m_machineLogLines; }
     QString machineLogsCapturedAt() const { return m_machineLogsCapturedAt; }
+    QVariantMap machineStats() const { return m_machineStats; }
+    QVariantList machineCpuHistory() const { return m_machineCpuHistory; }
+    QVariantList machineMemHistory() const { return m_machineMemHistory; }
+    QVariantList machineNetRxHistory() const { return m_machineNetRxHistory; }
+    QVariantList machineNetTxHistory() const { return m_machineNetTxHistory; }
+    QString machineStatsError() const { return m_machineStatsError; }
     bool machineCreateActive() const { return m_machineCreateActive; }
     QString machineCreateJobId() const { return m_machineCreateJobId; }
     QString machineCreateStage() const { return m_machineCreateStage; }
@@ -185,6 +201,8 @@ public:
     Q_INVOKABLE void refreshMachineDistros();
     Q_INVOKABLE void loadMachineInfo(const QString &id);
     Q_INVOKABLE void loadMachineLogs(const QString &id, int tail = 200);
+    Q_INVOKABLE void startMachineStats(const QString &id);
+    Q_INVOKABLE void stopMachineStats();
     Q_INVOKABLE void copyMachineLogs();
     Q_INVOKABLE void openMachineSsh(const QString &id);
     Q_INVOKABLE void machineLifecycle(const QString &action, const QString &id,
@@ -252,6 +270,7 @@ signals:
     void machineDistrosChanged();
     void machineInfoChanged();
     void machineLogsChanged();
+    void machineStatsChanged();
     void machineCreateStateChanged();
     void eventsChanged();
     void containerEvent(const QVariantMap &event);
@@ -306,6 +325,7 @@ private:
     StreamClient m_composeStream;
     StreamClient m_buildStream;
     StreamClient m_machineCreateStream;
+    StreamClient m_machineStatsStream;
     StreamClient m_setupStream;
     StreamClient m_eventsStream;
     QTimer m_eventTimer;
@@ -351,6 +371,12 @@ private:
     QVariantMap m_machineInfo;
     QStringList m_machineLogLines;
     QString m_machineLogsCapturedAt;
+    QVariantMap m_machineStats;
+    QVariantList m_machineCpuHistory;
+    QVariantList m_machineMemHistory;
+    QVariantList m_machineNetRxHistory;
+    QVariantList m_machineNetTxHistory;
+    QString m_machineStatsError;
     QString m_pendingMachineInfoId;
     QString m_pendingMachineLogsId;
     int m_pendingMachineLogsTail = 200;

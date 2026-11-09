@@ -282,6 +282,9 @@ seguintes.
 | `machines.delete` | `{id, force?}` | `{deleted:true}` |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile}` |
+| `machines.stats` | `{id}` | `MachineStats` (one-shot via SSH) |
+| `machines.stats.subscribe` | `{id, intervalSeconds?}` | `{subscriptionId, id}` |
+| `machines.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 
 **Planejados (não implementados ainda):**
 
@@ -340,6 +343,34 @@ neste método (console serial é a T4-15).
 conteúdo da chave. `PODSTACK_SSH_CONFIG` sobrescreve o caminho do config em dev/teste.
 Erros: `PODSTACK_NOT_FOUND` (machine inexistente), `PODSTACK_IO_ERROR` (chave/config
 inacessível) e `PODSTACK_PERMISSION_DENIED` (permissões não corrigíveis).
+
+**Métricas.** `machines.stats` coleta CPU, memória, rede e disco **de dentro da machine** por
+um SSH one-shot (sem `qemu-guest-agent`). O comando remoto é fixo e não recebe entrada do
+usuário: lê `/proc/stat`, `/proc/meminfo`, `/proc/net/dev`, `/proc/diskstats` e
+`df -B1 -P /`. O `ssh` local roda sem shell, com `-i <chave> -p <porta>`,
+`IdentitiesOnly=yes`, `StrictHostKeyChecking=accept-new`, `BatchMode=yes` e
+`ConnectTimeout=3`, com timeout total de 6 s. A machine precisa estar `running`; a chave
+privada precisa existir e ser regular (sem symlink). Taxas de rede/disco e CPU usam a
+diferença entre amostras; a primeira amostra de cada machine vem com taxas zero.
+
+```ts
+interface MachineStats {
+  ts: number; cpuPercent: number;
+  memUsed: number; memTotal: number; memPercent: number;
+  netRx: number; netTx: number;
+  diskRead: number; diskWrite: number;
+  diskUsed: number; diskTotal: number; diskPercent: number;
+}
+```
+
+`machines.stats.subscribe` repete a coleta a cada `intervalSeconds` (1..10, default 2) em
+background e devolve `{subscriptionId, id}`. Cada amostra chega como
+`machines.stats.delta {subscriptionId, id, ...MachineStats}`; em falha o daemon envia
+`machines.stats.error {subscriptionId, id, error}` e encerra a subscription. O cancelamento
+usa `machines.stats.unsubscribe {subscriptionId}` como as demais subscriptions. Erros:
+`PODSTACK_CONFLICT` (machine não está `running`), `PODSTACK_UNSUPPORTED` (cliente SSH
+ausente), `PODSTACK_TIMEOUT`, `PODSTACK_IO_ERROR` (SSH/chave/resposta inválida) e os erros
+de resolução da machine. `PODSTACK_SSH_BINARY` sobrescreve o binário do SSH em dev/teste.
 
 `DistroImage`: `{distro, version, arch, default, url, checksum, algorithm, size, cached}`.
 `machines.distros` lê o registry pinado no binário e consulta o cache local (sem hash e sem
@@ -521,7 +552,25 @@ Todas usam `method: "<canal>.delta"` e `params.subscriptionId`.
 - `intervalSeconds` é limitado a `1..10` (default `2`).
 - `system.stats.error` segue o mesmo formato de erro das demais subscriptions.
 
-### 5.6 Job
+### 5.6 Stats de machines
+
+```json
+{ "jsonrpc":"2.0", "method":"machines.stats.delta",
+  "params": {
+    "subscriptionId":"sub-4", "id":"machine-1", "ts":1794180316689,
+    "cpuPercent":12.5, "memUsed":1073741824, "memTotal":2147483648,
+    "memPercent":50.0, "netRx":2048, "netTx":1024,
+    "diskRead":0, "diskWrite":0,
+    "diskUsed":2500000000, "diskTotal":10000000000, "diskPercent":25.0
+  } }
+```
+
+- Coleta via SSH one-shot dentro da machine; a primeira amostra de cada subscription vem
+  com `cpuPercent`/`netRx`/`netTx`/`diskRead`/`diskWrite` zerados.
+- `intervalSeconds` é limitado a `1..10` (default `2`).
+- `machines.stats.error` encerra a subscription e carrega o mesmo `ErrorData` das demais.
+
+### 5.7 Job
 
 ```json
 { "jsonrpc":"2.0", "method":"job.progress", "params": { "jobId":"j1", "progress":42, "message":"extraindo camada 3/5" } }

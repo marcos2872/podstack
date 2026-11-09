@@ -332,6 +332,12 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.ssh")) {
         return machineSsh(params, error);
     }
+    if (method == QStringLiteral("machines.stats")) {
+        return machineStats(params, error);
+    }
+    if (method == QStringLiteral("machines.stats.subscribe")) {
+        return subscribeMachineStats(params, notify, error);
+    }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
     }
@@ -373,6 +379,7 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
         || method == QStringLiteral("compose.logs.unsubscribe")
         || method == QStringLiteral("builds.unsubscribe")
         || method == QStringLiteral("setup.unsubscribe")
+        || method == QStringLiteral("machines.stats.unsubscribe")
         || method == QStringLiteral("events.unsubscribe")) {
         return unsubscribe(params);
     }
@@ -754,6 +761,86 @@ QJsonObject Daemon::machineSsh(const QJsonObject &params, Error *error)
     result.insert(QStringLiteral("port"), info.port);
     result.insert(QStringLiteral("user"), info.user);
     result.insert(QStringLiteral("identityFile"), info.identityFile);
+    return result;
+}
+
+QJsonObject Daemon::machineStats(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+    return m_machineStats.sample(machine, info, error);
+}
+
+QJsonObject Daemon::subscribeMachineStats(const QJsonObject &params, const Notify &notify,
+                                          Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+
+    const int interval = qBound(1, params.value(QStringLiteral("intervalSeconds")).toInt(2), 10);
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+
+    (void)QtConcurrent::run([this, machine, info, interval, subscriptionId, subscription,
+                             notify] {
+        MachineStatsCollector collector;
+        while (!subscription->cancel.load()) {
+            Error sampleError;
+            QJsonObject sample = collector.sample(machine, info, &sampleError);
+            if (!sample.isEmpty()) {
+                sample.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                sample.insert(QStringLiteral("id"), machine.id);
+                notify(QStringLiteral("machines.stats.delta"), sample);
+            } else if (!sampleError.isEmpty()) {
+                QJsonObject payload;
+                payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                payload.insert(QStringLiteral("id"), machine.id);
+                payload.insert(QStringLiteral("error"), sampleError.toJson());
+                notify(QStringLiteral("machines.stats.error"), payload);
+                break;
+            }
+
+            for (int tick = 0; tick < interval * 10; ++tick) {
+                if (subscription->cancel.load()) {
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    result.insert(QStringLiteral("id"), machine.id);
     return result;
 }
 

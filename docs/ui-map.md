@@ -131,12 +131,12 @@ Abas por tipo (estado do M2):
 |---|---|---|---|---|---|
 | **Info** | ✅ | ✅ | planejado | planejado | nome, imagem, portas, estado, health, ações |
 | **Logs** | ✅ | ✅ | — | — | container: streaming/follow; machine: one-shot + Atualizar |
-| **Stats** | ✅ | planejado | — | — | CPU, memória, rede, disco/PIDs + gráfico |
+| **Stats** | ✅ | ✅ | — | — | CPU, memória, rede, disco/PIDs + gráfico; machine via SSH (2 s) |
 | **Files** | ✅ | planejado | planejado | — | listar e baixar para `~/Downloads` |
 | **Terminal** | janela nativa | planejado | — | — | QTermWidget; embutir no inspector no M3 |
 | **Inspect** | CLI `podstack inspect` | — | — | — | aba GUI no M2 |
 
-Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info e Logs do `console.log` (com seleção de texto, copiar e horário da captura) e permite criar (com senha opcional só em hash), start/stop/restart, abrir SSH em terminal e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
+Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info, Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash), start/stop/restart, abrir SSH em terminal e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 
@@ -155,6 +155,11 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - Cards: CPU %, memória (usado/limite), rede RX/TX, disco R/W, PIDs.
 - Gráfico de linha (60 s) com tooltip; atualização 2 s.
 - Botão pausar/retomar.
+- **Machines (M4):** a aba **Stats** coleta de dentro da VM por SSH one-shot a cada 2 s
+  (`machines.stats.subscribe`) e mostra cards de CPU, RAM (usado/total), disco (usado/total),
+  rede ↓/↑ e I/O de disco (leitura/escrita), com sparklines de CPU/RAM (0–100) e rede
+  (autoescala). Ao abrir a aba a subscription começa; ao sair, é cancelada. Estados vazios
+  (“aguardando amostras”, machine parada) e erros de SSH aparecem no próprio painel.
 
 ### 5.3 Logs
 

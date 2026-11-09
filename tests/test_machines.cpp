@@ -12,6 +12,7 @@
 #include "machines/DistroRegistry.h"
 #include "machines/MachineManager.h"
 #include "machines/MachineMeta.h"
+#include "machines/MachineStats.h"
 #include "machines/MachineStore.h"
 #include "machines/QemuCommand.h"
 #include "machines/QemuRuntime.h"
@@ -52,6 +53,7 @@ using PodStack::MachineMeta;
 using PodStack::MachineMetaFile;
 using PodStack::MachineMount;
 using PodStack::MachinePort;
+using PodStack::MachineStatsCollector;
 using PodStack::MachineStore;
 using PodStack::QemuCommand;
 using PodStack::QemuRuntime;
@@ -472,6 +474,7 @@ private slots:
     void machineManagerPort();
     void sshConfigPreserves();
     void machineManagerSsh();
+    void machineStats();
     void qemuRuntimeIntegration();
 
 private:
@@ -2376,6 +2379,163 @@ void MachinesTest::machineManagerSsh()
     QVERIFY(!QString::fromUtf8(config.readAll()).contains(QStringLiteral("podstack: manager-ssh")));
     config.close();
     QVERIFY(!QFileInfo::exists(meta.sshKeyPath));
+}
+
+void MachinesTest::machineStats()
+{
+    const QString root = m_root + QStringLiteral("/machine-stats");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString keyPath = root + QStringLiteral("/id_ed25519");
+    QFile key(keyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    const QString argsLog = root + QStringLiteral("/ssh-args.log");
+    const QString counter = root + QStringLiteral("/ssh-counter");
+    const QString failFlag = root + QStringLiteral("/ssh-fail");
+    const QString fakeSsh = root + QStringLiteral("/ssh-fake.sh");
+    QFile script(fakeSsh);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    const QString scriptBody =
+        QStringLiteral(
+            "#!/bin/sh\n"
+            "echo \"$@\" >> \"%1\"\n"
+            "if [ -f \"%3\" ]; then\n"
+            "  echo \"ssh: connect to host 127.0.0.1 port 32222: Connection refused\" >&2\n"
+            "  exit 255\n"
+            "fi\n"
+            "count=0\n"
+            "if [ -f \"%2\" ]; then count=$(cat \"%2\"); fi\n"
+            "count=$((count + 1))\n"
+            "echo \"$count\" > \"%2\"\n"
+            "if [ \"$count\" -eq 1 ]; then\n"
+            "  echo \"cpu  100 0 100 800 0 0 0 0\"\n"
+            "  net=\"  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\"\n"
+            "  disk=\"   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\"\n"
+            "else\n"
+            "  echo \"cpu  200 0 200 1200 0 0 0 0\"\n"
+            "  net=\"  eth0: 3000 20 0 0 0 0 0 0 2500 25 0 0 0 0 0 0\"\n"
+            "  disk=\"   8 0 vda 300 0 600 0 60 0 800 0 0 0 0 0 0 0 0 0 0\"\n"
+            "fi\n"
+            "echo \"__PODSTACK_MEM__\"\n"
+            "echo \"MemTotal:        2097152 kB\"\n"
+            "echo \"MemAvailable:    1048576 kB\"\n"
+            "echo \"__PODSTACK_NET__\"\n"
+            "echo \"Inter-|   Receive                                                |  Transmit\"\n"
+            "echo \" face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\"\n"
+            "echo \"$net\"\n"
+            "echo \"__PODSTACK_DISK__\"\n"
+            "echo \"$disk\"\n"
+            "echo \"__PODSTACK_DF__\"\n"
+            "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
+            "echo \"/dev/vda1    10000000000  2500000000  7500000000      25%% /\"\n")
+            .arg(argsLog, counter, failFlag);
+    script.write(scriptBody.toUtf8());
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                  | QFileDevice::ExeOwner));
+
+    qputenv("PODSTACK_SSH_BINARY", fakeSsh.toUtf8());
+
+    MachineMeta meta;
+    meta.id = QStringLiteral("stats-machine");
+    meta.name = QStringLiteral("stats-demo");
+    meta.state = QStringLiteral("running");
+    meta.sshKeyPath = keyPath;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+
+    SshInfo info;
+    info.host = QStringLiteral("127.0.0.1");
+    info.port = meta.sshPort;
+    info.user = meta.sshUser;
+    info.identityFile = keyPath;
+
+    MachineStatsCollector collector;
+    PodStack::Error error;
+    const QJsonObject first = collector.sample(meta, info, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(first.value(QStringLiteral("cpuPercent")).toDouble(), 0.0);
+    QCOMPARE(first.value(QStringLiteral("memUsed")).toInteger(), 1073741824LL);
+    QCOMPARE(first.value(QStringLiteral("memTotal")).toInteger(), 2147483648LL);
+    QCOMPARE(first.value(QStringLiteral("memPercent")).toDouble(), 50.0);
+    QCOMPARE(first.value(QStringLiteral("netRx")).toInteger(), 0);
+    QCOMPARE(first.value(QStringLiteral("netTx")).toInteger(), 0);
+    QCOMPARE(first.value(QStringLiteral("diskRead")).toInteger(), 0);
+    QCOMPARE(first.value(QStringLiteral("diskWrite")).toInteger(), 0);
+    QCOMPARE(first.value(QStringLiteral("diskUsed")).toInteger(), 2500000000LL);
+    QCOMPARE(first.value(QStringLiteral("diskTotal")).toInteger(), 10000000000LL);
+    QCOMPARE(first.value(QStringLiteral("diskPercent")).toDouble(), 25.0);
+    QVERIFY(first.value(QStringLiteral("ts")).toInteger() > 0);
+
+    QTest::qWait(1000);
+    error = {};
+    const QJsonObject second = collector.sample(meta, info, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY2(second.value(QStringLiteral("cpuPercent")).toDouble() > 30.0
+                 && second.value(QStringLiteral("cpuPercent")).toDouble() < 36.5,
+             qPrintable(QString::number(
+                 second.value(QStringLiteral("cpuPercent")).toDouble())));
+    QVERIFY2(second.value(QStringLiteral("netRx")).toInteger() > 1000,
+             qPrintable(QString::number(second.value(QStringLiteral("netRx")).toInteger())));
+    QVERIFY2(second.value(QStringLiteral("netTx")).toInteger() > 1000,
+             qPrintable(QString::number(second.value(QStringLiteral("netTx")).toInteger())));
+    QVERIFY2(second.value(QStringLiteral("diskRead")).toInteger() > 100000,
+             qPrintable(QString::number(second.value(QStringLiteral("diskRead")).toInteger())));
+    QVERIFY2(second.value(QStringLiteral("diskWrite")).toInteger() > 100000,
+             qPrintable(QString::number(second.value(QStringLiteral("diskWrite")).toInteger())));
+
+    QFile argsFile(argsLog);
+    QVERIFY(argsFile.open(QIODevice::ReadOnly));
+    const QString argsText = QString::fromUtf8(argsFile.readAll());
+    QVERIFY(argsText.contains(QStringLiteral("-i")));
+    QVERIFY(argsText.contains(keyPath));
+    QVERIFY(argsText.contains(QStringLiteral("-p 32222")));
+    QVERIFY(argsText.contains(QStringLiteral("IdentitiesOnly=yes")));
+    QVERIFY(argsText.contains(QStringLiteral("StrictHostKeyChecking=accept-new")));
+    QVERIFY(argsText.contains(QStringLiteral("BatchMode=yes")));
+    QVERIFY(argsText.contains(QStringLiteral("ConnectTimeout=3")));
+    QVERIFY(argsText.contains(QStringLiteral("podstack@127.0.0.1")));
+    QVERIFY(argsText.contains(QStringLiteral("__PODSTACK_DF__")));
+    QVERIFY(argsText.contains(QStringLiteral("df -B1 -P /")));
+
+    collector.reset();
+    error = {};
+    const QJsonObject afterReset = collector.sample(meta, info, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(afterReset.value(QStringLiteral("cpuPercent")).toDouble(), 0.0);
+    QCOMPARE(afterReset.value(QStringLiteral("netRx")).toInteger(), 0);
+
+    MachineMeta stopped = meta;
+    stopped.state = QStringLiteral("stopped");
+    error = {};
+    QVERIFY(collector.sample(stopped, info, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    MachineMeta missingKey = meta;
+    missingKey.sshKeyPath = root + QStringLiteral("/missing-key");
+    error = {};
+    QVERIFY(collector.sample(missingKey, info, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QFile fail(failFlag);
+    QVERIFY(fail.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    fail.close();
+    error = {};
+    QVERIFY(collector.sample(meta, info, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(!error.detail.isEmpty());
+    QFile::remove(failFlag);
+
+    qputenv("PODSTACK_SSH_BINARY", "/nonexistent/podstack-ssh");
+    error = {};
+    QVERIFY(collector.sample(meta, info, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    qunsetenv("PODSTACK_SSH_BINARY");
 }
 
 void MachinesTest::qemuRuntimeIntegration()

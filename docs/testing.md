@@ -60,7 +60,9 @@
   → `PODSTACK_NOT_FOUND`, machine semeada devolve as últimas linhas e respeita `tail`,
   `console.log` ausente → `{lines:[]}` e symlink → `PODSTACK_IO_ERROR`; `ssh` inexistente →
   `PODSTACK_NOT_FOUND` e machine semeada com chave/config devolve
-  `{host,port,user,identityFile}`.
+  `{host,port,user,identityFile}`; `stats` inexistente → `PODSTACK_NOT_FOUND` e machine
+  semeada com SSH falso devolve CPU/memória/rede/disco/df; `stats.subscribe` entrega
+  `machines.stats.delta` e aceita `machines.stats.unsubscribe`.
 - `system.df`: detalhado devolve `sections.images/containers/volumes` com contagens, itens,
   flags (`dangling`, `unused`, `running`, `inUse`) e totais; `detailed:false` mantém
   contagens/totais e omite `items`; `json` bruto permanece intacto (fixture do
@@ -183,6 +185,9 @@ plataforma continua no Libpod e não usa o override.
 | `test_rpc` | `multiPlatformBuild` | manifest list via CLI falso: sucesso, falha, cancelamento, `platforms` no histórico e validação 1..8/`os/arch[/variant]` |
 | `test_cli` | `composeAndBuild` | `build --platform p1,p2` (argv do CLI falso) e coluna `PLATFORMS` em `builds ls` |
 | `test_gui` | `backendM3` | `startBuild` com `platforms` separadas por vírgula e `platforms` no item do histórico |
+| `test_machines` | `machineStats` | fake de `PODSTACK_SSH_BINARY` imprime os marcadores e dados de `/proc`/`df`: CPU/memória/disco/df na primeira amostra, taxas na segunda, `reset()` zera as taxas, machine parada → `PODSTACK_CONFLICT`, chave ausente/SSH falhando → `PODSTACK_IO_ERROR` e SSH ausente → `PODSTACK_UNSUPPORTED`; valida `-i/-p`, `BatchMode`, `ConnectTimeout` e o comando remoto fixo |
+| `test_rpc` | `machineStats` | `machines.stats` com machine semeada (chave + fake SSH) devolve campos, inexistente → `PODSTACK_NOT_FOUND`; `machines.stats.subscribe` entrega `machines.stats.delta` com `subscriptionId`/`id` e `unsubscribe` cancela |
+| `test_gui` | `backendMachineStats` | `startMachineStats` popula `machineStats` e os quatro históricos via fake SSH do daemon; `stopMachineStats` encerra o stream; id vazio → erro em `lastError` |
 
 **Validação manual da bandeja (niri + Noctalia):** fechar a janela mantém o processo e o SNI;
 `podstack-gui` (segunda instância) foca a janela; `--quit` encerra; o DBusMenu expõe Containers com
@@ -202,7 +207,8 @@ gera `Notify` com “Container falhou”.
 | Metadados e índice (`test_machines`) | `MachineMeta`: round-trip de todos os campos + portas/mounts, `meta.json` `0600` em diretório `0700` e sem temporário residual; arquivo ausente → `PODSTACK_NOT_FOUND`, JSON inválido → `PODSTACK_IO_ERROR`. `MachineStore`: open em DB temporário, upsert/list/get/getByName/updateState/remove, cascade de portas/mounts, mesmas tabelas no `podstack.db` do `BuildStore` (WAL, conexões independentes) e `machinesDir`/`machineDir` com validação de id |
 | QEMU/QMP (`test_machines`) | `QemuCommand`: x86 KVM/TCG, arm64, UEFI, `restrict=on` no isolamento e caminhos/recursos inválidos. `QmpClient` com `MockQmpServer` em `QThread`: handshake, `query-status`, `system_powerdown`, erro QMP, evento intercalado, timeout, `quit` com evento `SHUTDOWN`/fechamento e socket inexistente |
 | Runtime/manager (`test_machines`) | `MachineManager` com `FakeQemuRuntime`, `qemu-img` e `ssh-keygen` falsos: `validate` público e create baixa a imagem do mock, cria chave ed25519 (0600) + pública (0644), disco/seed/OVMF vars com 0600 em diretório 0700, injeta a pública no seed, preenche `sshKeyPath`, grava `meta.json`/SQLite e bloco SSH, escolhe porta livre, registra `-b` no qemu-img e inicia o runtime. Validação de nome/cpus/memória/disco/arch/distro e conflito de nome; start/stop/restart/remove com estados e erros refletidos no store e no `meta.json`; `sshInfo` por ID/nome e remoção do bloco; cancelamento durante o download sem diretório/DB; portas ocupadas puladas. Teste com QEMU/KVM real é opcional (`PODSTACK_QEMU_INTEGRATION=1`) e faz `QSKIP` sem binário, `/dev/kvm` ou OVMF |
-| RPC/CLI de machines (`test_rpc`, `test_cli`) | `machines.list/get/create/cancel/start/stop/restart/delete/logs/ssh` com erros estáveis; `machine list/info/logs/create/start/stop/restart/delete/ssh/--help`. `logs` cobre `tail`, arquivo ausente, symlink e machine inexistente; `ssh` cobre machine inexistente, campos retornados e argumentos montados pelo CLI com um `ssh` falso. A criação real (download + QEMU + cloud-init) **não** roda no CI: é manual ou integração opt-in, pois exige rede, QEMU/KVM e OVMF |
+| RPC/CLI de machines (`test_rpc`, `test_cli`) | `machines.list/get/create/cancel/start/stop/restart/delete/logs/ssh/stats` com erros estáveis; `machine list/info/logs/create/start/stop/restart/delete/ssh/--help`. `logs` cobre `tail`, arquivo ausente, symlink e machine inexistente; `ssh` cobre machine inexistente, campos retornados e argumentos montados pelo CLI com um `ssh` falso; `stats`/`stats.subscribe` usam um SSH falso no daemon e validam os campos, o delta e o unsubscribe. A criação real (download + QEMU + cloud-init) **não** roda no CI: é manual ou integração opt-in, pois exige rede, QEMU/KVM e OVMF |
+| Métricas de machines (`test_machines`, `test_gui`) | `MachineStatsCollector` com `PODSTACK_SSH_BINARY` falso: parsing de `/proc/stat`, `/proc/meminfo`, `/proc/net/dev`, `/proc/diskstats` e `df -B1 -P /`; CPU 33,3% e taxas de rede/disco na segunda amostra; `reset()` zera o histórico; validação de machine `running`/chave; erros de SSH/timeout/SSH ausente. Na GUI, `startMachineStats` popula os cards/históricos e `stopMachineStats` cancela a subscription. O SSH real é manual |
 | GUI de machines (`test_gui`) | `machines` vazio + sinal, `loadMachineInfo`/`loadMachineLogs` inexistente → erro, `machineLifecycle`/`removeMachine`/`openMachineSsh` inexistente → `lastError`/`actionFinished(false)`, `createMachine({})` falha na validação síncrona sem QEMU, e machine semeada no `MachineStore` lista/info/logs com `tail`. `openMachineSsh` da machine semeada emite `terminalRequested` com `ssh -i <chave> -p <porta> user@host` (dock/abas cobertos sem QML em `test_terminal`); o SSH real é manual |
 | Criar Ubuntu 24.04 | SSH responde ≤ 60 s; hostname/user corretos |
 | cloud-init | arquivo criado, pacote instalado, comando executado |
@@ -336,7 +342,10 @@ loopback) e não acessa a rede externa. Os testes de metadados/índice usam banc
 temporários, sem QEMU. O SSH usa `ssh-keygen` falso via `MachineManager::Options.sshKeygenBinary`
 e escreve em um config temporário via `Options.sshConfigPath`. No daemon e no CLI, o teste
 define `PODSTACK_SSH_CONFIG` para isolar o `~/.ssh/config` real; o mesmo override pode ser
-usado no desenvolvimento. Rodar isolado:
+usado no desenvolvimento. As métricas de machines usam `PODSTACK_SSH_BINARY` apontando para
+um script falso que imprime os marcadores `__PODSTACK_*__` e dados sintéticos de `/proc`/`df`,
+sem abrir conexão real; o script também registra o argv para validar `-i`, `-p`,
+`BatchMode=yes`, `ConnectTimeout=3` e o comando remoto fixo. Rodar isolado:
 
 ```bash
 ctest --preset dev -R machines --output-on-failure

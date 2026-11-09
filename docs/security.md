@@ -171,6 +171,11 @@ encerra a janela da instância já em execução.
   (`~/.ssh` `0700`) e preserva blocos de terceiros. `machines.ssh` devolve apenas
   `host/port/user/identityFile`; o conteúdo da chave nunca aparece em log, UI ou resposta.
   O CLI usa `StrictHostKeyChecking=accept-new` e `IdentitiesOnly=yes`.
+- Métricas de machines (`machines.stats`/`stats.subscribe`) usam SSH one-shot **sem shell
+  local**, com comando remoto fixo (somente leitura de `/proc` e `df`), `BatchMode=yes`,
+  `IdentitiesOnly=yes`, `StrictHostKeyChecking=accept-new` e `ConnectTimeout=3`. A saída
+  bruta e os caminhos internos não são registrados em log; erros expõem apenas stderr
+  truncado e o id da machine.
 - Proxy: a URL de `network.proxy` pode conter usuário/senha. Ela **nunca** é registrada em
   log, ecoada em erro de validação ou incluída em diagnóstico; os erros são genéricos. O
   `config.json` é `0600`, e as variáveis vão ao container/machine pelo ambiente/cloud-init,

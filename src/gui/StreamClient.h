@@ -18,6 +18,7 @@ public:
     void subscribeLogs(const QString &id, int tail, bool follow);
     void subscribeStats(const QString &id, int intervalSeconds = 1);
     void subscribeSystemStats(int intervalSeconds = 2);
+    void subscribeMachineStats(const QString &id, int intervalSeconds = 2);
     void pullImage(const QString &reference, const QString &platform = {});
     void subscribeComposeLogs(const QString &project, const QString &service = {});
     void startBuild(const QJsonObject &params);
@@ -34,6 +35,7 @@ signals:
     void logLine(const QString &line);
     void stats(const QJsonObject &stats);
     void systemStats(const QJsonObject &sample);
+    void machineStats(const QJsonObject &sample);
     void pullEvent(const QJsonObject &event);
     void pullFinished(bool ok, const QString &error);
     void subscriptionReady(const QJsonObject &result);

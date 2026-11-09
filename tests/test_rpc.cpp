@@ -34,6 +34,7 @@ private slots:
     void machinesFlow();
     void machineLogs();
     void machineSsh();
+    void machineStats();
     void composeAndBuilds();
     void multiPlatformBuild();
     void setupFlow();
@@ -49,6 +50,7 @@ private:
     QString m_testDataDir;
     QString m_fakeProvider;
     QString m_fakePodman;
+    QString m_fakeSsh;
 };
 
 namespace {
@@ -65,8 +67,7 @@ void writeFakeProvider(const QString &path)
 }
 
 void writeFakePodman(const QString &path, const QString &logPath)
-{
-    QFile file(path);
+{    QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return;
     }
@@ -83,6 +84,33 @@ void writeFakePodman(const QString &path, const QString &logPath)
         "fi\n"
         "exit 0\n")
                                .arg(logPath);
+    file.write(script.toUtf8());
+    file.close();
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                        | QFileDevice::ExeOwner);
+}
+
+void writeFakeSsh(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    const QString script = QStringLiteral(
+        "#!/bin/sh\n"
+        "echo \"$@\" >> \"%1\"\n"
+        "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
+        "echo \"__PODSTACK_MEM__\"\n"
+        "echo \"MemTotal:        2097152 kB\"\n"
+        "echo \"MemAvailable:    1048576 kB\"\n"
+        "echo \"__PODSTACK_NET__\"\n"
+        "echo \"  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\"\n"
+        "echo \"__PODSTACK_DISK__\"\n"
+        "echo \"   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\"\n"
+        "echo \"__PODSTACK_DF__\"\n"
+        "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
+        "echo \"/dev/vda1    10000000000  2500000000  7500000000      25% /\"\n")
+                               .arg(path + QStringLiteral(".args.log"));
     file.write(script.toUtf8());
     file.close();
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
@@ -109,6 +137,8 @@ void RpcTest::initTestCase()
     writeFakeProvider(m_fakeProvider);
     m_fakePodman = m_testDataDir + QStringLiteral("/podman-fake.sh");
     writeFakePodman(m_fakePodman, m_testDataDir + QStringLiteral("/podman-args.log"));
+    m_fakeSsh = m_testDataDir + QStringLiteral("/ssh-fake.sh");
+    writeFakeSsh(m_fakeSsh);
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-rpc-%1.sock")
@@ -123,6 +153,7 @@ void RpcTest::initTestCase()
     environment.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     environment.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
     environment.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
+    environment.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeSsh);
     // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
     environment.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
                        QStringLiteral("unix:path=/tmp/podstack-rpc-no-system-bus.sock"));
@@ -1168,6 +1199,123 @@ void RpcTest::machineSsh()
     QVERIFY(QString::fromUtf8(config.readAll())
                 .contains(QStringLiteral("# >>> podstack: ssh-demo")));
     config.close();
+
+    QVERIFY(store.remove(meta.id));
+    QFile::remove(meta.sshKeyPath);
+    QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+}
+
+void RpcTest::machineStats()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.stats"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-stats-1");
+    meta.name = QStringLiteral("stats-demo");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/stats-id_ed25519");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    QVERIFY(QDir().mkpath(QFileInfo(meta.sshKeyPath).absolutePath()));
+    QFile key(meta.sshKeyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    error = {};
+    const QJsonObject sample =
+        client.call(QStringLiteral("machines.stats"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("stats-demo")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(sample.value(QStringLiteral("ts")).toInteger() > 0);
+    QCOMPARE(sample.value(QStringLiteral("cpuPercent")).toDouble(), 0.0);
+    QCOMPARE(sample.value(QStringLiteral("memUsed")).toInteger(), 1073741824LL);
+    QCOMPARE(sample.value(QStringLiteral("memTotal")).toInteger(), 2147483648LL);
+    QCOMPARE(sample.value(QStringLiteral("memPercent")).toDouble(), 50.0);
+    QCOMPARE(sample.value(QStringLiteral("netRx")).toInteger(), 0);
+    QCOMPARE(sample.value(QStringLiteral("netTx")).toInteger(), 0);
+    QCOMPARE(sample.value(QStringLiteral("diskRead")).toInteger(), 0);
+    QCOMPARE(sample.value(QStringLiteral("diskWrite")).toInteger(), 0);
+    QCOMPARE(sample.value(QStringLiteral("diskUsed")).toInteger(), 2500000000LL);
+    QCOMPARE(sample.value(QStringLiteral("diskTotal")).toInteger(), 10000000000LL);
+    QCOMPARE(sample.value(QStringLiteral("diskPercent")).toDouble(), 25.0);
+
+    QLocalSocket socket;
+    socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(socket.waitForConnected(3000));
+    QByteArray buffer;
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("machines.stats.subscribe")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("id"), meta.id},
+                              {QStringLiteral("intervalSeconds"), 1}}}});
+
+    QString subscriptionId;
+    QJsonObject delta;
+    for (int i = 0; i < 20 && delta.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 1) {
+            subscriptionId = message.value(QStringLiteral("result"))
+                                 .toObject()
+                                 .value(QStringLiteral("subscriptionId"))
+                                 .toString();
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.stats.delta")) {
+            delta = message.value(QStringLiteral("params")).toObject();
+        }
+    }
+    QVERIFY(!subscriptionId.isEmpty());
+    QVERIFY2(!delta.isEmpty(), "nenhum machines.stats.delta recebido");
+    QCOMPARE(delta.value(QStringLiteral("subscriptionId")).toString(), subscriptionId);
+    QCOMPARE(delta.value(QStringLiteral("id")).toString(), meta.id);
+    QCOMPARE(delta.value(QStringLiteral("memTotal")).toInteger(), 2147483648LL);
+    QCOMPARE(delta.value(QStringLiteral("diskPercent")).toDouble(), 25.0);
+
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 2},
+                 {QStringLiteral("method"), QStringLiteral("machines.stats.unsubscribe")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}}}});
+    QJsonObject unsubscribeResponse;
+    for (int i = 0; i < 20 && unsubscribeResponse.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 2) {
+            unsubscribeResponse = message;
+        }
+    }
+    QCOMPARE(unsubscribeResponse.value(QStringLiteral("result"))
+                 .toObject()
+                 .value(QStringLiteral("subscriptionId"))
+                 .toString(),
+             subscriptionId);
 
     QVERIFY(store.remove(meta.id));
     QFile::remove(meta.sshKeyPath);

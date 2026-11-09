@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import PodStack
 
-// Detalhe de uma machine: Info, Logs e ações de ciclo de vida.
+// Detalhe de uma machine: Info, Logs, Stats e ações de ciclo de vida.
 Rectangle {
     id: root
 
@@ -18,10 +18,66 @@ Rectangle {
     readonly property string machineState: machine && machine.state ? String(machine.state) : ""
     readonly property var portsList: machine && machine.ports ? machine.ports : []
     readonly property var mountsList: machine && machine.mounts ? machine.mounts : []
+    readonly property var stats: backend.machineStats || ({})
+    readonly property bool hasMachineStats: Object.keys(stats).length > 0
+    readonly property string statsUpdatedAt: {
+        const timestamp = Number(stats.ts || 0)
+        return timestamp > 0 ? Qt.formatDateTime(new Date(timestamp), "HH:mm:ss") : ""
+    }
 
     function formatGiB(bytes) {
         const value = Number(bytes || 0) / 1073741824
         return value > 0 ? value.toFixed(1) + " GiB" : "-"
+    }
+
+    function formatBytes(value) {
+        const number = Number(value || 0)
+        if (number < 1024) {
+            return number.toFixed(0) + " B"
+        }
+        const units = ["KiB", "MiB", "GiB", "TiB"]
+        let scaled = number / 1024
+        let index = 0
+        while (scaled >= 1024 && index < units.length - 1) {
+            scaled /= 1024
+            ++index
+        }
+        return scaled.toFixed(1) + " " + units[index]
+    }
+
+    function formatRate(value) {
+        return formatBytes(value) + "/s"
+    }
+
+    function formatPercent(value) {
+        return Number(value || 0).toFixed(1) + "%"
+    }
+
+    function selectTab(nextTab) {
+        if (root.tab === "stats" && nextTab !== "stats") {
+            backend.stopMachineStats()
+        }
+        root.tab = nextTab
+        if (nextTab === "logs") {
+            backend.loadMachineLogs(root.machineId, 200)
+        } else if (nextTab === "stats" && root.machineId.length > 0) {
+            backend.startMachineStats(root.machineId)
+        }
+    }
+
+    onMachineIdChanged: {
+        if (root.tab === "stats") {
+            backend.stopMachineStats()
+            if (root.machineId.length > 0) {
+                backend.startMachineStats(root.machineId)
+            }
+        }
+    }
+
+    Component.onDestruction: {
+        if (root.tab === "stats") {
+            backend.stopMachineStats()
+        }
     }
 
     function stateLabel(state) {
@@ -95,6 +151,93 @@ Rectangle {
                         + (mount.readOnly ? qsTr(" (somente leitura)") : ""))
         }
         return values.join("\n")
+    }
+
+    component MetricCard: Rectangle {
+        id: card
+
+        property string label: ""
+        property string value: ""
+        property string detail: ""
+
+        Layout.fillWidth: true
+        implicitHeight: 76
+        radius: Theme.radius
+        color: Theme.bgSurface2
+        border.width: 1
+        border.color: Theme.border
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 1
+
+            Text {
+                text: card.label
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                font.capitalization: Font.AllUppercase
+                font.letterSpacing: 0.5
+            }
+
+            Text {
+                text: card.value
+                color: Theme.textPrimary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontHeading - 3
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+
+            Text {
+                text: card.detail
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+        }
+    }
+
+    component ChartBox: Rectangle {
+        id: chart
+
+        property string label: ""
+        property var values: []
+        property color lineColor: Theme.cyan
+        property bool autoScale: false
+
+        Layout.fillWidth: true
+        Layout.preferredHeight: 78
+        radius: Theme.radius
+        color: Theme.bgSurface2
+        border.width: 1
+        border.color: Theme.border
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 2
+
+            Text {
+                text: chart.label
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+
+            Sparkline {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                values: chart.values
+                maxValue: chart.autoScale ? 0 : 100
+                autoScale: chart.autoScale
+                lineColor: chart.lineColor
+            }
+        }
     }
 
     color: Theme.bgSurface
@@ -200,6 +343,14 @@ Rectangle {
                 enabled: root.machineId.length > 0 && backend.actionActive === false
                 onClicked: root.deleteRequested(root.machineId)
             }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.leftMargin: 14
+            Layout.rightMargin: 14
+            Layout.bottomMargin: 8
+            spacing: 7
 
             Item { Layout.fillWidth: true }
 
@@ -207,17 +358,21 @@ Rectangle {
                 text: qsTr("Info")
                 size: "sm"
                 variant: root.tab === "info" ? "primary" : "ghost"
-                onClicked: root.tab = "info"
+                onClicked: root.selectTab("info")
             }
 
             ActionButton {
                 text: qsTr("Logs")
                 size: "sm"
                 variant: root.tab === "logs" ? "primary" : "ghost"
-                onClicked: {
-                    root.tab = "logs"
-                    backend.loadMachineLogs(root.machineId, 200)
-                }
+                onClicked: root.selectTab("logs")
+            }
+
+            ActionButton {
+                text: qsTr("Stats")
+                size: "sm"
+                variant: root.tab === "stats" ? "primary" : "ghost"
+                onClicked: root.selectTab("stats")
             }
         }
 
@@ -230,7 +385,7 @@ Rectangle {
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: root.tab === "logs" ? 1 : 0
+            currentIndex: root.tab === "logs" ? 1 : (root.tab === "stats" ? 2 : 0)
 
             Flickable {
                 id: infoFlick
@@ -424,6 +579,154 @@ Rectangle {
                         visible: backend.machineLogLines.length === 0
                         text: qsTr("Sem linhas de console.\nA machine ainda não inicializou ou o log está vazio.")
                         color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            Flickable {
+                id: statsFlick
+
+                clip: true
+                contentWidth: width
+                contentHeight: statsColumn.implicitHeight + 24
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar {}
+
+                ColumnLayout {
+                    id: statsColumn
+
+                    x: 14
+                    y: 12
+                    width: statsFlick.width - 28
+                    spacing: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Text {
+                            text: qsTr("Métricas via SSH")
+                            color: Theme.textSecondary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMicro
+                            font.weight: Font.DemiBold
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Text {
+                            visible: root.hasMachineStats && root.statsUpdatedAt.length > 0
+                            text: qsTr("última amostra %1").arg(root.statsUpdatedAt)
+                            color: Theme.textTertiary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMicro
+                        }
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        visible: root.hasMachineStats
+                        columns: 2
+                        columnSpacing: 8
+                        rowSpacing: 8
+
+                        MetricCard {
+                            label: qsTr("CPU")
+                            value: root.formatPercent(root.stats.cpuPercent)
+                            detail: qsTr("uso da machine")
+                        }
+
+                        MetricCard {
+                            label: qsTr("RAM")
+                            value: root.formatPercent(root.stats.memPercent)
+                            detail: root.formatBytes(root.stats.memUsed) + " / "
+                                    + root.formatBytes(root.stats.memTotal)
+                        }
+
+                        MetricCard {
+                            label: qsTr("Disco")
+                            value: root.formatPercent(root.stats.diskPercent)
+                            detail: root.formatBytes(root.stats.diskUsed) + " / "
+                                    + root.formatBytes(root.stats.diskTotal)
+                        }
+
+                        MetricCard {
+                            label: qsTr("Rede")
+                            value: "↓ " + root.formatRate(root.stats.netRx)
+                            detail: "↑ " + root.formatRate(root.stats.netTx)
+                        }
+
+                        MetricCard {
+                            label: qsTr("I/O de disco")
+                            value: "L " + root.formatRate(root.stats.diskRead)
+                            detail: "E " + root.formatRate(root.stats.diskWrite)
+                        }
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        visible: root.hasMachineStats
+                        columns: 2
+                        columnSpacing: 8
+                        rowSpacing: 8
+
+                        ChartBox {
+                            label: qsTr("CPU (%)")
+                            values: backend.machineCpuHistory
+                            lineColor: Theme.cyan
+                        }
+
+                        ChartBox {
+                            label: qsTr("RAM (%)")
+                            values: backend.machineMemHistory
+                            lineColor: Theme.indigo400
+                        }
+
+                        ChartBox {
+                            label: qsTr("Rede ↓")
+                            values: backend.machineNetRxHistory
+                            lineColor: Theme.cyan
+                            autoScale: true
+                        }
+
+                        ChartBox {
+                            label: qsTr("Rede ↑")
+                            values: backend.machineNetTxHistory
+                            lineColor: Theme.indigo400
+                            autoScale: true
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: backend.machineStatsError.length > 0
+                        text: backend.machineStatsError
+                        color: Theme.danger
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: !root.hasMachineStats && backend.machineStatsError.length === 0
+                        text: root.machineState === "running"
+                              ? qsTr("Aguardando amostras…")
+                              : qsTr("Inicie a machine para coletar métricas.")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.hasMachineStats && root.machineState !== "running"
+                        text: qsTr("A machine não está em execução; as métricas podem estar desatualizadas.")
+                        color: Theme.warning
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
                         wrapMode: Text.WordWrap

@@ -38,6 +38,7 @@ private slots:
     void backendStreams();
     void backendCatalog();
     void backendMachines();
+    void backendMachineStats();
     void backendTerminal();
     void backendM3();
     void backendErrors();
@@ -57,6 +58,7 @@ private:
     QString m_testDataDir;
     QString m_fakeProvider;
     QString m_fakePodman;
+    QString m_fakeSsh;
 };
 
 QProcessEnvironment GuiTest::daemonEnvironment() const
@@ -66,6 +68,7 @@ QProcessEnvironment GuiTest::daemonEnvironment() const
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
     env.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
+    env.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeSsh);
     // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
     env.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
                QStringLiteral("unix:path=/tmp/podstack-gui-no-system-bus.sock"));
@@ -118,6 +121,29 @@ void GuiTest::initTestCase()
     podman.close();
     QVERIFY(podman.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                   | QFileDevice::ExeOwner));
+
+    m_fakeSsh = m_testDataDir + QStringLiteral("/ssh-fake.sh");
+    QFile ssh(m_fakeSsh);
+    QVERIFY(ssh.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    const QString fakeSsh =
+        QStringLiteral("#!/bin/sh\n"
+                       "echo \"$@\" >> \"%1\"\n"
+                       "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
+                       "echo \"__PODSTACK_MEM__\"\n"
+                       "echo \"MemTotal:        2097152 kB\"\n"
+                       "echo \"MemAvailable:    1048576 kB\"\n"
+                       "echo \"__PODSTACK_NET__\"\n"
+                       "echo \"  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\"\n"
+                       "echo \"__PODSTACK_DISK__\"\n"
+                       "echo \"   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\"\n"
+                       "echo \"__PODSTACK_DF__\"\n"
+                       "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
+                       "echo \"/dev/vda1    10000000000  2500000000  7500000000      25% /\"\n")
+            .arg(m_testDataDir + QStringLiteral("/ssh-args.log"));
+    ssh.write(fakeSsh.toUtf8());
+    ssh.close();
+    QVERIFY(ssh.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                               | QFileDevice::ExeOwner));
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-gui-%1.sock")
@@ -607,6 +633,68 @@ void GuiTest::backendMachines()
     QVERIFY(sshArgs.contains(QStringLiteral("-p")));
     QVERIFY(sshArgs.contains(QStringLiteral("32222")));
     QCOMPARE(sshArgs.last(), QStringLiteral("podstack@127.0.0.1"));
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
+}
+
+void GuiTest::backendMachineStats()
+{
+    PodStack::Backend backend;
+    QSignalSpy statsSpy(&backend, &PodStack::Backend::machineStatsChanged);
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+
+    backend.startMachineStats(QString());
+    QVERIFY(!backend.machineStatsError().isEmpty());
+    QVERIFY(errorSpy.count() > 0);
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("gui-machine-stats");
+    meta.name = QStringLiteral("gui-stats");
+    meta.distro = QStringLiteral("debian");
+    meta.distroVersion = QStringLiteral("12");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.state = QStringLiteral("running");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
+    QFile keyFile(meta.sshKeyPath);
+    QVERIFY(keyFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    keyFile.write("test-key\n");
+    keyFile.close();
+    QVERIFY(keyFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    backend.startMachineStats(meta.id);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        backend.machineStats().value(QStringLiteral("memTotal")).toLongLong() > 0, 7000);
+    QVERIFY(statsSpy.count() > 0);
+    QCOMPARE(backend.machineStats().value(QStringLiteral("memTotal")).toLongLong(),
+             2147483648LL);
+    QCOMPARE(backend.machineStats().value(QStringLiteral("diskPercent")).toDouble(), 25.0);
+    QCOMPARE(backend.machineCpuHistory().size(), 1);
+    QCOMPARE(backend.machineMemHistory().size(), 1);
+    QCOMPARE(backend.machineNetRxHistory().size(), 1);
+    QCOMPARE(backend.machineNetTxHistory().size(), 1);
+    QVERIFY(backend.machineStatsError().isEmpty());
+
+    backend.stopMachineStats();
+    const int samplesAfterStop = backend.machineCpuHistory().size();
+    QTest::qWait(2300);
+    QCOMPARE(backend.machineCpuHistory().size(), samplesAfterStop);
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();

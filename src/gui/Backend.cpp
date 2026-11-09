@@ -253,6 +253,34 @@ Backend::Backend(QObject *parent)
         emit activityChanged();
     });
 
+    connect(&m_machineStatsStream, &StreamClient::machineStats, this,
+            [this](const QJsonObject &sample) {
+                m_machineStats = sample.toVariantMap();
+                const auto append = [](QVariantList &list, double value) {
+                    list.append(value);
+                    if (list.size() > 60) {
+                        list.removeFirst();
+                    }
+                };
+                append(m_machineCpuHistory,
+                       sample.value(QStringLiteral("cpuPercent")).toDouble());
+                append(m_machineMemHistory,
+                       sample.value(QStringLiteral("memPercent")).toDouble());
+                append(m_machineNetRxHistory,
+                       sample.value(QStringLiteral("netRx")).toDouble());
+                append(m_machineNetTxHistory,
+                       sample.value(QStringLiteral("netTx")).toDouble());
+                m_machineStatsError.clear();
+                emit machineStatsChanged();
+            });
+    connect(&m_machineStatsStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                m_machineStatsError = message;
+                m_lastError = message;
+                emit lastErrorChanged();
+                emit machineStatsChanged();
+            });
+
     connect(&m_pullStream, &StreamClient::pullEvent, this,
             [this](const QJsonObject &event) {
                 const QString status = event.value(QStringLiteral("status")).toString();
@@ -1236,6 +1264,32 @@ void Backend::stopActivityMonitor()
     m_activityActive = false;
     m_activityStream.unsubscribe();
     emit activityChanged();
+}
+
+void Backend::startMachineStats(const QString &id)
+{
+    m_machineStats.clear();
+    m_machineCpuHistory.clear();
+    m_machineMemHistory.clear();
+    m_machineNetRxHistory.clear();
+    m_machineNetTxHistory.clear();
+    m_machineStatsError.clear();
+    emit machineStatsChanged();
+
+    if (id.isEmpty()) {
+        m_machineStatsError = QStringLiteral("Machine inválida.");
+        m_lastError = m_machineStatsError;
+        emit lastErrorChanged();
+        emit machineStatsChanged();
+        return;
+    }
+
+    m_machineStatsStream.subscribeMachineStats(id, 2);
+}
+
+void Backend::stopMachineStats()
+{
+    m_machineStatsStream.unsubscribe();
 }
 
 QVariantMap Backend::settings() const

@@ -7,6 +7,7 @@
 #include "daemon/SetupManager.h"
 #include "machines/CloudImageCache.h"
 #include "machines/MachineManager.h"
+#include "machines/MachineStats.h"
 #include "podman/PodmanClient.h"
 
 #include <QHash>
@@ -94,6 +95,9 @@ private:
     QJsonObject machineDelete(const QJsonObject &params, Error *error);
     QJsonObject machineLogs(const QJsonObject &params, Error *error);
     QJsonObject machineSsh(const QJsonObject &params, Error *error);
+    QJsonObject machineStats(const QJsonObject &params, Error *error);
+    QJsonObject subscribeMachineStats(const QJsonObject &params, const Notify &notify,
+                                      Error *error);
     QJsonObject setupStatus();
     QJsonObject setupCheck(const QJsonObject &params);
     QJsonObject setupValidate();
@@ -120,6 +124,7 @@ private:
     SetupManager m_setup;
     HelperClient m_helper;
     MachineManager m_machines;
+    MachineStatsCollector m_machineStats;
     CloudImageCache m_cloudImages;
     std::mutex m_subscriptionsMutex;
     QHash<QString, std::shared_ptr<Subscription>> m_subscriptions;
