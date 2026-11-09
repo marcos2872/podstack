@@ -10,7 +10,8 @@ BusName=dev.podstack.Helper1
 ExecStart=/usr/libexec/podstack/podstack-helper
 User=root
 Group=root
-NoNewPrivileges=yes
+# Sem NoNewPrivileges: o dnf precisa da transição SELinux para rpm_script_t
+# ao executar scriptlets de RPM (nnp_transition é negado com a opção ligada).
 PrivateTmp=yes
 ProtectHome=yes
 ProtectKernelTunables=yes
