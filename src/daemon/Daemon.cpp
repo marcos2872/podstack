@@ -122,6 +122,148 @@ bool isWildcardHostIp(const QString &hostIp)
            || hostIp == QStringLiteral("::");
 }
 
+constexpr qint64 kMachineConsoleDefaultTail = 64 * 1024;
+constexpr qint64 kMachineConsoleMaxBytes = 512 * 1024;
+
+qint64 consoleTailBytes(const QJsonObject &params)
+{
+    qint64 tail = params.value(QStringLiteral("tailBytes")).toInteger(kMachineConsoleDefaultTail);
+    if (tail <= 0) {
+        tail = kMachineConsoleDefaultTail;
+    }
+    return qBound<qint64>(1, tail, kMachineConsoleMaxBytes);
+}
+
+/// Valida `machines/<id>/console.log` sem seguir symlink e sem sair do diretório.
+/// `exists` fica falso quando o arquivo ainda não foi criado (machine sem boot).
+bool checkMachineConsoleFile(const QString &directory, bool *exists, Error *error)
+{
+    if (exists) {
+        *exists = false;
+    }
+
+    const QString path = directory + QStringLiteral("/console.log");
+    const QFileInfo info(path);
+    if (info.isSymLink()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O console da machine não pode ser lido."),
+                                 QStringLiteral("symlink rejeitado"));
+        }
+        return false;
+    }
+    if (!info.exists()) {
+        return true;
+    }
+    if (!info.isFile()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O console da machine não é um arquivo regular."));
+        }
+        return false;
+    }
+
+    const QString canonicalDir = QFileInfo(directory).canonicalFilePath();
+    const QString canonicalFile = info.canonicalFilePath();
+    if (canonicalDir.isEmpty() || canonicalFile.isEmpty()
+        || !canonicalFile.startsWith(canonicalDir + QLatin1Char('/'))) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O console da machine está fora do diretório "
+                                                "esperado."));
+        }
+        return false;
+    }
+
+    if (exists) {
+        *exists = true;
+    }
+    return true;
+}
+
+bool readMachineConsoleTail(const QString &path, qint64 tailBytes, QByteArray *data,
+                            qint64 *endOffset, Error *error)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível ler o console da machine."));
+        }
+        return false;
+    }
+
+    const qint64 size = file.size();
+    const qint64 start = qMax<qint64>(0, size - tailBytes);
+    if (start > 0 && !file.seek(start)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível posicionar no console da "
+                                                "machine."));
+        }
+        return false;
+    }
+
+    if (data) {
+        *data = file.readAll();
+    }
+    if (endOffset) {
+        *endOffset = file.pos();
+    }
+    return true;
+}
+
+/// Lê até `maxBytes` a partir de `offset`. Se o arquivo encolheu, devolve
+/// `endOffset < offset` e nenhum dado para o chamador reiniciar do zero.
+bool readMachineConsoleChunk(const QString &path, qint64 offset, qint64 maxBytes,
+                             QByteArray *data, qint64 *endOffset, Error *error)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível ler o console da machine."));
+        }
+        return false;
+    }
+
+    const qint64 size = file.size();
+    if (size < offset) {
+        if (data) {
+            data->clear();
+        }
+        if (endOffset) {
+            *endOffset = size;
+        }
+        return true;
+    }
+    if (size == offset) {
+        if (data) {
+            data->clear();
+        }
+        if (endOffset) {
+            *endOffset = offset;
+        }
+        return true;
+    }
+    if (!file.seek(offset)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível posicionar no console da "
+                                                "machine."));
+        }
+        return false;
+    }
+
+    if (data) {
+        *data = file.read(qMin(maxBytes, size - offset));
+    }
+    if (endOffset) {
+        *endOffset = file.pos();
+    }
+    return true;
+}
+
 Error helperRequiredError()
 {
     return Error::make(
@@ -375,6 +517,12 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.logs")) {
         return machineLogs(params, error);
     }
+    if (method == QStringLiteral("machines.console.read")) {
+        return machineConsoleRead(params, error);
+    }
+    if (method == QStringLiteral("machines.console")) {
+        return subscribeMachineConsole(params, notify, error);
+    }
     if (method == QStringLiteral("machines.files.list")) {
         return machineFilesList(params, error);
     }
@@ -435,6 +583,7 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
         || method == QStringLiteral("builds.unsubscribe")
         || method == QStringLiteral("setup.unsubscribe")
         || method == QStringLiteral("machines.stats.unsubscribe")
+        || method == QStringLiteral("machines.console.unsubscribe")
         || method == QStringLiteral("events.unsubscribe")) {
         return unsubscribe(params);
     }
@@ -1176,61 +1325,23 @@ QJsonObject Daemon::machineLogs(const QJsonObject &params, Error *error)
         return {};
     }
 
-    const QString path = directory + QStringLiteral("/console.log");
-    const QFileInfo info(path);
-    if (info.isSymLink()) {
-        if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("O console da machine não pode ser lido."),
-                                 QStringLiteral("symlink rejeitado"));
-        }
+    bool consoleExists = false;
+    if (!checkMachineConsoleFile(directory, &consoleExists, error)) {
         return {};
     }
-    if (!info.exists()) {
+    if (!consoleExists) {
         return QJsonObject{{QStringLiteral("lines"), QJsonArray{}}};
     }
-    if (!info.isFile()) {
-        if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("O console da machine não é um arquivo regular."));
-        }
+
+    const QString path = directory + QStringLiteral("/console.log");
+    QByteArray consoleData;
+    qint64 start = 0;
+    if (!readMachineConsoleTail(path, kMachineConsoleMaxBytes, &consoleData, &start, error)) {
         return {};
     }
+    start = qMax<qint64>(0, start - consoleData.size());
 
-    const QString canonicalDir = QFileInfo(directory).canonicalFilePath();
-    const QString canonicalFile = info.canonicalFilePath();
-    if (canonicalDir.isEmpty() || canonicalFile.isEmpty()
-        || !canonicalFile.startsWith(canonicalDir + QLatin1Char('/'))) {
-        if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("O console da machine está fora do diretório "
-                                                "esperado."));
-        }
-        return {};
-    }
-
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível ler o console da machine."));
-        }
-        return {};
-    }
-
-    constexpr qint64 kMaxReadBytes = 512 * 1024;
-    const qint64 size = file.size();
-    const qint64 start = qMax<qint64>(0, size - kMaxReadBytes);
-    if (start > 0 && !file.seek(start)) {
-        if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível posicionar no console da "
-                                                "machine."));
-        }
-        return {};
-    }
-
-    QString text = QString::fromUtf8(file.readAll());
+    QString text = QString::fromUtf8(consoleData);
     if (start > 0) {
         const int newline = text.indexOf(QLatin1Char('\n'));
         if (newline >= 0) {
@@ -1258,6 +1369,166 @@ QJsonObject Daemon::machineLogs(const QJsonObject &params, Error *error)
         array.append(line);
     }
     return QJsonObject{{QStringLiteral("lines"), array}};
+}
+
+QJsonObject Daemon::machineConsoleRead(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    const QString directory = Paths::machineDir(machine.id);
+    if (directory.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                 QStringLiteral("Identificador de machine inválido."));
+        }
+        return {};
+    }
+
+    bool consoleExists = false;
+    if (!checkMachineConsoleFile(directory, &consoleExists, error)) {
+        return {};
+    }
+
+    QByteArray data;
+    if (consoleExists) {
+        const QString path = directory + QStringLiteral("/console.log");
+        if (!readMachineConsoleTail(path, consoleTailBytes(params), &data, nullptr, error)) {
+            return {};
+        }
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), machine.id);
+    // O serial é binário; o stream expõe uma aproximação textual em UTF-8
+    // (bytes inválidos viram U+FFFD).
+    result.insert(QStringLiteral("data"), QString::fromUtf8(data));
+    return result;
+}
+
+QJsonObject Daemon::subscribeMachineConsole(const QJsonObject &params, const Notify &notify,
+                                            Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    const QString directory = Paths::machineDir(machine.id);
+    if (directory.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                 QStringLiteral("Identificador de machine inválido."));
+        }
+        return {};
+    }
+
+    bool consoleExists = false;
+    if (!checkMachineConsoleFile(directory, &consoleExists, error)) {
+        return {};
+    }
+
+    const QString path = directory + QStringLiteral("/console.log");
+    QByteArray initial;
+    qint64 offset = 0;
+    if (consoleExists
+        && !readMachineConsoleTail(path, consoleTailBytes(params), &initial, &offset, error)) {
+        return {};
+    }
+    bool pendingReset = !consoleExists;
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+
+    (void)QtConcurrent::run([this, machineId = machine.id, path, offset, pendingReset, initial,
+                             subscriptionId, subscription, notify]() mutable {
+        const auto sendDelta = [&](const QByteArray &bytes, bool reset) {
+            QJsonObject payload;
+            payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+            payload.insert(QStringLiteral("id"), machineId);
+            payload.insert(QStringLiteral("data"), QString::fromUtf8(bytes));
+            payload.insert(QStringLiteral("reset"), reset);
+            notify(QStringLiteral("machines.console.delta"), payload);
+        };
+        const auto sendError = [&](const Error &streamError) {
+            QJsonObject payload;
+            payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+            payload.insert(QStringLiteral("id"), machineId);
+            payload.insert(QStringLiteral("error"), streamError.toJson());
+            notify(QStringLiteral("machines.console.error"), payload);
+        };
+
+        sendDelta(initial, true);
+
+        while (!subscription->cancel.load()) {
+            for (int tick = 0; tick < 3; ++tick) {
+                if (subscription->cancel.load()) {
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            if (subscription->cancel.load()) {
+                break;
+            }
+
+            bool exists = false;
+            Error checkError;
+            if (!checkMachineConsoleFile(QFileInfo(path).absolutePath(), &exists, &checkError)) {
+                sendError(checkError);
+                break;
+            }
+            if (!exists) {
+                offset = 0;
+                pendingReset = true;
+                continue;
+            }
+
+            QByteArray chunk;
+            qint64 nextOffset = offset;
+            Error readError;
+            if (!readMachineConsoleChunk(path, offset, kMachineConsoleMaxBytes, &chunk,
+                                         &nextOffset, &readError)) {
+                sendError(readError);
+                break;
+            }
+            if (nextOffset < offset) {
+                offset = 0;
+                pendingReset = true;
+                continue;
+            }
+            if (chunk.isEmpty()) {
+                continue;
+            }
+
+            const bool reset = pendingReset;
+            pendingReset = false;
+            offset = nextOffset;
+            sendDelta(chunk, reset);
+        }
+
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    result.insert(QStringLiteral("id"), machine.id);
+    return result;
 }
 
 QJsonObject Daemon::machineSsh(const QJsonObject &params, Error *error)

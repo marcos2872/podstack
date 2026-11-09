@@ -72,7 +72,7 @@ void printUsage()
           << "        [--platform p1,p2]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
-          << "  machine <list|info|logs|create|start|stop|restart|delete|rename|clone|default|distros|ssh|files|pull|push|port|update>\n"
+          << "  machine <list|info|logs|console|create|start|stop|restart|delete|rename|clone|default|distros|ssh|files|pull|push|port|update>\n"
           << "                          Gerencia machines QEMU/KVM\n"
           << "  ssh [id|nome] [-- cmd...]\n"
           << "                          Abre SSH (sem id usa a machine default)\n"
@@ -1356,6 +1356,9 @@ void printMachineUsage(QTextStream &stream)
            << "  info <id|nome> [--json]  Mostra os dados de uma machine\n"
            << "  logs <id|nome> [--tail N] [--json]\n"
            << "                          Mostra as últimas linhas do console.log\n"
+           << "  console <id|nome> [--tail BYTES] [--no-follow] [--json]\n"
+           << "                          Lê o console serial (follow por padrão; --json\n"
+           << "                          só com --no-follow)\n"
            << "  create DISTRO[:VER] NOME [--cpus N] [--memory 4G] [--disk 20G]\n"
            << "         [--user U] [--user-data ARQUIVO] [--isolate-network]\n"
            << "         [--forward-ssh-agent] [--isolated]\n"
@@ -1662,6 +1665,89 @@ int machineLogsCommand(const QStringList &args)
     }
     out().flush();
     return kExitOk;
+}
+
+int machineConsoleCommand(const QStringList &args)
+{
+    QString id;
+    qint64 tailBytes = 64LL * 1024LL;
+    bool noFollow = false;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--tail") && i + 1 < args.size()) {
+            bool ok = false;
+            tailBytes = args.at(++i).toLongLong(&ok);
+            if (!ok || tailBytes < 1) {
+                err() << "--tail exige um inteiro positivo (bytes)\n";
+                return kExitUsage;
+            }
+        } else if (arg.startsWith(QStringLiteral("--tail="))) {
+            bool ok = false;
+            tailBytes = arg.mid(7).toLongLong(&ok);
+            if (!ok || tailBytes < 1) {
+                err() << "--tail exige um inteiro positivo (bytes)\n";
+                return kExitUsage;
+            }
+        } else if (arg == QStringLiteral("--no-follow")) {
+            noFollow = true;
+        } else if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+    if (json && !noFollow) {
+        err() << "--json só é aceito com --no-follow\n";
+        return kExitUsage;
+    }
+
+    const QJsonObject params{{QStringLiteral("id"), id},
+                             {QStringLiteral("tailBytes"), tailBytes}};
+
+    if (noFollow) {
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.console.read"), params, &error, 30000);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+
+        if (json) {
+            out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+            out().flush();
+            return kExitOk;
+        }
+
+        const QString data = result.value(QStringLiteral("data")).toString();
+        out() << data;
+        if (!data.isEmpty() && !data.endsWith(QLatin1Char('\n'))) {
+            out() << '\n';
+        }
+        out().flush();
+        return kExitOk;
+    }
+
+    PodStack::RpcStream stream;
+    PodStack::Error error;
+    const bool ok = stream.run(
+        QStringLiteral("machines.console"), params,
+        [&](const QString &method, const QJsonObject &payload) {
+            if (method == QStringLiteral("machines.console.delta")) {
+                out() << payload.value(QStringLiteral("data")).toString();
+                out().flush();
+            }
+        },
+        &error, 0, false);
+    return ok ? kExitOk : fail(error);
 }
 
 int machineCreateCommand(const QStringList &args)
@@ -3234,6 +3320,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("logs")) {
         return machineLogsCommand(args);
+    }
+    if (subcommand == QStringLiteral("console")) {
+        return machineConsoleCommand(args);
     }
     if (subcommand == QStringLiteral("create")) {
         return machineCreateCommand(args);

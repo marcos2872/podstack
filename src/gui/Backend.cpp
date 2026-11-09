@@ -401,6 +401,31 @@ Backend::Backend(QObject *parent)
                 emit machineStatsChanged();
             });
 
+    connect(&m_machineConsoleStream, &StreamClient::machineConsoleEvent, this,
+            [this](const QJsonObject &event) {
+                const QString data = event.value(QStringLiteral("data")).toString();
+                if (event.value(QStringLiteral("reset")).toBool()) {
+                    m_machineConsoleText = data;
+                } else {
+                    m_machineConsoleText += data;
+                }
+                constexpr int kMaxConsoleChars = 512 * 1024;
+                if (m_machineConsoleText.size() > kMaxConsoleChars) {
+                    m_machineConsoleText.remove(0,
+                                                m_machineConsoleText.size()
+                                                    - kMaxConsoleChars);
+                }
+                m_machineConsoleActive = true;
+                m_machineConsoleError.clear();
+                emit machineConsoleChanged();
+            });
+    connect(&m_machineConsoleStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                m_machineConsoleActive = false;
+                m_machineConsoleError = message;
+                emit machineConsoleChanged();
+            });
+
     connect(&m_pullStream, &StreamClient::pullEvent, this,
             [this](const QJsonObject &event) {
                 const QString status = event.value(QStringLiteral("status")).toString();
@@ -1580,6 +1605,37 @@ void Backend::stopMachineStats()
         m_lastError.clear();
         emit lastErrorChanged();
     }
+}
+
+void Backend::followMachineConsole(const QString &id, int tailBytes)
+{
+    if (id.isEmpty()) {
+        m_machineConsoleActive = false;
+        m_machineConsoleError = QStringLiteral("Machine inválida.");
+        m_machineConsoleText.clear();
+        emit machineConsoleChanged();
+        return;
+    }
+
+    if (tailBytes <= 0) {
+        tailBytes = 64 * 1024;
+    }
+    tailBytes = qBound(1, tailBytes, 512 * 1024);
+
+    m_machineConsoleText.clear();
+    m_machineConsoleError.clear();
+    m_machineConsoleActive = true;
+    emit machineConsoleChanged();
+    m_machineConsoleStream.startMachineConsole(id, tailBytes);
+}
+
+void Backend::stopMachineConsole()
+{
+    m_machineConsoleStream.stopMachineConsole();
+    m_machineConsoleActive = false;
+    m_machineConsoleText.clear();
+    m_machineConsoleError.clear();
+    emit machineConsoleChanged();
 }
 
 QVariantMap Backend::settings() const

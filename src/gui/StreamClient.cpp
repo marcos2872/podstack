@@ -83,6 +83,28 @@ void StreamClient::subscribeMachineStats(const QString &id, int intervalSeconds)
     connectSocket();
 }
 
+void StreamClient::startMachineConsole(const QString &id, int tailBytes)
+{
+    stop(true);
+    m_kind = QStringLiteral("machine-console");
+    m_unsubscribeMethod = QStringLiteral("machines.console.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("machines.console")},
+        {QStringLiteral("params"),
+         QJsonObject{{QStringLiteral("id"), id},
+                     {QStringLiteral("tailBytes"), tailBytes}}},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
+void StreamClient::stopMachineConsole()
+{
+    stop(true);
+}
+
 void StreamClient::pullImage(const QString &reference, const QString &platform)
 {
     stop(true);
@@ -253,6 +275,7 @@ void StreamClient::stop(bool sendUnsubscribe)
     }
 
     m_subscriptionId.clear();
+    m_machineConsoleSubscription.clear();
     m_kind.clear();
     m_pending = {};
     m_pendingSend = false;
@@ -323,6 +346,9 @@ void StreamClient::onReadyRead()
             m_lastResult = message.value(QStringLiteral("result")).toObject();
             m_subscriptionId =
                 m_lastResult.value(QStringLiteral("subscriptionId")).toString();
+            if (m_kind == QStringLiteral("machine-console")) {
+                m_machineConsoleSubscription = m_subscriptionId;
+            }
             emit subscriptionReady(m_lastResult);
             continue;
         }
@@ -338,6 +364,8 @@ void StreamClient::onReadyRead()
             emit systemStats(params);
         } else if (method == QStringLiteral("machines.stats.delta")) {
             emit machineStats(params);
+        } else if (method == QStringLiteral("machines.console.delta")) {
+            emit machineConsoleEvent(params);
         } else if (method == QStringLiteral("images.pull.delta")) {
             emit pullEvent(params);
         } else if (method == QStringLiteral("compose.logs.delta")) {
@@ -388,7 +416,8 @@ void StreamClient::onReadyRead()
                            .toObject()
                            .value(QStringLiteral("message"))
                            .toString());
-        } else if (method == QStringLiteral("machines.stats.error")) {
+        } else if (method == QStringLiteral("machines.stats.error")
+                   || method == QStringLiteral("machines.console.error")) {
             const QJsonObject errorObject = params.value(QStringLiteral("error")).toObject();
             QString text = errorObject.value(QStringLiteral("message")).toString();
             const QString remediation = errorObject.value(QStringLiteral("remediation")).toString();
@@ -397,6 +426,7 @@ void StreamClient::onReadyRead()
             }
             emit error(text);
             m_subscriptionId.clear();
+            m_machineConsoleSubscription.clear();
             m_kind.clear();
             m_socket.abort();
         }
@@ -410,6 +440,7 @@ void StreamClient::onError()
     }
     m_pendingSend = false;
     m_subscriptionId.clear();
+    m_machineConsoleSubscription.clear();
 }
 
 } // namespace PodStack

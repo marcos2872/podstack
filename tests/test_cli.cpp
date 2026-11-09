@@ -553,6 +553,7 @@ void CliTest::machineCommands()
     QVERIFY(result.out.contains(QStringLiteral("--forward-ssh-agent")));
     QVERIFY(result.out.contains(QStringLiteral("--forward-agent")));
     QVERIFY(result.out.contains(QStringLiteral("--no-forward-agent")));
+    QVERIFY(result.out.contains(QStringLiteral("console <id|nome>")));
 
     result = run({QStringLiteral("machine")}, env);
     QCOMPARE(result.code, 2);
@@ -619,6 +620,81 @@ void CliTest::machineCommands()
         QJsonDocument::fromJson(result.out.toUtf8(), &logsParse);
     QCOMPARE(logsParse.error, QJsonParseError::NoError);
     QCOMPARE(logsDocument.object().value(QStringLiteral("lines")).toArray().size(), 3);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("console")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("console"),
+                  QStringLiteral("missing"), QStringLiteral("--no-follow")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("console"),
+                  QStringLiteral("cli-logs"), QStringLiteral("--no-follow")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QCOMPARE(result.out, QStringLiteral("cli boot 1\ncli boot 2\ncli boot 3\n"));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("console"),
+                  QStringLiteral("cli-logs"), QStringLiteral("--tail"),
+                  QStringLiteral("11"), QStringLiteral("--no-follow")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QCOMPARE(result.out, QStringLiteral("cli boot 3\n"));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("console"),
+                  QStringLiteral("cli-logs"), QStringLiteral("--no-follow"),
+                  QStringLiteral("--json")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError consoleParse{};
+    const QJsonDocument consoleDocument =
+        QJsonDocument::fromJson(result.out.toUtf8(), &consoleParse);
+    QCOMPARE(consoleParse.error, QJsonParseError::NoError);
+    QCOMPARE(consoleDocument.object().value(QStringLiteral("data")).toString(),
+             QStringLiteral("cli boot 1\ncli boot 2\ncli boot 3\n"));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("console"),
+                  QStringLiteral("cli-logs"), QStringLiteral("--json")},
+                 env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("--no-follow")));
+
+    QProcess follow;
+    follow.setProcessEnvironment(env);
+    follow.setProcessChannelMode(QProcess::SeparateChannels);
+    follow.start(cliPath(), {QStringLiteral("machine"), QStringLiteral("console"),
+                             QStringLiteral("cli-logs")});
+    QVERIFY(follow.waitForStarted(3000));
+
+    QByteArray followOutput;
+    QElapsedTimer followTimer;
+    followTimer.start();
+    while (followTimer.elapsed() < 5000
+           && !followOutput.contains("cli boot 3")) {
+        if (follow.waitForReadyRead(100)) {
+            followOutput += follow.readAllStandardOutput();
+        }
+    }
+    QVERIFY2(followOutput.contains("cli boot 3"), followOutput.constData());
+
+    QFile followAppend(machineDir + QStringLiteral("/console.log"));
+    QVERIFY(followAppend.open(QIODevice::Append));
+    followAppend.write("cli boot 4\n");
+    followAppend.close();
+
+    followTimer.restart();
+    while (followTimer.elapsed() < 5000
+           && !followOutput.contains("cli boot 4")) {
+        if (follow.waitForReadyRead(100)) {
+            followOutput += follow.readAllStandardOutput();
+        }
+    }
+    QVERIFY2(followOutput.contains("cli boot 4"), followOutput.constData());
+    follow.kill();
+    QVERIFY(follow.waitForFinished(2000));
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();

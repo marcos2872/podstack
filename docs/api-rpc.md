@@ -291,6 +291,9 @@ seguintes.
 | `machines.ports.set` | `{id, ports}` | `Machine` |
 | `machines.default` | `{name?}` | `{name}` (sem `name` = get; com `name` = set) |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
+| `machines.console.read` | `{id, tailBytes?}` | `{id, data}` (one-shot, UTF-8 aproximado) |
+| `machines.console` | `{id, tailBytes?}` | `{subscriptionId, id}` (stream serial) |
+| `machines.console.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile, forwardAgent}` |
 | `machines.files.list` | `{id, path?}` | `{path, items: MachineFile[]}` |
 | `machines.files.download` | `{id, path, destination}` | `{path, destination}` |
@@ -299,11 +302,8 @@ seguintes.
 | `machines.stats.subscribe` | `{id, intervalSeconds?}` | `{subscriptionId, id}` |
 | `machines.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 
-**Planejados (não implementados ainda):**
-
-| Método | Params | Result | Tarefa |
-|---|---|---|---|
-| `machines.console` | `{id}` | `Subscription` (stream serial) | T4-15 |
+Snapshots de disco (`machines.snapshot*`) ainda não existem (T4-16). O console serial usa
+`machines.console.read`/`machines.console` (abaixo), não VNC.
 
 ```ts
 interface Machine {
@@ -437,8 +437,27 @@ foram salvas.
 `machines/<id>/console.log`, sem expor o caminho na resposta. O arquivo precisa ser regular
 e não pode ser symlink; a leitura usa no máximo os últimos 512 KiB e devolve as últimas
 `tail` linhas (`tail` default 200, limitado a 1..2000). Se a machine ainda não bootou e o
-arquivo não existe, a resposta é `{lines:[]}`. A leitura é one-shot; não há follow/stream
-neste método (console serial é a T4-15).
+arquivo não existe, a resposta é `{lines:[]}`.
+
+**Console serial (T4-15).** `machines.console.read {id, tailBytes?}` lê o mesmo
+`machines/<id>/console.log` com a mesma validação do `machines.logs` (regular, sem symlink,
+confinado ao diretório, path não exposto) e devolve `{id, data}`. `tailBytes` default **64
+KiB** e máximo **512 KiB**; arquivo ausente devolve `{data:""}`. Os bytes do serial não são
+UTF-8 garantido: o daemon converte cada leitura com `QString::fromUtf8` (lossy — bytes
+inválidos viram `U+FFFD`), portanto o stream é uma visão textual aproximada. O CLI e a GUI
+não fazem reassembly de UTF-8 entre leituras.
+
+`machines.console {id, tailBytes?}` devolve `{subscriptionId, id}` e envia
+`machines.console.delta {subscriptionId, id, data, reset}`: a primeira notificação carrega o
+tail inicial com `reset:true`; depois o daemon faz polling de 300 ms e envia apenas os bytes
+novos com `reset:false`. Se o arquivo encolher (truncate/rotação) ou reaparecer após ser
+removido, o offset volta a zero e a próxima notificação vem com `reset:true`. Se o arquivo
+virar symlink ou deixar de ser regular, o daemon envia
+`machines.console.error {subscriptionId, id, error}` e encerra a subscription. O loop
+respeita `machines.console.unsubscribe {subscriptionId}` como as demais subscriptions.
+Erros: `PODSTACK_NOT_FOUND` (machine inexistente) e `PODSTACK_IO_ERROR` (symlink, arquivo
+não regular, fora do diretório ou ilegível). Uma machine sem `console.log` é válida: o
+read devolve `data:""` e o subscribe começa com um delta vazio.
 
 **SSH.** `machines.ssh` resolve ID ou nome, exige que a chave privada da machine exista
 (`0600`, reparada se necessário), garante o bloco gerenciado em `~/.ssh/config` e devolve
@@ -699,7 +718,32 @@ Todas usam `method: "<canal>.delta"` e `params.subscriptionId`.
 - `intervalSeconds` é limitado a `1..10` (default `2`).
 - `machines.stats.error` encerra a subscription e carrega o mesmo `ErrorData` das demais.
 
-### 5.7 Job
+### 5.7 Console serial de machines
+
+```json
+{ "jsonrpc":"2.0", "method":"machines.console.delta",
+  "params": {
+    "subscriptionId":"sub-5", "id":"machine-1",
+    "data":"[    0.000000] Linux version ...\n", "reset":true
+  } }
+{ "jsonrpc":"2.0", "method":"machines.console.error",
+  "params": {
+    "subscriptionId":"sub-5", "id":"machine-1",
+    "error": { "code":"PODSTACK_IO_ERROR", "message":"O console da machine não pode ser lido." }
+  } }
+```
+
+- O primeiro delta sempre tem `reset:true`; os seguintes trazem só bytes novos e
+  `reset:false`. Após truncate/rotação/reaparecimento, o próximo delta volta a `reset:true`
+  e o consumidor deve substituir o buffer (não concatenar).
+- Polling de 300 ms; o arquivo é reaberto a cada ciclo. O consumo é incremental e limitado
+  a 512 KiB por leitura.
+- `machines.console.error` encerra a subscription; o erro tem o mesmo `ErrorData` das
+  demais.
+- O texto é UTF-8 aproximado (`QString::fromUtf8`, lossy): uma sequência multibyte cortada
+  na borda de um chunk pode virar `U+FFFD`.
+
+### 5.8 Job
 
 ```json
 { "jsonrpc":"2.0", "method":"job.progress", "params": { "jobId":"j1", "progress":42, "message":"extraindo camada 3/5" } }

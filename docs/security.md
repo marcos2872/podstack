@@ -238,9 +238,13 @@ encerra a janela da instância já em execução.
 
 - Paths resolvidos com `realpath` e confinados ao escopo (container/volume/máquina).
 - Rejeitar `..`, paths absolutos em archives, symlinks que escapam, hardlinks.
-- `machines.logs` lê somente `machines/<id>/console.log`: arquivo regular, symlink
-  rejeitado, caminho canônico confinado ao diretório da machine e sem expor o path na
-  resposta ou em erro.
+- `machines.logs` e o console serial (`machines.console.read`/`machines.console`) leem
+  somente `machines/<id>/console.log`: arquivo regular, symlink rejeitado, caminho canônico
+  confinado ao diretório da machine e sem expor o path na resposta ou em erro. A leitura é
+  limitada aos últimos **512 KiB** (tail default de 64 KiB) e o follow revalida o arquivo a
+  cada 300 ms; se ele virar symlink/não regular, o stream encerra com
+  `machines.console.error`. O conteúdo é dado não confiável do guest, convertido como UTF-8
+  aproximado (lossy), e nunca é interpretado como instrução pelo daemon/CLI/GUI.
 - Uploads: validar tamanho, tipo e destino; gravar em tmp e mover atomicamente.
 - Downloads: gerar em tmp com nome seguro; nunca sobrescrever sem confirmação.
 - Imagens cloud: URLs do registry pinado são **HTTPS obrigatório**; o checksum

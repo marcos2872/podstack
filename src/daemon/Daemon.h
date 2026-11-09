@@ -102,6 +102,9 @@ private:
     QJsonObject machineAction(const QString &method, const QJsonObject &params, Error *error);
     QJsonObject machineDelete(const QJsonObject &params, Error *error);
     QJsonObject machineLogs(const QJsonObject &params, Error *error);
+    QJsonObject machineConsoleRead(const QJsonObject &params, Error *error);
+    QJsonObject subscribeMachineConsole(const QJsonObject &params, const Notify &notify,
+                                        Error *error);
     QJsonObject machineSsh(const QJsonObject &params, Error *error);
     QJsonObject machineStats(const QJsonObject &params, Error *error);
     QJsonObject subscribeMachineStats(const QJsonObject &params, const Notify &notify,

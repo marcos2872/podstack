@@ -175,9 +175,13 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - Lista virtualizada com cores por stream (stdout neutro, stderr vermelho suave).
 - Auto-scroll pausa ao subir; badge "novas linhas".
 - Machines (M4): `console.log` one-shot com as últimas 200 linhas, seleção de texto, botão
-  Copiar e indicador "Atualizado em" (horário da captura); follow/console serial ficam para
-  a T4-15. A aba **Info** lista os mounts virtiofs (`source → target`, com marca de somente
-  leitura), se houver.
+  Copiar e indicador "Atualizado em" (horário da captura). O botão **Seguir console** liga o
+  stream serial (`machines.console`): o mesmo `TextArea` passa a mostrar os deltas, com
+  auto-scroll, e o botão vira **Parar console**; o follow para ao trocar de aba, trocar de
+  machine ou fechar o inspetor. Erros do stream aparecem no cabeçalho da aba, sem substituir
+  o `lastError` global. Copiar/Atualizar ficam desabilitados durante o follow. A aba
+  **Info** lista os mounts virtiofs (`source → target`, com marca de somente leitura), se
+  houver.
 
 ### 5.4 Terminal
 

@@ -1,17 +1,16 @@
 PENDÊNCIAS — PodStack
 Atualizado: 2026-11-09
-Parada solicitada: após a T4-14 (concluída), antes da T4-15.
+Parada solicitada: após a T4-15 (concluída), antes da T4-16.
 
 SITUAÇÃO ATUAL
 - Branch feat/m4-machines; PR #11 aberta (feat/m4-machines -> main).
 - Últimos commits: 53a33b8 (T4-10 clone/rename/default), b982643 (T4-09 export/import),
   0031fcb (pendências pós-T4-08), 2a48e9e (T4-08 arquivos SSH/SCP) + os commits da
   T4-11, T4-12, T4-13 e T4-14.
-- T4-05, T4-07, T4-08, T4-09, T4-10, T4-11, T4-12, T4-13 e T4-14 concluídas. T4-14 nesta
-  sessão (modo isolado: sem mounts/agent, rede restrita e SSH local).
+- T4-05, T4-07, T4-08, T4-09, T4-10, T4-11, T4-12, T4-13, T4-14 e T4-15 concluídas.
+  T4-15 nesta sessão (console serial read/follow no RPC, CLI e GUI; sem VNC).
 
 PRÓXIMAS TAREFAS DO M4 (em ordem)
-- T4-15 (P2) — console serial/VNC para troubleshooting.
 - T4-16 (P2) — snapshots de disco (criar/restaurar).
 
 MELHORIAS CONHECIDAS DA T4-08 (não bloqueiam o commit)
@@ -63,6 +62,16 @@ MELHORIAS CONHECIDAS DA T4-13 (não bloqueiam o commit)
   não recebe a flag explicitamente.
 - Não há validação se o host tem `SSH_AUTH_SOCK` ativo; com o flag ligado e sem agent, o
   guest simplesmente não vê chaves (o `ssh` continua funcionando).
+
+MELHORIAS CONHECIDAS DA T4-15 (não bloqueiam o commit)
+- O stream converte cada chunk com `QString::fromUtf8` (lossy): uma sequência multibyte
+  cortada na borda do tail/chunk vira `U+FFFD`; um decoder incremental resolveria.
+- Ctrl+C no `machine console` mata o processo sem enviar `machines.console.unsubscribe`;
+  como o RpcServer não cancela subscriptions no disconnect (padrão das demais streams), o
+  loop de polling continua até o daemon reiniciar. Vale um cleanup por conexão.
+- A rotação com substituição do arquivo por outro do mesmo tamanho ou maior não é detectada
+  (só shrink/desaparecimento); acompanhar inode resolveria.
+- Sem console bidirecional/teclado e sem VNC; o texto é somente leitura.
 
 MELHORIAS CONHECIDAS DA T4-14 (não bloqueiam o commit)
 - `isolated` só pode ser definido na criação; `machines.update` ainda não alterna o modo

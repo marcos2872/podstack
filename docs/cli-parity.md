@@ -46,6 +46,7 @@
 | `list` | `machine list` | `--json` | Colunas NOME, DISTRO, ARCH, STATE e SSH | ✅ T4-03 |
 | `info M` | `machine info M` | `--json` | Aceita ID ou nome | ✅ T4-03 |
 | `logs [M]` | `machine logs <id\|nome>` | `--tail N` | Console/boot one-shot (sem follow) | ✅ T4-06 |
+| `serial [M]` | `machine console <id\|nome>` | `--tail BYTES`, `--no-follow`, `--json` (só com `--no-follow`) | Console serial: follow por padrão até Ctrl+C/erro; `--no-follow` imprime o tail one-shot (default 64 KiB, máximo 512 KiB) | ✅ T4-15 |
 | `ssh` | `machine ssh` / `ssh M` | `-- cmd...` | Chave + bloco gerenciado em `~/.ssh/config`; `--` anexa comando; `-A` quando o SSH agent está encaminhado | ✅ T4-04 (agent na T4-13) |
 | — | `machine files ls <id\|nome>` | `--path`, `--json` | Lista arquivos via SSH; `.`/`..` omitidos, caminho remoto escapado | ✅ T4-08 |
 | `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | | ⬜ |
@@ -61,17 +62,18 @@
 | — | `machine port add <id\|nome>` | `--host N`, `--guest N`, `--udp`, `--lan`, `--label L`, `--json` | Envia a lista completa não-SSH; para/reinicia se rodando | ✅ T4-12 |
 | — | `machine port rm <id\|nome> <portId\|hostPort>` | `--json` | Remove por ID ou hostPort; recusa a porta SSH e hostPort ambíguo | ✅ T4-12 |
 | — | `machine distros` | `--json` | Lista imagens cloud pinadas (ubuntu/debian/fedora), checksum e cache local; não baixa | ✅ T4-01 |
-| `serial list` | `device serial list` | `--format` | | ⬜ T4-15 |
+| `serial list` | — | — | Não implementado; o troubleshooting serial é feito por `machine console` | ⬜ fora do v1 |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
 
-> No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11/T4-12/T4-13/T4-14) o CLI cobre `distros`,
-> `list`, `info`, `create`, `start`, `stop`, `restart`, `delete`, `logs`, `ssh`
+> No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11/T4-12/T4-13/T4-14/T4-15) o CLI cobre `distros`,
+> `list`, `info`, `create`, `start`, `stop`, `restart`, `delete`, `logs`, `console`, `ssh`
 > (alias `machine ssh`), `export`/`import`, `rename`, `clone`, `default`, `update`,
 > `port ls/add/rm`, `files ls`, `pull` e `push`. A criação aceita `--cpus`, `--memory`
 > (bytes ou K/M/G/T), `--disk`, `--user`, `--user-data ARQUIVO`, `--isolate-network`,
 > `--forward-ssh-agent` e `--isolated` (sem mounts/agent, rede restrita e SSH local);
-> `machine update` aceita `--forward-agent`/`--no-forward-agent` e
-> `machine ssh` acrescenta `-A` quando o agent está encaminhado. A senha continua **fora**
+> `machine update` aceita `--forward-agent`/`--no-forward-agent`,
+> `machine console` segue o serial por padrão (`--no-follow` para one-shot e `--json` só
+> nesse modo) e `machine ssh` acrescenta `-A` quando o agent está encaminhado. A senha continua **fora**
 > de argv (visível em `ps`/histórico) e o acesso padrão é por chave ed25519 gerada pelo
 > daemon. `files`, `pull` e `push` usam SSH/SCP reais (o daemon nunca abre shell local).
 

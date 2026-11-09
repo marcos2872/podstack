@@ -137,11 +137,17 @@ Rectangle {
         if (root.machineId.length === 0) {
             return
         }
+        backend.stopMachineConsole()
         root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
         root.closeRequested()
     }
 
-    onTabChanged: root.syncTerminalArea()
+    onTabChanged: {
+        if (root.tab !== "logs") {
+            backend.stopMachineConsole()
+        }
+        root.syncTerminalArea()
+    }
     onWidthChanged: root.syncTerminalArea()
     onHeightChanged: root.syncTerminalArea()
 
@@ -159,6 +165,7 @@ Rectangle {
     }
 
     onMachineIdChanged: {
+        backend.stopMachineConsole()
         if (root.tab === "stats") {
             backend.stopMachineStats()
             if (root.machineId.length > 0) {
@@ -172,6 +179,7 @@ Rectangle {
     }
 
     Component.onDestruction: {
+        backend.stopMachineConsole()
         if (root.tab === "stats") {
             backend.stopMachineStats()
         }
@@ -702,7 +710,9 @@ Rectangle {
 
                         Text {
                             Layout.fillWidth: true
-                            text: qsTr("console.log")
+                            text: backend.machineConsoleActive
+                                  ? qsTr("console.log · serial (seguindo)")
+                                  : qsTr("console.log")
                             color: Theme.textTertiary
                             font.family: Theme.monoFamily
                             font.pixelSize: Theme.fontMicro
@@ -711,8 +721,19 @@ Rectangle {
                         Text {
                             Layout.fillWidth: true
                             visible: backend.machineLogsCapturedAt.length > 0
+                                     && !backend.machineConsoleActive
                             text: qsTr("Atualizado em %1").arg(backend.machineLogsCapturedAt)
                             color: Theme.textDisabled
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMicro
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: backend.machineConsoleError.length > 0
+                            text: backend.machineConsoleError
+                            color: Theme.danger
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontMicro
                             elide: Text.ElideRight
@@ -723,7 +744,8 @@ Rectangle {
                         text: qsTr("Copiar")
                         size: "sm"
                         iconName: "copy"
-                        enabled: backend.machineLogLines.length > 0
+                        enabled: !backend.machineConsoleActive
+                                 && backend.machineLogLines.length > 0
                         onClicked: backend.copyMachineLogs()
                     }
 
@@ -731,8 +753,25 @@ Rectangle {
                         text: qsTr("Atualizar")
                         size: "sm"
                         iconName: "refresh"
-                        enabled: root.machineId.length > 0
+                        enabled: root.machineId.length > 0 && !backend.machineConsoleActive
                         onClicked: backend.loadMachineLogs(root.machineId, 200)
+                    }
+
+                    ActionButton {
+                        text: backend.machineConsoleActive
+                              ? qsTr("Parar console")
+                              : qsTr("Seguir console")
+                        size: "sm"
+                        iconName: backend.machineConsoleActive ? "stop" : "terminal"
+                        variant: backend.machineConsoleActive ? "danger" : "secondary"
+                        enabled: root.machineId.length > 0
+                        onClicked: {
+                            if (backend.machineConsoleActive) {
+                                backend.stopMachineConsole()
+                            } else {
+                                backend.followMachineConsole(root.machineId, 65536)
+                            }
+                        }
                     }
                 }
 
@@ -755,7 +794,10 @@ Rectangle {
                         TextArea {
                             id: machineLogArea
                             width: machineLogScroll.availableWidth
-                            text: backend.machineLogLines.join("\n")
+                            text: (backend.machineConsoleActive
+                                   || backend.machineConsoleText.length > 0)
+                                  ? backend.machineConsoleText
+                                  : backend.machineLogLines.join("\n")
                             color: Theme.textSecondary
                             font.family: Theme.monoFamily
                             font.pixelSize: Theme.fontMeta
@@ -775,7 +817,10 @@ Rectangle {
                         width: parent.width - 40
                         horizontalAlignment: Text.AlignHCenter
                         visible: backend.machineLogLines.length === 0
-                        text: qsTr("Sem linhas de console.\nA machine ainda não inicializou ou o log está vazio.")
+                                 && backend.machineConsoleText.length === 0
+                        text: backend.machineConsoleActive
+                              ? qsTr("Seguindo o console serial. Sem dados ainda.")
+                              : qsTr("Sem linhas de console.\nA machine ainda não inicializou ou o log está vazio.")
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
@@ -1008,6 +1053,12 @@ Rectangle {
 
         function onMachineLogsChanged() {
             Qt.callLater(root.scrollLogsToEnd)
+        }
+
+        function onMachineConsoleChanged() {
+            if (backend.machineConsoleActive) {
+                Qt.callLater(root.scrollLogsToEnd)
+            }
         }
     }
 }

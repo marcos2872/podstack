@@ -87,6 +87,9 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList machineNetTxHistory READ machineNetTxHistory
                NOTIFY machineStatsChanged)
     Q_PROPERTY(QString machineStatsError READ machineStatsError NOTIFY machineStatsChanged)
+    Q_PROPERTY(bool machineConsoleActive READ machineConsoleActive NOTIFY machineConsoleChanged)
+    Q_PROPERTY(QString machineConsoleText READ machineConsoleText NOTIFY machineConsoleChanged)
+    Q_PROPERTY(QString machineConsoleError READ machineConsoleError NOTIFY machineConsoleChanged)
     Q_PROPERTY(QVariantList machineFiles READ machineFiles NOTIFY machineFilesChanged)
     Q_PROPERTY(QString machineFilesPath READ machineFilesPath NOTIFY machineFilesChanged)
     Q_PROPERTY(bool machineFilesBusy READ machineFilesBusy NOTIFY machineFilesChanged)
@@ -181,6 +184,9 @@ public:
     QVariantList machineNetRxHistory() const { return m_machineNetRxHistory; }
     QVariantList machineNetTxHistory() const { return m_machineNetTxHistory; }
     QString machineStatsError() const { return m_machineStatsError; }
+    bool machineConsoleActive() const { return m_machineConsoleActive; }
+    QString machineConsoleText() const { return m_machineConsoleText; }
+    QString machineConsoleError() const { return m_machineConsoleError; }
     QVariantList machineFiles() const { return m_machineFiles; }
     QString machineFilesPath() const { return m_machineFilesPath; }
     bool machineFilesBusy() const { return m_machineFilesBusy; }
@@ -256,6 +262,8 @@ public:
     Q_INVOKABLE void loadMachineLogs(const QString &id, int tail = 200);
     Q_INVOKABLE void startMachineStats(const QString &id);
     Q_INVOKABLE void stopMachineStats();
+    Q_INVOKABLE void followMachineConsole(const QString &id, int tailBytes = 64 * 1024);
+    Q_INVOKABLE void stopMachineConsole();
     Q_INVOKABLE void refreshMachineFiles(const QString &id, const QString &path);
     Q_INVOKABLE void downloadMachineFile(const QString &id, const QString &path,
                                          const QString &fileName);
@@ -351,6 +359,7 @@ signals:
     void machineInfoChanged();
     void machineLogsChanged();
     void machineStatsChanged();
+    void machineConsoleChanged();
     void machineFilesChanged();
     void machineCreateStateChanged();
     void eventsChanged();
@@ -416,6 +425,7 @@ private:
     StreamClient m_buildStream;
     StreamClient m_machineCreateStream;
     StreamClient m_machineStatsStream;
+    StreamClient m_machineConsoleStream;
     StreamClient m_setupStream;
     StreamClient m_eventsStream;
     QTimer m_eventTimer;
@@ -484,6 +494,9 @@ private:
     QVariantList m_machineNetRxHistory;
     QVariantList m_machineNetTxHistory;
     QString m_machineStatsError;
+    bool m_machineConsoleActive = false;
+    QString m_machineConsoleText;
+    QString m_machineConsoleError;
     QVariantList m_machineFiles;
     QString m_machineFilesPath = QStringLiteral("/");
     bool m_machineFilesBusy = false;

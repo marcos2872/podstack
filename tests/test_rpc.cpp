@@ -33,6 +33,7 @@ private slots:
     void machinesDistros();
     void machinesFlow();
     void machineLogs();
+    void machineConsole();
     void machineSsh();
     void machinePorts();
     void machineStats();
@@ -1299,6 +1300,220 @@ void RpcTest::machineLogs()
     QDir(machineDir).removeRecursively();
     QDir(machinesRoot + QLatin1Char('/') + unstarted.id).removeRecursively();
     QDir(symlinkDir).removeRecursively();
+    QFile::remove(outside);
+}
+
+void RpcTest::machineConsole()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.console.read"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    client.call(QStringLiteral("machines.console"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-console-1");
+    meta.name = QStringLiteral("console-demo");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.state = QStringLiteral("running");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString machinesRoot = m_testDataDir + QStringLiteral("/data/podstack/machines");
+    const QString machineDir = machinesRoot + QLatin1Char('/') + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    const QString consolePath = machineDir + QStringLiteral("/console.log");
+
+    QFile console(consolePath);
+    QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    console.write("boot 1\nboot 2\nboot 3\n");
+    console.close();
+    QVERIFY(console.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    const QJsonObject all =
+        client.call(QStringLiteral("machines.console.read"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(all.value(QStringLiteral("id")).toString(), meta.id);
+    QCOMPARE(all.value(QStringLiteral("data")).toString(),
+             QStringLiteral("boot 1\nboot 2\nboot 3\n"));
+
+    const QJsonObject tail =
+        client.call(QStringLiteral("machines.console.read"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("console-demo")},
+                                {QStringLiteral("tailBytes"), 14}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(tail.value(QStringLiteral("data")).toString(),
+             QStringLiteral("boot 2\nboot 3\n"));
+
+    QLocalSocket socket;
+    socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(socket.waitForConnected(3000));
+    QByteArray buffer;
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("machines.console")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("id"), meta.id}}}});
+
+    QString subscriptionId;
+    QJsonObject initialDelta;
+    for (int i = 0; i < 30 && (initialDelta.isEmpty() || subscriptionId.isEmpty()); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 1) {
+            subscriptionId = message.value(QStringLiteral("result"))
+                                 .toObject()
+                                 .value(QStringLiteral("subscriptionId"))
+                                 .toString();
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.console.delta")) {
+            initialDelta = message.value(QStringLiteral("params")).toObject();
+        }
+    }
+    QVERIFY(!subscriptionId.isEmpty());
+    QVERIFY2(!initialDelta.isEmpty(), "nenhum machines.console.delta inicial recebido");
+    QCOMPARE(initialDelta.value(QStringLiteral("subscriptionId")).toString(), subscriptionId);
+    QCOMPARE(initialDelta.value(QStringLiteral("id")).toString(), meta.id);
+    QVERIFY(initialDelta.value(QStringLiteral("reset")).toBool());
+    QCOMPARE(initialDelta.value(QStringLiteral("data")).toString(),
+             QStringLiteral("boot 1\nboot 2\nboot 3\n"));
+
+    QFile appendConsole(consolePath);
+    QVERIFY(appendConsole.open(QIODevice::Append));
+    appendConsole.write("boot 4\n");
+    appendConsole.close();
+
+    QJsonObject appendedDelta;
+    for (int i = 0; i < 40 && appendedDelta.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.console.delta")) {
+            const QJsonObject payload = message.value(QStringLiteral("params")).toObject();
+            if (payload.value(QStringLiteral("data")).toString().contains(
+                    QStringLiteral("boot 4"))) {
+                appendedDelta = payload;
+            }
+        }
+    }
+    QVERIFY2(!appendedDelta.isEmpty(), "nenhum delta com os bytes anexados");
+    QCOMPARE(appendedDelta.value(QStringLiteral("data")).toString(),
+             QStringLiteral("boot 4\n"));
+    QVERIFY(!appendedDelta.value(QStringLiteral("reset")).toBool());
+
+    QFile truncatedConsole(consolePath);
+    QVERIFY(truncatedConsole.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    truncatedConsole.write("fresh\n");
+    truncatedConsole.close();
+
+    QJsonObject resetDelta;
+    for (int i = 0; i < 40 && resetDelta.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.console.delta")) {
+            const QJsonObject payload = message.value(QStringLiteral("params")).toObject();
+            if (payload.value(QStringLiteral("data")).toString().contains(
+                    QStringLiteral("fresh"))) {
+                resetDelta = payload;
+            }
+        }
+    }
+    QVERIFY2(!resetDelta.isEmpty(), "nenhum delta após truncate");
+    QCOMPARE(resetDelta.value(QStringLiteral("data")).toString(), QStringLiteral("fresh\n"));
+    QVERIFY(resetDelta.value(QStringLiteral("reset")).toBool());
+
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 2},
+                 {QStringLiteral("method"), QStringLiteral("machines.console.unsubscribe")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}}}});
+    QJsonObject unsubscribeResponse;
+    for (int i = 0; i < 20 && unsubscribeResponse.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 2) {
+            unsubscribeResponse = message;
+        }
+    }
+    QCOMPARE(unsubscribeResponse.value(QStringLiteral("result"))
+                 .toObject()
+                 .value(QStringLiteral("subscriptionId"))
+                 .toString(),
+             subscriptionId);
+    socket.abort();
+
+    PodStack::MachineMeta symlinked = meta;
+    symlinked.id = QStringLiteral("machine-console-2");
+    symlinked.name = QStringLiteral("console-symlink");
+    QVERIFY2(store.upsert(symlinked, &storeError), qPrintable(storeError.message));
+    const QString symlinkDir = machinesRoot + QLatin1Char('/') + symlinked.id;
+    QVERIFY(QDir().mkpath(symlinkDir));
+    const QString outside = m_testDataDir + QStringLiteral("/console-outside.log");
+    QFile outsideFile(outside);
+    QVERIFY(outsideFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    outsideFile.write("secret\n");
+    outsideFile.close();
+    QVERIFY(QFile::link(outside, symlinkDir + QStringLiteral("/console.log")));
+
+    PodStack::Error symlinkError;
+    client.call(QStringLiteral("machines.console.read"),
+                QJsonObject{{QStringLiteral("id"), symlinked.id}}, &symlinkError);
+    QCOMPARE(symlinkError.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    symlinkError = {};
+    client.call(QStringLiteral("machines.console"),
+                QJsonObject{{QStringLiteral("id"), symlinked.id}}, &symlinkError);
+    QCOMPARE(symlinkError.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    PodStack::MachineMeta unstarted = meta;
+    unstarted.id = QStringLiteral("machine-console-3");
+    unstarted.name = QStringLiteral("console-empty");
+    QVERIFY2(store.upsert(unstarted, &storeError), qPrintable(storeError.message));
+    QVERIFY(QDir().mkpath(machinesRoot + QLatin1Char('/') + unstarted.id));
+
+    const QJsonObject empty =
+        client.call(QStringLiteral("machines.console.read"),
+                    QJsonObject{{QStringLiteral("id"), unstarted.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(empty.value(QStringLiteral("data")).toString(), QString());
+
+    QVERIFY(store.remove(meta.id));
+    QVERIFY(store.remove(symlinked.id));
+    QVERIFY(store.remove(unstarted.id));
+    QDir(machineDir).removeRecursively();
+    QDir(symlinkDir).removeRecursively();
+    QDir(machinesRoot + QLatin1Char('/') + unstarted.id).removeRecursively();
     QFile::remove(outside);
 }
 

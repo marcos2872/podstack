@@ -41,6 +41,7 @@ private slots:
     void backendCatalog();
     void backendMachines();
     void backendMachineStats();
+    void backendMachineConsole();
     void backendMachineFiles();
     void backendTerminal();
     void backendM3();
@@ -832,6 +833,82 @@ void GuiTest::backendMachineStats()
     QCOMPARE(statsOnlyErrorSpy.count(), 0);
     statsOnly.stopMachineStats();
     QVERIFY(statsOnly.machineStatsError().isEmpty());
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
+}
+
+void GuiTest::backendMachineConsole()
+{
+    PodStack::Backend backend;
+    QSignalSpy consoleSpy(&backend, &PodStack::Backend::machineConsoleChanged);
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+
+    backend.followMachineConsole(QString(), 1024);
+    QVERIFY(!backend.machineConsoleActive());
+    QVERIFY(!backend.machineConsoleError().isEmpty());
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("gui-machine-console");
+    meta.name = QStringLiteral("gui-console");
+    meta.distro = QStringLiteral("debian");
+    meta.distroVersion = QStringLiteral("12");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.state = QStringLiteral("running");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString consolePath = machineDir + QStringLiteral("/console.log");
+    QFile console(consolePath);
+    QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    console.write("serial 1\nserial 2\n");
+    console.close();
+
+    backend.followMachineConsole(meta.id, 1024);
+    QVERIFY(backend.machineConsoleActive());
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineConsoleText(),
+                              QStringLiteral("serial 1\nserial 2\n"), 5000);
+    QVERIFY(backend.machineConsoleError().isEmpty());
+    QVERIFY(consoleSpy.count() > 0);
+
+    QFile appendConsole(consolePath);
+    QVERIFY(appendConsole.open(QIODevice::Append));
+    appendConsole.write("serial 3\n");
+    appendConsole.close();
+    QTRY_VERIFY_WITH_TIMEOUT(backend.machineConsoleText().contains(
+                                 QStringLiteral("serial 3")),
+                             5000);
+
+    backend.stopMachineConsole();
+    QVERIFY(!backend.machineConsoleActive());
+    QVERIFY(backend.machineConsoleText().isEmpty());
+    QVERIFY(backend.machineConsoleError().isEmpty());
+
+    QFile afterStop(consolePath);
+    QVERIFY(afterStop.open(QIODevice::Append));
+    afterStop.write("serial 4\n");
+    afterStop.close();
+    QTest::qWait(700);
+    QVERIFY(backend.machineConsoleText().isEmpty());
+
+    backend.followMachineConsole(QStringLiteral("missing-machine-console"), 1024);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineConsoleError().isEmpty(), 5000);
+    QVERIFY(!backend.machineConsoleActive());
+    QVERIFY(backend.lastError().isEmpty());
+    QCOMPARE(errorSpy.count(), 0);
+    backend.stopMachineConsole();
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();

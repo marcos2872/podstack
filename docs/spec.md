@@ -409,6 +409,31 @@ Estados: `provisioning → running → stopping → stopped → starting → run
 - Nenhum processo QEMU órfão após crash (limpeza por PID/arquivo de lock e reconciliação por
   `cmdline` no start do daemon).
 
+### 7.2.1 Console serial (T4-15)
+
+- O QEMU grava o serial em `machines/<id>/console.log` (`-serial file:`). O daemon expõe:
+  - `machines.console.read {id, tailBytes?}` one-shot, default 64 KiB e máximo 512 KiB,
+    devolvendo `{id, data}`; arquivo ausente → `{data:""}`.
+  - `machines.console {id, tailBytes?}` subscription com tail inicial (`reset:true`) e
+    polling de 300 ms dos bytes novos (`reset:false`); truncate/rotação/reaparecimento
+    reinicia do offset 0 com `reset:true`; symlink/arquivo não regular encerra com
+    `machines.console.error`.
+  - `machines.console.unsubscribe {subscriptionId}` cancela o loop e libera a subscription.
+- As validações são as mesmas de `machines.logs`: arquivo regular, sem symlink, caminho
+  canônico confinado ao diretório da machine e path nunca exposto na resposta.
+- Os bytes são convertidos com `QString::fromUtf8` (lossy); o console é tratado como texto
+  UTF-8 aproximado, não como terminal interativo. Não há VNC nesta tarefa.
+- CLI: `machine console <id|nome> [--tail BYTES] [--no-follow]`; sem `--no-follow` usa o
+  stream até Ctrl+C/erro, com `--no-follow` imprime o tail one-shot. GUI: a aba **Logs** do
+  inspetor tem **Seguir console**, que concatena os deltas em um buffer de até ~512 KiB,
+  rola para o fim e para ao sair da aba/fechar o inspetor.
+
+**Critérios:**
+
+- [x] Console serial acessível quando o SSH falha (read one-shot e follow).
+- [x] Truncate/rotação reinicia o stream com `reset:true`; symlink → erro e fim.
+- [x] Follow para ao trocar de aba/fechar o inspetor.
+
 ### 7.3 SSH
 
 - Chave ed25519 por máquina em `~/.local/share/podstack/machines/<id>/id_ed25519` (0600),
