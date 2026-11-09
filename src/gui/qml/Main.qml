@@ -1,40 +1,17 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Window
 import PodStack
 
-ApplicationWindow {
+// Conteúdo da janela principal. O QMainWindow (MainWindow) define tamanho,
+// visibilidade e o painel de terminal; este item apenas apresenta a UI.
+Rectangle {
     id: window
 
-    width: 1240
-    height: 780
-    minimumWidth: 900
-    minimumHeight: 600
-
-    readonly property bool compactLayout: width < 1100 || preferredWidth < 1100
-    readonly property bool compactStatus: width < 860 || preferredWidth < 860
-
-    readonly property int preferredWidth: {
-        const available = Screen.desktopAvailableWidth
-        return Math.min(1240, Math.max(800, available > 0 ? available - 80 : 1240))
-    }
-    readonly property int preferredHeight: {
-        const available = Screen.desktopAvailableHeight
-        return Math.min(780, Math.max(560, available > 0 ? available - 80 : 780))
-    }
-    visible: !trayHidden
-    title: qsTr("PodStack")
     color: Theme.bgBase
 
-    property bool trayHidden: false
-
-    onClosing: function(close) {
-        if (tray.canHideToTray()) {
-            close.accepted = false
-            trayHidden = true
-        }
-    }
+    readonly property bool compactLayout: width < 1100
+    readonly property bool compactStatus: width < 860
 
     FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-Regular.ttf" }
     FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-Medium.ttf" }
@@ -61,21 +38,11 @@ ApplicationWindow {
     }
 
     function reveal() {
-        trayHidden = false
-        show()
-        raise()
-        requestActivate()
+        appWindow.reveal()
     }
 
     Component.onCompleted: {
-        width = preferredWidth
-        height = preferredHeight
-        minimumWidth = Math.min(900, preferredWidth)
-        minimumHeight = Math.min(600, preferredHeight)
         applyTheme(backend.settings().theme || "system")
-        if (startHidden && tray.showInTray()) {
-            trayHidden = true
-        }
         backend.setupRefresh()
     }
 
@@ -84,7 +51,7 @@ ApplicationWindow {
 
         function onSetupChanged() {
             if (backend.setupError.length > 0 && !backend.setupCompleted) {
-                trayHidden = false
+                appWindow.reveal()
             }
         }
     }

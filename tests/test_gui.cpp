@@ -38,6 +38,7 @@ private slots:
     void backendStreams();
     void backendCatalog();
     void backendMachines();
+    void backendTerminal();
     void backendM3();
     void backendErrors();
     void backendTheme();
@@ -555,11 +556,18 @@ void GuiTest::backendMachines()
     meta.state = QStringLiteral("stopped");
     meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
     meta.updatedAt = meta.createdAt;
-    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
 
     const QString machineDir =
         m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
     QVERIFY(QDir().mkpath(machineDir));
+    meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
+    QFile keyFile(meta.sshKeyPath);
+    QVERIFY(keyFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    keyFile.write("test-key\n");
+    keyFile.close();
+    QVERIFY(keyFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
     QFile console(machineDir + QStringLiteral("/console.log"));
     QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
     console.write("gui boot 1\ngui boot 2\ngui boot 3\n");
@@ -587,8 +595,49 @@ void GuiTest::backendMachines()
     QCOMPARE(backend.machineLogLines().first(), QStringLiteral("gui boot 2"));
     QCOMPARE(backend.machineLogLines().last(), QStringLiteral("gui boot 3"));
 
+    QSignalSpy terminalSpy(&backend, &PodStack::Backend::terminalRequested);
+    backend.openMachineSsh(meta.id);
+    QTRY_COMPARE_WITH_TIMEOUT(terminalSpy.count(), 1, 5000);
+    const QList<QVariant> request = terminalSpy.takeFirst();
+    QCOMPARE(request.at(0).toString(), QStringLiteral("gui-logs"));
+    QCOMPARE(request.at(1).toString(), QStringLiteral("ssh"));
+    const QStringList sshArgs = request.at(2).toStringList();
+    QVERIFY(sshArgs.contains(QStringLiteral("-i")));
+    QVERIFY(sshArgs.contains(meta.sshKeyPath));
+    QVERIFY(sshArgs.contains(QStringLiteral("-p")));
+    QVERIFY(sshArgs.contains(QStringLiteral("32222")));
+    QCOMPARE(sshArgs.last(), QStringLiteral("podstack@127.0.0.1"));
+
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();
+}
+
+void GuiTest::backendTerminal()
+{
+    PodStack::Backend backend;
+    QSignalSpy terminalSpy(&backend, &PodStack::Backend::terminalRequested);
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+
+    backend.openTerminal(QStringLiteral("abc123"));
+    QCOMPARE(terminalSpy.count(), 1);
+    const QList<QVariant> request = terminalSpy.takeFirst();
+    QCOMPARE(request.at(0).toString(), QStringLiteral("abc123"));
+    QCOMPARE(request.at(1).toString(), QStringLiteral("podman"));
+    QCOMPARE(request.at(2).toStringList(),
+             QStringList({QStringLiteral("exec"), QStringLiteral("-it"),
+                          QStringLiteral("abc123"), QStringLiteral("/bin/sh")}));
+
+    backend.openTerminal(QString());
+    QCOMPARE(terminalSpy.count(), 0);
+    QCOMPARE(backend.lastError(), QStringLiteral("Container inválido."));
+    QVERIFY(errorSpy.count() > 0);
+
+    const int errorsBefore = errorSpy.count();
+    backend.openMachineSsh(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
+    QVERIFY(backend.lastError().contains(QStringLiteral("não encontrada")));
+    // O caminho de erro não abre sessão; o sucesso visual do QTermWidget é manual.
+    QCOMPARE(terminalSpy.count(), 0);
 }
 
 void GuiTest::backendM3()

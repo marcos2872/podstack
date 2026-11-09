@@ -168,7 +168,11 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 ### 5.4 Terminal
 
 - Emulação completa (cores, cursor, seleção, copy/paste, mouse).
-- Tabs de sessão; título = comando/shell; indicador de conexão.
+- Terminal embutido em painel dockável (`QDockWidget` "Terminal") da janela principal,
+  com abas (`QTabWidget`) por sessão; título = container/machine.
+- Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` após
+  `machines.ssh`. Fechar a aba encerra a sessão; fechar o dock apenas o esconde
+  (as sessões continuam e uma nova sessão reabre o painel).
 - Menu: copiar tela/seleção (texto/ANSI/HTML), reset, fonte, fechar.
 - Fallback: "Abrir no terminal externo".
 

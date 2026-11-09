@@ -14,6 +14,7 @@ find_package(Qt6 6.10 REQUIRED COMPONENTS
     Qml
     Quick
     QuickControls2
+    QuickWidgets
     Network
     Concurrent
     DBus
@@ -135,6 +136,7 @@ add_library(podstack_gui_lib STATIC
     src/gui/Autostart.cpp
     src/gui/Backend.cpp
     src/gui/ContainerListModel.cpp
+    src/gui/MainWindow.cpp
     src/gui/Notifications.cpp
     src/gui/SingleInstance.cpp
     src/gui/StreamClient.cpp
@@ -150,6 +152,7 @@ target_link_libraries(podstack_gui_lib PUBLIC
     Qt6::Network
     Qt6::Concurrent
     Qt6::DBus
+    Qt6::QuickWidgets
     qtermwidget6
 )
 

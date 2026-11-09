@@ -13,7 +13,7 @@ O terminal é uma aba central (exec em containers, shell em machines). O OrbStac
 
 | Opção | Licença | Estado | Esforço |
 |---|---|---|---|
-| **QTermWidget** 2.4/2.5 | **GPL-2.0-or-later** | ativo, Qt 6 puro | baixo (`QQuickWidget`) |
+| **QTermWidget** 2.4/2.5 | **GPL-2.0-or-later** | ativo, Qt 6 puro | baixo (`QDockWidget`) |
 | **libvterm** 0.3 | **MIT** | estável, upstream calmo | alto (renderizador, seleção, IME, mouse) |
 | QMLTermWidget | GPL-2.0 | pouco ativo | médio |
 | xterm.js + WebEngine | MIT | maduro | médio, +150 MB |
@@ -23,7 +23,9 @@ O terminal é uma aba central (exec em containers, shell em machines). O OrbStac
 
 O PodStack é licenciado sob **GPL-3.0-or-later**. Portanto:
 
-- Usar **QTermWidget 2.5+** embutido via **`QQuickWidget`**.
+- Usar **QTermWidget 2.5+** embutido na janela principal (`QMainWindow`) via
+  **`QDockWidget` + `QTabWidget`**. A UI QML roda no widget central (`QQuickWidget`);
+  QTermWidget é um QWidget e **não** é hospedado dentro do `QQuickWidget`.
 - QTermWidget é **GPL-2.0-or-later**, compatível com GPL-3.0-or-later (o código GPLv2-or-later pode ser combinado em um trabalho GPLv3).
 - Manter uma abstração `TerminalBackend` para permitir troca futura, mas **não** linkar libvterm no binário principal.
 - Oferecer **"Abrir no terminal externo"** como fallback e para `kubectl exec`.
@@ -54,7 +56,11 @@ O PodStack é licenciado sob **GPL-3.0-or-later**. Portanto:
 ## Implementação
 
 - `TerminalBackend` (interface) + `QTermWidgetBackend`.
-- QML hospeda o widget via `QQuickWidget`; input/output via sinais.
+- `MainWindow` (`QMainWindow`) hospeda a UI QML em um `QQuickWidget` e o terminal em um
+  `QDockWidget` "Terminal" com abas de `QTermWidget` (uma sessão por aba).
+- Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` após o
+  `machines.ssh` devolver host/porta/usuário/chave. O `Backend` apenas emite
+  `terminalRequested`; quem cria o QTermWidget é a `MainWindow`.
 - Testes: TTY, resize, UTF-8, cores, Ctrl+C/D, bracketed paste.
 - Fallback sempre disponível: `xdg-terminal-exec`/terminal preferido.
 - Cabeçalhos SPDX `GPL-3.0-or-later` em todos os fontes.

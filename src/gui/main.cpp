@@ -2,6 +2,7 @@
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
+#include "gui/MainWindow.h"
 #include "gui/Notifications.h"
 #include "gui/SingleInstance.h"
 #include "gui/Tray.h"
@@ -9,8 +10,7 @@
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QQmlApplicationEngine>
-#include <QQmlContext>
+#include <QIcon>
 #include <QQuickStyle>
 
 #include <qqml.h>
@@ -101,18 +101,13 @@ int main(int argc, char *argv[])
     tray.setComposeProjects(backend.composeProjects());
     tray.setActionActive(backend.actionActive());
 
-    QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
-    engine.rootContext()->setContextProperty(QStringLiteral("tray"), &tray);
-    engine.rootContext()->setContextProperty(QStringLiteral("notifications"), &notifications);
-    engine.rootContext()->setContextProperty(QStringLiteral("singleInstance"), &singleInstance);
-    engine.rootContext()->setContextProperty(QStringLiteral("startHidden"), startHidden);
-    engine.loadFromModule(QStringLiteral("PodStack"), QStringLiteral("Main"));
-    if (engine.rootObjects().isEmpty()) {
+    QGuiApplication::setWindowIcon(tray.icon());
+
+    PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance, startHidden);
+    if (!window.qmlLoaded()) {
         return 1;
     }
 
-    QGuiApplication::setWindowIcon(tray.icon());
     QObject::connect(&tray, &PodStack::TrayController::quitRequested, &app,
                      &QCoreApplication::quit);
     QObject::connect(&singleInstance, &PodStack::SingleInstance::quitRequested, &app,

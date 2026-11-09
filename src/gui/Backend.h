@@ -255,6 +255,8 @@ signals:
     void machineCreateStateChanged();
     void eventsChanged();
     void containerEvent(const QVariantMap &event);
+    void terminalRequested(const QString &title, const QString &program,
+                           const QStringList &args);
     void settingsChanged();
     void setupChanged();
     void setupJobChanged();

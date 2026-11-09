@@ -37,7 +37,7 @@
 
 ## M1 — Containers
 
-> **Status (2026-11-08): concluído com ressalvas.** Entregues: create, lifecycle completo, inspect, logs, stats, files (list/download), terminal nativo, batch (start/stop all), health, rename/duplicate e rootful. Pendências finas para o M2: terminal embutido no inspector, upload de arquivos e seleção múltipla arbitrária.
+> **Status (2026-11-08): concluído com ressalvas.** Entregues: create, lifecycle completo, inspect, logs, stats, files (list/download), terminal nativo, batch (start/stop all), health, rename/duplicate e rootful. Pendências finas para o M2: terminal embutido no inspector, upload de arquivos e seleção múltipla arbitrária. **Atualização (2026-11-09):** o terminal foi embutido na janela principal (`MainWindow` com `QDockWidget` + `QTabWidget`), tanto para containers (`podman exec -it`) quanto para SSH de machines; a `TerminalWindow` standalone permanece apenas como fallback/legado.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
@@ -46,7 +46,7 @@
 | T1-03 | P0 | Remover (force/volumes) com confirmação | T1-02 | Container some; volumes tratados |
 | T1-04 | P0 | Criar container (imagem, nome, portas, env, volumes, workdir, user) | T1-01 | Formulário + validação |
 | T1-05 | P0 | Logs em streaming na UI (follow, busca, wrap, timestamps) | T0-06 | Primeira linha ≤ 500 ms |
-| T1-06 | P0 | Terminal embutido (exec) com resize e sessões | T0-07 | TTY funcional; sem órfãos |
+| T1-06 | P0 | Terminal embutido (exec) com resize e sessões | T0-07 | Implementado: `QDockWidget` "Terminal" + `QTabWidget` na `MainWindow`; `podman exec -it` e `ssh` de machines no mesmo painel; resize/paste/mouse do QTermWidget; `test_terminal` e `test_gui::backendTerminal` |
 | T1-07 | P0 | Stats ao vivo (CPU/mem/rede/disco/PIDs) + gráfico | T0-06 | Consistente com `podman stats` |
 | T1-08 | P0 | Info tab (imagem, comando, portas, env, mounts, rede, labels) | T1-01 | Dados completos |
 | T1-09 | P0 | Ações em lote (multi-seleção) | T1-02, T1-03 | Confirmação com resumo |

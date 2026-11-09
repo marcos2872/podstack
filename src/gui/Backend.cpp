@@ -18,6 +18,7 @@
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QMetaMethod>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStringList>
@@ -150,10 +151,17 @@ Backend::Backend(QObject *parent)
                     QStringLiteral("StrictHostKeyChecking=accept-new"),
                     QStringLiteral("%1@%2").arg(user, host),
                 };
-                auto *window = new TerminalWindow(title, QStringLiteral("ssh"), arguments);
-                window->show();
-                window->raise();
-                window->activateWindow();
+                if (isSignalConnected(
+                        QMetaMethod::fromSignal(&Backend::terminalRequested))) {
+                    emit terminalRequested(title, QStringLiteral("ssh"), arguments);
+                } else {
+                    // Fallback para uso do Backend sem a MainWindow.
+                    auto *window =
+                        new TerminalWindow(title, QStringLiteral("ssh"), arguments);
+                    window->show();
+                    window->raise();
+                    window->activateWindow();
+                }
             });
 
     connect(&m_setupStream, &StreamClient::setupEvent, this,
@@ -1616,7 +1624,27 @@ void Backend::openTerminal(const QString &id)
         return;
     }
 
-    auto *window = new TerminalWindow(id);
+    QString title = id;
+    for (const QVariant &value : m_containers) {
+        const QVariantMap container = value.toMap();
+        if (container.value(QStringLiteral("id")).toString() == id) {
+            const QString name = container.value(QStringLiteral("name")).toString();
+            if (!name.isEmpty()) {
+                title = name;
+            }
+            break;
+        }
+    }
+
+    const QStringList arguments{QStringLiteral("exec"), QStringLiteral("-it"), id,
+                                QStringLiteral("/bin/sh")};
+    if (isSignalConnected(QMetaMethod::fromSignal(&Backend::terminalRequested))) {
+        emit terminalRequested(title, QStringLiteral("podman"), arguments);
+        return;
+    }
+
+    // Fallback para uso do Backend sem a MainWindow.
+    auto *window = new TerminalWindow(id, QStringLiteral("podman"), arguments);
     window->show();
     window->raise();
     window->activateWindow();
