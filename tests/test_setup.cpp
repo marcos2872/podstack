@@ -1,14 +1,32 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "core/Paths.h"
+#include "daemon/DbusUtils.h"
 #include "daemon/SetupManager.h"
 
+#include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusMessage>
 #include <QDir>
 #include <QJsonArray>
+#include <QScopeGuard>
 #include <QSet>
 #include <QStandardPaths>
 #include <QTest>
 
 namespace {
+
+class EchoService : public QObject {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "dev.podstack.DbusUtilsTest")
+
+public slots:
+    QVariantMap echo()
+    {
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("message"), QStringLiteral("Autorização negada.")}};
+    }
+};
 
 class SetupTest : public QObject {
     Q_OBJECT
@@ -22,6 +40,7 @@ private slots:
     void validateReportsWarnings();
     void rejectsInvalidActions();
     void jobLookupsAreSafe();
+    void demarshalsHelperReply();
 };
 
 void SetupTest::initTestCase()
@@ -112,6 +131,38 @@ void SetupTest::jobLookupsAreSafe()
     manager.subscribe(QStringLiteral("missing"),
                       [&notified](const QString &, const QJsonObject &) { notified = true; });
     QVERIFY(!notified);
+}
+
+void SetupTest::demarshalsHelperReply()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        QSKIP("Barramento de sessão indisponível");
+    }
+
+    const QString service =
+        QStringLiteral("dev.podstack.DbusUtilsTest.p%1")
+            .arg(QCoreApplication::applicationPid());
+    const QString path = QStringLiteral("/test");
+    EchoService echo;
+    QVERIFY2(bus.registerService(service), qPrintable(bus.lastError().message()));
+    QVERIFY(bus.registerObject(path, &echo, QDBusConnection::ExportAllSlots));
+    const auto cleanup = qScopeGuard([&bus, &path, &service] {
+        bus.unregisterObject(path);
+        bus.unregisterService(service);
+    });
+
+    QDBusInterface interface(service, path, QStringLiteral("dev.podstack.DbusUtilsTest"), bus);
+    QVERIFY(interface.isValid());
+    const QDBusMessage reply = interface.call(QStringLiteral("echo"));
+    QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
+    QVERIFY(!reply.arguments().isEmpty());
+
+    const QVariantMap map =
+        PodStack::DbusUtils::variantMapFromReply(reply.arguments().value(0));
+    QCOMPARE(map.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(map.value(QStringLiteral("message")).toString(),
+             QStringLiteral("Autorização negada."));
 }
 
 } // namespace

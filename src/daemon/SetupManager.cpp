@@ -4,6 +4,7 @@
 
 #include "core/Config.h"
 #include "core/Paths.h"
+#include "daemon/DbusUtils.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -685,7 +686,7 @@ bool SetupManager::helperCall(const QString &method, const QStringList &argument
         return false;
     }
 
-    const QVariantMap values = qvariant_cast<QVariantMap>(reply.arguments().value(0));
+    const QVariantMap values = DbusUtils::variantMapFromReply(reply.arguments().value(0));
     const bool ok = values.value(QStringLiteral("ok")).toBool();
     const QString message = values.value(QStringLiteral("message")).toString();
     if (!ok && error) {
