@@ -423,7 +423,6 @@ ColumnLayout {
         modal: true
         width: 440
         anchors.centerIn: parent
-        standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -439,13 +438,28 @@ ColumnLayout {
             wrapMode: Text.WordWrap
         }
 
-        onAccepted: {
-            if (machinesPage.pendingDeleteId.length > 0) {
-                backend.removeMachine(machinesPage.pendingDeleteId, true)
-                machinesPage.pendingDeleteId = ""
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: qsTr("Cancelar")
+                variant: "secondary"
+                onClicked: {
+                    machinesPage.pendingDeleteId = ""
+                    deleteMachineDialog.close()
+                }
+            }
+            ActionButton {
+                text: qsTr("Remover")
+                variant: "danger"
+                onClicked: {
+                    if (machinesPage.pendingDeleteId.length > 0) {
+                        backend.removeMachine(machinesPage.pendingDeleteId, true)
+                        machinesPage.pendingDeleteId = ""
+                    }
+                    deleteMachineDialog.close()
+                }
             }
         }
-        onRejected: machinesPage.pendingDeleteId = ""
     }
 
     Component.onCompleted: {

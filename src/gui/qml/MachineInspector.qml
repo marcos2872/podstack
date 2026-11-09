@@ -390,6 +390,7 @@ Rectangle {
                     clip: true
                     model: backend.machineLogLines
                     ScrollBar.vertical: ScrollBar {}
+                    onCountChanged: if (count > 0) Qt.callLater(positionViewAtEnd)
 
                     delegate: TextEdit {
                         width: ListView.view.width
@@ -419,6 +420,14 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    Connections {
+        target: backend
+
+        function onMachineLogsChanged() {
+            Qt.callLater(machineLogView.positionViewAtEnd)
         }
     }
 }
