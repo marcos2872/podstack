@@ -164,7 +164,7 @@ bool MachineManager::kvmAvailable()
     return kvm.exists() && kvm.isReadable() && kvm.isWritable();
 }
 
-bool MachineManager::validateRequest(const CreateMachineRequest &request, Error *error) const
+bool MachineManager::validate(const CreateMachineRequest &request, Error *error) const
 {
     static const QRegularExpression namePattern(
         QStringLiteral("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"));
@@ -526,7 +526,7 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         *error = {};
     }
 
-    if (!validateRequest(request, error)) {
+    if (!validate(request, error)) {
         return {};
     }
 

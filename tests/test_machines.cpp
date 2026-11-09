@@ -1751,6 +1751,14 @@ void MachinesTest::machineManagerValidation()
     base.user = QStringLiteral("podstack");
     base.diskBytes = 1024LL * 1024LL * 1024LL;
 
+    PodStack::Error validateError;
+    QVERIFY(manager.validate(base, &validateError));
+    QVERIFY(validateError.isEmpty());
+    CreateMachineRequest invalidCpus = base;
+    invalidCpus.cpus = 0;
+    QVERIFY(!manager.validate(invalidCpus, &validateError));
+    QCOMPARE(validateError.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
     const auto expectInvalid = [&manager](CreateMachineRequest request,
                                           const QString &code) {
         PodStack::Error error;

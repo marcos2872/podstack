@@ -31,6 +31,7 @@ private slots:
     void lifecycleAndInspect();
     void catalog();
     void machineDistros();
+    void machineCommands();
     void composeAndBuild();
     void setupCommand();
     void errorPaths();
@@ -456,6 +457,76 @@ void CliTest::machineDistros()
     QVERIFY(distros.contains(QStringLiteral("ubuntu")));
     QVERIFY(distros.contains(QStringLiteral("debian")));
     QVERIFY(distros.contains(QStringLiteral("fedora")));
+}
+
+void CliTest::machineCommands()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("machine"), QStringLiteral("list"),
+                            QStringLiteral("--json")},
+                           env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QVERIFY(document.isObject());
+    QCOMPARE(document.object().value(QStringLiteral("items")).toArray().size(), 0);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("list")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("NOME")));
+    QVERIFY(result.out.contains(QStringLiteral("SSH")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("--help")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("Uso: podstack machine")));
+
+    result = run({QStringLiteral("machine")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("info"), QStringLiteral("missing")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("create"),
+                  QStringLiteral("ubuntu:24.04"), QStringLiteral("Bad_Name")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("Nome de machine inválido")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("create")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("create"),
+                  QStringLiteral("ubuntu:24.04"), QStringLiteral("valid-name"),
+                  QStringLiteral("--memory"), QStringLiteral("invalid")},
+                 env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("--memory inválido")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("create"),
+                  QStringLiteral("ubuntu:24.04"), QStringLiteral("valid-name"),
+                  QStringLiteral("--unknown")},
+                 env);
+    QCOMPARE(result.code, 2);
+
+    for (const QStringList &args :
+         {QStringList{QStringLiteral("machine"), QStringLiteral("start"),
+                      QStringLiteral("missing")},
+          QStringList{QStringLiteral("machine"), QStringLiteral("stop"),
+                      QStringLiteral("missing"), QStringLiteral("--force")},
+          QStringList{QStringLiteral("machine"), QStringLiteral("restart"),
+                      QStringLiteral("missing")},
+          QStringList{QStringLiteral("machine"), QStringLiteral("delete"),
+                      QStringLiteral("missing"), QStringLiteral("--force")}}) {
+        result = run(args, env);
+        QCOMPARE(result.code, 1);
+        QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+    }
 }
 
 void CliTest::composeAndBuild()

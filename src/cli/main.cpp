@@ -5,12 +5,15 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringList>
 #include <QTextStream>
 #include <QVector>
+
+#include <limits>
 
 namespace {
 
@@ -60,8 +63,8 @@ void printUsage()
           << "  build <contexto> -t <tag> [-f Dockerfile] [--build-arg K=V]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
-          << "  machine distros [--json]\n"
-          << "                          Lista imagens cloud e cache local\n"
+          << "  machine <list|info|create|start|stop|restart|delete|distros>\n"
+          << "                          Gerencia machines QEMU/KVM\n"
           << "  setup [--check|--status|--validate]\n"
           << "        [--apply podman|qemu|components|socket]\n"
           << "        [--remove-docker --yes]\n"
@@ -1316,20 +1319,114 @@ int commandBuild(const QStringList &args)
     return kExitOk;
 }
 
-int commandMachine(const QStringList &args)
+void printMachineUsage(QTextStream &stream)
 {
-    if (args.isEmpty()) {
-        err() << "Uso: podstack machine distros [--json]\n";
-        return kExitUsage;
+    stream << "Uso: podstack machine <comando> [opções]\n\n"
+           << "Comandos:\n"
+           << "  list [--json]            Lista machines\n"
+           << "  info <id|nome> [--json]  Mostra os dados de uma machine\n"
+           << "  create DISTRO[:VER] NOME [--cpus N] [--memory 4G] [--disk 20G]\n"
+           << "         [--user U] [--user-data ARQUIVO] [--isolate-network]\n"
+           << "                          Cria uma machine (a senha entra na T4-04)\n"
+           << "  start <id|nome> [--json] Inicia uma machine\n"
+           << "  stop <id|nome> [--force] [--json]\n"
+           << "                          Para uma machine\n"
+           << "  restart <id|nome> [--json]\n"
+           << "                          Reinicia uma machine\n"
+           << "  delete <id|nome> [--force] [--json]\n"
+           << "                          Remove uma machine e seus dados\n"
+           << "  distros [--json]         Lista imagens cloud e cache local\n";
+    stream.flush();
+}
+
+bool parseSize(const QString &text, qint64 *bytes)
+{
+    if (!bytes) {
+        return false;
     }
 
-    const QString subcommand = args.first();
-    if (subcommand != QStringLiteral("distros")) {
-        err() << "subcomando desconhecido: machine " << subcommand << '\n';
-        err() << "Uso: podstack machine distros [--json]\n";
-        return kExitUsage;
+    QString value = text.trimmed();
+    if (value.isEmpty()) {
+        return false;
     }
 
+    qint64 multiplier = 1;
+    const QChar suffix = value.back().toUpper();
+    if (suffix == QLatin1Char('K') || suffix == QLatin1Char('M')
+        || suffix == QLatin1Char('G') || suffix == QLatin1Char('T')) {
+        if (suffix == QLatin1Char('K')) {
+            multiplier = 1024LL;
+        } else if (suffix == QLatin1Char('M')) {
+            multiplier = 1024LL * 1024LL;
+        } else if (suffix == QLatin1Char('G')) {
+            multiplier = 1024LL * 1024LL * 1024LL;
+        } else {
+            multiplier = 1024LL * 1024LL * 1024LL * 1024LL;
+        }
+        value.chop(1);
+    }
+
+    bool ok = false;
+    const qint64 number = value.toLongLong(&ok);
+    if (!ok || number <= 0
+        || number > std::numeric_limits<qint64>::max() / multiplier) {
+        return false;
+    }
+    *bytes = number * multiplier;
+    return true;
+}
+
+PodStack::Error errorFromJson(const QJsonObject &object)
+{
+    PodStack::Error error;
+    error.code = object.value(QStringLiteral("code")).toString();
+    error.message = object.value(QStringLiteral("message")).toString();
+    error.detail = object.value(QStringLiteral("detail")).toString();
+    error.remediation = object.value(QStringLiteral("remediation")).toString();
+    error.retryable = object.value(QStringLiteral("retryable")).toBool();
+    if (error.message.isEmpty()) {
+        error.message = QStringLiteral("Falha ao criar a machine.");
+    }
+    if (error.code.isEmpty()) {
+        error.code = QStringLiteral("PODSTACK_INTERNAL");
+    }
+    return error;
+}
+
+QString formatSize(qint64 bytes)
+{
+    constexpr double kGiB = 1024.0 * 1024.0 * 1024.0;
+    if (bytes <= 0) {
+        return QStringLiteral("-");
+    }
+    return QStringLiteral("%1 GiB").arg(QString::number(bytes / kGiB, 'f', 1));
+}
+
+QString machineSsh(const QJsonObject &machine)
+{
+    const int port = machine.value(QStringLiteral("sshPort")).toInt();
+    if (port <= 0) {
+        return QStringLiteral("-");
+    }
+    QString user = machine.value(QStringLiteral("sshUser")).toString();
+    if (user.isEmpty()) {
+        user = QStringLiteral("podstack");
+    }
+    return QStringLiteral("%1@127.0.0.1:%2").arg(user).arg(port);
+}
+
+QString machineDistroLabel(const QJsonObject &machine)
+{
+    QString distro = machine.value(QStringLiteral("distro")).toString();
+    const QString version = machine.value(QStringLiteral("distroVersion")).toString();
+    if (!version.isEmpty() && !distro.contains(QLatin1Char(':'))) {
+        distro += QLatin1Char(':') + version;
+    }
+    return distro;
+}
+
+int machineListCommand(const QStringList &args)
+{
     bool json = false;
     for (int i = 1; i < args.size(); ++i) {
         const QString &arg = args.at(i);
@@ -1343,7 +1440,7 @@ int commandMachine(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result = client.call(QStringLiteral("machines.distros"), {}, &error);
+    const QJsonObject result = client.call(QStringLiteral("machines.list"), {}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -1354,32 +1451,425 @@ int commandMachine(const QStringList &args)
         return kExitOk;
     }
 
-    const QJsonArray items = result.value(QStringLiteral("items")).toArray();
-    out() << QStringLiteral("%1 %2 %3 %4 %5 %6\n")
-                 .arg(QStringLiteral("DISTRO").leftJustified(10),
-                      QStringLiteral("VERSÃO").leftJustified(8),
-                      QStringLiteral("ARCH").leftJustified(7),
-                      QStringLiteral("PADRÃO").leftJustified(8),
-                      QStringLiteral("CACHE").leftJustified(7),
-                      QStringLiteral("URL"));
-    for (const QJsonValue &value : items) {
-        const QJsonObject item = value.toObject();
-        out() << QStringLiteral("%1 %2 %3 %4 %5 %6\n")
-                     .arg(item.value(QStringLiteral("distro")).toString().leftJustified(10),
-                          item.value(QStringLiteral("version")).toString().leftJustified(8),
-                          item.value(QStringLiteral("arch")).toString().leftJustified(7),
-                          (item.value(QStringLiteral("default")).toBool()
-                               ? QStringLiteral("sim")
-                               : QStringLiteral("não"))
-                              .leftJustified(8),
-                          (item.value(QStringLiteral("cached")).toBool()
-                               ? QStringLiteral("sim")
-                               : QStringLiteral("não"))
-                              .leftJustified(7),
-                          item.value(QStringLiteral("url")).toString());
+    struct Row {
+        QString name;
+        QString distro;
+        QString arch;
+        QString state;
+        QString ssh;
+    };
+    QVector<Row> rows;
+    int nameWidth = 4;
+    int distroWidth = 6;
+    int archWidth = 4;
+    int stateWidth = 5;
+    for (const QJsonValue &value : result.value(QStringLiteral("items")).toArray()) {
+        const QJsonObject machine = value.toObject();
+        Row row;
+        row.name = machine.value(QStringLiteral("name")).toString();
+        row.distro = machineDistroLabel(machine);
+        row.arch = machine.value(QStringLiteral("arch")).toString();
+        row.state = machine.value(QStringLiteral("state")).toString();
+        row.ssh = machineSsh(machine);
+        nameWidth = qMax(nameWidth, row.name.size());
+        distroWidth = qMax(distroWidth, row.distro.size());
+        archWidth = qMax(archWidth, row.arch.size());
+        stateWidth = qMax(stateWidth, row.state.size());
+        rows.append(row);
+    }
+
+    out() << QStringLiteral("%1  %2  %3  %4  %5\n")
+                 .arg(QStringLiteral("NOME").leftJustified(nameWidth))
+                 .arg(QStringLiteral("DISTRO").leftJustified(distroWidth))
+                 .arg(QStringLiteral("ARCH").leftJustified(archWidth))
+                 .arg(QStringLiteral("STATE").leftJustified(stateWidth))
+                 .arg(QStringLiteral("SSH"));
+    for (const Row &row : rows) {
+        out() << QStringLiteral("%1  %2  %3  %4  %5\n")
+                     .arg(row.name.leftJustified(nameWidth))
+                     .arg(row.distro.leftJustified(distroWidth))
+                     .arg(row.arch.leftJustified(archWidth))
+                     .arg(row.state.leftJustified(stateWidth))
+                     .arg(row.ssh);
     }
     out().flush();
     return kExitOk;
+}
+
+int machineInfoCommand(const QStringList &args)
+{
+    QString id;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject machine =
+        client.call(QStringLiteral("machines.get"),
+                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(machine).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    out() << "id: " << machine.value(QStringLiteral("id")).toString() << '\n'
+          << "nome: " << machine.value(QStringLiteral("name")).toString() << '\n'
+          << "distro: " << machineDistroLabel(machine) << '\n'
+          << "arch: " << machine.value(QStringLiteral("arch")).toString() << '\n'
+          << "estado: " << machine.value(QStringLiteral("state")).toString() << '\n'
+          << "cpus: " << machine.value(QStringLiteral("cpus")).toInt() << '\n'
+          << "memória: " << formatSize(machine.value(QStringLiteral("memoryBytes")).toInteger())
+          << '\n'
+          << "disco: " << formatSize(machine.value(QStringLiteral("diskBytes")).toInteger())
+          << '\n'
+          << "ssh: " << machineSsh(machine) << '\n'
+          << "criada: " << machine.value(QStringLiteral("createdAt")).toString() << '\n';
+    const QString machineError = machine.value(QStringLiteral("error")).toString();
+    if (!machineError.isEmpty()) {
+        out() << "erro: " << machineError << '\n';
+    }
+    out().flush();
+    return kExitOk;
+}
+
+int machineCreateCommand(const QStringList &args)
+{
+    int cpus = 2;
+    qint64 memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+    qint64 diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    QString user;
+    QString userDataPath;
+    bool isolateNetwork = false;
+    QStringList positional;
+
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--cpus") && i + 1 < args.size()) {
+            bool ok = false;
+            cpus = args.at(++i).toInt(&ok);
+            if (!ok) {
+                err() << "--cpus exige um número inteiro\n";
+                return kExitUsage;
+            }
+        } else if (arg == QStringLiteral("--memory") && i + 1 < args.size()) {
+            if (!parseSize(args.at(++i), &memoryBytes)) {
+                err() << "--memory inválido; use bytes ou sufixo K/M/G/T (ex.: 4G)\n";
+                return kExitUsage;
+            }
+        } else if (arg == QStringLiteral("--disk") && i + 1 < args.size()) {
+            if (!parseSize(args.at(++i), &diskBytes)) {
+                err() << "--disk inválido; use bytes ou sufixo K/M/G/T (ex.: 20G)\n";
+                return kExitUsage;
+            }
+        } else if (arg == QStringLiteral("--user") && i + 1 < args.size()) {
+            user = args.at(++i);
+        } else if (arg == QStringLiteral("--user-data") && i + 1 < args.size()) {
+            userDataPath = args.at(++i);
+        } else if (arg == QStringLiteral("--isolate-network")) {
+            isolateNetwork = true;
+        } else if (arg.startsWith(QLatin1Char('-'))) {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        } else {
+            positional.append(arg);
+        }
+    }
+
+    if (positional.size() != 2) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QString userData;
+    if (!userDataPath.isEmpty()) {
+        QFile file(userDataPath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            err() << "não foi possível ler " << userDataPath << ": " << file.errorString()
+                  << '\n';
+            err().flush();
+            return kExitError;
+        }
+        userData = QString::fromUtf8(file.readAll());
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("distro"), positional.at(0));
+    params.insert(QStringLiteral("name"), positional.at(1));
+    params.insert(QStringLiteral("cpus"), cpus);
+    params.insert(QStringLiteral("memoryBytes"), memoryBytes);
+    params.insert(QStringLiteral("diskBytes"), diskBytes);
+    if (!user.isEmpty()) {
+        params.insert(QStringLiteral("user"), user);
+    }
+    if (!userData.isEmpty()) {
+        params.insert(QStringLiteral("userData"), userData);
+    }
+    if (isolateNetwork) {
+        params.insert(QStringLiteral("isolateNetwork"), true);
+    }
+
+    QString jobId;
+    QString machineId;
+    QString machineState;
+    PodStack::Error doneError;
+    PodStack::RpcStream stream;
+    PodStack::Error error;
+    const bool ok = stream.run(
+        QStringLiteral("machines.create"), params,
+        [&](const QString &method, const QJsonObject &payload) {
+            if (method == QStringLiteral("machines.delta")) {
+                jobId = payload.value(QStringLiteral("jobId")).toString();
+                out() << '[' << payload.value(QStringLiteral("stage")).toString() << "] "
+                      << payload.value(QStringLiteral("progress")).toInt() << "%\n";
+                out().flush();
+            } else if (method == QStringLiteral("machines.done")) {
+                jobId = payload.value(QStringLiteral("jobId")).toString();
+                const QJsonObject errorObject = payload.value(QStringLiteral("error")).toObject();
+                if (!errorObject.isEmpty()) {
+                    doneError = errorFromJson(errorObject);
+                }
+                const QJsonObject machine = payload.value(QStringLiteral("machine")).toObject();
+                machineId = machine.value(QStringLiteral("id")).toString();
+                machineState = machine.value(QStringLiteral("state")).toString();
+            }
+        },
+        &error);
+    if (!ok) {
+        return fail(error);
+    }
+    if (!doneError.isEmpty()) {
+        return fail(doneError);
+    }
+    if (machineId.isEmpty()) {
+        err() << "a criação terminou sem retornar a machine " << jobId << '\n';
+        err().flush();
+        return kExitError;
+    }
+
+    out() << "machine " << machineId << " criada (" << machineState << ")\n";
+    out().flush();
+    return kExitOk;
+}
+
+int machineLifecycleCommand(const QString &action, const QStringList &args)
+{
+    QString id;
+    bool json = false;
+    bool force = false;
+    const bool acceptsForce = action == QStringLiteral("stop");
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--force") && acceptsForce) {
+            force = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QString method;
+    if (action == QStringLiteral("start")) {
+        method = QStringLiteral("machines.start");
+    } else if (action == QStringLiteral("stop")) {
+        method = QStringLiteral("machines.stop");
+    } else {
+        method = QStringLiteral("machines.restart");
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result = client.call(method, params, &error, 120000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QString name = result.value(QStringLiteral("name")).toString();
+    const QString display = name.isEmpty() ? result.value(QStringLiteral("id")).toString()
+                                           : name;
+    const QString state = result.value(QStringLiteral("state")).toString();
+    if (action == QStringLiteral("start")) {
+        out() << "machine " << display << " iniciada (" << state << ")\n";
+    } else if (action == QStringLiteral("stop")) {
+        out() << "machine " << display << " parada (" << state << ")\n";
+    } else {
+        out() << "machine " << display << " reiniciada (" << state << ")\n";
+    }
+    out().flush();
+    return kExitOk;
+}
+
+int machineDeleteCommand(const QStringList &args)
+{
+    QString id;
+    bool json = false;
+    bool force = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--force")) {
+            force = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.delete"), params, &error, 120000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    out() << "machine " << id << " removida\n";
+    out().flush();
+    return kExitOk;
+}
+
+int commandMachine(const QStringList &args)
+{
+    if (args.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    const QString subcommand = args.first();
+    if (subcommand == QStringLiteral("--help") || subcommand == QStringLiteral("-h")
+        || subcommand == QStringLiteral("help")) {
+        printMachineUsage(out());
+        return kExitOk;
+    }
+    if (subcommand == QStringLiteral("list") || subcommand == QStringLiteral("ls")) {
+        return machineListCommand(args);
+    }
+    if (subcommand == QStringLiteral("info")) {
+        return machineInfoCommand(args);
+    }
+    if (subcommand == QStringLiteral("create")) {
+        return machineCreateCommand(args);
+    }
+    if (subcommand == QStringLiteral("start") || subcommand == QStringLiteral("stop")
+        || subcommand == QStringLiteral("restart")) {
+        return machineLifecycleCommand(subcommand, args);
+    }
+    if (subcommand == QStringLiteral("delete") || subcommand == QStringLiteral("rm")) {
+        return machineDeleteCommand(args);
+    }
+    if (subcommand == QStringLiteral("distros")) {
+        bool json = false;
+        for (int i = 1; i < args.size(); ++i) {
+            const QString &arg = args.at(i);
+            if (arg == QStringLiteral("--json")) {
+                json = true;
+            } else {
+                err() << "opção desconhecida: " << arg << '\n';
+                return kExitUsage;
+            }
+        }
+
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result = client.call(QStringLiteral("machines.distros"), {}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+
+        if (json) {
+            out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+            out().flush();
+            return kExitOk;
+        }
+
+        const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+        out() << QStringLiteral("%1 %2 %3 %4 %5 %6\n")
+                     .arg(QStringLiteral("DISTRO").leftJustified(10),
+                          QStringLiteral("VERSÃO").leftJustified(8),
+                          QStringLiteral("ARCH").leftJustified(7),
+                          QStringLiteral("PADRÃO").leftJustified(8),
+                          QStringLiteral("CACHE").leftJustified(7),
+                          QStringLiteral("URL"));
+        for (const QJsonValue &value : items) {
+            const QJsonObject item = value.toObject();
+            out() << QStringLiteral("%1 %2 %3 %4 %5 %6\n")
+                         .arg(item.value(QStringLiteral("distro")).toString().leftJustified(10),
+                              item.value(QStringLiteral("version")).toString().leftJustified(8),
+                              item.value(QStringLiteral("arch")).toString().leftJustified(7),
+                              (item.value(QStringLiteral("default")).toBool()
+                                   ? QStringLiteral("sim")
+                                   : QStringLiteral("não"))
+                                  .leftJustified(8),
+                              (item.value(QStringLiteral("cached")).toBool()
+                                   ? QStringLiteral("sim")
+                                   : QStringLiteral("não"))
+                                  .leftJustified(7),
+                              item.value(QStringLiteral("url")).toString());
+        }
+        out().flush();
+        return kExitOk;
+    }
+
+    err() << "subcomando desconhecido: machine " << subcommand << '\n';
+    printMachineUsage(err());
+    return kExitUsage;
 }
 
 int commandBuilds(const QStringList &args)

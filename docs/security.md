@@ -146,6 +146,10 @@ encerra a janela da instância já em execução.
 | Senhas de máquina | cloud-init seed (`seed.iso` e arquivos internos `0600`, senha só como hash SHA-512 crypt; apagada após o boot) / keyring | daemon |
 
 - Nunca em `config.json`, logs, relatório ou argv (visível em `ps`).
+- `machines.create` aceita `password` apenas no corpo JSON-RPC; o daemon não devolve o campo,
+  não o inclui em `machines.delta`/`machines.done` e não o registra em log. O CLI não expõe
+  `--password`/`--set-password` (a T4-04 usa prompt/SSH), mantendo a senha fora de `ps` e do
+  histórico do shell.
 - Redaction: chaves que casam `(?i)(token|password|secret|authorization|key)` em env/labels são mascaradas.
 - `podstack report` mostra prévia e exige confirmação.
 

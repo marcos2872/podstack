@@ -190,27 +190,75 @@ interface Subscription { subscriptionId: string }
 
 ### 4.6 `machines.*`
 
+Implementados na T4-03 (M4): registry, listagem, inspeção, criação assíncrona e ciclo de
+vida. Os demais métodos continuam planejados para as tarefas seguintes.
+
 | Método | Params | Result |
 |---|---|---|
 | `machines.distros` | `{}` | `{items: DistroImage[]}` |
 | `machines.list` | `{}` | `{items: Machine[]}` |
-| `machines.get` | `{id}` | `Machine` |
-| `machines.create` | `{name, distro, version?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, mounts?, isolated?, isolateNetwork?, forwardSshAgent?}` | `JobRef` |
-| `machines.start` / `stop` / `restart` | `{id}` | `Machine` |
+| `machines.get` | `{id}` | `Machine` (aceita ID ou nome) |
+| `machines.create` | `{name, distro, version?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, isolateNetwork?, forwardSshAgent?}` | `{jobId, subscriptionId}` (`JobRef` + `Subscription`) |
+| `machines.cancel` | `{jobId}` | `{jobId, cancelled:true}` |
+| `machines.start` | `{id}` | `Machine` |
+| `machines.stop` | `{id, force?}` | `Machine` |
+| `machines.restart` | `{id, force?}` | `Machine` |
 | `machines.delete` | `{id, force?}` | `{deleted:true}` |
-| `machines.rename` | `{id, name}` | `Machine` |
-| `machines.clone` | `{id, name}` | `JobRef` |
-| `machines.export` | `{id, path}` | `JobRef` |
-| `machines.import` | `{path, name}` | `JobRef` |
-| `machines.ssh` | `{id}` | `{host, port, user, identityFile}` |
-| `machines.files.pull` / `push` | `{id, source, destination}` | `JobRef` |
-| `machines.ports.list` / `set` | `{id, ports?}` | `{items}` |
-| `machines.logs` | `{id, tail?}` | `{lines:[]}` |
-| `machines.console` | `{id}` | `Subscription` (stream serial) |
+
+**Planejados (não implementados ainda):**
+
+| Método | Params | Result | Tarefa |
+|---|---|---|---|
+| `machines.rename` | `{id, name}` | `Machine` | T4-10 |
+| `machines.clone` | `{id, name}` | `JobRef` | T4-10 |
+| `machines.export` | `{id, path}` | `JobRef` | T4-09 |
+| `machines.import` | `{path, name}` | `JobRef` | T4-09 |
+| `machines.ssh` | `{id}` | `{host, port, user, identityFile}` | T4-04 |
+| `machines.files.pull` / `push` | `{id, source, destination}` | `JobRef` | T4-07/T4-08 |
+| `machines.ports.list` / `set` | `{id, ports?}` | `{items}` | T4-12 |
+| `machines.logs` | `{id, tail?}` | `{lines:[]}` | T4-06 |
+| `machines.console` | `{id}` | `Subscription` (stream serial) | T4-15 |
+
+```ts
+interface Machine {
+  id: string; name: string;
+  distro: string; distroVersion: string; arch: "amd64"|"arm64";
+  cpus: number; memoryBytes: number; diskBytes: number;
+  diskPath: string; seedPath: string; sshKeyPath: string;
+  sshPort: number; sshUser: string;
+  state: "provisioning"|"starting"|"running"|"stopping"|"stopped"|"error"|"deleting"|"deleted";
+  isolated: boolean; isolateNetwork: boolean; forwardSshAgent: boolean;
+  lastBootAt: string; createdAt: string; updatedAt: string; error: string;
+  ports: MachinePort[]; mounts: MachineMount[];
+}
+interface MachinePort { id: string; hostPort: number; guestPort: number; protocol: string; exposeLan: boolean; label: string }
+interface MachineMount { id: string; source: string; target: string; readOnly: boolean; tag: string }
+```
+
+**Criação assíncrona.** `machines.create` valida os parâmetros de forma síncrona (nome RFC
+1123, CPUs 1..256, memória/disco ≥ 1 GiB, arquitetura e distro) e só então inicia o job.
+Progresso e resultado chegam como notificações:
+
+- `machines.delta {jobId, stage, progress}` — `stage` é `image`, `disk`, `seed`, `starting`
+  ou `running`; `progress` vai de 0 a 100.
+- `machines.done {jobId, machine?, error?}` — `machine` é o objeto `Machine` em caso de
+  sucesso; `error` é um `ErrorData` (mesmo formato de `data` dos erros) em caso de falha,
+  inclusive `PODSTACK_CANCELLED`.
+
+`machines.cancel` apenas sinaliza o job; o cancelamento é observado no próximo checkpoint
+(download, disco, seed ou início) e o job termina com `machines.done`/`PODSTACK_CANCELLED`.
+A subscription é removida quando o job termina; cancelar um job inexistente retorna
+`PODSTACK_NOT_FOUND`. `mounts` e `isolated:true` ainda retornam `PODSTACK_UNSUPPORTED`
+(T4-07/T4-14); `isolateNetwork` e `forwardSshAgent` são persistidos no metadado.
 
 `DistroImage`: `{distro, version, arch, default, url, checksum, algorithm, size, cached}`.
 `machines.distros` lê o registry pinado no binário e consulta o cache local (sem hash e sem
 download); `cached` reflete apenas arquivo + sidecar válidos.
+
+Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NOT_FOUND`
+(machine/job inexistente), `PODSTACK_CONFLICT` (nome duplicado/machine em remoção),
+`PODSTACK_UNSUPPORTED`, `PODSTACK_CANCELLED`, `PODSTACK_PERMISSION_DENIED` e
+`PODSTACK_IO_ERROR`. A senha nunca é devolvida, registrada em log ou exposta em notificação.
 
 ### 4.7 `compose.*` e `builds.*`
 

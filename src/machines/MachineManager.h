@@ -57,6 +57,7 @@ public:
 
     QVector<MachineMeta> list(Error *error = nullptr);
     MachineMeta get(const QString &idOrName, Error *error = nullptr);
+    bool validate(const CreateMachineRequest &request, Error *error = nullptr) const;
     MachineMeta create(const CreateMachineRequest &request,
                        const std::function<void(const QString &stage, int progress)> &progress,
                        const std::function<bool()> &cancelled, Error *error = nullptr);
@@ -77,7 +78,6 @@ private:
     bool createDisk(const QString &diskPath, const QString &backingPath, qint64 diskBytes,
                     Error *error);
     bool persist(MachineMeta &meta, Error *error);
-    bool validateRequest(const CreateMachineRequest &request, Error *error) const;
     static QString normalizeArch(const QString &arch);
     static QString normalizedUser(const QString &user);
     static QString nowIso();

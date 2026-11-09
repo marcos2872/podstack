@@ -28,6 +28,7 @@ private slots:
     void subscriptions();
     void catalog();
     void machinesDistros();
+    void machinesFlow();
     void composeAndBuilds();
     void setupFlow();
     void invalidRequests();
@@ -652,6 +653,78 @@ void RpcTest::machinesDistros()
     QVERIFY(distros.contains(QStringLiteral("ubuntu")));
     QVERIFY(distros.contains(QStringLiteral("debian")));
     QVERIFY(distros.contains(QStringLiteral("fedora")));
+}
+
+void RpcTest::machinesFlow()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject list = client.call(QStringLiteral("machines.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(list.value(QStringLiteral("items")).toArray().size(), 0);
+
+    PodStack::Error missing;
+    client.call(QStringLiteral("machines.get"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &missing);
+    QCOMPARE(missing.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::Error invalid;
+    client.call(QStringLiteral("machines.create"), {}, &invalid);
+    QCOMPARE(invalid.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    invalid = {};
+    client.call(QStringLiteral("machines.create"),
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
+                            {QStringLiteral("cpus"), 0}},
+                &invalid);
+    QCOMPARE(invalid.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    invalid = {};
+    client.call(QStringLiteral("machines.create"),
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
+                            {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+                            {QStringLiteral("memoryBytes"), 1}},
+                &invalid);
+    QCOMPARE(invalid.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error unsupported;
+    client.call(QStringLiteral("machines.create"),
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
+                            {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+                            {QStringLiteral("mounts"),
+                             QJsonArray{QJsonObject{{QStringLiteral("source"),
+                                                     QStringLiteral("/tmp")}}}}},
+                &unsupported);
+    QCOMPARE(unsupported.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    unsupported = {};
+    client.call(QStringLiteral("machines.create"),
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
+                            {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+                            {QStringLiteral("isolated"), true}},
+                &unsupported);
+    QCOMPARE(unsupported.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    for (const QString &method :
+         {QStringLiteral("machines.start"), QStringLiteral("machines.stop"),
+          QStringLiteral("machines.restart"), QStringLiteral("machines.delete")}) {
+        PodStack::Error lifecycle;
+        client.call(method,
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                    &lifecycle);
+        QCOMPARE(lifecycle.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    }
+
+    PodStack::Error cancel;
+    client.call(QStringLiteral("machines.cancel"),
+                QJsonObject{{QStringLiteral("jobId"), QStringLiteral("missing-job")}}, &cancel);
+    QCOMPARE(cancel.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    const QJsonObject after = client.call(QStringLiteral("machines.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(after.value(QStringLiteral("items")).toArray().size(), 0);
 }
 
 void RpcTest::composeAndBuilds()

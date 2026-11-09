@@ -192,15 +192,28 @@ sequenceDiagram
   participant Q as QEMU
   participant G as Guest (cloud-init)
   UI->>D: machines.create {distro, cpus, mem, disk, userData}
+  D->>D: validar parâmetros (síncrono)
+  D-->>UI: {jobId, subscriptionId}
   D->>D: baixar/verificar imagem cloud
+  D-->>UI: machines.delta {stage:image}
   D->>D: criar disco qcow2 + seed ISO
+  D-->>UI: machines.delta {stage:disk/seed}
   D->>Q: iniciar com QMP
+  D-->>UI: machines.delta {stage:starting}
   Q->>G: boot + cloud-init
   D->>G: aguardar SSH (timeout 120s)
   G-->>D: SSH ok
-  D-->>UI: machine ready
-  D-->>UI: notification machine.state
+  D-->>UI: machines.done {machine}
 ```
+
+O `machines.create` roda em `QtConcurrent` e devolve `{jobId, subscriptionId}`; a validação
+(`MachineManager::validate`) acontece antes de iniciar o job, então nome, distro, CPUs,
+memória e disco inválidos retornam `PODSTACK_INVALID_PARAMS` na própria resposta RPC. O
+progresso é publicado em `machines.delta` e o resultado em `machines.done` (com `machine` ou
+`error`). `machines.cancel` marca o `Subscription::cancel`, observado pelo download, pela
+criação do disco/seed e pelo início do QEMU, e o job termina com `PODSTACK_CANCELLED`. A
+subscription e o mapa `jobId → subscriptionId` são limpos ao final; a senha nunca entra em
+log ou notificação.
 
 ### 3.5 Controle por QMP
 

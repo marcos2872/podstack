@@ -5,6 +5,7 @@
 #include "daemon/ComposeManager.h"
 #include "daemon/SetupManager.h"
 #include "machines/CloudImageCache.h"
+#include "machines/MachineManager.h"
 #include "podman/PodmanClient.h"
 
 #include <QHash>
@@ -83,6 +84,12 @@ private:
     QJsonObject buildGet(const QJsonObject &params, Error *error);
     QJsonObject buildRemove(const QJsonObject &params, Error *error);
     QJsonObject machinesDistros();
+    QJsonObject machinesList(Error *error);
+    QJsonObject machineGet(const QJsonObject &params, Error *error);
+    QJsonObject machineCreate(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject machineCancel(const QJsonObject &params, Error *error);
+    QJsonObject machineAction(const QString &method, const QJsonObject &params, Error *error);
+    QJsonObject machineDelete(const QJsonObject &params, Error *error);
     QJsonObject setupStatus();
     QJsonObject setupCheck(const QJsonObject &params);
     QJsonObject setupValidate();
@@ -99,6 +106,7 @@ private:
     QJsonObject unsubscribe(const QJsonObject &params);
 
     QString requireId(const QJsonObject &params, Error *error) const;
+    QString requireMachineId(const QJsonObject &params, Error *error) const;
     QString createSubscription(const std::shared_ptr<Subscription> &subscription);
     void removeSubscription(const QString &id);
 
@@ -106,13 +114,17 @@ private:
     ComposeManager m_compose;
     BuildStore m_buildStore;
     SetupManager m_setup;
+    MachineManager m_machines;
     CloudImageCache m_cloudImages;
     std::mutex m_subscriptionsMutex;
     QHash<QString, std::shared_ptr<Subscription>> m_subscriptions;
     std::mutex m_buildMutex;
     QHash<QString, QString> m_buildSubscriptions;
+    std::mutex m_machineJobsMutex;
+    QHash<QString, QString> m_machineSubscriptions; // jobId -> subscriptionId
     int m_nextSubscription = 1;
     int m_nextBuild = 1;
+    int m_nextMachineJob = 1;
 };
 
 } // namespace PodStack

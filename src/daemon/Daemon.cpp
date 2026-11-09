@@ -249,6 +249,25 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.distros")) {
         return machinesDistros();
     }
+    if (method == QStringLiteral("machines.list")) {
+        return machinesList(error);
+    }
+    if (method == QStringLiteral("machines.get")) {
+        return machineGet(params, error);
+    }
+    if (method == QStringLiteral("machines.create")) {
+        return machineCreate(params, notify, error);
+    }
+    if (method == QStringLiteral("machines.cancel")) {
+        return machineCancel(params, error);
+    }
+    if (method == QStringLiteral("machines.start") || method == QStringLiteral("machines.stop")
+        || method == QStringLiteral("machines.restart")) {
+        return machineAction(method, params, error);
+    }
+    if (method == QStringLiteral("machines.delete")) {
+        return machineDelete(params, error);
+    }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
     }
@@ -325,6 +344,222 @@ QJsonObject Daemon::machinesDistros()
     QJsonObject result;
     result.insert(QStringLiteral("items"), items);
     return result;
+}
+
+QJsonObject Daemon::machinesList(Error *error)
+{
+    const QVector<MachineMeta> machines = m_machines.list(error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    QJsonArray items;
+    for (const MachineMeta &machine : machines) {
+        items.append(machine.toJson());
+    }
+    return QJsonObject{{QStringLiteral("items"), items}};
+}
+
+QJsonObject Daemon::machineGet(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notify,
+                                  Error *error)
+{
+    const QJsonValue mounts = params.value(QStringLiteral("mounts"));
+    const bool hasMounts =
+        (mounts.isArray() && !mounts.toArray().isEmpty())
+        || (mounts.isObject() && !mounts.toObject().isEmpty())
+        || (mounts.isString() && !mounts.toString().trimmed().isEmpty());
+    if (hasMounts || params.value(QStringLiteral("isolated")).toBool()) {
+        if (error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_UNSUPPORTED"),
+                QStringLiteral("Mounts e modo isolado ainda não são suportados."),
+                QStringLiteral("machines.create recebeu mounts/isolated."),
+                QStringLiteral("Virtiofs e isolamento chegam nas tarefas T4-07/T4-14."));
+        }
+        return {};
+    }
+
+    CreateMachineRequest request;
+    request.name = params.value(QStringLiteral("name")).toString().trimmed();
+    request.distro = params.value(QStringLiteral("distro")).toString().trimmed();
+    request.version = params.value(QStringLiteral("version")).toString().trimmed();
+    request.arch = params.value(QStringLiteral("arch")).toString().trimmed();
+    request.user = params.value(QStringLiteral("user")).toString();
+    request.password = params.value(QStringLiteral("password")).toString();
+    request.userData = params.value(QStringLiteral("userData")).toString();
+    request.cpus = params.value(QStringLiteral("cpus")).toInt(request.cpus);
+    request.memoryBytes =
+        params.value(QStringLiteral("memoryBytes")).toInteger(request.memoryBytes);
+    request.diskBytes = params.value(QStringLiteral("diskBytes")).toInteger(request.diskBytes);
+    request.isolateNetwork =
+        params.value(QStringLiteral("isolateNetwork")).toBool(request.isolateNetwork);
+    request.forwardSshAgent =
+        params.value(QStringLiteral("forwardSshAgent")).toBool(request.forwardSshAgent);
+
+    if (!m_machines.validate(request, error)) {
+        return {};
+    }
+
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        jobId = QStringLiteral("machine-%1-%2")
+                    .arg(QDateTime::currentSecsSinceEpoch())
+                    .arg(m_nextMachineJob++);
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        m_machineSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, request, notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("machines.delta"), payload);
+        };
+        const auto cancelled = [subscription] {
+            return subscription->cancel.load();
+        };
+
+        Error createError;
+        MachineMeta machine = m_machines.create(request, progress, cancelled, &createError);
+        if (createError.isEmpty() && machine.id.isEmpty()) {
+            createError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                      QStringLiteral("Falha ao criar a machine."));
+        }
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        if (createError.isEmpty()) {
+            payload.insert(QStringLiteral("machine"), machine.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), createError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("machines.done"), payload);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+            m_machineSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::machineCancel(const QJsonObject &params, Error *error)
+{
+    const QString jobId = params.value(QStringLiteral("jobId")).toString().trimmed();
+    if (jobId.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o job da machine."));
+        }
+        return {};
+    }
+
+    QString subscriptionId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        subscriptionId = m_machineSubscriptions.value(jobId);
+    }
+    if (subscriptionId.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Job de machine não está em execução."), jobId);
+        }
+        return {};
+    }
+
+    std::shared_ptr<Subscription> subscription;
+    {
+        std::lock_guard<std::mutex> lock(m_subscriptionsMutex);
+        subscription = m_subscriptions.value(subscriptionId);
+    }
+    if (!subscription) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Job de machine não está em execução."), jobId);
+        }
+        return {};
+    }
+
+    subscription->cancel.store(true);
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("cancelled"), true);
+    return result;
+}
+
+QJsonObject Daemon::machineAction(const QString &method, const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const bool force = params.value(QStringLiteral("force")).toBool();
+    MachineMeta machine;
+    if (method == QStringLiteral("machines.start")) {
+        machine = m_machines.start(id, error);
+    } else if (method == QStringLiteral("machines.stop")) {
+        machine = m_machines.stop(id, force, error);
+    } else if (force) {
+        machine = m_machines.stop(id, true, error);
+        if (error && !error->isEmpty()) {
+            return {};
+        }
+        machine = m_machines.start(id, error);
+    } else {
+        machine = m_machines.restart(id, error);
+    }
+
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineDelete(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const bool force = params.value(QStringLiteral("force")).toBool();
+    if (!m_machines.remove(id, force, error)) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("deleted"), true}};
 }
 
 QJsonObject Daemon::systemHello() const
@@ -2036,6 +2271,16 @@ QString Daemon::requireId(const QJsonObject &params, Error *error) const
     if (id.isEmpty() && error) {
         *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
                              QStringLiteral("Informe o ID ou nome do container."));
+    }
+    return id;
+}
+
+QString Daemon::requireMachineId(const QJsonObject &params, Error *error) const
+{
+    const QString id = params.value(QStringLiteral("id")).toString().trimmed();
+    if (id.isEmpty() && error) {
+        *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                             QStringLiteral("Informe o ID ou nome da machine."));
     }
     return id;
 }

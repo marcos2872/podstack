@@ -36,28 +36,33 @@
 
 ### 2.1 Máquinas
 
-| `orb` | `podstack` | Flags | Notas Linux |
-|---|---|---|---|
-| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] [NAME]` **e** alias `create` | `--arch`, `--cpus`, `--memory`, `--disk`, `--user`, `--set-password`, `-c/--user-data`, `--mount`, `--isolated`, `--isolate-network`, `--forward-ssh-agent` | QEMU/KVM + cloud-init; sem Rosetta |
-| `start [MACHINE...]` | `machine start [MACHINE...]` | `--all` | Sem args: máquinas que estavam rodando |
-| `stop [MACHINE...]` | `machine stop [MACHINE...]` | `--all`, `--force` | Sem args: para tudo (engine + machines) |
-| `restart [MACHINE...]` | `machine restart [MACHINE...]` | `--all` | |
-| `delete [MACHINE...]` | `machine delete [MACHINE...]` | `--all`, `--force` | Dados perdidos; confirmação |
-| `list` | `machine list` | `--format`, `--quiet`, `--running` | |
-| `info M` | `machine info M` | `--format` | |
-| `logs [M]` | `machine logs [M]` | `--all` | Console/boot |
-| `ssh` | `machine ssh` / `ssh M` | `-u`, `-m` | Escreve `~/.ssh/config` |
-| `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | |
-| `pull [-m M] SRC [DST]` | `machine pull` | `-m` | Host→guest? Ver §3 |
-| `push [-m M] SRC [DST]` | `machine push` | `-m` | Guest→host? Ver §3 |
-| `export M FILE.tar.zst` | `machine export M FILE` | — | Pausa a máquina |
-| `import FILE [-n NAME]` | `machine import FILE` | `--name` | Valida manifest/checksum |
-| `clone SRC DST` | `machine clone SRC DST` | — | CoW quando possível |
-| `rename M NEW` | `machine rename M NEW` | — | Atualiza SSH config |
-| `default [M]` | `machine default [M]` | — | Get/set |
-| — | `machine distros` | `--json` | Lista imagens cloud pinadas (ubuntu/debian/fedora), checksum e cache local; não baixa |
-| `serial list` | `device serial list` | `--format` | |
-| `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host |
+| `orb` | `podstack` | Flags | Notas Linux | Status |
+|---|---|---|---|---|
+| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` | `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network` | QEMU/KVM + cloud-init; sem Rosetta. `--arch`, senha, mounts, `--isolated` e `--forward-ssh-agent` entram nas T4-04/T4-07/T4-13 | ✅ T4-03 (senha/SSH na T4-04) |
+| `start [MACHINE...]` | `machine start <id\|nome>` | — | Uma machine por vez nesta etapa | ✅ T4-03 |
+| `stop [MACHINE...]` | `machine stop <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
+| `restart [MACHINE...]` | `machine restart <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
+| `delete [MACHINE...]` | `machine delete <id\|nome>` | `--force` | Dados perdidos; sem confirmação interativa no CLI (use `--force` para ignorar erro) | ✅ T4-03 |
+| `list` | `machine list` | `--json` | Colunas NOME, DISTRO, ARCH, STATE e SSH | ✅ T4-03 |
+| `info M` | `machine info M` | `--json` | Aceita ID ou nome | ✅ T4-03 |
+| `logs [M]` | `machine logs [M]` | `--all` | Console/boot | ⬜ T4-06 |
+| `ssh` | `machine ssh` / `ssh M` | `-u`, `-m` | Escreve `~/.ssh/config` | ⬜ T4-04 |
+| `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | | ⬜ |
+| `pull [-m M] SRC [DST]` | `machine pull` | `-m` | Host→guest? Ver §3 | ⬜ T4-08 |
+| `push [-m M] SRC [DST]` | `machine push` | `-m` | Guest→host? Ver §3 | ⬜ T4-08 |
+| `export M FILE.tar.zst` | `machine export M FILE` | — | Pausa a máquina | ⬜ T4-09 |
+| `import FILE [-n NAME]` | `machine import FILE` | `--name` | Valida manifest/checksum | ⬜ T4-09 |
+| `clone SRC DST` | `machine clone SRC DST` | — | CoW quando possível | ⬜ T4-10 |
+| `rename M NEW` | `machine rename M NEW` | — | Atualiza SSH config | ⬜ T4-10 |
+| `default [M]` | `machine default [M]` | — | Get/set | ⬜ T4-10 |
+| — | `machine distros` | `--json` | Lista imagens cloud pinadas (ubuntu/debian/fedora), checksum e cache local; não baixa | ✅ T4-01 |
+| `serial list` | `device serial list` | `--format` | | ⬜ T4-15 |
+| `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
+
+> No M4 (T4-03) o CLI cobre `distros`, `list`, `info`, `create`, `start`, `stop`, `restart` e
+> `delete`. A criação aceita `--cpus`, `--memory` (bytes ou K/M/G/T), `--disk`, `--user`,
+> `--user-data ARQUIVO` e `--isolate-network`; a senha **não** é aceita em argv (fica para a
+> T4-04, via prompt/SSH) para não aparecer em `ps`/histórico.
 
 ### 2.2 Serviços e sistema
 

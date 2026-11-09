@@ -54,6 +54,9 @@
 - Handshake/versionamento.
 - Dispatch de métodos, params inválidos, método desconhecido.
 - Subscriptions: subscribe/unsubscribe, backpressure, drop.
+- Machines: `list` vazio, `get`/lifecycle/cancel inexistentes → `PODSTACK_NOT_FOUND`,
+  `create` sem nome/distro ou com CPUs/memória inválidas → `PODSTACK_INVALID_PARAMS`,
+  `mounts`/`isolated:true` → `PODSTACK_UNSUPPORTED` (sem QEMU nem rede).
 
 ### 2.4 CLI
 
@@ -61,6 +64,9 @@
 - Formatação humana/JSON/quiet.
 - Exit codes por classe de erro.
 - Modo não interativo (sem TTY).
+- Machines: `machine list --json` vazio, `machine info` inexistente (exit 1), `machine create`
+  com nome inválido (exit 1, validação síncrona sem download), tamanho de memória/disco
+  inválido e `machine --help`/usage.
 
 ---
 
@@ -141,7 +147,8 @@ gera `Notify` com “Container falhou”.
 | Seed ISO (`test_machines`) | label `cidata` no PVD, exatamente `meta-data`/`user-data`/`network-config` na raiz, YAML padrão, `network-config` v2/DHCP, senha só como hash `$6$`, user-data verbatim, escape YAML, entradas inválidas e ISO `0600` |
 | Metadados e índice (`test_machines`) | `MachineMeta`: round-trip de todos os campos + portas/mounts, `meta.json` `0600` em diretório `0700` e sem temporário residual; arquivo ausente → `PODSTACK_NOT_FOUND`, JSON inválido → `PODSTACK_IO_ERROR`. `MachineStore`: open em DB temporário, upsert/list/get/getByName/updateState/remove, cascade de portas/mounts, mesmas tabelas no `podstack.db` do `BuildStore` (WAL, conexões independentes) e `machinesDir`/`machineDir` com validação de id |
 | QEMU/QMP (`test_machines`) | `QemuCommand`: x86 KVM/TCG, arm64, UEFI, `restrict=on` no isolamento e caminhos/recursos inválidos. `QmpClient` com `MockQmpServer` em `QThread`: handshake, `query-status`, `system_powerdown`, erro QMP, evento intercalado, timeout, `quit` com evento `SHUTDOWN`/fechamento e socket inexistente |
-| Runtime/manager (`test_machines`) | `MachineManager` com `FakeQemuRuntime` e `qemu-img` falso: create baixa a imagem do mock, cria disco/seed/OVMF vars com 0600 em diretório 0700, grava `meta.json` e SQLite, escolhe porta livre, registra `-b` no qemu-img e inicia o runtime. Validação de nome/cpus/memória/disco/arch/distro e conflito de nome; start/stop/restart/remove com estados e erros refletidos no store e no `meta.json`; cancelamento durante o download sem diretório/DB; portas ocupadas puladas. Teste com QEMU/KVM real é opcional (`PODSTACK_QEMU_INTEGRATION=1`) e faz `QSKIP` sem binário, `/dev/kvm` ou OVMF |
+| Runtime/manager (`test_machines`) | `MachineManager` com `FakeQemuRuntime` e `qemu-img` falso: `validate` público e create baixa a imagem do mock, cria disco/seed/OVMF vars com 0600 em diretório 0700, grava `meta.json` e SQLite, escolhe porta livre, registra `-b` no qemu-img e inicia o runtime. Validação de nome/cpus/memória/disco/arch/distro e conflito de nome; start/stop/restart/remove com estados e erros refletidos no store e no `meta.json`; cancelamento durante o download sem diretório/DB; portas ocupadas puladas. Teste com QEMU/KVM real é opcional (`PODSTACK_QEMU_INTEGRATION=1`) e faz `QSKIP` sem binário, `/dev/kvm` ou OVMF |
+| RPC/CLI de machines (`test_rpc`, `test_cli`) | `machines.list/get/create/cancel/start/stop/restart/delete` com erros estáveis; `machine list/info/create/start/stop/restart/delete/--help`. A criação real (download + QEMU + cloud-init) **não** roda no CI: é manual ou integração opt-in, pois exige rede, QEMU/KVM e OVMF |
 | Criar Ubuntu 24.04 | SSH responde ≤ 60 s; hostname/user corretos |
 | cloud-init | arquivo criado, pacote instalado, comando executado |
 | Stop/start | estado consistente; sem QEMU órfão |
