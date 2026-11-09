@@ -209,6 +209,7 @@ public:
     Q_INVOKABLE void saveTheme(const QString &theme);
     Q_INVOKABLE void saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
                                       bool notifications = true);
+    Q_INVOKABLE void saveProxySettings(const QString &proxy, const QString &excludeText);
     Q_INVOKABLE void openTerminal(const QString &id);
     Q_INVOKABLE void setupRefresh();
     Q_INVOKABLE void setupCheck();

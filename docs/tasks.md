@@ -66,7 +66,7 @@
 
 ## M2 — Imagens, volumes, redes, pods
 
-> **Status (2026-11-08): concluído com ressalvas.** Entregues: catálogo navegável (imagens, volumes, redes e pods), pull com progresso e cancelamento, push/tag/untag, remover/prune, histórico/digest, CRUD de volumes e redes, clone e export/import `.tar.zst`, import do host, conexão de containers em redes e lifecycle de pods. `system.df` alimenta a barra de status. Ressalvas: T2-15 (expor portas na LAN), T2-16 (proxy global) e o seletor visual de plataforma (T2-17) ficam para o M3; a validação de CIDR é delegada ao Podman.
+> **Status (2026-11-08): concluído com ressalvas.** Entregues: catálogo navegável (imagens, volumes, redes e pods), pull com progresso e cancelamento, push/tag/untag, remover/prune, histórico/digest, CRUD de volumes e redes, clone e export/import `.tar.zst`, import do host, conexão de containers em redes, lifecycle de pods e proxy global com exclusões (T2-16, entregue no M4 para containers e machines novos). `system.df` alimenta a barra de status. Ressalvas: T2-15 (expor portas na LAN) e o seletor visual de plataforma (T2-17) ficam para o M3; a validação de CIDR é delegada ao Podman.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
@@ -85,7 +85,7 @@
 | T2-13 | P1 | Volume export/import `.tar.zst` | T2-05 | ✅ libarchive; paths validados |
 | T2-14 | P1 | Volume import do host | T2-05 | ✅ `volumes.importHostPath` |
 | T2-15 | P1 | Expor portas na LAN | T2-08 | ⬜ M3 (helper/firewall) |
-| T2-16 | P1 | Proxy global e exclusões | T2-08 | ⬜ M3 |
+| T2-16 | P1 | Proxy global e exclusões | T2-08 | ✅ `Proxy` no core + daemon em `containers.create`/`containers.duplicate` + GUI (Configurações) + machines via cloud-init; env explícito e `NO_PROXY` sem duplicatas; Compose/existentes exigem recriação; coberto por `test_core/proxy*`, `test_rpc/proxyEnvironment`, `test_gui/backendProxy` e `test_machines/seedEnvironment` |
 | T2-17 | P2 | Multi-arch/platform selection | T2-02 | ◐ pull aceita `platform`; seletor visual no M3 |
 | T2-18 | P2 | Prune avançado (system df) | T2-03 | ✅ `system.df` detalhado + prévia nos diálogos de Imagens/Volumes + `podstack system df [--detailed|--json]`; coberto por `test_rpc/catalog`, `test_gui/backendCatalog` e `test_cli/systemDf` |
 

@@ -2,8 +2,11 @@
 
 #include "machines/MachineManager.h"
 
+#include "core/Config.h"
 #include "core/Ids.h"
+#include "core/Logging.h"
 #include "core/Paths.h"
+#include "core/Proxy.h"
 #include "machines/CloudInit.h"
 
 #include <QDateTime>
@@ -11,6 +14,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHostAddress>
+#include <QJsonArray>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
@@ -64,6 +68,35 @@ QString errorText(const Error &error)
         return error.message;
     }
     return QStringLiteral("%1: %2").arg(error.message, error.detail);
+}
+
+QStringList proxyExcludesFromConfig(const Config &config)
+{
+    QStringList excludes;
+    const QJsonArray array =
+        config.get(QStringLiteral("network.proxyExclude")).toArray();
+    for (const QJsonValue &value : array) {
+        const QString entry = value.toString();
+        if (!entry.isEmpty()) {
+            excludes.append(entry);
+        }
+    }
+    return excludes;
+}
+
+QMap<QString, QString> proxyEnvironmentFromConfig()
+{
+    const Config config = Config::load();
+    const QString proxy =
+        config.get(QStringLiteral("network.proxy")).toString(QStringLiteral("auto"));
+    const QStringList excludes = proxyExcludesFromConfig(config);
+
+    Error error;
+    if (!Proxy::validate(proxy, excludes, &error)) {
+        qCWarning(lcCore) << "Configuração de proxy inválida; não aplicada às machines.";
+        return {};
+    }
+    return Proxy::environment(proxy, excludes);
 }
 
 void setOwnerOnly(const QString &path, bool directory)
@@ -645,6 +678,9 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     seed.user = normalizedUser(request.user);
     seed.password = request.password;
     seed.userData = request.userData;
+    if (seed.userData.isEmpty()) {
+        seed.environment = proxyEnvironmentFromConfig();
+    }
     if (!CloudInit::writeSeedIso(seedPath, seed, error)) {
         cleanupDirectory(directory);
         return {};

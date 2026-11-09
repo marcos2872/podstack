@@ -4,6 +4,7 @@
 #include "core/DiskUsage.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
+#include "core/Proxy.h"
 #include "daemon/StatsCollector.h"
 #include "machines/DistroRegistry.h"
 
@@ -61,6 +62,42 @@ QStringList aliasesFromParams(const QJsonObject &params)
         }
     }
     return aliases;
+}
+
+QStringList proxyExcludesFromConfig(const Config &config)
+{
+    QStringList excludes;
+    const QJsonArray array =
+        config.get(QStringLiteral("network.proxyExclude")).toArray();
+    for (const QJsonValue &value : array) {
+        const QString entry = value.toString();
+        if (!entry.isEmpty()) {
+            excludes.append(entry);
+        }
+    }
+    return excludes;
+}
+
+/// Aplica o proxy global sem sobrescrever variáveis definidas pelo usuário.
+void applyProxyEnvironment(ContainerCreateSpec &spec)
+{
+    const Config config = Config::load();
+    const QString proxy =
+        config.get(QStringLiteral("network.proxy")).toString(QStringLiteral("auto"));
+    const QStringList excludes = proxyExcludesFromConfig(config);
+
+    Error proxyError;
+    if (!Proxy::validate(proxy, excludes, &proxyError)) {
+        qCWarning(lcRpc) << "Configuração de proxy inválida; não aplicada aos containers.";
+        return;
+    }
+
+    const QMap<QString, QString> values = Proxy::environment(proxy, excludes);
+    for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
+        if (!spec.env.contains(it.key())) {
+            spec.env.insert(it.key(), it.value());
+        }
+    }
 }
 
 } // namespace
@@ -925,6 +962,8 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
         spec.labels.insert(it.key(), it.value().toString());
     }
 
+    applyProxyEnvironment(spec);
+
     const QString id = m_podman.createContainer(spec, error);
     if (id.isEmpty()) {
         return {};
@@ -987,6 +1026,8 @@ QJsonObject Daemon::containerDuplicate(const QJsonObject &params, Error *error)
             spec.env.insert(entry.left(equals), entry.mid(equals + 1));
         }
     }
+
+    applyProxyEnvironment(spec);
 
     const QJsonObject bindings = json.value(QStringLiteral("HostConfig"))
                                      .toObject()

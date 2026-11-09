@@ -66,6 +66,7 @@ QJsonObject Config::defaults()
     QJsonObject network;
     network.insert(QStringLiteral("https"), false);
     network.insert(QStringLiteral("proxy"), QStringLiteral("auto"));
+    network.insert(QStringLiteral("proxyExclude"), QJsonArray{});
     network.insert(QStringLiteral("domainsMode"), QStringLiteral("localhost"));
 
     QJsonObject machines;

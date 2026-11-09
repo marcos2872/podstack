@@ -204,6 +204,11 @@ gera `Notify` com “Container falhou”.
 | HTTPS | certificado válido; CA confiável |
 | DNS `podstack.local` | install/remove idempotente; resolved recarrega |
 | Path traversal | rejeitado no proxy/files |
+| Proxy `none`/`auto`/URL | validação de esquema/host; `auto` copia só chaves existentes; URL define HTTP/HTTPS/ALL |
+| `NO_PROXY` | defaults + exclusões + existente, sem duplicatas; minúsculas iguais |
+| Container novo | `containers.create`/`duplicate` aplicam proxy sem sobrescrever env explícito (`test_rpc/proxyEnvironment`) |
+| Machine nova | `write_files` em `/etc/environment`; `user-data` próprio não é mesclado (`test_machines/seedEnvironment`) |
+| GUI de proxy | salvar persiste `network.proxy`/`proxyExclude`; valor inválido não altera (`test_gui/backendProxy`) |
 
 ---
 

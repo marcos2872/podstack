@@ -14,6 +14,7 @@
 #include <QProcessEnvironment>
 #include <QScopeGuard>
 #include <QSignalSpy>
+#include <QStringList>
 #include <QTest>
 #include <QVariantList>
 #include <QVariantMap>
@@ -36,6 +37,7 @@ private slots:
     void backendM3();
     void backendErrors();
     void backendTheme();
+    void backendProxy();
     void backendSetup();
     void backendTray();
     void backendActivityMonitor();
@@ -725,6 +727,48 @@ void GuiTest::backendActivityMonitor()
 
     backend.stopActivityMonitor();
     QVERIFY(!backend.activityActive());
+}
+
+void GuiTest::backendProxy()
+{
+    PodStack::Backend backend;
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    QSignalSpy settingsSpy(&backend, &PodStack::Backend::settingsChanged);
+
+    backend.saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
+                              QStringLiteral("localhost, .internal"));
+    QVariantMap settings = backend.settings();
+    QCOMPARE(settings.value(QStringLiteral("proxy")).toString(),
+             QStringLiteral("http://127.0.0.1:3128"));
+    QCOMPARE(settings.value(QStringLiteral("proxyExclude")).toStringList(),
+             QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    QVERIFY(settingsSpy.count() > 0);
+
+    const int errorsBefore = errorSpy.count();
+    backend.saveProxySettings(QStringLiteral("ftp://127.0.0.1:21"),
+                              QStringLiteral("localhost"));
+    QVERIFY(!backend.lastError().isEmpty());
+    QVERIFY(errorSpy.count() > errorsBefore);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    settings = backend.settings();
+    QCOMPARE(settings.value(QStringLiteral("proxy")).toString(),
+             QStringLiteral("http://127.0.0.1:3128"));
+    QCOMPARE(settings.value(QStringLiteral("proxyExclude")).toStringList(),
+             QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
+
+    backend.saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
+                              QStringLiteral("bad host"));
+    QVERIFY(!backend.lastError().isEmpty());
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QCOMPARE(backend.settings().value(QStringLiteral("proxyExclude")).toStringList(),
+             QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
+
+    backend.saveProxySettings(QStringLiteral("auto"),
+                              QStringLiteral("localhost, .internal"));
+    QCOMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
+             QStringLiteral("auto"));
 }
 
 void GuiTest::backendSetup()

@@ -41,6 +41,7 @@ add_library(podstack_core STATIC
     src/core/Paths.cpp
     src/core/Config.cpp
     src/core/Logging.cpp
+    src/core/Proxy.cpp
     src/core/RpcClient.cpp
     src/core/RpcStream.cpp
 )

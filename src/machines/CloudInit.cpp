@@ -101,6 +101,26 @@ bool hasControlCharacters(const QString &value)
     return false;
 }
 
+bool isValidEnvironmentName(const QString &name)
+{
+    if (name.isEmpty()) {
+        return false;
+    }
+    const QChar first = name.front();
+    if (!(first == QLatin1Char('_') || (first.unicode() >= 'A' && first.unicode() <= 'Z')
+          || (first.unicode() >= 'a' && first.unicode() <= 'z'))) {
+        return false;
+    }
+    for (const QChar character : name) {
+        const ushort value = character.unicode();
+        if (!((value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z')
+              || (value >= '0' && value <= '9') || value == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
 QString yamlQuote(const QString &value)
 {
     QString escaped = value;
@@ -159,6 +179,17 @@ QString userDataFor(const CloudInitOptions &options, const QString &hash)
         }
     }
     data += QStringLiteral("ssh_pwauth: false\n");
+    if (!options.environment.isEmpty()) {
+        data += QStringLiteral("write_files:\n"
+                               "  - path: /etc/environment\n"
+                               "    append: true\n"
+                               "    permissions: '0644'\n"
+                               "    content: |\n");
+        for (auto it = options.environment.constBegin(); it != options.environment.constEnd();
+             ++it) {
+            data += QStringLiteral("      %1=%2\n").arg(it.key(), it.value());
+        }
+    }
     return data;
 }
 
@@ -357,6 +388,17 @@ bool CloudInit::writeSeedIso(const QString &path, const CloudInitOptions &option
             if (error) {
                 *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
                                      QStringLiteral("Chave SSH inválida para o seed."));
+            }
+            return false;
+        }
+    }
+    for (auto it = options.environment.constBegin(); it != options.environment.constEnd();
+         ++it) {
+        if (!isValidEnvironmentName(it.key()) || hasControlCharacters(it.value())) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("Variável de ambiente inválida para o seed."),
+                                     it.key());
             }
             return false;
         }

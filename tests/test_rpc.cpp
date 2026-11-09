@@ -26,6 +26,7 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
     void lifecycle();
+    void proxyEnvironment();
     void subscriptions();
     void catalog();
     void machinesDistros();
@@ -315,6 +316,97 @@ void RpcTest::lifecycle()
     PodStack::Error unknownError;
     client.call(QStringLiteral("no.such.method"), {}, &unknownError);
     QCOMPARE(unknownError.code, QStringLiteral("PODSTACK_METHOD_NOT_FOUND"));
+}
+
+void RpcTest::proxyEnvironment()
+{
+    const QString configDir =
+        m_testDataDir + QStringLiteral("/config/podstack");
+    QVERIFY(QDir().mkpath(configDir));
+    const QString configPath = configDir + QStringLiteral("/config.json");
+    const auto writeConfig = [&configPath](const QByteArray &data) {
+        QFile file(configPath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return false;
+        }
+        const bool ok = file.write(data) == data.size();
+        file.close();
+        return ok;
+    };
+    const QByteArray proxyConfig =
+        QByteArrayLiteral("{\"network\":{\"proxy\":\"http://127.0.0.1:3128\","
+                          "\"proxyExclude\":[\".internal\",\"10.0.0.0/8\"]}}");
+    QVERIFY(writeConfig(proxyConfig));
+
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+    QJsonObject createParams;
+    createParams.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    createParams.insert(QStringLiteral("start"), false);
+    const QJsonObject created =
+        client.call(QStringLiteral("containers.create"), createParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.value(QStringLiteral("id")).toString(), QStringLiteral("created123"));
+
+    const QJsonObject body =
+        QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    const QJsonObject env = body.value(QStringLiteral("env")).toObject();
+    const QString proxy = QStringLiteral("http://127.0.0.1:3128");
+    QCOMPARE(env.value(QStringLiteral("HTTP_PROXY")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("HTTPS_PROXY")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("ALL_PROXY")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("http_proxy")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("https_proxy")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("all_proxy")).toString(), proxy);
+    const QString noProxy = env.value(QStringLiteral("NO_PROXY")).toString();
+    QCOMPARE(env.value(QStringLiteral("no_proxy")).toString(), noProxy);
+    const QStringList entries = noProxy.split(QLatin1Char(','));
+    QCOMPARE(entries.count(QStringLiteral("localhost")), 1);
+    QCOMPARE(entries.count(QStringLiteral("127.0.0.1")), 1);
+    QCOMPARE(entries.count(QStringLiteral("::1")), 1);
+    QCOMPARE(entries.count(QStringLiteral("*.localhost")), 1);
+    QCOMPARE(entries.count(QStringLiteral(".internal")), 1);
+    QCOMPARE(entries.count(QStringLiteral("10.0.0.0/8")), 1);
+
+    QJsonObject duplicateParams;
+    duplicateParams.insert(QStringLiteral("id"), QStringLiteral("abc123"));
+    const QJsonObject duplicated =
+        client.call(QStringLiteral("containers.duplicate"), duplicateParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(duplicated.value(QStringLiteral("id")).toString(),
+             QStringLiteral("created123"));
+    QCOMPARE(duplicated.value(QStringLiteral("source")).toString(),
+             QStringLiteral("abc123"));
+    const QJsonObject duplicatedEnv = QJsonDocument::fromJson(m_mock.lastCreateBody())
+                                          .object()
+                                          .value(QStringLiteral("env"))
+                                          .toObject();
+    QCOMPARE(duplicatedEnv.value(QStringLiteral("A")).toString(), QStringLiteral("B"));
+    QCOMPARE(duplicatedEnv.value(QStringLiteral("HTTP_PROXY")).toString(), proxy);
+
+    QJsonObject explicitEnv;
+    explicitEnv.insert(QStringLiteral("HTTP_PROXY"),
+                       QStringLiteral("http://explicit:9999"));
+    explicitEnv.insert(QStringLiteral("NO_PROXY"), QStringLiteral("custom.local"));
+    createParams.insert(QStringLiteral("env"), explicitEnv);
+    const QJsonObject explicitCreated =
+        client.call(QStringLiteral("containers.create"), createParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(explicitCreated.value(QStringLiteral("id")).toString(),
+             QStringLiteral("created123"));
+    const QJsonObject explicitBody =
+        QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    const QJsonObject explicitValues =
+        explicitBody.value(QStringLiteral("env")).toObject();
+    QCOMPARE(explicitValues.value(QStringLiteral("HTTP_PROXY")).toString(),
+             QStringLiteral("http://explicit:9999"));
+    QCOMPARE(explicitValues.value(QStringLiteral("NO_PROXY")).toString(),
+             QStringLiteral("custom.local"));
+    QCOMPARE(explicitValues.value(QStringLiteral("HTTPS_PROXY")).toString(), proxy);
+    QCOMPARE(explicitValues.value(QStringLiteral("ALL_PROXY")).toString(), proxy);
+
+    QVERIFY(writeConfig(
+        QByteArrayLiteral("{\"network\":{\"proxy\":\"auto\",\"proxyExclude\":[]}}")));
 }
 
 void RpcTest::subscriptions()

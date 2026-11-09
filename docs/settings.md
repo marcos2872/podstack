@@ -64,6 +64,19 @@ Campos desconhecidos são preservados na escrita. Config inválida → backup + 
 | `network.httpsPort` | int | `8443` | sim | Porta HTTPS do proxy |
 | `network.httpPort` | int | `8080` | sim | Porta HTTP do proxy |
 
+**Proxy na prática:** `auto` (default) herda do ambiente do daemon as variáveis de proxy já
+definidas (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` e minúsculas), sem inventar
+valores. Com uma URL (`http`, `https`, `socks5` ou `socks5h`), o daemon define
+`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` (e minúsculas) e monta `NO_PROXY` com os defaults
+(`localhost,127.0.0.1,::1,*.localhost`), as exclusões de `network.proxyExclude` e o `NO_PROXY`
+já existente, sem duplicatas. `proxyExclude` aceita host, domínio, `*.domínio` ou CIDR e só é
+aplicado no modo URL.
+
+A configuração é lida na **criação**: containers e machines novos recebem as variáveis;
+containers, machines e stacks Compose existentes precisam ser recriados. Machines recebem um
+`write_files` em `/etc/environment` via cloud-init; se o usuário informar `user-data` próprio,
+o conteúdo não é mesclado.
+
 ### 2.5 Máquinas
 
 | Chave | Tipo | Default | Reinício | Descrição |

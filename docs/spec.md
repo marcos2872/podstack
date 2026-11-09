@@ -320,9 +320,27 @@ Formato único:
 ### 6.3 Proxy e VPN
 
 - Proxy global: `none`, `auto` (env do sistema), URL (`http://`, `https://`, `socks5://`, `socks5h://`).
-- Exclusões por host/CIDR.
-- Aplicar a novos containers/máquinas; indicar quais exigem recriação.
-- VPN do host é herdada pelo Podman rootless (documentar limitações).
+- Exclusões por host/domínio/`*.domínio`/CIDR, separadas por vírgula na UI.
+- **Containers novos:** o daemon insere as variáveis de proxy em `env` na criação
+  (`containers.create`) e na duplicação (`containers.duplicate`). Variáveis definidas
+  explicitamente pelo usuário ou herdadas do container original têm precedência e nunca são
+  sobrescritas. A URL do proxy não é registrada em log (pode conter credenciais).
+- **Machines novas:** cloud-init grava as variáveis em `/etc/environment` (`write_files` com
+  `append: true`). Se o usuário forneceu `user-data` próprio, o PodStack não mescla o proxy —
+  o arquivo do usuário é usado verbatim.
+- **Limitações:** a configuração vale para novos recursos; containers, machines e projetos
+  Compose existentes exigem recriação. Projetos Compose sobem pelo provider externo e não são
+  alterados pelo PodStack nesta versão. A VPN do host é herdada pelo Podman rootless.
+
+**Critérios:**
+
+- [x] `none` não define variáveis; `auto` copia somente chaves já presentes; URL define
+  `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` (e minúsculas).
+- [x] `NO_PROXY` contém defaults + exclusões + valor existente, sem duplicatas.
+- [x] Exclusão inválida ou URL sem host/esquema permitido retorna `PODSTACK_VALIDATION` e não
+  é salva.
+- [x] A UI indica que containers, machines e projetos Compose existentes exigem recriação
+  (não há fluxo automático de recriação).
 
 ---
 

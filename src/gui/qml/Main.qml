@@ -792,6 +792,75 @@ ApplicationWindow {
                 Layout.bottomMargin: 2
             }
 
+            Text {
+                text: qsTr("Proxy")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                font.weight: Font.DemiBold
+            }
+
+            AppSelect {
+                id: proxyModeBox
+                Layout.fillWidth: true
+                model: ["none", "auto", "custom"]
+                Component.onCompleted: {
+                    const current = backend.settings().proxy
+                    currentIndex = current === "none" ? 0 : current === "auto" ? 1 : 2
+                }
+                Accessible.name: qsTr("Modo do proxy")
+            }
+
+            FormField {
+                id: proxyUrlField
+                Layout.fillWidth: true
+                visible: proxyModeBox.currentIndex === 2
+                enabled: visible
+                placeholderText: qsTr("http://127.0.0.1:3128")
+                text: {
+                    const current = backend.settings().proxy
+                    return current === "none" || current === "auto" ? "" : current
+                }
+                Accessible.name: qsTr("URL do proxy")
+            }
+
+            FormField {
+                id: proxyExcludeField
+                Layout.fillWidth: true
+                enabled: proxyModeBox.currentIndex === 2
+                placeholderText: qsTr("localhost, .internal, 10.0.0.0/8")
+                text: backend.settings().proxyExclude.join(", ")
+                Accessible.name: qsTr("Exclusões do proxy")
+            }
+
+            Text {
+                text: qsTr("Exclusões separadas por vírgula (host, domínio, CIDR ou *.domínio). "
+                           + "Em auto, o NO_PROXY do ambiente é herdado.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            Text {
+                text: qsTr("Vale apenas para novos containers e machines. "
+                           + "Containers, machines e projetos Compose existentes exigem recriação.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.border
+                Layout.topMargin: 2
+                Layout.bottomMargin: 2
+            }
+
             FormCheck {
                 id: showInTrayBox
                 text: qsTr("Mostrar ícone na bandeja")
@@ -851,6 +920,10 @@ ApplicationWindow {
                                              startAtLoginBox.checked,
                                              notificationsBox.checked)
                     backend.saveEngineMode(engineModeBox.currentText)
+                    backend.saveProxySettings(proxyModeBox.currentIndex === 2
+                                              ? proxyUrlField.text
+                                              : proxyModeBox.currentText,
+                                              proxyExcludeField.text)
                     settingsDialog.close()
                 }
             }

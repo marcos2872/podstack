@@ -2,6 +2,7 @@
 #include "core/Error.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
+#include "core/Proxy.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
 #include "core/SetupPolicy.h"
@@ -12,6 +13,8 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QMap>
+#include <QScopeGuard>
 #include <QStandardPaths>
 #include <QTest>
 
@@ -30,6 +33,8 @@ private slots:
     void configMergePreservesDefaults();
     void configSetupDefaults();
     void configInvalidFallsBack();
+    void proxyValidation();
+    void proxyEnvironment();
     void setupActionsMapPodmanStatus();
     void setupPolicyMandatoryChecks();
     void pathOverrides();
@@ -88,6 +93,8 @@ void CoreTest::configDefaults()
     QCOMPARE(config.get(QStringLiteral("telemetry.enabled")).toBool(), false);
     QCOMPARE(config.get(QStringLiteral("app.keepRunningInTray")).toBool(), true);
     QCOMPARE(config.get(QStringLiteral("app.showInTray")).toBool(), true);
+    QCOMPARE(config.get(QStringLiteral("network.proxy")).toString(), QStringLiteral("auto"));
+    QVERIFY(config.get(QStringLiteral("network.proxyExclude")).toArray().isEmpty());
 }
 
 void CoreTest::configSaveLoad()
@@ -165,6 +172,133 @@ void CoreTest::configInvalidFallsBack()
     const PodStack::Config loaded = PodStack::Config::load();
     QCOMPARE(loaded.get(QStringLiteral("schemaVersion")).toInt(), 1);
     QCOMPARE(loaded.get(QStringLiteral("engine.mode")).toString(), QStringLiteral("rootless"));
+}
+
+void CoreTest::proxyValidation()
+{
+    PodStack::Error error;
+    QVERIFY(PodStack::Proxy::validate(QStringLiteral("none"), {}, &error));
+    QVERIFY(error.isEmpty());
+    QVERIFY(PodStack::Proxy::validate(QStringLiteral("auto"), {}, &error));
+    QVERIFY(error.isEmpty());
+    QVERIFY(PodStack::Proxy::validate(QStringLiteral("http://127.0.0.1:3128"), {}, &error));
+    QVERIFY(PodStack::Proxy::validate(QStringLiteral("https://proxy.example:8443"), {}, &error));
+    QVERIFY(PodStack::Proxy::validate(QStringLiteral("http://127.0.0.1:3128/"), {}, &error));
+    QVERIFY(PodStack::Proxy::validate(QStringLiteral("socks5://127.0.0.1:1080"), {}, &error));
+    QVERIFY(PodStack::Proxy::validate(
+        QStringLiteral("socks5h://user:pass@127.0.0.1:1080"), {}, &error));
+
+    QVERIFY(PodStack::Proxy::validate(
+        QStringLiteral("http://127.0.0.1:3128"),
+        {QStringLiteral("localhost"), QStringLiteral(".internal"),
+         QStringLiteral("*.example.com"), QStringLiteral("10.0.0.0/8"),
+         QStringLiteral("192.168.1.10"), QStringLiteral("::1"),
+         QStringLiteral("2001:db8::/32")},
+        &error));
+    QVERIFY(error.isEmpty());
+
+    const QStringList invalidProxies = {
+        QString(),
+        QStringLiteral("ftp://127.0.0.1:21"),
+        QStringLiteral("socks4://127.0.0.1:1080"),
+        QStringLiteral("http://"),
+        QStringLiteral("http://bad host:3128"),
+        QStringLiteral("auto "),
+    };
+    for (const QString &proxy : invalidProxies) {
+        QVERIFY2(!PodStack::Proxy::validate(proxy, {}, &error), qPrintable(proxy));
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+    }
+
+    const QStringList invalidExcludes = {
+        QString(),
+        QStringLiteral("bad host"),
+        QStringLiteral("a,b"),
+        QStringLiteral("http://example.com"),
+        QStringLiteral("10.0.0.0/33"),
+        QStringLiteral("2001:db8::/129"),
+        QStringLiteral("10.0.0.0/"),
+        QStringLiteral("*.example.com."),
+        QStringLiteral("*.*.example.com"),
+        QString::fromUtf8("example.com\n"),
+    };
+    for (const QString &entry : invalidExcludes) {
+        QVERIFY2(!PodStack::Proxy::validate(QStringLiteral("auto"), {entry}, &error),
+                 qPrintable(entry));
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+    }
+
+    QCOMPARE(PodStack::Proxy::defaultExcludes(),
+             QStringList({QStringLiteral("localhost"), QStringLiteral("127.0.0.1"),
+                          QStringLiteral("::1"), QStringLiteral("*.localhost")}));
+}
+
+void CoreTest::proxyEnvironment()
+{
+    const QStringList keys = {
+        QStringLiteral("HTTP_PROXY"),  QStringLiteral("HTTPS_PROXY"),
+        QStringLiteral("ALL_PROXY"),   QStringLiteral("NO_PROXY"),
+        QStringLiteral("http_proxy"),  QStringLiteral("https_proxy"),
+        QStringLiteral("all_proxy"),   QStringLiteral("no_proxy"),
+    };
+    QMap<QString, QByteArray> saved;
+    for (const QString &key : keys) {
+        if (qEnvironmentVariableIsSet(key.toUtf8().constData())) {
+            saved.insert(key, qgetenv(key.toUtf8().constData()));
+            qunsetenv(key.toUtf8().constData());
+        }
+    }
+    const auto restore = qScopeGuard([&saved, &keys] {
+        for (const QString &key : keys) {
+            qunsetenv(key.toUtf8().constData());
+        }
+        for (auto it = saved.constBegin(); it != saved.constEnd(); ++it) {
+            qputenv(it.key().toUtf8().constData(), it.value());
+        }
+    });
+
+    QVERIFY(PodStack::Proxy::environment(QStringLiteral("none"), {}).isEmpty());
+
+    qputenv("HTTP_PROXY", "http://daemon:8080");
+    const QMap<QString, QString> automatic =
+        PodStack::Proxy::environment(QStringLiteral("auto"), {});
+    QCOMPARE(automatic.size(), 1);
+    QCOMPARE(automatic.value(QStringLiteral("HTTP_PROXY")),
+             QStringLiteral("http://daemon:8080"));
+    QVERIFY(!automatic.contains(QStringLiteral("HTTPS_PROXY")));
+
+    const QString proxy = QStringLiteral("http://127.0.0.1:3128");
+    QMap<QString, QString> values =
+        PodStack::Proxy::environment(proxy, {QStringLiteral("localhost"),
+                                             QStringLiteral(".internal"),
+                                             QStringLiteral("10.0.0.0/8")});
+    QCOMPARE(values.value(QStringLiteral("HTTP_PROXY")), proxy);
+    QCOMPARE(values.value(QStringLiteral("HTTPS_PROXY")), proxy);
+    QCOMPARE(values.value(QStringLiteral("ALL_PROXY")), proxy);
+    QCOMPARE(values.value(QStringLiteral("http_proxy")), proxy);
+    QCOMPARE(values.value(QStringLiteral("https_proxy")), proxy);
+    QCOMPARE(values.value(QStringLiteral("all_proxy")), proxy);
+    QCOMPARE(values.value(QStringLiteral("NO_PROXY")),
+             QStringLiteral("localhost,127.0.0.1,::1,*.localhost,.internal,10.0.0.0/8"));
+    QCOMPARE(values.value(QStringLiteral("no_proxy")),
+             values.value(QStringLiteral("NO_PROXY")));
+
+    qputenv("NO_PROXY", "existing.local, localhost, 10.0.0.0/8");
+    qputenv("no_proxy", "other.local");
+    values = PodStack::Proxy::environment(proxy, {QStringLiteral(".internal"),
+                                                  QStringLiteral("10.0.0.0/8")});
+    QCOMPARE(values.value(QStringLiteral("NO_PROXY")),
+             QStringLiteral("localhost,127.0.0.1,::1,*.localhost,.internal,10.0.0.0/8,"
+                            "existing.local,other.local"));
+    QCOMPARE(values.value(QStringLiteral("no_proxy")),
+             values.value(QStringLiteral("NO_PROXY")));
+
+    const QMap<QString, QString> automaticWithNoProxy =
+        PodStack::Proxy::environment(QStringLiteral("auto"), {});
+    QCOMPARE(automaticWithNoProxy.value(QStringLiteral("NO_PROXY")),
+             QStringLiteral("existing.local, localhost, 10.0.0.0/8"));
+    QCOMPARE(automaticWithNoProxy.value(QStringLiteral("no_proxy")),
+             QStringLiteral("other.local"));
 }
 
 void CoreTest::setupActionsMapPodmanStatus()

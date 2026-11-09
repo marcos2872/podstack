@@ -144,6 +144,12 @@ QByteArray MockPodmanServer::lastBody() const
     return m_lastBody;
 }
 
+QByteArray MockPodmanServer::lastCreateBody() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_lastCreateBody;
+}
+
 void MockPodmanServer::run()
 {
     while (!m_stopping.load()) {
@@ -199,6 +205,10 @@ void MockPodmanServer::handleClient(int clientFd)
         m_lastMethod = method;
         m_lastPath = path;
         m_lastBody = body;
+        if (method == QStringLiteral("POST")
+            && pathOnly.endsWith(QStringLiteral("/containers/create"))) {
+            m_lastCreateBody = body;
+        }
     }
 
     QByteArray response;

@@ -203,6 +203,11 @@ Regras de normalização:
 | `containers.export` | `{id, path}` | `JobRef` |
 | `containers.commit` | `{id, repo, tag?, message?}` | `{imageId}` |
 
+> `containers.create` e `containers.duplicate` aplicam `network.proxy`/`network.proxyExclude`
+> ao `env` do novo container, sem sobrescrever chaves definidas explicitamente pelo usuário
+> (ou herdadas do container duplicado). A configuração é lida na criação; containers
+> existentes exigem recriação. Ver [`settings.md`](settings.md) e [`spec.md`](spec.md) §6.3.
+
 ### 4.3 `images.*`
 
 | Método | Params | Result |

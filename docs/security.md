@@ -151,6 +151,10 @@ encerra a janela da instância já em execução.
   `--password`/`--set-password` (a T4-04 usa prompt/SSH), mantendo a senha fora de `ps` e do
   histórico do shell.
 - Redaction: chaves que casam `(?i)(token|password|secret|authorization|key)` em env/labels são mascaradas.
+- Proxy: a URL de `network.proxy` pode conter usuário/senha. Ela **nunca** é registrada em
+  log, ecoada em erro de validação ou incluída em diagnóstico; os erros são genéricos. O
+  `config.json` é `0600`, e as variáveis vão ao container/machine pelo ambiente/cloud-init,
+  não por argv.
 - `podstack report` mostra prévia e exige confirmação.
 
 ### 6.1 Telemetria (opt-in por categoria)
@@ -166,6 +170,9 @@ encerra a janela da instância já em execução.
 ## 7. Rede, DNS e proxy
 
 - Proxy/DNS escutam **somente loopback** por padrão.
+- O proxy global é aplicado por variáveis de ambiente na criação de containers e por
+  `/etc/environment` (cloud-init) em machines novas; credenciais da URL não aparecem em logs,
+  erros ou argv. Recursos existentes exigem recriação.
 - Exposição LAN é opt-in, com aviso e firewall (firewalld/ufw).
 - `*.localhost` não requer privilégio e não altera o sistema.
 - `*.podstack.local` via helper: drop-in gerenciado, reversível, com backup.

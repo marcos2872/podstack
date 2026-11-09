@@ -3,6 +3,7 @@
 #include "MockHttpServer.h"
 #include "MockQmpServer.h"
 
+#include "core/Config.h"
 #include "core/Ids.h"
 #include "core/Paths.h"
 #include "daemon/BuildStore.h"
@@ -405,6 +406,7 @@ private slots:
     void seedYamlDefaults();
     void seedPasswordHashed();
     void seedVerbatimUserData();
+    void seedEnvironment();
     void seedEscapesYaml();
     void qemuBinary();
     void qemuCommandKvm();
@@ -1136,6 +1138,39 @@ void MachinesTest::seedVerbatimUserData()
     QCOMPARE(QString::fromUtf8(userData), options.userData);
 }
 
+void MachinesTest::seedEnvironment()
+{
+    const QString directory = m_root + QStringLiteral("/seed-environment");
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+    const QString seedPath = directory + QStringLiteral("/seed.iso");
+
+    CloudInitOptions options =
+        seedOptions(QStringLiteral("machine-environment"), QStringLiteral("podstack-env"));
+    options.environment.insert(QStringLiteral("HTTP_PROXY"),
+                               QStringLiteral("http://127.0.0.1:3128"));
+    options.environment.insert(QStringLiteral("NO_PROXY"),
+                               QStringLiteral("localhost,127.0.0.1"));
+    PodStack::Error error;
+    QVERIFY2(CloudInit::writeSeedIso(seedPath, options, &error), qPrintable(error.message));
+
+    QByteArray userData;
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("user-data"), &userData));
+    const QString yaml = QString::fromUtf8(userData);
+    QVERIFY(yaml.contains(QStringLiteral("write_files:\n")));
+    QVERIFY(yaml.contains(QStringLiteral("  - path: /etc/environment\n")));
+    QVERIFY(yaml.contains(QStringLiteral("    append: true\n")));
+    QVERIFY(yaml.contains(QStringLiteral("    content: |\n")));
+    QVERIFY(yaml.contains(QStringLiteral("      HTTP_PROXY=http://127.0.0.1:3128\n")));
+    QVERIFY(yaml.contains(QStringLiteral("      NO_PROXY=localhost,127.0.0.1\n")));
+
+    options.userData = QStringLiteral("#cloud-config\nruncmd:\n  - echo verbatim\n");
+    QVERIFY2(CloudInit::writeSeedIso(seedPath, options, &error), qPrintable(error.message));
+    QVERIFY(readIsoEntry(seedPath, QStringLiteral("user-data"), &userData));
+    QCOMPARE(QString::fromUtf8(userData), options.userData);
+    QVERIFY(!userData.contains("write_files:"));
+}
+
 void MachinesTest::seedEscapesYaml()
 {
     const QString directory = m_root + QStringLiteral("/seed-invalid");
@@ -1608,6 +1643,14 @@ void MachinesTest::machineManagerCreate()
     request.cpus = 2;
     request.diskBytes = 1024LL * 1024LL * 1024LL;
 
+    PodStack::Config config = PodStack::Config::load();
+    config.set(QStringLiteral("network.proxy"),
+               QStringLiteral("http://127.0.0.1:3128"));
+    config.set(QStringLiteral("network.proxyExclude"),
+               QJsonArray{QStringLiteral("localhost"), QStringLiteral(".internal")});
+    QString configError;
+    QVERIFY2(config.save(&configError), qPrintable(configError));
+
     QStringList stages;
     PodStack::Error error;
     const MachineMeta meta = manager.create(
@@ -1648,6 +1691,18 @@ void MachinesTest::machineManagerCreate()
     QVERIFY(ownerOnly(QFileInfo(meta.diskPath).permissions(), false));
     QVERIFY(ownerOnly(QFileInfo(meta.seedPath).permissions(), false));
     QVERIFY(ownerOnly(QFileInfo(directory + QStringLiteral("/meta.json")).permissions(), false));
+
+    QByteArray seedUserData;
+    QVERIFY(readIsoEntry(meta.seedPath, QStringLiteral("user-data"), &seedUserData));
+    const QString seedYaml = QString::fromUtf8(seedUserData);
+    QVERIFY(seedYaml.contains(QStringLiteral("      HTTP_PROXY=http://127.0.0.1:3128\n")));
+    QVERIFY(seedYaml.contains(QStringLiteral("      HTTPS_PROXY=http://127.0.0.1:3128\n")));
+    QVERIFY(seedYaml.contains(QStringLiteral("      NO_PROXY=localhost,127.0.0.1,::1,"
+                                             "*.localhost,.internal")));
+
+    config.set(QStringLiteral("network.proxy"), QStringLiteral("auto"));
+    config.set(QStringLiteral("network.proxyExclude"), QJsonArray{});
+    QVERIFY2(config.save(&configError), qPrintable(configError));
 
     const QString ovmfVarsTarget = directory + QStringLiteral("/OVMF_VARS.fd");
     QVERIFY(QFileInfo(ovmfVarsTarget).isFile());

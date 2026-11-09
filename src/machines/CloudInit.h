@@ -4,6 +4,7 @@
 
 #include "core/Error.h"
 
+#include <QMap>
 #include <QString>
 #include <QStringList>
 
@@ -18,6 +19,9 @@ struct CloudInitOptions {
     QStringList sshAuthorizedKeys;
     QString userData;      // se não vazio, usar verbatim
     QString networkConfig; // se vazio, gerar DHCP v2
+    /// Variáveis gravadas em /etc/environment quando `userData` está vazio.
+    /// Com user-data próprio o conteúdo não é mesclado (o usuário manda no arquivo).
+    QMap<QString, QString> environment;
 };
 
 class CloudInit {

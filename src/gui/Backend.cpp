@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "core/DiskUsage.h"
 #include "core/Error.h"
+#include "core/Proxy.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
 #include "core/SetupPolicy.h"
@@ -1170,6 +1171,18 @@ QVariantMap Backend::settings() const
                   config.get(QStringLiteral("app.startAtLogin")).toBool(false));
     values.insert(QStringLiteral("notifications"),
                   config.get(QStringLiteral("app.notifications")).toBool(true));
+    values.insert(QStringLiteral("proxy"),
+                  config.get(QStringLiteral("network.proxy")).toString(QStringLiteral("auto")));
+    QStringList proxyExclude;
+    const QJsonArray excludeArray =
+        config.get(QStringLiteral("network.proxyExclude")).toArray();
+    for (const QJsonValue &value : excludeArray) {
+        const QString entry = value.toString();
+        if (!entry.isEmpty()) {
+            proxyExclude.append(entry);
+        }
+    }
+    values.insert(QStringLiteral("proxyExclude"), proxyExclude);
     return values;
 }
 
@@ -1214,6 +1227,49 @@ void Backend::saveTraySettings(bool keepRunning, bool showInTray, bool startAtLo
     }
 
     if (!Autostart::setEnabled(startAtLogin, &error)) {
+        m_lastError = error;
+        emit lastErrorChanged();
+        emit actionFinished(false, error);
+        return;
+    }
+
+    m_lastError.clear();
+    emit lastErrorChanged();
+    emit settingsChanged();
+    emit actionFinished(true, {});
+}
+
+void Backend::saveProxySettings(const QString &proxy, const QString &excludeText)
+{
+    const QString normalizedProxy = proxy.trimmed();
+    QStringList excludes;
+    const QStringList parts = excludeText.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        const QString entry = part.trimmed();
+        if (!entry.isEmpty()) {
+            excludes.append(entry);
+        }
+    }
+
+    Error validation;
+    if (!Proxy::validate(normalizedProxy, excludes, &validation)) {
+        m_lastError = validation.message;
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    QJsonArray excludeArray;
+    for (const QString &entry : excludes) {
+        excludeArray.append(entry);
+    }
+
+    Config config = Config::load();
+    config.set(QStringLiteral("network.proxy"), normalizedProxy);
+    config.set(QStringLiteral("network.proxyExclude"), excludeArray);
+
+    QString error;
+    if (!config.save(&error)) {
         m_lastError = error;
         emit lastErrorChanged();
         emit actionFinished(false, error);
