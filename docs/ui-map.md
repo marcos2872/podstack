@@ -185,8 +185,10 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` após
   `machines.ssh`. Fechar a aba encerra a sessão; fechar o dock apenas o esconde
   (as sessões continuam e uma nova sessão reabre o painel).
-- **Abrir externo** relança o mesmo programa/argumentos via `xdg-terminal-exec`,
-  `$TERMINAL` ou os emuladores comuns, sem passar por shell.
+- **Abrir externo** relança o mesmo programa/argumentos priorizando
+  `xdg-terminal-exec`, depois `$TERMINAL`, a configuração do desktop
+  (`xdg-settings`/gsettings/KDE), `TERM_PROGRAM` e o desktop atual (niri → alacritty);
+  os emuladores comuns são o último fallback. Nunca passa por shell.
 - Menu: copiar tela/seleção (texto/ANSI/HTML), reset, fonte, fechar.
 
 ### 5.5 Files

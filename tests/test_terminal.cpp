@@ -35,6 +35,7 @@ private slots:
     void terminalViewConfiguration();
     void externalTerminalCommands();
     void externalTerminalDetection();
+    void externalTerminalDesktopFallback();
     void containerDetailDialog();
     void containerDetailDialogQml();
     void mainWindowTerminalDock();
@@ -123,6 +124,8 @@ void TerminalTest::externalTerminalCommands()
              QStringList({QStringLiteral("-e"), program}) + args);
     QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("alacritty"), program, args),
              QStringList({QStringLiteral("-e"), program}) + args);
+    QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("ghostty"), program, args),
+             QStringList({QStringLiteral("-e"), program}) + args);
     QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("xfce4-terminal"),
                                                     program, args),
              QStringList({QStringLiteral("-x"), program}) + args);
@@ -172,6 +175,70 @@ void TerminalTest::externalTerminalDetection()
     } else {
         qputenv("TERMINAL", oldTerminal);
     }
+}
+
+void TerminalTest::externalTerminalDesktopFallback()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    const auto writeScript = [&dir](const QString &name, const QByteArray &body) {
+        const QString path = dir.filePath(name);
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return QString();
+        }
+        file.write("#!/bin/sh\n");
+        file.write(body);
+        file.close();
+        if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                 | QFileDevice::ExeOwner)) {
+            return QString();
+        }
+        return path;
+    };
+
+    const QString alacritty = writeScript(QStringLiteral("alacritty"),
+                                          QByteArrayLiteral("exit 0\n"));
+    QVERIFY(!alacritty.isEmpty());
+    // Simula um xdg-settings que não conhece a chave e imprime o usage.
+    QVERIFY(!writeScript(QStringLiteral("xdg-settings"),
+                         QByteArrayLiteral("echo 'xdg-settings - get various settings'\n"
+                                           "exit 0\n"))
+                 .isEmpty());
+    // Simula gsettings apontando para xdg-terminal-exec, que não existe.
+    QVERIFY(!writeScript(QStringLiteral("gsettings"),
+                         QByteArrayLiteral("echo \"'xdg-terminal-exec'\"\n"
+                                           "exit 0\n"))
+                 .isEmpty());
+
+    const QByteArray oldPath = qgetenv("PATH");
+    const QByteArray oldTerminal = qgetenv("TERMINAL");
+    const QByteArray oldDesktop = qgetenv("XDG_CURRENT_DESKTOP");
+    const QByteArray oldSession = qgetenv("DESKTOP_SESSION");
+    const QByteArray oldTermProgram = qgetenv("TERM_PROGRAM");
+
+    qputenv("PATH", dir.path().toUtf8());
+    qunsetenv("TERMINAL");
+    qputenv("XDG_CURRENT_DESKTOP", "niri");
+    qunsetenv("DESKTOP_SESSION");
+    qunsetenv("TERM_PROGRAM");
+
+    QCOMPARE(PodStack::ExternalTerminal::findTerminal(), alacritty);
+
+    // Restaura o ambiente para os demais testes.
+    auto restore = [](const char *name, const QByteArray &value) {
+        if (value.isEmpty()) {
+            qunsetenv(name);
+        } else {
+            qputenv(name, value);
+        }
+    };
+    restore("PATH", oldPath);
+    restore("TERMINAL", oldTerminal);
+    restore("XDG_CURRENT_DESKTOP", oldDesktop);
+    restore("DESKTOP_SESSION", oldSession);
+    restore("TERM_PROGRAM", oldTermProgram);
 }
 
 void TerminalTest::containerDetailDialog()

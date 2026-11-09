@@ -59,6 +59,10 @@ O PodStack é licenciado sob **GPL-3.0-or-later**. Portanto:
   a barra com **Abrir externo**; uma abstração `TerminalBackend` fica para uma troca
   futura. O componente é reutilizado no dock da `MainWindow`, na `TerminalWindow`
   legada e na aba Terminal do detalhe do container.
+- `ExternalTerminal` descobre o terminal padrão nesta ordem: `xdg-terminal-exec`,
+  `$TERMINAL`, `xdg-settings`/gsettings/KDE, `TERM_PROGRAM` e o desktop atual
+  (niri/sway/Hyprland → alacritty/ghostty/kitty/foot/wezterm), com os emuladores comuns
+  como fallback. Nunca usa shell.
 - `MainWindow` (`QMainWindow`) hospeda a UI QML em um `QQuickWidget` e o terminal em um
   `QDockWidget` "Terminal" com abas de `TerminalView` (uma sessão por aba).
 - Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` após o
