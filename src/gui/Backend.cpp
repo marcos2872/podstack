@@ -3,6 +3,9 @@
 #include "core/Config.h"
 #include "core/Error.h"
 #include "core/RpcClient.h"
+#include "core/SetupActions.h"
+#include "core/SetupPolicy.h"
+#include "gui/Autostart.h"
 #include "gui/TerminalWindow.h"
 
 #include <QDesktopServices>
@@ -32,6 +35,34 @@ QString humanBytes(qint64 bytes)
     }
     return QString::number(value, 'f', unit == 0 ? 0 : 1) + QLatin1Char(' ')
            + QString::fromLatin1(units[unit]);
+}
+
+QJsonObject runBatchAction(const QString &action, const QStringList &ids)
+{
+    RpcClient client;
+    int failed = 0;
+    QJsonObject lastError;
+
+    for (const QString &id : ids) {
+        Error error;
+        QJsonObject params;
+        params.insert(QStringLiteral("id"), id);
+        client.call(QStringLiteral("containers.") + action, params, &error);
+        if (!error.isEmpty()) {
+            ++failed;
+            lastError = error.toJson();
+        }
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("count"), ids.size());
+    result.insert(QStringLiteral("failed"), failed);
+    if (failed > 0) {
+        result.insert(QStringLiteral("error"), lastError);
+    } else {
+        result.insert(QStringLiteral("ok"), true);
+    }
+    return result;
 }
 
 } // namespace
@@ -118,6 +149,27 @@ Backend::Backend(QObject *parent)
         emit lastErrorChanged();
     });
 
+    connect(&m_activityStream, &StreamClient::systemStats, this,
+            [this](const QJsonObject &sample) {
+                m_activityStats = sample.toVariantMap();
+                const QJsonObject host = sample.value(QStringLiteral("host")).toObject();
+                m_activityCpuHistory.append(host.value(QStringLiteral("cpuPercent")).toDouble());
+                if (m_activityCpuHistory.size() > 60) {
+                    m_activityCpuHistory.removeFirst();
+                }
+                m_activityMemHistory.append(host.value(QStringLiteral("memPercent")).toDouble());
+                if (m_activityMemHistory.size() > 60) {
+                    m_activityMemHistory.removeFirst();
+                }
+                emit activityChanged();
+            });
+    connect(&m_activityStream, &StreamClient::error, this, [this](const QString &message) {
+        m_activityActive = false;
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit activityChanged();
+    });
+
     connect(&m_pullStream, &StreamClient::pullEvent, this,
             [this](const QJsonObject &event) {
                 const QString status = event.value(QStringLiteral("status")).toString();
@@ -156,6 +208,23 @@ Backend::Backend(QObject *parent)
         m_eventMessage.clear();
         m_eventKind.clear();
         emit eventsChanged();
+    });
+
+    m_refreshTimer.setSingleShot(true);
+    m_refreshTimer.setInterval(300);
+    connect(&m_refreshTimer, &QTimer::timeout, this, &Backend::refresh);
+
+    m_eventsRetryTimer.setSingleShot(true);
+    connect(&m_eventsRetryTimer, &QTimer::timeout, this,
+            [this] { m_eventsStream.subscribeEvents(); });
+    connect(&m_eventsStream, &StreamClient::subscriptionReady, this,
+            [this](const QJsonObject &) { m_eventsRetryDelayMs = 1000; });
+    connect(&m_eventsStream, &StreamClient::error, this, [this](const QString &) {
+        if (m_eventsRetryTimer.isActive()) {
+            return;
+        }
+        m_eventsRetryTimer.start(m_eventsRetryDelayMs);
+        m_eventsRetryDelayMs = qMin(m_eventsRetryDelayMs * 2, 30000);
     });
 
     connect(&m_composeStream, &StreamClient::composeLog, this,
@@ -223,15 +292,24 @@ Backend::Backend(QObject *parent)
                     != QStringLiteral("container")) {
                     return;
                 }
-                const QString action = event.value(QStringLiteral("Action")).toString();
+                QString action = event.value(QStringLiteral("Action")).toString();
+                if (action == QStringLiteral("died")) {
+                    action = QStringLiteral("die");
+                } else if (action == QStringLiteral("stopped")) {
+                    action = QStringLiteral("stop");
+                }
                 if (action != QStringLiteral("start") && action != QStringLiteral("stop")
                     && action != QStringLiteral("die") && action != QStringLiteral("create")
                     && action != QStringLiteral("remove")
                     && action != QStringLiteral("pause")
-                    && action != QStringLiteral("unpause")) {
+                    && action != QStringLiteral("unpause")
+                    && action != QStringLiteral("health_status")
+                    && action != QStringLiteral("oom")) {
                     return;
                 }
                 const QJsonObject actor = event.value(QStringLiteral("Actor")).toObject();
+                const QJsonObject attributes =
+                    actor.value(QStringLiteral("Attributes")).toObject();
                 const QString id = actor.value(QStringLiteral("ID")).toString();
                 const QString name = actor.value(QStringLiteral("Attributes"))
                                          .toObject()
@@ -249,10 +327,36 @@ Backend::Backend(QObject *parent)
                 m_recentEvents.insert(key);
 
                 m_eventKind = action;
+                QString detail = action;
+                QString health = attributes.value(QStringLiteral("health_status")).toString();
+                if (health.isEmpty()) {
+                    health =
+                        attributes.value(QStringLiteral("containerHealthStatus")).toString();
+                }
+                if (action == QStringLiteral("health_status")) {
+                    detail = health.isEmpty() ? QStringLiteral("health") : health;
+                }
                 m_eventMessage = (name.isEmpty() ? id.left(12) : name)
-                                 + QLatin1Char(' ') + action;
+                                 + QLatin1Char(' ') + detail;
                 emit eventsChanged();
                 m_eventTimer.start();
+                m_refreshTimer.start();
+
+                QVariantMap payload;
+                payload.insert(QStringLiteral("action"), action);
+                payload.insert(QStringLiteral("id"), id);
+                payload.insert(QStringLiteral("name"), name);
+                QString exitCode = attributes.value(QStringLiteral("containerExitCode")).toString();
+                if (exitCode.isEmpty()) {
+                    exitCode = attributes.value(QStringLiteral("exitCode")).toString();
+                }
+                if (exitCode.isEmpty()) {
+                    exitCode =
+                        event.value(QStringLiteral("ContainerExitCode")).toVariant().toString();
+                }
+                payload.insert(QStringLiteral("health"), health);
+                payload.insert(QStringLiteral("exitCode"), exitCode);
+                emit containerEvent(payload);
             });
 
     m_eventsStream.subscribeEvents();
@@ -269,6 +373,7 @@ QString Backend::version() const
 void Backend::refresh()
 {
     if (m_watcher.isRunning()) {
+        m_refreshAgain = true;
         return;
     }
 
@@ -703,7 +808,12 @@ void Backend::onRefreshFinished()
             m_error = message;
             emit stateChanged();
         }
+        m_containers.clear();
         emit containersChanged({});
+        if (m_refreshAgain) {
+            m_refreshAgain = false;
+            QTimer::singleShot(0, this, &Backend::refresh);
+        }
         return;
     }
 
@@ -727,6 +837,17 @@ void Backend::onRefreshFinished()
         item.insert(QStringLiteral("health"), object.value(QStringLiteral("health")).toString());
         item.insert(QStringLiteral("status"), object.value(QStringLiteral("status")).toString());
 
+        QVariantMap labels;
+        const QJsonObject labelObject = object.value(QStringLiteral("labels")).toObject();
+        for (auto it = labelObject.constBegin(); it != labelObject.constEnd(); ++it) {
+            labels.insert(it.key(), it.value().toString());
+        }
+        item.insert(QStringLiteral("labels"), labels);
+        item.insert(QStringLiteral("project"),
+                    labels.value(QStringLiteral("com.docker.compose.project")).toString());
+        item.insert(QStringLiteral("service"),
+                    labels.value(QStringLiteral("com.docker.compose.service")).toString());
+
         QStringList ports;
         const QJsonArray portArray = object.value(QStringLiteral("ports")).toArray();
         for (const QJsonValue &port : portArray) {
@@ -736,8 +857,12 @@ void Backend::onRefreshFinished()
         items.append(item);
     }
 
-    emit containersChanged(items);
     m_containers = items;
+    emit containersChanged(items);
+    if (m_refreshAgain) {
+        m_refreshAgain = false;
+        QTimer::singleShot(0, this, &Backend::refresh);
+    }
 }
 
 void Backend::lifecycle(const QString &action, const QString &id)
@@ -885,6 +1010,22 @@ void Backend::unsubscribeStats()
     m_stream.unsubscribe();
 }
 
+void Backend::startActivityMonitor()
+{
+    m_activityActive = true;
+    m_activityCpuHistory.clear();
+    m_activityMemHistory.clear();
+    m_activityStream.subscribeSystemStats(2);
+    emit activityChanged();
+}
+
+void Backend::stopActivityMonitor()
+{
+    m_activityActive = false;
+    m_activityStream.unsubscribe();
+    emit activityChanged();
+}
+
 QVariantMap Backend::settings() const
 {
     const Config config = Config::load();
@@ -893,6 +1034,14 @@ QVariantMap Backend::settings() const
                   config.get(QStringLiteral("engine.mode")).toString());
     values.insert(QStringLiteral("theme"),
                   config.get(QStringLiteral("app.theme")).toString());
+    values.insert(QStringLiteral("keepRunningInTray"),
+                  config.get(QStringLiteral("app.keepRunningInTray")).toBool(true));
+    values.insert(QStringLiteral("showInTray"),
+                  config.get(QStringLiteral("app.showInTray")).toBool(true));
+    values.insert(QStringLiteral("startAtLogin"),
+                  config.get(QStringLiteral("app.startAtLogin")).toBool(false));
+    values.insert(QStringLiteral("notifications"),
+                  config.get(QStringLiteral("app.notifications")).toBool(true));
     return values;
 }
 
@@ -916,6 +1065,36 @@ void Backend::saveEngineMode(const QString &mode)
 
     m_lastError.clear();
     emit lastErrorChanged();
+    emit actionFinished(true, {});
+}
+
+void Backend::saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
+                               bool notifications)
+{
+    Config config = Config::load();
+    config.set(QStringLiteral("app.keepRunningInTray"), keepRunning);
+    config.set(QStringLiteral("app.showInTray"), showInTray);
+    config.set(QStringLiteral("app.startAtLogin"), startAtLogin);
+    config.set(QStringLiteral("app.notifications"), notifications);
+
+    QString error;
+    if (!config.save(&error)) {
+        m_lastError = error;
+        emit lastErrorChanged();
+        emit actionFinished(false, error);
+        return;
+    }
+
+    if (!Autostart::setEnabled(startAtLogin, &error)) {
+        m_lastError = error;
+        emit lastErrorChanged();
+        emit actionFinished(false, error);
+        return;
+    }
+
+    m_lastError.clear();
+    emit lastErrorChanged();
+    emit settingsChanged();
     emit actionFinished(true, {});
 }
 
@@ -987,16 +1166,18 @@ void Backend::onSetupFinished()
         emit setupChanged();
     } else if (m_setupPendingMethod == QStringLiteral("setup.validate")) {
         m_setupChecks = result.value(QStringLiteral("checks")).toArray().toVariantList();
-        int missing = 0;
-        for (const QVariant &check : m_setupChecks) {
-            if (check.toMap().value(QStringLiteral("status")).toString()
-                == QStringLiteral("missing")) {
-                ++missing;
+        bool ready = true;
+        for (const QVariant &checkValue : m_setupChecks) {
+            const QVariantMap check = checkValue.toMap();
+            if (!SetupPolicy::isCheckSatisfied(check.value(QStringLiteral("id")).toString(),
+                                               check.value(QStringLiteral("status")).toString())) {
+                ready = false;
+                break;
             }
         }
-        m_setupSummary.insert(QStringLiteral("ready"), missing == 0);
-        m_setupStatus = missing == 0 ? QStringLiteral("Tudo pronto.")
-                                     : QStringLiteral("Alguns itens precisam de atenção.");
+        m_setupSummary.insert(QStringLiteral("ready"), ready);
+        m_setupStatus = ready ? QStringLiteral("Tudo pronto.")
+                              : QStringLiteral("Alguns itens precisam de atenção.");
         emit setupChanged();
     } else if (m_setupPendingMethod == QStringLiteral("setup.complete")) {
         m_setupCompleted = result.value(QStringLiteral("completed")).toBool();
@@ -1052,6 +1233,34 @@ void Backend::applySetupJob(const QJsonObject &job)
         m_setupLog.append(line.toString());
     }
     emit setupJobChanged();
+}
+
+QString Backend::setupPodmanAction() const
+{
+    for (const QVariant &value : m_setupChecks) {
+        const QVariantMap check = value.toMap();
+        if (check.value(QStringLiteral("id")).toString() == QStringLiteral("podman")) {
+            return SetupActions::podmanActionForStatus(
+                check.value(QStringLiteral("status")).toString());
+        }
+    }
+    return {};
+}
+
+bool Backend::setupMandatoryOk() const
+{
+    if (m_setupChecks.isEmpty()) {
+        return false;
+    }
+    for (const QVariant &value : m_setupChecks) {
+        const QVariantMap check = value.toMap();
+        const QString id = check.value(QStringLiteral("id")).toString();
+        const QString status = check.value(QStringLiteral("status")).toString();
+        if (!SetupPolicy::isCheckSatisfied(id, status)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void Backend::setupRefresh()
@@ -1119,6 +1328,15 @@ void Backend::setupCancel()
 
 void Backend::setupComplete()
 {
+    if (!setupMandatoryOk()) {
+        m_setupError = QStringLiteral(
+            "Conclua os itens obrigatórios antes de abrir o PodStack.");
+        emit setupChanged();
+        return;
+    }
+
+    m_setupError.clear();
+    emit setupChanged();
     QJsonObject params;
     params.insert(QStringLiteral("skipped"), false);
     runSetupRequest(QStringLiteral("setup.complete"), params);
@@ -1271,36 +1489,17 @@ void Backend::batchIds(const QStringList &ids, const QString &action)
         return;
     }
 
-    if (m_actionWatcher.isRunning()) {
+    const PendingAction pending{
+        QStringLiteral("__batch__"),
+        QJsonObject{{QStringLiteral("action"), action},
+                    {QStringLiteral("ids"), QJsonArray::fromStringList(ids)}},
+        60000,
+    };
+    if (m_actionActive) {
+        enqueueAction(pending);
         return;
     }
-
-    m_actionWatcher.setFuture(QtConcurrent::run([action, ids] {
-        RpcClient client;
-        int failed = 0;
-        QJsonObject lastError;
-
-        for (const QString &id : ids) {
-            Error error;
-            QJsonObject params;
-            params.insert(QStringLiteral("id"), id);
-            client.call(QStringLiteral("containers.") + action, params, &error);
-            if (!error.isEmpty()) {
-                ++failed;
-                lastError = error.toJson();
-            }
-        }
-
-        QJsonObject result;
-        result.insert(QStringLiteral("count"), ids.size());
-        result.insert(QStringLiteral("failed"), failed);
-        if (failed > 0) {
-            result.insert(QStringLiteral("error"), lastError);
-        } else {
-            result.insert(QStringLiteral("ok"), true);
-        }
-        return result;
-    }));
+    startAction(pending);
 }
 
 void Backend::uploadFile(const QString &id, const QString &path, const QString &sourcePath)
@@ -1445,14 +1644,35 @@ void Backend::removeBuild(const QString &id)
 
 void Backend::runAction(const QString &method, const QJsonObject &params, int timeoutMs)
 {
-    if (m_actionWatcher.isRunning()) {
+    const PendingAction pending{method, params, timeoutMs};
+    if (m_actionActive) {
+        enqueueAction(pending);
+        return;
+    }
+    startAction(pending);
+}
+
+void Backend::startAction(const PendingAction &action)
+{
+    m_actionActive = true;
+    emit actionStateChanged();
+
+    if (action.method == QStringLiteral("__batch__")) {
+        const QString batchAction = action.params.value(QStringLiteral("action")).toString();
+        const QJsonArray array = action.params.value(QStringLiteral("ids")).toArray();
+        QStringList ids;
+        ids.reserve(array.size());
+        for (const QJsonValue &value : array) {
+            ids.append(value.toString());
+        }
+        m_actionWatcher.setFuture(QtConcurrent::run(runBatchAction, batchAction, ids));
         return;
     }
 
-    m_actionWatcher.setFuture(QtConcurrent::run([method, params, timeoutMs] {
+    m_actionWatcher.setFuture(QtConcurrent::run([action] {
         RpcClient client;
         Error error;
-        QJsonObject result = client.call(method, params, &error, timeoutMs);
+        QJsonObject result = client.call(action.method, action.params, &error, action.timeoutMs);
         if (!error.isEmpty()) {
             QJsonObject payload;
             payload.insert(QStringLiteral("error"), error.toJson());
@@ -1460,6 +1680,17 @@ void Backend::runAction(const QString &method, const QJsonObject &params, int ti
         }
         return result;
     }));
+}
+
+void Backend::enqueueAction(const PendingAction &action)
+{
+    if (m_actionQueue.size() >= 32) {
+        m_lastError = QStringLiteral("Muitas ações pendentes. Aguarde a conclusão.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+    m_actionQueue.append(action);
 }
 
 void Backend::onActionFinished()
@@ -1470,16 +1701,24 @@ void Backend::onActionFinished()
         m_lastError = errorObject.value(QStringLiteral("message")).toString();
         emit lastErrorChanged();
         emit actionFinished(false, m_lastError);
+    } else {
+        if (!m_lastError.isEmpty()) {
+            m_lastError.clear();
+            emit lastErrorChanged();
+        }
+        emit actionFinished(true, {});
+        refresh();
+        refreshCatalog();
+    }
+
+    if (!m_actionQueue.isEmpty()) {
+        const PendingAction next = m_actionQueue.takeFirst();
+        startAction(next);
         return;
     }
 
-    if (!m_lastError.isEmpty()) {
-        m_lastError.clear();
-        emit lastErrorChanged();
-    }
-    emit actionFinished(true, {});
-    refresh();
-    refreshCatalog();
+    m_actionActive = false;
+    emit actionStateChanged();
 }
 
 } // namespace PodStack

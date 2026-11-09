@@ -21,9 +21,11 @@ Campos desconhecidos são preservados na escrita. Config inválida → backup + 
 
 | Chave | Tipo | Default | Reinício | Descrição |
 |---|---|---|---|---|
-| `app.startAtLogin` | bool | `false` | não | Inicia o daemon/tray no login |
+| `app.startAtLogin` | bool | `false` | não | Cria/remove `~/.config/autostart/dev.podstack.PodStack.desktop` com `--hidden` |
 | `app.waitForContainerStop` | bool | `true` | não | Ao sair, aguarda containers pararem |
-| `app.keepRunningInTray` | bool | `true` | não | Mantém daemon/tray ao fechar a janela |
+| `app.keepRunningInTray` | bool | `true` | não | Fechar a janela esconde para a bandeja em vez de encerrar a GUI |
+| `app.showInTray` | bool | `true` | não | Mostra o ícone na bandeja; `false` faz fechar encerrar a GUI |
+| `app.notifications` | bool | `true` | não | Notifica falha/OOM/unhealthy de containers |
 | `app.theme` | enum `system\|dark\|light` | `system` | não | Tema da UI |
 | `app.language` | string | `pt-BR` | não | Idioma (`pt-BR`, `en-US`) |
 | `app.confirmDestructive` | bool | `true` | não | Confirmação para ações destrutivas |
@@ -155,6 +157,10 @@ Campos desconhecidos são preservados na escrita. Config inválida → backup + 
 > O Docker **não** é removido por padrão. `setup.dockerPolicy=removed` só é gravado depois de confirmação explícita e da ação allowlisted do helper; não há migração automática de dados do Docker.
 
 > O onboarding abre quando `setup.completed=false` **e** `app.showOnboarding=true` (default). Pular o assistente grava `app.showOnboarding=false`, mantém `setup.completed=false` e deixa a Main com o aviso de configuração pendente; Settings → “Executar configuração novamente” reabre o fluxo.
+
+> **Bandeja (2026-11-08):** `app.keepRunningInTray`, `app.showInTray`, `app.startAtLogin` e
+> `app.notifications` são editáveis em Configurações → Geral. Se o host SNI não estiver disponível,
+> `app.keepRunningInTray` é ignorado e fechar a janela encerra a GUI (nunca fica sem janela).
 
 ---
 

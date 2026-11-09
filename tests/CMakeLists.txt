@@ -31,3 +31,42 @@ qt_add_executable(test_terminal test_terminal.cpp)
 target_link_libraries(test_terminal PRIVATE podstack_gui_lib Qt6::Test Qt6::Widgets)
 add_test(NAME terminal COMMAND test_terminal)
 set_tests_properties(terminal PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+qt_add_executable(test_tray test_tray.cpp)
+target_link_libraries(test_tray PRIVATE podstack_gui_lib Qt6::Test Qt6::Widgets)
+qt_add_resources(test_tray "tray_icons"
+    PREFIX "/qt/qml/PodStack"
+    BASE ".."
+    FILES
+        ../assets/png/tray/podstack-tray-16.png
+        ../assets/png/tray/podstack-tray-22.png
+        ../assets/png/tray/podstack-tray-24.png
+        ../assets/png/tray/podstack-tray-32.png
+        ../assets/png/tray/podstack-tray-48.png
+        ../assets/png/tray/podstack-tray-64.png
+)
+add_test(NAME tray COMMAND test_tray)
+set_tests_properties(tray PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+qt_add_executable(test_single_instance test_single_instance.cpp)
+target_link_libraries(test_single_instance PRIVATE podstack_gui_lib Qt6::Test)
+add_test(NAME single_instance COMMAND test_single_instance)
+
+qt_add_executable(test_autostart test_autostart.cpp)
+target_link_libraries(test_autostart PRIVATE podstack_gui_lib Qt6::Test)
+add_test(NAME autostart COMMAND test_autostart)
+
+qt_add_executable(test_stats test_stats.cpp ../src/daemon/StatsCollector.cpp)
+target_link_libraries(test_stats PRIVATE podstack_podman Qt6::Test)
+add_test(NAME stats COMMAND test_stats)
+
+qt_add_executable(test_notifications test_notifications.cpp)
+target_link_libraries(test_notifications PRIVATE podstack_gui_lib Qt6::Test)
+add_test(NAME notifications COMMAND test_notifications)
+
+qt_add_executable(test_setup test_setup.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/SetupManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/Polkit.cpp)
+target_link_libraries(test_setup PRIVATE podstack_podman Qt6::Concurrent Qt6::DBus
+    SQLite::SQLite3 Qt6::Test)
+add_test(NAME setup COMMAND test_setup)

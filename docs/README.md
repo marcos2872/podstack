@@ -62,6 +62,7 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 | [`adr/0006-rpm-first.md`](adr/0006-rpm-first.md) | RPM como formato primário |
 | [`adr/0007-compose-provider.md`](adr/0007-compose-provider.md) | Compose via provider Docker Compose + labels |
 | [`adr/0008-docker-coexistence-setup.md`](adr/0008-docker-coexistence-setup.md) | Docker e Podman coexistem; setup não destrutivo e remoção opt-in |
+| [`adr/0009-tray-sni-lifecycle.md`](adr/0009-tray-sni-lifecycle.md) | Bandeja SNI (`QSystemTrayIcon`), fechar-para-bandeja e instância única |
 
 ## Referência
 
@@ -81,7 +82,7 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 - [`../assets/podstack-layers.svg`](../assets/podstack-layers.svg) — símbolo secundário.
 - [`../assets/podstack-capsule-small.svg`](../assets/podstack-capsule-small.svg) — cápsula compacta (16–24 px).
 - [`../assets/podstack-icon.svg`](../assets/podstack-icon.svg) — ícone do app.
-- [`../assets/png/`](../assets/png/) — ícones 16–512, bandeja 16/22/24/32 e folha de validação.
+- [`../assets/png/`](../assets/png/) — ícones 16–512, bandeja 16/22/24/32/48/64 e folha de validação.
 - [`../assets/favicon.ico`](../assets/favicon.ico) / [`favicon-32.png`](../assets/favicon-32.png) — favicon.
 - [`../assets/og-image.png`](../assets/og-image.png) — Open Graph 1200×630 ([fonte SVG](../assets/og-image.svg)).
 - [`../assets/podstack_logo_concepts.svg`](../assets/podstack_logo_concepts.svg) — folha histórica de conceitos.

@@ -18,7 +18,7 @@
 | [`../assets/podstack-icon.svg`](../assets/podstack-icon.svg) | Ícone do app (256×256, fundo escuro) | **aprovado** |
 | [`../assets/podstack-logo.svg`](../assets/podstack-logo.svg) | Lockup horizontal (cápsula + wordmark) | **aprovado** |
 | [`../assets/png/podstack-icon-{16,24,32,48,64,128,256,512}.png`](../assets/png/) | Ícones para `hicolor`/launcher | **gerado** |
-| [`../assets/png/tray/podstack-tray-{16,22,24,32}.png`](../assets/png/tray/) | Bandeja (SNI) em tamanhos pequenos | **gerado** |
+| [`../assets/png/tray/podstack-tray-{16,22,24,32,48,64}.png`](../assets/png/tray/) | Bandeja (SNI) em tamanhos pequenos/médios, a partir de `podstack-capsule-tray.svg` | **gerado** |
 | [`../assets/png/tray-validation.png`](../assets/png/tray-validation.png) | Folha de validação (escuro/claro) | **evidência** |
 | [`../assets/favicon.ico`](../assets/favicon.ico) | Favicon multi-size (16/32/48) | **gerado** |
 | [`../assets/favicon-32.png`](../assets/favicon-32.png) | Favicon PNG 32×32 | **gerado** |
@@ -76,7 +76,8 @@ Contraste: texto branco sobre `#3730A3` atende AA para texto grande; para texto 
 |---|---|---|
 | **Cápsula + wordmark** | `podstack-logo.svg` | README, site, onboarding, splash |
 | **Cápsula isolada** | `podstack-capsule.svg` | ícone do app, sidebar, materiais |
-| **Cápsula compacta** | `podstack-capsule-small.svg` | bandeja (16/22/24), favicon |
+| **Cápsula compacta** | `podstack-capsule-small.svg` | favicon |
+| **Cápsula da bandeja** | `podstack-capsule-tray.svg` | bandeja (16–64 px), corpo mais alto para preencher o slot |
 | **Camadas** | `podstack-layers.svg` | site, apresentações, splash alternativo |
 | **Ícone do app** | `podstack-icon.svg` | launcher, `.desktop`, PNGs 16–512 |
 
@@ -109,7 +110,7 @@ Contraste: texto branco sobre `#3730A3` atende AA para texto grande; para texto 
 | Contexto | Implementação |
 |---|---|
 | Ícone do app | `podstack-icon.svg` + PNGs 16–512 em `hicolor` |
-| Bandeja (SNI) | `podstack-capsule-small.svg` em 16/22/24, com variante de status (atenção/erro) |
+| Bandeja (SNI) | PNGs `podstack-tray-{16,22,24,32,48,64}.png`, gerados de `podstack-capsule-tray.svg`; badge de status (atenção `#D29922` / erro `#F85149`) desenhado em runtime sobre o ícone base |
 | Sidebar | cápsula 20 px + wordmark opcional no topo |
 | Onboarding | cápsula + wordmark, fundo escuro |
 | CLI | cápsula compacta em `--help`/`version` (sem arte pesada) |
@@ -139,15 +140,15 @@ Tokens de UI em [`ui-map.md`](ui-map.md).
 
 - [x] Aprovar a direção (Cápsula principal + Camadas secundário).
 - [x] Gerar SVGs utilizáveis (cápsula, camadas, compacta, ícone, lockup).
-- [x] Gerar PNGs do ícone (16–512) para `hicolor` e da bandeja (16/22/24/32).
-- [x] Validar legibilidade de 16–32 px em fundos escuro (`#0F1115`) e claro (`#F6F8FA`) — ver [`png/tray-validation.png`](../assets/png/tray-validation.png).
+- [x] Gerar PNGs do ícone (16–512) para `hicolor` e da bandeja (16/22/24/32/48/64).
+- [x] Validar legibilidade de 16–64 px em fundos escuro (`#0F1115`) e claro (`#F6F8FA`) — ver [`png/tray-validation.png`](../assets/png/tray-validation.png).
 - [x] Criar favicon (`.ico` 16/32/48 + PNG 32) e imagem Open Graph 1200×630.
 - [ ] Validar no tray real (Noctalia/KDE) quando a GUI existir (M7).
 - [x] Definir licença dos assets junto com a licença do projeto: **GPL-3.0-or-later**.
 
 ### Evidência de validação
 
-- Ícones de bandeja em 16, 22, 24 e 32 px sobre `#0F1115` e `#F6F8FA`: cápsula e blocos legíveis em todos os tamanhos.
+- Ícones de bandeja em 16, 22, 24, 32, 48 e 64 px sobre `#0F1115` e `#F6F8FA`: cápsula e blocos legíveis em todos os tamanhos.
 - O ícone de 16 px usa a cápsula compacta (dois blocos), sem perda de leitura.
 - Favicon `.ico` contém os frames 16/32/48; Open Graph gerado em 1200×630.
 - A validação no tray real depende do app (SNI) e fica para o M7; o asset está pronto.

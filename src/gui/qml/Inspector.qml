@@ -29,6 +29,18 @@ Rectangle {
     readonly property bool compact: width < 340
 
     property int tabIndex: 0
+
+    function openTab(name) {
+        if (name === "logs") {
+            tabIndex = 1
+        } else if (name === "stats") {
+            tabIndex = 2
+        } else if (name === "files") {
+            tabIndex = 3
+        } else {
+            tabIndex = 0
+        }
+    }
     property string activeContainerId: ""
 
     onTabIndexChanged: {

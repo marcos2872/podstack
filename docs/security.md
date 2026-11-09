@@ -75,7 +75,10 @@ flowchart TB
 
 ### 4.2 Helper
 
-- systemd system unit com `NoNewPrivileges=yes`, `ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp=yes`, `RestrictAddressFamilies=AF_UNIX`, `MemoryDenyWriteExecute=yes`, `SystemCallFilter=@system-service`.
+- systemd system unit com `PrivateTmp=yes`, `ProtectHome=yes`, `ProtectKernelTunables=yes` e
+  `ProtectControlGroups=yes`. **Não** usa `NoNewPrivileges=yes`: o `dnf` precisa da transição
+  SELinux para `rpm_script_t` ao rodar scriptlets de RPM (`nnp_transition`). A allowlist fechada
+  de pacotes + polkit + auditoria é a fronteira de segurança.
 - D-Bus system bus, serviço `dev.podstack.Helper1`.
 - Polkit: cada método tem ação `dev.podstack.helper.<method>` com `auth_admin`/`auth_self`.
 - Rate limit: 10 req/min por uid por método.
@@ -125,6 +128,10 @@ flowchart TB
 - Limite de conexões (32) e de mensagens (8 MiB).
 - Timeout de inatividade (5 min) para clientes ociosos.
 - Log de conexões rejeitadas (uid, pid quando disponível).
+
+**Socket da GUI (instância única):** `$XDG_RUNTIME_DIR/podstack/gui.sock`, dir `0700`, socket
+`0600`, `SO_PEERCRED` (uid) e comandos allowlisted `show`/`quit`. Não é um canal RPC: só ativa ou
+encerra a janela da instância já em execução.
 
 ---
 

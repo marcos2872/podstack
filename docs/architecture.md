@@ -100,9 +100,27 @@ flowchart LR
 - **`SetupManager`** (daemon) detecta Podman, Docker, QEMU/KVM, `/dev/kvm`, OVMF, virtiofsd, systemd de usuário, SQLite, Caddy e k3s; expõe `setup.status/check/apply/removeDocker/cancel/complete/subscribe/validate`.
 - Ações são **jobs** internos com progresso/log/cancelamento e eventos `setup.delta`/`setup.done`; o job continua se a janela fechar e pode ser retomado por `setup.subscribe`.
 - Ações privilegiadas (pacotes, remoção do Docker) passam pelo **`podstack-helper`** (`dev.podstack.Helper1`, polkit, allowlist); a GUI nunca executa `sudo`/shell. O socket do Podman de usuário é ativado pelo daemon.
-- **`Backend`** (GUI) expõe `setupCompleted/setupPending/setupChecks/setupProgress/setupLog` e os invokables `setupRefresh/setupCheck/setupValidate/setupApply/setupComplete/setupSkip`; **`SetupWindow.qml`** conduz as 7 etapas e é aberto pelo `Main` somente quando `setupPending`.
+- **`Backend`** (GUI) expõe `setupCompleted/setupPending/setupChecks/setupProgress/setupLog/setupMandatoryOk` e os invokables `setupRefresh/setupCheck/setupValidate/setupApply/setupComplete`; **`SetupWindow.qml`** é um overlay modal dentro da `MainWindow` que conduz as 7 etapas e bloqueia o app enquanto `setup.completed=false`. A conclusão é recusada no `Backend` se os checks obrigatórios não estiverem `ok` (`core/SetupPolicy.h`).
 - O estado é persistido em `setup.completed`/`completedAt`/`dockerPolicy`/`lastValidation`; `app.showOnboarding=false` registra que o usuário optou por continuar depois.
 - Docker e Podman coexistem; a remoção do Docker é opt-in e não faz parte do fluxo principal.
+
+### 2.3 Bandeja, ciclo de vida e notificações
+
+- **`TrayController`** (`src/gui/Tray.cpp`) expõe `QSystemTrayIcon` + `QMenu` (SNI/DBusMenu). É uma
+  view: recebe o snapshot de `Backend` (`containersChanged`, `composeProjectsChanged`,
+  `stateChanged`, `setupChanged`, `actionStateChanged`) e emite intenções; o `main.cpp` traduz em
+  `Backend::lifecycle`/`composeStart|Stop|Restart` e o QML em navegação. O menu é reconstruído a
+  cada mudança e reexportado com `setContextMenu` (o SNI não emite `aboutToShow`).
+- **`SingleInstance`** (`src/gui/SingleInstance.cpp`) escuta em
+  `$XDG_RUNTIME_DIR/podstack/gui.sock` (dir `0700`, socket `0600`, `SO_PEERCRED`); a segunda
+  instância envia `show`/`quit` e sai. `--hidden` inicia na bandeja; `--quit` encerra a instância.
+- **`Autostart`** cria/remove o `.desktop` em `~/.config/autostart` com `--hidden` e reconcilia
+  `app.startAtLogin` no startup.
+- **`NotificationService`** usa `org.freedesktop.Notifications` (fallback: balão do tray) para
+  `die` com código ≠ 0, `oom` e `health_status=unhealthy`, com cooldown por container/ação.
+- **Activity Monitor**: `system.stats.subscribe` agrega no daemon CPU/mem/rede/disco do host
+  (`/proc`) e stats de todos os containers (uma chamada Libpod), emitindo `system.stats.delta` a
+  cada 2 s; `ActivityMonitorWindow.qml` desenha totais, sparklines e a tabela por container.
 
 ---
 

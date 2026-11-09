@@ -4,6 +4,8 @@
 
 #include "core/Config.h"
 #include "core/Paths.h"
+#include "core/SetupPolicy.h"
+#include "daemon/DbusUtils.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -321,7 +323,7 @@ QList<SetupCheck> SetupManager::check(bool deep)
     SetupCheck caddyCheck;
     caddyCheck.id = QStringLiteral("caddy");
     const QString caddy = findBinary(QStringLiteral("caddy"));
-    caddyCheck.status = QStringLiteral("optional");
+    caddyCheck.status = caddy.isEmpty() ? QStringLiteral("optional") : QStringLiteral("ok");
     caddyCheck.detail = caddy.isEmpty() ? QStringLiteral("Caddy não instalado · domínios HTTPS opcionais")
                                         : QStringLiteral("Caddy instalado · domínios HTTPS disponíveis");
     checks.append(caddyCheck);
@@ -329,7 +331,7 @@ QList<SetupCheck> SetupManager::check(bool deep)
     SetupCheck k3sCheck;
     k3sCheck.id = QStringLiteral("k3s");
     const QString k3s = findBinary(QStringLiteral("k3s"), {QStringLiteral("/usr/local/bin/k3s")});
-    k3sCheck.status = QStringLiteral("optional");
+    k3sCheck.status = k3s.isEmpty() ? QStringLiteral("optional") : QStringLiteral("ok");
     k3sCheck.detail = k3s.isEmpty() ? QStringLiteral("k3s não instalado · Kubernetes opcional")
                                     : QStringLiteral("k3s instalado · Kubernetes disponível");
     checks.append(k3sCheck);
@@ -360,12 +362,20 @@ QJsonObject SetupManager::status()
         checkArray.append(checkJson(check));
     }
 
+    bool ready = true;
+    for (const SetupCheck &check : checks) {
+        if (!SetupPolicy::isCheckSatisfied(check.id, check.status)) {
+            ready = false;
+            break;
+        }
+    }
+
     QJsonObject summary;
     summary.insert(QStringLiteral("ok"), ok);
     summary.insert(QStringLiteral("warnings"), warn);
     summary.insert(QStringLiteral("missing"), missing);
     summary.insert(QStringLiteral("optional"), optional);
-    summary.insert(QStringLiteral("ready"), missing == 0);
+    summary.insert(QStringLiteral("ready"), ready);
 
     QJsonObject result;
     result.insert(QStringLiteral("completed"),
@@ -389,7 +399,7 @@ QJsonObject SetupManager::validate()
     QJsonArray warnings;
     QJsonArray checkArray;
     for (const SetupCheck &check : checks) {
-        if (check.status == QStringLiteral("missing")) {
+        if (!SetupPolicy::isCheckSatisfied(check.id, check.status)) {
             ok = false;
         }
         if (check.status == QStringLiteral("warn")) {
@@ -685,7 +695,7 @@ bool SetupManager::helperCall(const QString &method, const QStringList &argument
         return false;
     }
 
-    const QVariantMap values = qvariant_cast<QVariantMap>(reply.arguments().value(0));
+    const QVariantMap values = DbusUtils::variantMapFromReply(reply.arguments().value(0));
     const bool ok = values.value(QStringLiteral("ok")).toBool();
     const QString message = values.value(QStringLiteral("message")).toString();
     if (!ok && error) {

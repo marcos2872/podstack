@@ -3,6 +3,8 @@
 #include "core/Logging.h"
 #include "core/Paths.h"
 #include "core/RpcClient.h"
+#include "core/SetupActions.h"
+#include "core/SetupPolicy.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -28,6 +30,8 @@ private slots:
     void configMergePreservesDefaults();
     void configSetupDefaults();
     void configInvalidFallsBack();
+    void setupActionsMapPodmanStatus();
+    void setupPolicyMandatoryChecks();
     void pathOverrides();
     void rpcClientUnavailable();
     void loggingInit();
@@ -82,6 +86,8 @@ void CoreTest::configDefaults()
     QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 1);
     QCOMPARE(config.get(QStringLiteral("engine.mode")).toString(), QStringLiteral("rootless"));
     QCOMPARE(config.get(QStringLiteral("telemetry.enabled")).toBool(), false);
+    QCOMPARE(config.get(QStringLiteral("app.keepRunningInTray")).toBool(), true);
+    QCOMPARE(config.get(QStringLiteral("app.showInTray")).toBool(), true);
 }
 
 void CoreTest::configSaveLoad()
@@ -115,6 +121,8 @@ void CoreTest::configMergePreservesDefaults()
     QCOMPARE(loaded.get(QStringLiteral("app.theme")).toString(), QStringLiteral("dark"));
     QCOMPARE(loaded.get(QStringLiteral("app.language")).toString(), QStringLiteral("pt-BR"));
     QCOMPARE(loaded.get(QStringLiteral("app.showOnboarding")).toBool(), true);
+    QCOMPARE(loaded.get(QStringLiteral("app.keepRunningInTray")).toBool(), true);
+    QCOMPARE(loaded.get(QStringLiteral("app.showInTray")).toBool(), true);
     QCOMPARE(loaded.get(QStringLiteral("setup.completed")).toBool(), false);
     QCOMPARE(loaded.get(QStringLiteral("engine.mode")).toString(), QStringLiteral("rootless"));
 
@@ -157,6 +165,36 @@ void CoreTest::configInvalidFallsBack()
     const PodStack::Config loaded = PodStack::Config::load();
     QCOMPARE(loaded.get(QStringLiteral("schemaVersion")).toInt(), 1);
     QCOMPARE(loaded.get(QStringLiteral("engine.mode")).toString(), QStringLiteral("rootless"));
+}
+
+void CoreTest::setupActionsMapPodmanStatus()
+{
+    QCOMPARE(PodStack::SetupActions::podmanActionForStatus(QStringLiteral("missing")),
+             QStringLiteral("install-podman"));
+    QCOMPARE(PodStack::SetupActions::podmanActionForStatus(QStringLiteral("warn")),
+             QStringLiteral("enable-socket"));
+    QVERIFY(PodStack::SetupActions::podmanActionForStatus(QStringLiteral("ok")).isEmpty());
+    QVERIFY(PodStack::SetupActions::podmanActionForStatus(QString()).isEmpty());
+}
+
+void CoreTest::setupPolicyMandatoryChecks()
+{
+    for (const QString &id : {QStringLiteral("podman"), QStringLiteral("systemd-user"),
+                              QStringLiteral("sqlite"), QStringLiteral("qemu"),
+                              QStringLiteral("ovmf"), QStringLiteral("virtiofsd")}) {
+        QVERIFY2(PodStack::SetupPolicy::isMandatoryCheck(id), qPrintable(id));
+        QVERIFY2(PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("ok")),
+                 qPrintable(id));
+        QVERIFY2(!PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("missing")),
+                 qPrintable(id));
+    }
+
+    for (const QString &id : {QStringLiteral("kvm"), QStringLiteral("docker"),
+                              QStringLiteral("caddy"), QStringLiteral("k3s")}) {
+        QVERIFY2(!PodStack::SetupPolicy::isMandatoryCheck(id), qPrintable(id));
+        QVERIFY2(PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("warn")),
+                 qPrintable(id));
+    }
 }
 
 void CoreTest::pathOverrides()

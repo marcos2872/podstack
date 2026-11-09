@@ -2865,6 +2865,43 @@ bool PodmanClient::streamStats(const QString &id, int intervalSeconds,
     }
 }
 
+bool PodmanClient::statsSnapshot(QJsonArray *containers, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (containers) {
+        *containers = QJsonArray();
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+
+    const HttpResponse response =
+        m_http.request(QByteArrayLiteral("GET"),
+                       path(QStringLiteral("/containers/stats?stream=false&all=true")), {}, {},
+                       20000);
+    if (response.status != 200) {
+        if (error) {
+            *error = errorFromResponse(
+                response, QStringLiteral("Falha ao ler as estatísticas dos containers."));
+        }
+        return false;
+    }
+
+    const QJsonDocument document = QJsonDocument::fromJson(response.body);
+    QJsonArray array;
+    if (document.isArray()) {
+        array = document.array();
+    } else if (document.isObject()) {
+        array = document.object().value(QStringLiteral("Stats")).toArray();
+    }
+    if (containers) {
+        *containers = array;
+    }
+    return true;
+}
+
 bool PodmanClient::streamEvents(const std::function<bool(const QByteArray &)> &onData,
                                 std::atomic_bool *cancel, Error *error)
 {

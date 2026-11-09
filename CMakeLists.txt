@@ -59,6 +59,7 @@ add_executable(podstackd
     src/daemon/BuildStore.cpp
     src/daemon/ComposeManager.cpp
     src/daemon/SetupManager.cpp
+    src/daemon/StatsCollector.cpp
 )
 target_link_libraries(podstackd PRIVATE
     podstack_podman
@@ -91,10 +92,14 @@ target_link_libraries(podstack PRIVATE podstack_core Qt6::Network)
 # GUI
 # ---------------------------------------------------------------------------
 add_library(podstack_gui_lib STATIC
+    src/gui/Autostart.cpp
     src/gui/Backend.cpp
     src/gui/ContainerListModel.cpp
+    src/gui/Notifications.cpp
+    src/gui/SingleInstance.cpp
     src/gui/StreamClient.cpp
     src/gui/TerminalWindow.cpp
+    src/gui/Tray.cpp
 )
 target_include_directories(podstack_gui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_gui_lib PUBLIC
@@ -104,6 +109,7 @@ target_link_libraries(podstack_gui_lib PUBLIC
     Qt6::Widgets
     Qt6::Network
     Qt6::Concurrent
+    Qt6::DBus
     qtermwidget6
 )
 
@@ -118,11 +124,16 @@ file(GLOB PODSTACK_UI_ICONS CONFIGURE_DEPENDS
     RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     assets/icons/*.svg)
 
+file(GLOB PODSTACK_TRAY_ICONS CONFIGURE_DEPENDS
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    assets/png/tray/*.png)
+
 qt_add_qml_module(podstack-gui
     URI PodStack
     VERSION 1.0
     QML_FILES
         src/gui/qml/Main.qml
+        src/gui/qml/ActivityMonitorWindow.qml
         src/gui/qml/Theme.qml
         src/gui/qml/AppIcon.qml
         src/gui/qml/AppSelect.qml
@@ -160,6 +171,7 @@ qt_add_qml_module(podstack-gui
         assets/podstack-capsule-mark.svg
         assets/podstack-icon.svg
         ${PODSTACK_UI_ICONS}
+        ${PODSTACK_TRAY_ICONS}
 )
 
 target_link_libraries(podstack-gui PRIVATE

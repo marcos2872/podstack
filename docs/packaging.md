@@ -130,7 +130,6 @@ Type=dbus
 BusName=dev.podstack.Helper1
 ExecStart=/usr/libexec/podstack/podstack-helper
 User=root
-NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
 ProtectKernelTunables=yes
@@ -142,7 +141,28 @@ ProtectControlGroups=yes
 - Ativação sob demanda via `dev.podstack.Helper1`.
 - **Sem** `ProtectSystem=strict`: o helper precisa escrever em `/usr` e `/var` para o gerenciador
   de pacotes. A proteção efetiva é a allowlist fechada de pacotes + polkit + auditoria no journal.
+- **Sem** `NoNewPrivileges=yes`: o `dnf` precisa da transição SELinux de `unconfined_service_t`
+  para `rpm_script_t` ao executar scriptlets de RPM; com NNP o kernel nega `nnp_transition` e a
+  instalação falha. A allowlist de pacotes continua sendo a fronteira de segurança.
 - O helper nunca recebe `Exec`/shell; cada método monta `dnf`/`apt-get`/`pacman` com argumentos fixos.
+
+### 4.1 Helper em desenvolvimento
+
+`scripts/dev.sh` sobe apenas daemon/GUI do usuário e **não** instala o helper (que é root).
+Para testar ações de setup que instalam/removem pacotes em uma máquina de dev:
+
+```bash
+cmake --build --preset dev
+./scripts/dev-helper.sh          # pede confirmação e usa sudo
+./scripts/dev-helper.sh --yes    # não interativo
+./scripts/dev-helper.sh --uninstall
+```
+
+O script copia o binário do build para `/usr/libexec/podstack`, a unit para
+`/usr/lib/systemd/system`, a política polkit e o D-Bus conf; depois habilita/inicia o serviço e
+tenta recarregar o `dbus-broker`. Reinicie a sessão/máquina se o system bus ainda não tiver lido a
+política. Para o caso comum de **Podman instalado e só `podman.socket` inativo**, não é necessário
+helper: o setup usa `enable-socket` (`systemctl --user enable --now podman.socket`).
 
 ---
 

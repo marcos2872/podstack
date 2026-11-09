@@ -106,14 +106,27 @@
 | Validação | obrigatórios vs. opcionais; “abrir mesmo assim” |
 | Jobs | progresso/log/cancelamento/retry; job sobrevive ao fechar a janela |
 
-**Cobertura atual (M3+onboarding):**
+**Cobertura atual (M3 + onboarding + bandeja):**
 
 | Suíte | Caso | O que cobre |
 |---|---|---|
 | `test_core` | `configSetupDefaults`, `configMergePreservesDefaults` | defaults de `setup.*`/`app.showOnboarding` e merge recursivo |
 | `test_rpc` | `setupFlow` | `setup.status/check/validate/complete`, ids dos checks, `PODSTACK_INVALID_PARAMS` e `PODSTACK_CONFIRMATION_REQUIRED` |
-| `test_gui` | `backendSetup` | `setupRefresh`, `setupLoaded`, `setupChecks`, `setupSkip` e `setupComplete` |
+| `test_gui` | `backendSetup` | `setupRefresh`, `setupLoaded`, `setupChecks`, `setupSkip` e `setupComplete`; sem os checks obrigatórios no host (CI), valida a recusa e faz `QSKIP` |
 | `test_cli` | `setupCommand` | `podstack setup --check`, `--validate` e a exigência de `--yes` |
+| `test_tray` | `containersMenu*`, `status*` | menu Abrir/Containers/Activity/Sair, agrupamento por projeto, overflow, status normal/atenção/erro e defaults de config |
+| `test_single_instance` | `secondInstance*` | primária/secundária, comandos `show`/`quit`, socket órfão e permissões 0600 |
+| `test_autostart` | `enablesAndDisables` | `.desktop` com `--hidden`, remoção e preservação de arquivo alheio |
+| `test_stats` | `parses*` | parsers de `/proc/stat`, `/proc/meminfo`, `/proc/net/dev` e `/proc/diskstats` |
+| `test_notifications` | `summaryFor*`, `cooldown*` | falha/OOM/unhealthy, eventos normais ignorados e cooldown |
+| `test_setup` | `check*`, `status*`, `validate*`, `rejectsInvalidActions` | checks read-only, resumo de status e validação de ações inválidas |
+| `test_core` | `setupActionsMapPodmanStatus` | `missing` → `install-podman`; `warn` → `enable-socket`; `ok` → sem ação |
+| `test_core` | `setupPolicyMandatoryChecks` | obrigatórios (Podman, systemd-user, SQLite, QEMU/OVMF/virtiofsd) bloqueiam; KVM/Docker/Caddy/k3s não |
+
+**Validação manual da bandeja (niri + Noctalia):** fechar a janela mantém o processo e o SNI;
+`podstack-gui` (segunda instância) foca a janela; `--quit` encerra; o DBusMenu expõe Containers com
+os containers reais; Activity Monitor abre pelo menu/clique do meio; um container com `exit 9`
+gera `Notify` com “Container falhou”.
 
 **Pendente de validação em máquina limpa:** instalação real via `podstack-helper` + polkit
 (Fedora com e sem Docker), KVM/TCG e QEMU. O fluxo de UI e o contrato RPC já são cobertos.
@@ -264,7 +277,8 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 
 ## 13. Cobertura e qualidade
 
-- **M3 (atual):** **82,5%** de linhas no total (`src/`); gate do CI em **80%** sobre `src/`. O gcovr roda com `--gcov-ignore-parse-errors` e `--merge-mode-functions=separate` para contornar bugs conhecidos do gcov (negative hits e merge de `main.cpp` de targets diferentes). O CI repete `ctest -R rpc` antes do relatório porque o `.gcda` do `podstackd` é sobrescrito pelo último teste que inicia o daemon; o rpc cobre o maior conjunto de handlers.
+- **M3 (antes da bandeja):** **82,5%** de linhas no total (`src/`); gate do CI em **80%** sobre `src/`. O gcovr roda com `--gcov-ignore-parse-errors` e `--merge-mode-functions=separate` para contornar bugs conhecidos do gcov (negative hits e merge de `main.cpp` de targets diferentes). O CI repete `ctest -R rpc` antes do relatório porque o `.gcda` do `podstackd` é sobrescrito pelo último teste que inicia o daemon; o rpc cobre o maior conjunto de handlers.
+- **Bandeja (2026-11-08):** **79,7%** de linhas (`src/`), medido com o mesmo comando do CI (13 suítes + `rpc`). O gate de 80% **não** foi atingido por 0,3 p.p.; os maiores vazios são `src/helper` (0%, exige polkit/root), `SetupManager` jobs privilegiados e caminhos de erro de `SingleInstance`/`Autostart`. O código novo da bandeja está coberto: `Tray.cpp` 96%, `StatsCollector.cpp` 93,5%, `Backend.cpp` 79%, `Notifications.cpp` 76%. Follow-up recomendado: teste de integração do helper e dos jobs de setup para recuperar o gate.
 - **Meta v1.0:** manter ≥ 80% e buscar ≥ 85% em caminhos críticos; testes QML/terminal dedicados entram no M2.
 - Nenhum merge com teste vermelho.
 - Bug corrigido → teste de regressão obrigatório.

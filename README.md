@@ -21,7 +21,7 @@
   Alternativa Linux ao OrbStack, com Qt 6/QML, daemon de usuário e CLI scriptable.
 </p>
 
-> **Status:** **M3 concluído** — Compose (detecção por labels, up/down/restart/stop/start, logs por serviço/agregados), builds via Libpod com histórico SQLite e eventos globais em toasts. Somam-se ao M2 (imagens, volumes, redes e pods) e ao M1 (containers, logs, stats, files, terminal, batch, health e rootful). **7 testes**, cobertura **82,5%** (gate 80%). Próximo: M4 (machines).
+> **Status:** **M3 concluído** — Compose (detecção por labels, up/down/restart/stop/start, logs por serviço/agregados), builds via Libpod com histórico SQLite e eventos globais em toasts. Somam-se ao M2 (imagens, volumes, redes e pods) e ao M1 (containers, logs, stats, files, terminal, batch, health e rootful). **Bandeja/tray e onboarding** implementados (fechar para a bandeja, Activity Monitor, notificações e setup modal). **13 testes**, cobertura **79,7%** (gate de 80% pendente; ver [`docs/testing.md`](docs/testing.md)). Próximo: M4 (machines).
 > **Ressalvas M1:** terminal abre em janela nativa (embutir no inspector fica no M2); upload de arquivos e seleção múltipla fina também ficam no M2.
 > **Plataforma:** Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10.
 > **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).
@@ -112,7 +112,7 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 | [`assets/podstack-layers.svg`](assets/podstack-layers.svg) | Símbolo secundário (camadas) |
 | [`assets/podstack-capsule-small.svg`](assets/podstack-capsule-small.svg) | Cápsula compacta para 16–24 px |
 | [`assets/podstack-icon.svg`](assets/podstack-icon.svg) | Ícone do app (256×256) |
-| [`assets/png/`](assets/png/) | Ícones PNG 16–512 e bandeja 16/22/24/32 |
+| [`assets/png/`](assets/png/) | Ícones PNG 16–512 e bandeja 16/22/24/32/48/64 |
 | [`assets/favicon.ico`](assets/favicon.ico) / [`favicon-32.png`](assets/favicon-32.png) | Favicon multi-size e PNG 32×32 |
 | [`assets/og-image.png`](assets/og-image.png) / [`og-image.svg`](assets/og-image.svg) | Open Graph 1200×630 |
 | [`assets/podstack_logo_concepts.svg`](assets/podstack_logo_concepts.svg) | Folha histórica de conceitos |
@@ -208,6 +208,7 @@ sudo dnf install cmake ninja-build gcc-c++ \
   qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel
 
 # provider Compose (runtime, para projetos Compose)
+# O binário é docker-compose, mas a engine continua sendo Podman (Libpod REST).
 sudo dnf install docker-compose
 
 # build
@@ -227,6 +228,27 @@ O `scripts/dev.sh` usa `$XDG_RUNTIME_DIR/podstack/control.sock`, inicia o daemon
 ```bash
 PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
 ```
+
+O `scripts/dev.sh` **não instala** o `podstack-helper`, que é um serviço root. Para testar
+ações do setup que instalam/removem pacotes (Podman, QEMU, Caddy etc.) em desenvolvimento:
+
+```bash
+./scripts/dev-helper.sh          # instala/reinicia o helper (pede confirmação e usa sudo)
+./scripts/dev-helper.sh --yes    # sem confirmação
+./scripts/dev-helper.sh --uninstall
+```
+
+Ativar o `podman.socket` **não** exige o helper. Detalhes em
+[`docs/packaging.md`](docs/packaging.md) §4.1.
+
+### Por que `docker-compose` e não `podman-compose`?
+
+A **engine** é o Podman (Libpod REST). O `docker-compose` é usado apenas como **provider do
+Compose**, apontando para o socket do Podman via `DOCKER_HOST`
+(`unix://$XDG_RUNTIME_DIR/podman/podman.sock`), conforme o
+[`ADR-0007`](docs/adr/0007-compose-provider.md). O `podman-compose` é um fallback com semântica
+parcial; o provider padrão continua sendo o Docker Compose. Quando disponível, `podman compose`
+pode ser usado como wrapper — ele delega ao provider.
 
 O CLI também pode ser usado separadamente:
 

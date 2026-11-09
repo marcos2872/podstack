@@ -24,8 +24,14 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantMap stats READ stats NOTIFY statsChanged)
     Q_PROPERTY(QVariantList cpuHistory READ cpuHistory NOTIFY statsChanged)
     Q_PROPERTY(QVariantList memHistory READ memHistory NOTIFY statsChanged)
+    Q_PROPERTY(QVariantMap activityStats READ activityStats NOTIFY activityChanged)
+    Q_PROPERTY(QVariantList activityCpuHistory READ activityCpuHistory NOTIFY activityChanged)
+    Q_PROPERTY(QVariantList activityMemHistory READ activityMemHistory NOTIFY activityChanged)
+    Q_PROPERTY(bool activityActive READ activityActive NOTIFY activityChanged)
     Q_PROPERTY(QVariantList files READ files NOTIFY filesChanged)
     Q_PROPERTY(QString filesPath READ filesPath NOTIFY filesChanged)
+    Q_PROPERTY(QVariantList containers READ containers NOTIFY containersChanged)
+    Q_PROPERTY(bool actionActive READ actionActive NOTIFY actionStateChanged)
     Q_PROPERTY(QVariantList images READ images NOTIFY imagesChanged)
     Q_PROPERTY(QVariantList volumes READ volumes NOTIFY volumesChanged)
     Q_PROPERTY(QVariantList networks READ networks NOTIFY networksChanged)
@@ -44,6 +50,8 @@ class Backend : public QObject {
     Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
     Q_PROPERTY(bool setupCompleted READ setupCompleted NOTIFY setupChanged)
     Q_PROPERTY(bool setupPending READ setupPending NOTIFY setupChanged)
+    Q_PROPERTY(QString setupPodmanAction READ setupPodmanAction NOTIFY setupChanged)
+    Q_PROPERTY(bool setupMandatoryOk READ setupMandatoryOk NOTIFY setupChanged)
     Q_PROPERTY(QVariantList setupChecks READ setupChecks NOTIFY setupChanged)
     Q_PROPERTY(QVariantMap setupSummary READ setupSummary NOTIFY setupChanged)
     Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
@@ -67,8 +75,14 @@ public:
     QVariantMap stats() const { return m_stats; }
     QVariantList cpuHistory() const { return m_cpuHistory; }
     QVariantList memHistory() const { return m_memHistory; }
+    QVariantMap activityStats() const { return m_activityStats; }
+    QVariantList activityCpuHistory() const { return m_activityCpuHistory; }
+    QVariantList activityMemHistory() const { return m_activityMemHistory; }
+    bool activityActive() const { return m_activityActive; }
     QVariantList files() const { return m_files; }
     QString filesPath() const { return m_filesPath; }
+    QVariantList containers() const { return m_containers; }
+    bool actionActive() const { return m_actionActive; }
     QVariantList images() const { return m_images; }
     QVariantList volumes() const { return m_volumes; }
     QVariantList networks() const { return m_networks; }
@@ -87,6 +101,8 @@ public:
     QString eventKind() const { return m_eventKind; }
     bool setupCompleted() const { return m_setupCompleted; }
     bool setupPending() const { return !m_setupCompleted && m_setupShowOnboarding; }
+    QString setupPodmanAction() const;
+    bool setupMandatoryOk() const;
     QVariantList setupChecks() const { return m_setupChecks; }
     QVariantMap setupSummary() const { return m_setupSummary; }
     QString setupDockerPolicy() const { return m_setupDockerPolicy; }
@@ -151,12 +167,16 @@ public:
     Q_INVOKABLE void clearLogs();
     Q_INVOKABLE void subscribeStats(const QString &id);
     Q_INVOKABLE void unsubscribeStats();
+    Q_INVOKABLE void startActivityMonitor();
+    Q_INVOKABLE void stopActivityMonitor();
     Q_INVOKABLE void listFiles(const QString &id, const QString &path);
     Q_INVOKABLE void downloadFile(const QString &id, const QString &path);
     Q_INVOKABLE void uploadFile(const QString &id, const QString &path, const QString &sourcePath);
     Q_INVOKABLE QVariantMap settings() const;
     Q_INVOKABLE void saveEngineMode(const QString &mode);
     Q_INVOKABLE void saveTheme(const QString &theme);
+    Q_INVOKABLE void saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
+                                      bool notifications = true);
     Q_INVOKABLE void openTerminal(const QString &id);
     Q_INVOKABLE void setupRefresh();
     Q_INVOKABLE void setupCheck();
@@ -169,11 +189,13 @@ public:
 
 signals:
     void containersChanged(const QVariantList &items);
+    void actionStateChanged();
     void stateChanged();
     void lastErrorChanged();
     void actionFinished(bool ok, const QString &error);
     void logsChanged();
     void statsChanged();
+    void activityChanged();
     void filesChanged();
     void imagesChanged();
     void volumesChanged();
@@ -187,6 +209,8 @@ signals:
     void buildLogChanged();
     void buildStateChanged();
     void eventsChanged();
+    void containerEvent(const QVariantMap &event);
+    void settingsChanged();
     void setupChanged();
     void setupJobChanged();
 
@@ -204,6 +228,14 @@ private:
     void runAction(const QString &method, const QJsonObject &params,
                    int timeoutMs = 30000);
 
+    struct PendingAction {
+        QString method;
+        QJsonObject params;
+        int timeoutMs = 30000;
+    };
+    void startAction(const PendingAction &action);
+    void enqueueAction(const PendingAction &action);
+
     QFutureWatcher<QJsonObject> m_watcher;
     QFutureWatcher<QJsonObject> m_actionWatcher;
     QFutureWatcher<QJsonObject> m_filesWatcher;
@@ -213,6 +245,7 @@ private:
     QString m_catalogSection;
     QStringList m_catalogQueue;
     StreamClient m_stream;
+    StreamClient m_activityStream;
     StreamClient m_pullStream;
     StreamClient m_composeStream;
     StreamClient m_buildStream;
@@ -220,6 +253,12 @@ private:
     StreamClient m_eventsStream;
     QTimer m_eventTimer;
     QTimer m_logsTimer;
+    QTimer m_refreshTimer;
+    QTimer m_eventsRetryTimer;
+    int m_eventsRetryDelayMs = 1000;
+    QList<PendingAction> m_actionQueue;
+    bool m_actionActive = false;
+    bool m_refreshAgain = false;
     bool m_logsPending = false;
     bool m_connected = false;
     QString m_error;
@@ -228,6 +267,10 @@ private:
     QVariantMap m_stats;
     QVariantList m_cpuHistory;
     QVariantList m_memHistory;
+    QVariantMap m_activityStats;
+    QVariantList m_activityCpuHistory;
+    QVariantList m_activityMemHistory;
+    bool m_activityActive = false;
     QVariantList m_files;
     QString m_filesPath = QStringLiteral("/");
     QVariantList m_containers;

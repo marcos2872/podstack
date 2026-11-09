@@ -91,6 +91,8 @@ private:
     QJsonObject setupSubscribe(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeLogs(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeStats(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject subscribeSystemStats(const QJsonObject &params, const Notify &notify,
+                                     Error *error);
     QJsonObject subscribeEvents(const Notify &notify, Error *error);
     QJsonObject unsubscribe(const QJsonObject &params);
 

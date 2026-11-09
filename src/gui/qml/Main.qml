@@ -23,10 +23,18 @@ ApplicationWindow {
         const available = Screen.desktopAvailableHeight
         return Math.min(780, Math.max(560, available > 0 ? available - 80 : 780))
     }
-    visible: backend.setupCompleted || !backend.setupPending
-             || (backend.setupLoaded && backend.setupError.length > 0)
+    visible: !trayHidden
     title: qsTr("PodStack")
     color: Theme.bgBase
+
+    property bool trayHidden: false
+
+    onClosing: function(close) {
+        if (tray.canHideToTray()) {
+            close.accepted = false
+            trayHidden = true
+        }
+    }
 
     FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-Regular.ttf" }
     FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-Medium.ttf" }
@@ -52,30 +60,43 @@ ApplicationWindow {
         }
     }
 
+    function reveal() {
+        trayHidden = false
+        show()
+        raise()
+        requestActivate()
+    }
+
     Component.onCompleted: {
         width = preferredWidth
         height = preferredHeight
         minimumWidth = Math.min(900, preferredWidth)
         minimumHeight = Math.min(600, preferredHeight)
         applyTheme(backend.settings().theme || "system")
+        if (startHidden && tray.showInTray()) {
+            trayHidden = true
+        }
         backend.setupRefresh()
     }
-
-    property bool setupOpened: false
 
     Connections {
         target: backend
 
         function onSetupChanged() {
-            if (backend.setupPending && !backend.setupCompleted && !setupOpened) {
-                setupOpened = true
-                setupWindow.openSetup(false)
+            if (backend.setupError.length > 0 && !backend.setupCompleted) {
+                trayHidden = false
             }
         }
     }
 
     SetupWindow {
         id: setupWindow
+        anchors.fill: parent
+        z: 100
+    }
+
+    ActivityMonitorWindow {
+        id: activityWindow
     }
 
     readonly property var sections: [
@@ -177,7 +198,9 @@ ApplicationWindow {
     }
 
     RowLayout {
+        id: mainContent
         anchors.fill: parent
+        enabled: !setupWindow.visible
         spacing: 0
 
         // Sidebar
@@ -667,7 +690,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: StandardKey.Find
-        enabled: window.section === "containers"
+        enabled: !setupWindow.visible && window.section === "containers"
         onActivated: searchField.forceActiveFocus()
     }
 
@@ -726,6 +749,39 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
 
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.border
+                Layout.topMargin: 2
+                Layout.bottomMargin: 2
+            }
+
+            FormCheck {
+                id: showInTrayBox
+                text: qsTr("Mostrar ícone na bandeja")
+                checked: backend.settings().showInTray !== false
+            }
+
+            FormCheck {
+                id: keepRunningBox
+                text: qsTr("Manter rodando ao fechar a janela")
+                enabled: showInTrayBox.checked
+                checked: backend.settings().keepRunningInTray !== false
+            }
+
+            FormCheck {
+                id: startAtLoginBox
+                text: qsTr("Iniciar no login (na bandeja)")
+                checked: backend.settings().startAtLogin === true
+            }
+
+            FormCheck {
+                id: notificationsBox
+                text: qsTr("Notificar falhas de container")
+                checked: backend.settings().notifications !== false
+            }
+
             Text {
                 text: backend.lastError
                 visible: backend.lastError.length > 0
@@ -755,6 +811,10 @@ ApplicationWindow {
                 text: qsTr("Salvar")
                 variant: "primary"
                 onClicked: {
+                    backend.saveTraySettings(keepRunningBox.checked,
+                                             showInTrayBox.checked,
+                                             startAtLoginBox.checked,
+                                             notificationsBox.checked)
                     backend.saveEngineMode(engineModeBox.currentText)
                     settingsDialog.close()
                 }
@@ -766,6 +826,65 @@ ApplicationWindow {
         target: backend
         function onContainersChanged(items) {
             containersPage.setContainers(items)
+        }
+    }
+
+    Connections {
+        target: tray
+        function onOpenRequested() {
+            window.reveal()
+        }
+        function onActivityMonitorRequested() {
+            window.reveal()
+            if (backend.setupCompleted) {
+                activityWindow.open()
+            }
+        }
+        function onSettingsRequested() {
+            window.reveal()
+            if (backend.setupCompleted) {
+                settingsDialog.open()
+            }
+        }
+        function onOpenContainerRequested(id, tab) {
+            if (!backend.setupCompleted) {
+                window.reveal()
+                return
+            }
+            window.searchText = ""
+            containersPage.filter = "all"
+            window.section = "containers"
+            window.reveal()
+            containersPage.openContainer(id, tab)
+        }
+        function onOpenComposeRequested(project, service, logs) {
+            if (!backend.setupCompleted) {
+                window.reveal()
+                return
+            }
+            window.section = "compose"
+            window.reveal()
+            composePage.openProject(project, service, logs)
+        }
+        function onOpenViewRequested(section) {
+            window.reveal()
+            if (backend.setupCompleted) {
+                window.section = section
+            }
+        }
+    }
+
+    Connections {
+        target: notifications
+        function onContainerActivated(id) {
+            tray.requestOpenContainer(id, "logs")
+        }
+    }
+
+    Connections {
+        target: singleInstance
+        function onShowRequested() {
+            window.reveal()
         }
     }
 }
