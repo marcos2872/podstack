@@ -218,6 +218,41 @@ recebido. A montagem da linha de comando fica em `QemuCommand`
 (`src/machines/QemuCommand.{h,cpp}`), que valida arquitetura, CPUs, memória,
 caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
 
+#### Runtime e ciclo de vida
+
+O `QemuProcessRuntime` (`src/machines/QemuRuntime.{h,cpp}`) inicia o binário
+resolvido por `QStandardPaths::findExecutable` com `QProcess::startDetached` e
+`-daemonize`, sem shell. A execução só é considerada viva quando há um pidfile
+(limite de 64 bytes) cujo PID existe em `/proc/<pid>/cmdline` com o marcador
+`podstack:<machineId>`; isso evita aceitar um PID reciclado. O start espera o
+pidfile e o socket QMP por até 5 s cada e valida `query-status`. O stop usa
+`system_powerdown` e aguarda até 60 s; depois tenta `quit` (5 s), `SIGTERM`
+(2 s) e, por fim, `SIGKILL`. O modo forçado vai direto para `quit` e, se
+necessário, para os sinais. `isRunning` e `pid` repetem a validação de
+`/proc`; sem pidfile o processo é considerado parado.
+
+O `MachineManager` (`src/machines/MachineManager.{h,cpp}`) orquestra o
+provisionamento: valida nome RFC 1123 (1..63, `[a-z0-9-]`), CPUs (1..256),
+memória e disco (≥ 1 GiB), resolve a distro pelo `DistroRegistry` (injetável
+para testes), garante a imagem no `CloudImageCache`, cria o qcow2 com
+`qemu-img` (`-f qcow2 -F qcow2 -b <cache>`), copia o `OVMF_VARS.fd` para o
+diretório da machine em `0600`, grava o seed NoCloud e escolhe a primeira
+porta SSH livre a partir de `sshPortStart` (bind em `127.0.0.1`, até 20
+tentativas, ignorando portas já registradas). Os estados seguem
+`provisioning → starting → running → stopping → stopped`; qualquer falha
+persiste `error` no `meta.json` e no SQLite, e o create remove disco, seed e
+OVMF vars parciais, mantendo o diretório com `meta.json`/`console.log` para
+diagnóstico.
+
+Cada transição grava `meta.json` (0600 em diretório 0700) e o índice SQLite.
+`meta.json` é a fonte de verdade recuperável; `machines`/`machine_ports`/
+`machine_mounts` são o índice de listagem. Sem `/dev/kvm` legível a machine
+sobe em TCG (`-accel tcg -cpu max`) com a lentidão esperada; sem OVMF para
+amd64 (ou AAVMF para arm64) o create falha com `PODSTACK_UNSUPPORTED` e a
+remediação de instalação do firmware. A remoção valida o caminho canônico
+dentro de `machinesRoot`, rejeita symlink/`..`, encerra o runtime e apaga o
+diretório e a linha do índice.
+
 ### 3.6 Requisição de domínio
 
 ```mermaid

@@ -36,6 +36,7 @@ qt_standard_project_setup(REQUIRES 6.10)
 # ---------------------------------------------------------------------------
 add_library(podstack_core STATIC
     src/core/Error.cpp
+    src/core/Ids.cpp
     src/core/Paths.cpp
     src/core/Config.cpp
     src/core/Logging.cpp
@@ -67,6 +68,8 @@ add_library(podstack_machines STATIC
     src/machines/MachineStore.cpp
     src/machines/QemuCommand.cpp
     src/machines/QmpClient.cpp
+    src/machines/QemuRuntime.cpp
+    src/machines/MachineManager.cpp
 )
 target_include_directories(podstack_machines PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_machines PUBLIC
