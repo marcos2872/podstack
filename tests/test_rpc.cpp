@@ -1297,6 +1297,7 @@ void RpcTest::machineSsh()
     meta.sshUser = QStringLiteral("podstack");
     meta.sshPort = 32222;
     meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/id_ed25519");
+    meta.forwardSshAgent = true;
     meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
     meta.updatedAt = meta.createdAt;
     QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
@@ -1316,6 +1317,7 @@ void RpcTest::machineSsh()
     QCOMPARE(result.value(QStringLiteral("port")).toInt(), 32222);
     QCOMPARE(result.value(QStringLiteral("user")).toString(), QStringLiteral("podstack"));
     QCOMPARE(result.value(QStringLiteral("identityFile")).toString(), meta.sshKeyPath);
+    QCOMPARE(result.value(QStringLiteral("forwardAgent")).toBool(), true);
     QVERIFY(!result.contains(QStringLiteral("name")));
     QVERIFY(!result.contains(QStringLiteral("keyContent")));
 

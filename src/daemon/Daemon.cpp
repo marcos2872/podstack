@@ -843,6 +843,17 @@ QJsonObject Daemon::machineUpdate(const QJsonObject &params, Error *error)
     if (!diskValue.isUndefined() && !diskValue.isNull()) {
         request.diskBytes = diskValue.toInteger();
     }
+    const QJsonValue forwardValue = params.value(QStringLiteral("forwardSshAgent"));
+    if (!forwardValue.isUndefined() && !forwardValue.isNull()) {
+        if (!forwardValue.isBool()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("forwardSshAgent deve ser booleano."));
+            }
+            return {};
+        }
+        request.forwardSshAgent = forwardValue.toBool();
+    }
 
     const MachineMeta machine = m_machines.update(id, request, error);
     if (machine.id.isEmpty() || (error && !error->isEmpty())) {
@@ -1276,6 +1287,7 @@ QJsonObject Daemon::machineSsh(const QJsonObject &params, Error *error)
     result.insert(QStringLiteral("port"), info.port);
     result.insert(QStringLiteral("user"), info.user);
     result.insert(QStringLiteral("identityFile"), info.identityFile);
+    result.insert(QStringLiteral("forwardAgent"), info.forwardAgent);
     return result;
 }
 

@@ -58,6 +58,16 @@ Rectangle {
         return timestamp > 0 ? Qt.formatDateTime(new Date(timestamp), "HH:mm:ss") : ""
     }
 
+    // O clique no checkbox quebra o binding de `checked`. Reaplica quando a
+    // machine muda para o controle voltar a refletir o estado persistido.
+    onMachineChanged: {
+        if (forwardAgentCheck) {
+            forwardAgentCheck.checked = Qt.binding(function() {
+                return root.machine.forwardSshAgent === true
+            })
+        }
+    }
+
     function formatGiB(bytes) {
         const value = Number(bytes || 0) / 1073741824
         return value > 0 ? value.toFixed(1) + " GiB" : "-"
@@ -598,9 +608,35 @@ Rectangle {
 
                         Text { text: qsTr("Rede isolada"); color: Theme.textTertiary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMicro }
                         Text { Layout.fillWidth: true; text: root.machine.isolateNetwork ? qsTr("sim") : qsTr("não"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                    }
 
-                        Text { text: qsTr("SSH agent"); color: Theme.textTertiary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMicro }
-                        Text { Layout.fillWidth: true; text: root.machine.forwardSshAgent ? qsTr("encaminhado") : qsTr("não"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                    FormCheck {
+                        id: forwardAgentCheck
+
+                        Layout.fillWidth: true
+                        text: qsTr("Encaminhar SSH agent")
+                        checked: root.machine.forwardSshAgent === true
+                        enabled: root.machineId.length > 0
+                                 && root.machineState !== "provisioning"
+                                 && root.machineState !== "deleting"
+                                 && root.machineState !== "deleted"
+                        onToggled: {
+                            const current = root.machine.forwardSshAgent === true
+                            if (checked === current || root.machineId.length === 0) {
+                                return
+                            }
+                            backend.updateMachine({ "id": root.machineId,
+                                                    "forwardSshAgent": checked })
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Aviso: com o agent encaminhado, processos no guest podem usar as chaves do seu SSH agent do host. Ative apenas em machines confiáveis.")
+                        color: root.machine.forwardSshAgent ? Theme.warning : Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        wrapMode: Text.WordWrap
                     }
 
                     Text {

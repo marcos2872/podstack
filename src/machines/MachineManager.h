@@ -45,6 +45,7 @@ struct SshInfo {
     int port = 0;
     QString user;
     QString identityFile;
+    bool forwardAgent = false;
 };
 
 /// Recursos editáveis de uma machine já criada (campos ausentes não mudam).
@@ -52,6 +53,7 @@ struct UpdateMachineRequest {
     std::optional<int> cpus;
     std::optional<qint64> memoryBytes;
     std::optional<qint64> diskBytes;
+    std::optional<bool> forwardSshAgent;
 };
 
 /// Orquestra provisionamento e ciclo de vida das machines QEMU/KVM.
@@ -91,7 +93,8 @@ public:
     MachineMeta start(const QString &idOrName, Error *error = nullptr);
     MachineMeta stop(const QString &idOrName, bool force, Error *error = nullptr);
     MachineMeta restart(const QString &idOrName, Error *error = nullptr);
-    /// Aplica CPUs/memória/disco; para a machine se preciso e reinicia ao final.
+    /// Aplica CPUs/memória/disco e/ou o SSH agent; para a machine só quando os
+    /// recursos de hardware mudam e reinicia ao final.
     MachineMeta update(const QString &idOrName, const UpdateMachineRequest &request,
                        Error *error = nullptr);
     /// Substitui as portas não-SSH; preserva a SSH e reinicia a machine se preciso.

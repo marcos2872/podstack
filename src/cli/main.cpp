@@ -1358,6 +1358,7 @@ void printMachineUsage(QTextStream &stream)
            << "                          Mostra as últimas linhas do console.log\n"
            << "  create DISTRO[:VER] NOME [--cpus N] [--memory 4G] [--disk 20G]\n"
            << "         [--user U] [--user-data ARQUIVO] [--isolate-network]\n"
+           << "         [--forward-ssh-agent]\n"
            << "                          Cria uma machine (a senha entra na T4-04)\n"
            << "  start <id|nome> [--json] Inicia uma machine\n"
            << "  stop <id|nome> [--force] [--json]\n"
@@ -1370,8 +1371,9 @@ void printMachineUsage(QTextStream &stream)
            << "                          Renomeia uma machine (atualiza o SSH)\n"
            << "  clone <id|nome> <novo> [--json]\n"
            << "                          Cria uma cópia independente da machine\n"
-           << "  update <id|nome> [--cpus N] [--memory 4G] [--disk 40G] [--json]\n"
-           << "                          Atualiza recursos (para/reinicia se preciso)\n"
+           << "  update <id|nome> [--cpus N] [--memory 4G] [--disk 40G]\n"
+           << "         [--forward-agent|--no-forward-agent] [--json]\n"
+           << "                          Atualiza recursos ou o SSH agent\n"
            << "  port ls <id|nome> [--json]\n"
            << "                          Lista as portas encaminhadas da machine\n"
            << "  port add <id|nome> --host N --guest N [--udp] [--lan] [--label L]\n"
@@ -1381,7 +1383,8 @@ void printMachineUsage(QTextStream &stream)
            << "  default [<id|nome>] [--json]\n"
            << "                          Mostra ou define a machine default\n"
            << "  ssh [id|nome] [-- cmd...]\n"
-           << "                          Abre SSH (sem id usa a machine default)\n"
+           << "                          Abre SSH (sem id usa a machine default; -A se\n"
+           << "                          o SSH agent estiver encaminhado)\n"
            << "  files ls <id|nome> [--path P] [--json]\n"
            << "                          Lista arquivos da machine via SSH\n"
            << "  pull <id|nome> <remoto> <local>\n"
@@ -1669,6 +1672,7 @@ int machineCreateCommand(const QStringList &args)
     QString user;
     QString userDataPath;
     bool isolateNetwork = false;
+    bool forwardSshAgent = false;
     QStringList positional;
 
     for (int i = 1; i < args.size(); ++i) {
@@ -1696,6 +1700,8 @@ int machineCreateCommand(const QStringList &args)
             userDataPath = args.at(++i);
         } else if (arg == QStringLiteral("--isolate-network")) {
             isolateNetwork = true;
+        } else if (arg == QStringLiteral("--forward-ssh-agent")) {
+            forwardSshAgent = true;
         } else if (arg.startsWith(QLatin1Char('-'))) {
             err() << "opção desconhecida: " << arg << '\n';
             return kExitUsage;
@@ -1735,6 +1741,9 @@ int machineCreateCommand(const QStringList &args)
     }
     if (isolateNetwork) {
         params.insert(QStringLiteral("isolateNetwork"), true);
+    }
+    if (forwardSshAgent) {
+        params.insert(QStringLiteral("forwardSshAgent"), true);
     }
 
     QString jobId;
@@ -2177,6 +2186,8 @@ int machineUpdateCommand(const QStringList &args)
     bool hasCpus = false;
     bool hasMemory = false;
     bool hasDisk = false;
+    bool hasForwardAgent = false;
+    bool forwardAgent = false;
     bool json = false;
     for (int i = 1; i < args.size(); ++i) {
         const QString &arg = args.at(i);
@@ -2202,6 +2213,15 @@ int machineUpdateCommand(const QStringList &args)
                 return kExitUsage;
             }
             hasDisk = true;
+        } else if (arg == QStringLiteral("--forward-agent")
+                   || arg == QStringLiteral("--no-forward-agent")) {
+            const bool requested = arg == QStringLiteral("--forward-agent");
+            if (hasForwardAgent && forwardAgent != requested) {
+                err() << "use apenas um de --forward-agent/--no-forward-agent\n";
+                return kExitUsage;
+            }
+            hasForwardAgent = true;
+            forwardAgent = requested;
         } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
             id = arg;
         } else {
@@ -2210,7 +2230,7 @@ int machineUpdateCommand(const QStringList &args)
         }
     }
 
-    if (id.isEmpty() || (!hasCpus && !hasMemory && !hasDisk)) {
+    if (id.isEmpty() || (!hasCpus && !hasMemory && !hasDisk && !hasForwardAgent)) {
         printMachineUsage(err());
         return kExitUsage;
     }
@@ -2225,6 +2245,9 @@ int machineUpdateCommand(const QStringList &args)
     }
     if (hasDisk) {
         params.insert(QStringLiteral("diskBytes"), diskBytes);
+    }
+    if (hasForwardAgent) {
+        params.insert(QStringLiteral("forwardSshAgent"), forwardAgent);
     }
 
     PodStack::RpcClient client;
@@ -2687,23 +2710,22 @@ int machineSshCommand(const QStringList &args)
     const int port = result.value(QStringLiteral("port")).toInt();
     const QString user = result.value(QStringLiteral("user")).toString();
     const QString identityFile = result.value(QStringLiteral("identityFile")).toString();
+    const bool forwardAgent = result.value(QStringLiteral("forwardAgent")).toBool();
     if (host.isEmpty() || port <= 0 || user.isEmpty() || identityFile.isEmpty()) {
         err() << "resposta SSH inválida do daemon\n";
         err().flush();
         return kExitError;
     }
 
-    QStringList sshArguments{
-        QStringLiteral("-i"),
-        identityFile,
-        QStringLiteral("-p"),
-        QString::number(port),
-        QStringLiteral("-o"),
-        QStringLiteral("IdentitiesOnly=yes"),
-        QStringLiteral("-o"),
-        QStringLiteral("StrictHostKeyChecking=accept-new"),
-        QStringLiteral("%1@%2").arg(user, host),
-    };
+    QStringList sshArguments;
+    if (forwardAgent) {
+        sshArguments << QStringLiteral("-A");
+    }
+    sshArguments << QStringLiteral("-i") << identityFile << QStringLiteral("-p")
+                 << QString::number(port) << QStringLiteral("-o")
+                 << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
+                 << QStringLiteral("StrictHostKeyChecking=accept-new")
+                 << QStringLiteral("%1@%2").arg(user, host);
     sshArguments += command;
 
     std::vector<std::string> storage;

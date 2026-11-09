@@ -428,7 +428,13 @@ Host <name>.podstack <name>
 
 - Comando `podstack ssh <name> [-- cmd]` (alias `machine ssh`), com
   `StrictHostKeyChecking=accept-new` e `IdentitiesOnly=yes`.
-- Agent forwarding opcional (`ForwardAgent yes` no bloco).
+- Agent forwarding opcional (`forwardSshAgent`, desligado por padrão; grava
+  `ForwardAgent yes` no bloco). O toggle fica no **Info** do inspetor e pode ser
+  alterado depois da criação sem parar/reiniciar a machine; o CLI expõe
+  `--forward-ssh-agent` no `create` e `--forward-agent`/`--no-forward-agent` no
+  `update`. O próprio `podstack ssh`/`machine ssh` acrescenta `-A` quando o flag
+  está ativo. Aviso: com forwarding, processos no guest podem usar as chaves do
+  SSH agent do host — ative só em machines confiáveis.
 - Blocos de terceiros e o restante do arquivo são preservados; a escrita é atômica
   (`QSaveFile`). O bloco é substituído pelo nome, sem duplicação.
 - `PODSTACK_SSH_CONFIG` sobrescreve o caminho do config (dev/teste).
@@ -438,6 +444,8 @@ Host <name>.podstack <name>
 - [x] `ssh <name>` funciona após criação.
 - [x] Remover máquina remove o bloco e a chave.
 - [x] Bloco idempotente (sem duplicação).
+- [x] Toggle do SSH agent pós-criação atualiza metadado/config sem reiniciar e o
+  SSH do PodStack usa `-A` quando ativo.
 
 ### 7.4 Arquivos
 

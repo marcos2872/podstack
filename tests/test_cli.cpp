@@ -4,11 +4,14 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QTest>
@@ -34,6 +37,7 @@ private slots:
     void catalog();
     void machineDistros();
     void machineCommands();
+    void machineCreateForwardAgent();
     void machineSsh();
     void machinePorts();
     void machineFiles();
@@ -546,6 +550,9 @@ void CliTest::machineCommands()
     result = run({QStringLiteral("machine"), QStringLiteral("--help")}, env);
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("Uso: podstack machine")));
+    QVERIFY(result.out.contains(QStringLiteral("--forward-ssh-agent")));
+    QVERIFY(result.out.contains(QStringLiteral("--forward-agent")));
+    QVERIFY(result.out.contains(QStringLiteral("--no-forward-agent")));
 
     result = run({QStringLiteral("machine")}, env);
     QCOMPARE(result.code, 2);
@@ -622,6 +629,15 @@ void CliTest::machineCommands()
     QCOMPARE(result.code, 1);
     QVERIFY(result.err.contains(QStringLiteral("Nome de machine inválido")));
 
+    // A flag é aceita no parsing e chega à validação do daemon.
+    result = run({QStringLiteral("machine"), QStringLiteral("create"),
+                  QStringLiteral("ubuntu:24.04"), QStringLiteral("Bad_Name"),
+                  QStringLiteral("--forward-ssh-agent")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("Nome de machine inválido")));
+    QVERIFY(!result.err.contains(QStringLiteral("opção desconhecida")));
+
     result = run({QStringLiteral("machine"), QStringLiteral("create")}, env);
     QCOMPARE(result.code, 2);
     QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
@@ -652,6 +668,89 @@ void CliTest::machineCommands()
         QCOMPARE(result.code, 1);
         QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
     }
+}
+
+void CliTest::machineCreateForwardAgent()
+{
+    const QProcessEnvironment baseEnv = environment(m_controlSocket);
+    const QString socketPath = m_testDataDir + QStringLiteral("/fake-create.sock");
+    QLocalServer server;
+    QVERIFY2(server.listen(socketPath), qPrintable(server.errorString()));
+
+    QJsonObject captured;
+    connect(&server, &QLocalServer::newConnection, &server, [&] {
+        while (QLocalSocket *socket = server.nextPendingConnection()) {
+            auto handleRequest = [&, socket] {
+                QByteArray buffer = socket->property("podstackCliBuffer").toByteArray()
+                                    + socket->readAll();
+                const int newline = buffer.indexOf('\n');
+                if (newline < 0) {
+                    socket->setProperty("podstackCliBuffer", buffer);
+                    return;
+                }
+                const QJsonObject request =
+                    QJsonDocument::fromJson(buffer.left(newline)).object();
+                captured = request.value(QStringLiteral("params")).toObject();
+
+                const QJsonObject subscribed{
+                    {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                    {QStringLiteral("id"), request.value(QStringLiteral("id"))},
+                    {QStringLiteral("result"),
+                     QJsonObject{{QStringLiteral("subscriptionId"),
+                                  QStringLiteral("fake-subscription")}}}};
+                const QJsonObject done{
+                    {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                    {QStringLiteral("method"), QStringLiteral("machines.done")},
+                    {QStringLiteral("params"),
+                     QJsonObject{{QStringLiteral("jobId"), QStringLiteral("fake-job")},
+                                 {QStringLiteral("error"),
+                                  QJsonObject{{QStringLiteral("code"),
+                                               QStringLiteral("PODSTACK_INTERNAL")},
+                                              {QStringLiteral("message"),
+                                               QStringLiteral("fake failure")}}}}}};
+                QByteArray response =
+                    QJsonDocument(subscribed).toJson(QJsonDocument::Compact) + '\n';
+                response += QJsonDocument(done).toJson(QJsonDocument::Compact) + '\n';
+                socket->write(response);
+                socket->flush();
+            };
+            connect(socket, &QLocalSocket::readyRead, socket, handleRequest);
+            if (socket->bytesAvailable() > 0) {
+                handleRequest();
+            }
+        }
+    });
+
+    QProcessEnvironment env = baseEnv;
+    env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), socketPath);
+
+    QProcess process;
+    process.setProcessEnvironment(env);
+    process.setProcessChannelMode(QProcess::SeparateChannels);
+    process.start(cliPath(), {QStringLiteral("machine"), QStringLiteral("create"),
+                              QStringLiteral("ubuntu:24.04"),
+                              QStringLiteral("agent-create"),
+                              QStringLiteral("--isolate-network"),
+                              QStringLiteral("--forward-ssh-agent")});
+    QVERIFY(process.waitForStarted(3000));
+    QElapsedTimer timer;
+    timer.start();
+    while (process.state() != QProcess::NotRunning && timer.elapsed() < 15000) {
+        QTest::qWait(10);
+    }
+    if (process.state() != QProcess::NotRunning) {
+        process.kill();
+        process.waitForFinished(1000);
+    }
+    QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 1);
+    QVERIFY(QString::fromUtf8(process.readAllStandardError())
+                .contains(QStringLiteral("fake failure")));
+
+    QCOMPARE(captured.value(QStringLiteral("name")).toString(),
+             QStringLiteral("agent-create"));
+    QCOMPARE(captured.value(QStringLiteral("forwardSshAgent")).toBool(), true);
+    QCOMPARE(captured.value(QStringLiteral("isolateNetwork")).toBool(), true);
 }
 
 void CliTest::machineSsh()
@@ -713,6 +812,9 @@ void CliTest::machineSsh()
     meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
     meta.updatedAt = meta.createdAt;
     QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
     QVERIFY(QDir().mkpath(QFileInfo(meta.sshKeyPath).absolutePath()));
     QFile key(meta.sshKeyPath);
     QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -752,9 +854,72 @@ void CliTest::machineSsh()
     QCOMPARE(directArgs.size(), 9);
     QCOMPARE(directArgs.value(8), QStringLiteral("podstack@127.0.0.1"));
 
+    // O toggle pós-criação sincroniza o metadado e o bloco do ssh config.
+    result = run({QStringLiteral("machine"), QStringLiteral("update"),
+                  QStringLiteral("cli-ssh"), QStringLiteral("--forward-agent")},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QVERIFY(result.out.contains(QStringLiteral("atualizada")));
+    const QString sshConfigPath = m_testDataDir + QStringLiteral("/ssh/config");
+    QFile config(sshConfigPath);
+    QVERIFY(config.open(QIODevice::ReadOnly));
+    QVERIFY(QString::fromUtf8(config.readAll())
+                .contains(QStringLiteral("  ForwardAgent yes")));
+    config.close();
+
+    result = run({QStringLiteral("machine"), QStringLiteral("ssh"),
+                  QStringLiteral("cli-ssh"), QStringLiteral("--"),
+                  QStringLiteral("echo"), QStringLiteral("agent")},
+                 sshEnv);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QVERIFY(log.open(QIODevice::ReadOnly));
+    const QStringList forwardedArgs =
+        QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    log.close();
+    QCOMPARE(forwardedArgs.size(), 12);
+    QCOMPARE(forwardedArgs.value(0), QStringLiteral("-A"));
+    QCOMPARE(forwardedArgs.value(1), QStringLiteral("-i"));
+    QCOMPARE(forwardedArgs.value(2), meta.sshKeyPath);
+    QCOMPARE(forwardedArgs.value(9), QStringLiteral("podstack@127.0.0.1"));
+    QCOMPARE(forwardedArgs.value(10), QStringLiteral("echo"));
+    QCOMPARE(forwardedArgs.value(11), QStringLiteral("agent"));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("update"),
+                  QStringLiteral("cli-ssh"), QStringLiteral("--no-forward-agent")},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QVERIFY(config.open(QIODevice::ReadOnly));
+    QVERIFY(!QString::fromUtf8(config.readAll())
+                 .contains(QStringLiteral("ForwardAgent yes")));
+    config.close();
+
+    result = run({QStringLiteral("machine"), QStringLiteral("ssh"),
+                  QStringLiteral("cli-ssh")},
+                 sshEnv);
+    QCOMPARE(result.code, 0);
+    QVERIFY(log.open(QIODevice::ReadOnly));
+    const QStringList plainArgs =
+        QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    log.close();
+    QCOMPARE(plainArgs.size(), 9);
+    QVERIFY(!plainArgs.contains(QStringLiteral("-A")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("update"),
+                  QStringLiteral("cli-ssh"), QStringLiteral("--forward-agent"),
+                  QStringLiteral("--no-forward-agent")},
+                 env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("--forward-agent")));
+    result = run({QStringLiteral("machine"), QStringLiteral("update"),
+                  QStringLiteral("cli-ssh")},
+                 env);
+    QCOMPARE(result.code, 2);
+
     QVERIFY(store.remove(meta.id));
     QFile::remove(meta.sshKeyPath);
     QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+    QDir(machineDir).removeRecursively();
+    QFile::remove(sshConfigPath);
 }
 
 void CliTest::machinePorts()

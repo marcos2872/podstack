@@ -284,17 +284,19 @@ QStringList MachineDetailDialog::sshArguments() const
     if (user.isEmpty()) {
         user = QStringLiteral("podstack");
     }
-    return {
-        QStringLiteral("-i"),
-        keyPath,
-        QStringLiteral("-p"),
-        QString::number(port),
-        QStringLiteral("-o"),
-        QStringLiteral("IdentitiesOnly=yes"),
-        QStringLiteral("-o"),
-        QStringLiteral("StrictHostKeyChecking=accept-new"),
-        QStringLiteral("%1@127.0.0.1").arg(user),
-    };
+    const bool forwardAgent =
+        m_machine.value(QStringLiteral("forwardAgent")).toBool()
+        || m_machine.value(QStringLiteral("forwardSshAgent")).toBool();
+    QStringList arguments;
+    if (forwardAgent) {
+        arguments << QStringLiteral("-A");
+    }
+    arguments << QStringLiteral("-i") << keyPath << QStringLiteral("-p")
+              << QString::number(port) << QStringLiteral("-o")
+              << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
+              << QStringLiteral("StrictHostKeyChecking=accept-new")
+              << QStringLiteral("%1@127.0.0.1").arg(user);
+    return arguments;
 }
 
 void MachineDetailDialog::resetTerminalSession()

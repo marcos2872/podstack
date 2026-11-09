@@ -690,6 +690,7 @@ void GuiTest::backendMachines()
     meta.sshUser = QStringLiteral("podstack");
     meta.sshPort = 32222;
     meta.state = QStringLiteral("stopped");
+    meta.forwardSshAgent = true;
     meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
     meta.updatedAt = meta.createdAt;
 
@@ -741,11 +742,23 @@ void GuiTest::backendMachines()
     QCOMPARE(request.at(0).toString(), QStringLiteral("gui-logs"));
     QCOMPARE(request.at(1).toString(), QStringLiteral("ssh"));
     const QStringList sshArgs = request.at(2).toStringList();
+    QVERIFY(sshArgs.contains(QStringLiteral("-A")));
     QVERIFY(sshArgs.contains(QStringLiteral("-i")));
     QVERIFY(sshArgs.contains(meta.sshKeyPath));
     QVERIFY(sshArgs.contains(QStringLiteral("-p")));
     QVERIFY(sshArgs.contains(QStringLiteral("32222")));
     QCOMPARE(sshArgs.last(), QStringLiteral("podstack@127.0.0.1"));
+
+    // updateMachine aceita só o agent, sem CPU/memória/disco.
+    const int actionsBeforeUpdate = actionSpy.count();
+    backend.updateMachine(QVariantMap{{QStringLiteral("id"), meta.id},
+                                      {QStringLiteral("forwardSshAgent"), false}});
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > actionsBeforeUpdate, 5000);
+    QVERIFY2(actionSpy.last().at(0).toBool(),
+             qPrintable(actionSpy.last().at(1).toString()));
+    backend.loadMachineInfo(meta.id);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machineInfo().value(QStringLiteral("forwardSshAgent")).toBool(), 5000);
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();

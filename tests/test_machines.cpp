@@ -2868,6 +2868,65 @@ void MachinesTest::machineManagerUpdate()
     QCOMPARE(stored.memoryBytes, 8LL * kGiB);
     QCOMPARE(stored.diskBytes, 1LL * kGiB);
 
+    const QString sshConfigPath = root + QStringLiteral("/ssh/config");
+    const auto sshConfigText = [&sshConfigPath] {
+        QFile file(sshConfigPath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return QString();
+        }
+        return QString::fromUtf8(file.readAll());
+    };
+    QVERIFY(!sshConfigText().contains(QStringLiteral("ForwardAgent yes")));
+
+    // Mudança só do agent: persiste e sincroniza o ssh config sem tocar no QEMU.
+    UpdateMachineRequest enableAgent;
+    enableAgent.forwardSshAgent = true;
+    const int stopsBeforeAgent = fake->stopCount;
+    const int startsBeforeAgent = fake->startCount;
+    updated = manager.update(created.id, enableAgent, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(updated.state, QStringLiteral("running"));
+    QCOMPARE(updated.forwardSshAgent, true);
+    QCOMPARE(fake->stopCount, stopsBeforeAgent);
+    QCOMPARE(fake->startCount, startsBeforeAgent);
+    QCOMPARE(manager.get(created.id, &error).forwardSshAgent, true);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(MachineMetaFile::read(metaPath, &metaError).forwardSshAgent, true);
+    QVERIFY2(metaError.isEmpty(), qPrintable(metaError.message));
+    QVERIFY(sshConfigText().contains(QStringLiteral("  ForwardAgent yes")));
+
+    UpdateMachineRequest disableAgent;
+    disableAgent.forwardSshAgent = false;
+    const int stopsBeforeDisableAgent = fake->stopCount;
+    const int startsBeforeDisableAgent = fake->startCount;
+    updated = manager.update(created.id, disableAgent, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(updated.forwardSshAgent, false);
+    QCOMPARE(fake->stopCount, stopsBeforeDisableAgent);
+    QCOMPARE(fake->startCount, startsBeforeDisableAgent);
+    QCOMPARE(manager.get(created.id, &error).forwardSshAgent, false);
+    QCOMPARE(MachineMetaFile::read(metaPath, &metaError).forwardSshAgent, false);
+    QVERIFY2(metaError.isEmpty(), qPrintable(metaError.message));
+    QVERIFY(!sshConfigText().contains(QStringLiteral("ForwardAgent yes")));
+
+    // Falha ao sincronizar o ssh config desfaz o metadado (rollback).
+    QVERIFY(QFile::remove(sshConfigPath));
+    QVERIFY(QDir().mkpath(sshConfigPath));
+    UpdateMachineRequest failingAgent;
+    failingAgent.forwardSshAgent = true;
+    const int stopsBeforeRollback = fake->stopCount;
+    const int startsBeforeRollback = fake->startCount;
+    const MachineMeta rolledBack = manager.update(created.id, failingAgent, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QCOMPARE(rolledBack.forwardSshAgent, false);
+    QCOMPARE(fake->stopCount, stopsBeforeRollback);
+    QCOMPARE(fake->startCount, startsBeforeRollback);
+    QCOMPARE(manager.get(created.id, &error).forwardSshAgent, false);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(MachineMetaFile::read(metaPath, &metaError).forwardSshAgent, false);
+    QVERIFY2(metaError.isEmpty(), qPrintable(metaError.message));
+    QVERIFY(QDir(sshConfigPath).removeRecursively());
+
     UpdateMachineRequest grow;
     grow.diskBytes = 2LL * kGiB;
     const int stopsBeforeGrow = fake->stopCount;
@@ -4289,6 +4348,7 @@ void MachinesTest::machineManagerSsh()
     request.arch = QStringLiteral("amd64");
     request.user = QStringLiteral("podstack");
     request.diskBytes = 1024LL * 1024LL * 1024LL;
+    request.forwardSshAgent = true;
 
     PodStack::Error error;
     const MachineMeta meta = manager.create(request, {}, {}, &error);
@@ -4320,6 +4380,7 @@ void MachinesTest::machineManagerSsh()
     config.close();
     QVERIFY(configText.contains(QStringLiteral("# >>> podstack: manager-ssh")));
     QVERIFY(configText.contains(QStringLiteral("  Port %1").arg(meta.sshPort)));
+    QVERIFY(configText.contains(QStringLiteral("  ForwardAgent yes")));
     QCOMPARE(configText.count(QStringLiteral("# >>> podstack: manager-ssh")), 1);
 
     SshInfo info;
@@ -4328,6 +4389,7 @@ void MachinesTest::machineManagerSsh()
     QCOMPARE(info.port, meta.sshPort);
     QCOMPARE(info.user, QStringLiteral("podstack"));
     QCOMPARE(info.identityFile, meta.sshKeyPath);
+    QCOMPARE(info.forwardAgent, true);
 
     SshInfo byId;
     QVERIFY2(manager.sshInfo(meta.id, &byId, &error), qPrintable(error.message));

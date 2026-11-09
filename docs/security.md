@@ -10,6 +10,7 @@
 |---|---|
 | Containers, imagens e volumes do usuário | Alta (dados/código) |
 | Chaves SSH e `~/.ssh/config` | Alta |
+| SSH agent do host (quando encaminhado a uma machine) | Alta |
 | Credenciais de registry | Alta |
 | CA local e chave privada | Alta |
 | Configurações e histórico | Média |
@@ -169,8 +170,14 @@ encerra a janela da instância já em execução.
 - SSH de machines: a chave privada é gerada pelo daemon com `ssh-keygen` (sem shell), fica
   `0600` e a pública `0644`; o bloco em `~/.ssh/config` é gravado atomicamente com `0600`
   (`~/.ssh` `0700`) e preserva blocos de terceiros. `machines.ssh` devolve apenas
-  `host/port/user/identityFile`; o conteúdo da chave nunca aparece em log, UI ou resposta.
-  O CLI usa `StrictHostKeyChecking=accept-new` e `IdentitiesOnly=yes`.
+  `host/port/user/identityFile/forwardAgent`; o conteúdo da chave nunca aparece em log, UI
+  ou resposta. O CLI usa `StrictHostKeyChecking=accept-new` e `IdentitiesOnly=yes`.
+- SSH agent forwarding (`forwardSshAgent`) é **off por padrão**. Quando ativado, o bloco
+  gerenciado recebe `ForwardAgent yes` e o `ssh` aberto pelo PodStack (CLI e terminal
+  embutido/externo) recebe `-A`: o guest passa a poder usar as chaves carregadas no agent do
+  host. O toggle no Info deixa isso explícito com aviso; ative só em machines confiáveis e
+  desligue quando não precisar. A mudança é persistida sem parar a machine e, se o config
+  SSH não puder ser sincronizado, o valor anterior é restaurado.
 - Métricas de machines (`machines.stats`/`stats.subscribe`) usam SSH one-shot **sem shell
   local**, com comando remoto fixo (somente leitura de `/proc` e `df`), `BatchMode=yes`,
   `IdentitiesOnly=yes`, `StrictHostKeyChecking=accept-new` e `ConnectTimeout=3`. A saída

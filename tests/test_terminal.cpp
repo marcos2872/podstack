@@ -452,6 +452,13 @@ void TerminalTest::machineDetailDialog()
     QCOMPARE(overlay.findChildren<PodStack::TerminalView *>().size(), 1);
     QVERIFY(overlay.terminalView()->isHidden());
 
+    // Com o agent encaminhado, a sessão embutida recebe -A.
+    QVariantMap forwardMachine = machine;
+    forwardMachine.insert(QStringLiteral("forwardSshAgent"), true);
+    overlay.openMachine(forwardMachine);
+    QVERIFY(overlay.terminalView() != nullptr);
+    QVERIFY(overlay.terminalView()->arguments().contains(QStringLiteral("-A")));
+
     // Sem chave SSH não há sessão; o QML mostraria o erro no placeholder.
     QVariantMap noKey = machine;
     noKey.insert(QStringLiteral("id"), QStringLiteral("m2"));

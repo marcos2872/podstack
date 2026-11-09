@@ -285,12 +285,12 @@ demais métodos continuam planejados para as tarefas seguintes.
 | `machines.import` | `{path, name?, force?}` | `JobRef` + `Subscription` |
 | `machines.rename` | `{id, name}` | `Machine` |
 | `machines.clone` | `{id, name}` | `JobRef` + `Subscription` |
-| `machines.update` | `{id, cpus?, memoryBytes?, diskBytes?}` | `Machine` |
+| `machines.update` | `{id, cpus?, memoryBytes?, diskBytes?, forwardSshAgent?}` | `Machine` |
 | `machines.ports.list` | `{id}` | `{items: MachinePort[]}` |
 | `machines.ports.set` | `{id, ports}` | `Machine` |
 | `machines.default` | `{name?}` | `{name}` (sem `name` = get; com `name` = set) |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
-| `machines.ssh` | `{id}` | `{host, port, user, identityFile}` |
+| `machines.ssh` | `{id}` | `{host, port, user, identityFile, forwardAgent}` |
 | `machines.files.list` | `{id, path?}` | `{path, items: MachineFile[]}` |
 | `machines.files.download` | `{id, path, destination}` | `{path, destination}` |
 | `machines.files.upload` | `{id, path, sourcePath}` | `{path, sourcePath, ok:true}` |
@@ -394,6 +394,17 @@ offline com `qemu-img resize` e só então os metadados são persistidos; se a p
 falhar depois do resize, o erro informa que o disco já cresceu. Growpart/filesystem dentro
 do guest é manual. Progresso não é emitido (operação síncrona).
 
+**SSH agent forwarding (T4-13).** `machines.update` também aceita `forwardSshAgent` (bool).
+Quando é o **único** campo informado, a machine **não** é parada nem reiniciada: o
+`meta.json`+SQLite é persistido, o bloco gerenciado do `~/.ssh/config` é sincronizado
+(`ForwardAgent yes` presente só com o flag ativo) e o `Machine` atualizado é devolvido. Se
+o sync do config falhar, o valor anterior é restaurado em `meta.json`+SQLite e o erro
+(`PODSTACK_IO_ERROR`/`PODSTACK_INVALID_PARAMS`) é devolvido. Com CPUs/memória/disco na mesma
+chamada, o restart mantém o comportamento da T4-11 e o agent entra no mesmo persist/sync.
+O flag é persistido no metadado e refletido como `forwardAgent` em `machines.ssh`; o CLI e a
+GUI acrescentam `-A` ao próprio `ssh` quando ele está ativo. Segurança: o guest passa a usar
+o agent do host; o padrão é desligado e o toggle deve ser usado só em machines confiáveis.
+
 **Port forwarding (T4-12).** `machines.ports.list {id}` devolve
 `{items: MachinePort[]}`; `machines.ports.set {id, ports}` é síncrono e devolve o `Machine`
 atualizado. `ports` é a lista **completa das portas não-SSH** — a porta SSH (guest 22/tcp) é
@@ -421,8 +432,10 @@ neste método (console serial é a T4-15).
 
 **SSH.** `machines.ssh` resolve ID ou nome, exige que a chave privada da machine exista
 (`0600`, reparada se necessário), garante o bloco gerenciado em `~/.ssh/config` e devolve
-`{host:"127.0.0.1", port, user, identityFile}`. O bloco é idempotente e não expõe o
-conteúdo da chave. `PODSTACK_SSH_CONFIG` sobrescreve o caminho do config em dev/teste.
+`{host:"127.0.0.1", port, user, identityFile, forwardAgent}`. O bloco é idempotente e não
+expõe o conteúdo da chave. `PODSTACK_SSH_CONFIG` sobrescreve o caminho do config em
+dev/teste. `forwardAgent` reflete `forwardSshAgent` no metadado; consumidores que abrem SSH
+devem passar `-A` quando for `true`.
 Erros: `PODSTACK_NOT_FOUND` (machine inexistente), `PODSTACK_IO_ERROR` (chave/config
 inacessível) e `PODSTACK_PERMISSION_DENIED` (permissões não corrigíveis).
 

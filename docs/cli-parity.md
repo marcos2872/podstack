@@ -38,7 +38,7 @@
 
 | `orb` | `podstack` | Flags | Notas Linux | Status |
 |---|---|---|---|---|
-| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` | `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network` | QEMU/KVM + cloud-init; sem Rosetta. Senha via GUI/JSON-RPC (nunca argv); mounts via GUI/JSON-RPC na T4-07; flags de mounts, `--arch`, `--isolated` e `--forward-ssh-agent` no CLI ficam pendentes (T4-07/T4-13) | ✅ T4-03 (SSH/chave na T4-04; mounts na T4-07) |
+| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` | `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network`, `--forward-ssh-agent` | QEMU/KVM + cloud-init; sem Rosetta. Senha via GUI/JSON-RPC (nunca argv); mounts via GUI/JSON-RPC na T4-07; flags de mounts, `--arch` e `--isolated` no CLI ficam pendentes (T4-07/T4-14) | ✅ T4-03 (SSH/chave na T4-04; mounts na T4-07; agent na T4-13) |
 | `start [MACHINE...]` | `machine start <id\|nome>` | — | Uma machine por vez nesta etapa | ✅ T4-03 |
 | `stop [MACHINE...]` | `machine stop <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
 | `restart [MACHINE...]` | `machine restart <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
@@ -46,7 +46,7 @@
 | `list` | `machine list` | `--json` | Colunas NOME, DISTRO, ARCH, STATE e SSH | ✅ T4-03 |
 | `info M` | `machine info M` | `--json` | Aceita ID ou nome | ✅ T4-03 |
 | `logs [M]` | `machine logs <id\|nome>` | `--tail N` | Console/boot one-shot (sem follow) | ✅ T4-06 |
-| `ssh` | `machine ssh` / `ssh M` | `-- cmd...` | Chave + bloco gerenciado em `~/.ssh/config`; `--` anexa comando | ✅ T4-04 |
+| `ssh` | `machine ssh` / `ssh M` | `-- cmd...` | Chave + bloco gerenciado em `~/.ssh/config`; `--` anexa comando; `-A` quando o SSH agent está encaminhado | ✅ T4-04 (agent na T4-13) |
 | — | `machine files ls <id\|nome>` | `--path`, `--json` | Lista arquivos via SSH; `.`/`..` omitidos, caminho remoto escapado | ✅ T4-08 |
 | `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | | ⬜ |
 | `pull [-m M] SRC [DST]` | `machine pull <id\|nome> <remoto> <local>` | — | Guest → host via `scp -r`; o local precisa existir como diretório ou arquivo | ✅ T4-08 |
@@ -56,7 +56,7 @@
 | `clone SRC DST` | `machine clone SRC DST` | `--json` | qemu-img convert (disco independente), chave/seed copiados | ✅ T4-10 |
 | `rename M NEW` | `machine rename M NEW` | `--json` | Atualiza o bloco SSH e a default | ✅ T4-10 |
 | `default [M]` | `machine default [M]` | `--json` | Get/set; `machine ssh` sem id usa a default | ✅ T4-10 |
-| — | `machine update <id\|nome>` | `--cpus`, `--memory`, `--disk`, `--json` | Ao menos um recurso; para/reinicia se rodando; disco só cresce (`qemu-img resize` offline) | ✅ T4-11 |
+| — | `machine update <id\|nome>` | `--cpus`, `--memory`, `--disk`, `--forward-agent`, `--no-forward-agent`, `--json` | Ao menos um recurso **ou** o agent; para/reinicia só quando recursos mudam; disco só cresce (`qemu-img resize` offline); agent só sincroniza metadado/`~/.ssh/config` | ✅ T4-11 (agent na T4-13) |
 | — | `machine port ls <id\|nome>` | `--json` | Lista host/guest/protocolo/bind/rótulo; a SSH aparece mas é gerenciada | ✅ T4-12 |
 | — | `machine port add <id\|nome>` | `--host N`, `--guest N`, `--udp`, `--lan`, `--label L`, `--json` | Envia a lista completa não-SSH; para/reinicia se rodando | ✅ T4-12 |
 | — | `machine port rm <id\|nome> <portId\|hostPort>` | `--json` | Remove por ID ou hostPort; recusa a porta SSH e hostPort ambíguo | ✅ T4-12 |
@@ -64,14 +64,15 @@
 | `serial list` | `device serial list` | `--format` | | ⬜ T4-15 |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
 
-> No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11) o CLI cobre `distros`, `list`, `info`,
-> `create`, `start`, `stop`, `restart`, `delete`, `logs`, `ssh` (alias `machine ssh`),
-> `export`/`import`, `rename`, `clone`, `default`, `update`, `files ls`, `pull` e `push`.
-> A criação
-> aceita `--cpus`, `--memory` (bytes ou K/M/G/T), `--disk`, `--user`,
-> `--user-data ARQUIVO` e `--isolate-network`; a senha continua **fora** de argv (visível em
-> `ps`/histórico) e o acesso padrão é por chave ed25519 gerada pelo daemon. `files`, `pull`
-> e `push` usam SSH/SCP reais (o daemon nunca abre shell local).
+> No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11/T4-12/T4-13) o CLI cobre `distros`,
+> `list`, `info`, `create`, `start`, `stop`, `restart`, `delete`, `logs`, `ssh`
+> (alias `machine ssh`), `export`/`import`, `rename`, `clone`, `default`, `update`,
+> `port ls/add/rm`, `files ls`, `pull` e `push`. A criação aceita `--cpus`, `--memory`
+> (bytes ou K/M/G/T), `--disk`, `--user`, `--user-data ARQUIVO`, `--isolate-network` e
+> `--forward-ssh-agent`; `machine update` aceita `--forward-agent`/`--no-forward-agent` e
+> `machine ssh` acrescenta `-A` quando o agent está encaminhado. A senha continua **fora**
+> de argv (visível em `ps`/histórico) e o acesso padrão é por chave ed25519 gerada pelo
+> daemon. `files`, `pull` e `push` usam SSH/SCP reais (o daemon nunca abre shell local).
 
 ### 2.2 Serviços e sistema
 

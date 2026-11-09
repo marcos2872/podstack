@@ -136,7 +136,7 @@ Abas por tipo (estado do M4 após o redesenho do detalhe):
 | **Terminal** | ✅ aba interna do detalhe | ✅ aba interna do detalhe | — | — | `TerminalView`/QTermWidget em placeholder do QML; **Nova sessão em janela** via `ExternalTerminal` |
 | **Inspect** | ✅ overlay | — | — | — | JSON completo via `containers.inspect` |
 
-Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info (incluindo os mounts virtiofs source → target), Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash e mounts `origem:destino[:ro]`), importar/exportar `.tar.zst` (com progresso e cancelamento), start/stop/restart, expandir o detalhe em overlay, abrir SSH na aba Terminal desse detalhe, gerenciar arquivos na aba Files (listar, baixar para `~/Downloads` e enviar) e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
+Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info (incluindo os mounts virtiofs source → target e o toggle **Encaminhar SSH agent** com aviso de segurança), Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash e mounts `origem:destino[:ro]`), importar/exportar `.tar.zst` (com progresso e cancelamento), start/stop/restart, expandir o detalhe em overlay, abrir SSH na aba Terminal desse detalhe (com `-A` quando o agent está encaminhado), gerenciar arquivos na aba Files (listar, baixar para `~/Downloads` e enviar) e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 
@@ -259,9 +259,10 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   (métricas via SSH a cada 2 s), **Terminal** e **Files**. Entrar em Terminal interrompe a
   coleta de stats; sair dela não inicia logs. Entrar em Files (ou abrir o overlay nessa aba)
   chama `refreshMachineFiles(id, "/")`.
-- A aba **Terminal** mostra a sessão SSH (`ssh -i <sshKeyPath> -p <sshPort> ... user@127.0.0.1`)
-  sobre o placeholder e o botão **Nova sessão em janela** (`ExternalTerminal`). Sem
-  `sshKeyPath`, nenhuma sessão é criada e o placeholder explica o motivo.
+- A aba **Terminal** mostra a sessão SSH (`ssh -i <sshKeyPath> -p <sshPort> ... user@127.0.0.1`,
+  com `-A` quando o SSH agent está encaminhado) sobre o placeholder e o botão **Nova sessão
+  em janela** (`ExternalTerminal`). Sem `sshKeyPath`, nenhuma sessão é criada e o placeholder
+  explica o motivo.
 - A aba **Files** (`MachineFilesView.qml`) lista o diretório remoto via SSH, permite editar
   o caminho/subir um nível, baixar arquivo ao clicar (destino `~/Downloads/<nome>`) e enviar
   um arquivo local digitado no campo + **Enviar**. Erros aparecem no próprio painel; o
@@ -282,6 +283,12 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   host→guest/protocolo/bind/rótulo e remover, campos host/guest/protocolo/LAN/rótulo com
   **Adicionar**, aviso de segurança para LAN e erro inline. A lista enviada exclui a SSH
   (gerenciada pelo daemon) e o diálogo fecha só no sucesso.
+- A aba **Info** tem o checkbox **“Encaminhar SSH agent”** (`backend.updateMachine` com
+  `forwardSshAgent`), ligado ao `forwardSshAgent` da machine. A troca não reinicia a
+  machine e sincroniza o bloco do `~/.ssh/config`; o `ssh` do PodStack (terminal embutido,
+  terminal externo e CLI) passa a usar `-A` quando ativo. Abaixo do checkbox há o aviso:
+  processos no guest podem usar as chaves do SSH agent do host — ative só em machines
+  confiáveis. Em erro, o valor anterior é restaurado.
 
 ---
 
@@ -292,6 +299,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 | Criar container | imagem, nome, comando, portas, env, volumes, workdir, user, flags, recursos, expor na LAN | imagem existente/pull; nome único; portas válidas; helper para LAN |
 | Criar rede | nome, driver, subnet4, gateway, IPv6, labels | CIDR válido; sem sobreposição |
 | Criar máquina | distro/versão, nome, CPU/mem/disco, user, user-data, mounts (`origem:destino[:ro]`, até 8), isolado, SSH agent | recursos mínimos; nome único; YAML válido; mounts absolutos/existentes e tags seguras |
+| SSH agent (Info) | checkbox “Encaminhar SSH agent” + aviso de segurança | máquina fora de `provisioning`/`deleting`; persiste e sincroniza sem reiniciar |
 | Clonar máquina | novo nome; progresso (`stopping`/`disk`/`copy`/`metadata`/`starting`) | nome único; RFC 1123 |
 | Exportar máquina | arquivo `.tar.zst`, substituir | caminho absoluto; padrão em `~/Downloads/<nome>.tar.zst` |
 | Importar máquina | arquivo `.tar.zst`, nome, substituir | checksum/manifesto; nome RFC 1123 |

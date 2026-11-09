@@ -1882,9 +1882,10 @@ MachineMeta MachineManager::update(const QString &idOrName,
     if (meta.id.isEmpty()) {
         return {};
     }
-    if (!request.cpus && !request.memoryBytes && !request.diskBytes) {
+    if (!request.cpus && !request.memoryBytes && !request.diskBytes
+        && !request.forwardSshAgent) {
         fails(error, invalidParams(QStringLiteral("Informe ao menos um recurso para atualizar "
-                                                  "(CPUs, memória ou disco).")));
+                                                  "(CPUs, memória, disco ou SSH agent).")));
         return meta;
     }
     if (meta.state == QStringLiteral("provisioning")
@@ -1937,7 +1938,40 @@ MachineMeta MachineManager::update(const QString &idOrName,
         (request.cpus && *request.cpus != meta.cpus)
         || (request.memoryBytes && *request.memoryBytes != meta.memoryBytes)
         || (request.diskBytes && *request.diskBytes > meta.diskBytes);
+    const bool agentChanges = request.forwardSshAgent
+                              && *request.forwardSshAgent != meta.forwardSshAgent;
+    if (!changes && !agentChanges) {
+        return meta;
+    }
+
+    // Mudança só do agent não toca no processo: persiste o metadado e
+    // sincroniza o bloco do ~/.ssh/config. Se o sync falhar, desfaz o valor
+    // anterior para não deixar metadado e config divergentes.
     if (!changes) {
+        const bool previousAgent = meta.forwardSshAgent;
+        meta.forwardSshAgent = *request.forwardSshAgent;
+        Error persistError;
+        if (!persist(meta, &persistError)) {
+            meta.forwardSshAgent = previousAgent;
+            if (error) {
+                *error = persistError;
+            }
+            return meta;
+        }
+
+        Error syncError;
+        if (!m_sshConfig.sync(meta, meta.forwardSshAgent, &syncError)) {
+            meta.forwardSshAgent = previousAgent;
+            Error rollbackError;
+            if (!persist(meta, &rollbackError)) {
+                qCWarning(lcCore) << "Falha ao restaurar o SSH agent da machine" << meta.name
+                                  << "após erro no ssh config:" << rollbackError.code;
+            }
+            if (error) {
+                *error = syncError;
+            }
+            return meta;
+        }
         return meta;
     }
 
@@ -1964,6 +1998,7 @@ MachineMeta MachineManager::update(const QString &idOrName,
     Error updateError;
     bool metadataChanged = false;
     bool resized = false;
+    const bool previousAgent = meta.forwardSshAgent;
 
     if (request.cpus) {
         meta.cpus = *request.cpus;
@@ -1984,6 +2019,10 @@ MachineMeta MachineManager::update(const QString &idOrName,
             resized = true;
         }
     }
+    if (agentChanges) {
+        meta.forwardSshAgent = *request.forwardSshAgent;
+        metadataChanged = true;
+    }
 
     if (updateError.isEmpty() && metadataChanged) {
         Error persistError;
@@ -1998,6 +2037,21 @@ MachineMeta MachineManager::update(const QString &idOrName,
                     QStringLiteral("O novo tamanho já está aplicado no disco da machine; "
                                    "repita a atualização para persistir os metadados."));
             }
+        }
+    }
+
+    // O start() abaixo já reaplica o bloco SSH; sincronizar aqui permite
+    // detectar a falha antes e restaurar o valor anterior do agent.
+    if (updateError.isEmpty() && agentChanges) {
+        Error syncError;
+        if (!m_sshConfig.sync(meta, meta.forwardSshAgent, &syncError)) {
+            meta.forwardSshAgent = previousAgent;
+            Error rollbackError;
+            if (!persist(meta, &rollbackError)) {
+                qCWarning(lcCore) << "Falha ao restaurar o SSH agent da machine" << meta.name
+                                  << "após erro no ssh config:" << rollbackError.code;
+            }
+            updateError = syncError;
         }
     }
 
@@ -3244,6 +3298,7 @@ bool MachineManager::sshInfo(const QString &idOrName, SshInfo *info, Error *erro
     info->port = meta.sshPort;
     info->user = meta.sshUser;
     info->identityFile = meta.sshKeyPath;
+    info->forwardAgent = meta.forwardSshAgent;
     return true;
 }
 

@@ -186,6 +186,8 @@ Backend::Backend(QObject *parent)
                 const QString user = result.value(QStringLiteral("user")).toString();
                 const QString identityFile =
                     result.value(QStringLiteral("identityFile")).toString();
+                const bool forwardAgent =
+                    result.value(QStringLiteral("forwardAgent")).toBool();
                 if (host.isEmpty() || port <= 0 || user.isEmpty()
                     || identityFile.isEmpty()) {
                     m_lastError = QStringLiteral("Resposta SSH inválida do daemon.");
@@ -197,17 +199,15 @@ Backend::Backend(QObject *parent)
                 if (title.isEmpty()) {
                     title = QStringLiteral("machine");
                 }
-                const QStringList arguments{
-                    QStringLiteral("-i"),
-                    identityFile,
-                    QStringLiteral("-p"),
-                    QString::number(port),
-                    QStringLiteral("-o"),
-                    QStringLiteral("IdentitiesOnly=yes"),
-                    QStringLiteral("-o"),
-                    QStringLiteral("StrictHostKeyChecking=accept-new"),
-                    QStringLiteral("%1@%2").arg(user, host),
-                };
+                QStringList arguments;
+                if (forwardAgent) {
+                    arguments << QStringLiteral("-A");
+                }
+                arguments << QStringLiteral("-i") << identityFile << QStringLiteral("-p")
+                          << QString::number(port) << QStringLiteral("-o")
+                          << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
+                          << QStringLiteral("StrictHostKeyChecking=accept-new")
+                          << QStringLiteral("%1@%2").arg(user, host);
                 if (isSignalConnected(
                         QMetaMethod::fromSignal(&Backend::terminalRequested))) {
                     emit terminalRequested(title, QStringLiteral("ssh"), arguments);
@@ -2811,8 +2811,9 @@ void Backend::updateMachine(const QVariantMap &spec)
     const bool hasCpus = spec.contains(QStringLiteral("cpus"));
     const bool hasMemory = spec.contains(QStringLiteral("memoryGiB"));
     const bool hasDisk = spec.contains(QStringLiteral("diskGiB"));
-    if (id.isEmpty() || (!hasCpus && !hasMemory && !hasDisk)) {
-        m_lastError = QStringLiteral("Informe a machine e ao menos um recurso.");
+    const bool hasForwardAgent = spec.contains(QStringLiteral("forwardSshAgent"));
+    if (id.isEmpty() || (!hasCpus && !hasMemory && !hasDisk && !hasForwardAgent)) {
+        m_lastError = QStringLiteral("Informe a machine e ao menos um recurso ou o SSH agent.");
         emit lastErrorChanged();
         emit actionFinished(false, m_lastError);
         return;
@@ -2850,6 +2851,10 @@ void Backend::updateMachine(const QVariantMap &spec)
             return;
         }
         params.insert(QStringLiteral("diskBytes"), static_cast<qint64>(diskGiB) * kGiB);
+    }
+    if (hasForwardAgent) {
+        params.insert(QStringLiteral("forwardSshAgent"),
+                      spec.value(QStringLiteral("forwardSshAgent")).toBool());
     }
 
     runAction(QStringLiteral("machines.update"), params, 180000);
@@ -3208,7 +3213,9 @@ void Backend::enqueueAction(const PendingAction &action)
 void Backend::onActionFinished()
 {
     const QJsonObject result = m_actionWatcher.result();
-    if (result.contains(QStringLiteral("error"))) {
+    // Resultados de machines trazem um campo "error" (string) do próprio
+    // metadado; só é erro de RPC quando o valor é um objeto.
+    if (result.value(QStringLiteral("error")).isObject()) {
         const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
         m_lastError = errorObject.value(QStringLiteral("message")).toString();
         emit lastErrorChanged();
