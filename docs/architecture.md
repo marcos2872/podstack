@@ -235,14 +235,25 @@ caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
 
 O `QemuProcessRuntime` (`src/machines/QemuRuntime.{h,cpp}`) inicia o binário
 resolvido por `QStandardPaths::findExecutable` com `QProcess::startDetached` e
-`-daemonize`, sem shell. A execução só é considerada viva quando há um pidfile
+`-daemonize`, sem shell. A execução é considerada viva quando há um pidfile
 (limite de 64 bytes) cujo PID existe em `/proc/<pid>/cmdline` com o marcador
-`podstack:<machineId>`; isso evita aceitar um PID reciclado. O start espera o
-pidfile e o socket QMP por até 5 s cada e valida `query-status`. O stop usa
-`system_powerdown` e aguarda até 60 s; depois tenta `quit` (5 s), `SIGTERM`
-(2 s) e, por fim, `SIGKILL`. O modo forçado vai direto para `quit` e, se
-necessário, para os sinais. `isRunning` e `pid` repetem a validação de
-`/proc`; sem pidfile o processo é considerado parado.
+`podstack:<machineId>`; isso evita aceitar um PID reciclado. Se o pidfile sumir
+ou ficar inválido, o runtime varre `/proc` e usa o processo do mesmo uid cujo
+argv contém exatamente `podstack:<machineId>`; assim `isRunning`, `status`,
+`stop` e o `start` continuam funcionando sem pidfile e sem lançar um QEMU
+duplicado. O start espera o pidfile e o socket QMP por até 5 s cada e valida
+`query-status`. O stop usa `system_powerdown` e aguarda até 60 s; depois tenta
+`quit` (5 s), `SIGTERM` (2 s) e, por fim, `SIGKILL`. O modo forçado vai direto
+para `quit` e, se necessário, para os sinais. `isRunning` e `pid` repetem a
+validação de `/proc` e caem no fallback por cmdline.
+
+No start do daemon, `MachineManager::reconcile` compara o store com os
+processos vivos: adota como `running` (e preenche `lastBootAt`) quem tem
+processo, marca `stopped` quem está em `running`/`starting`/`stopping` sem
+processo e encerra processos com `podstack:<id>` sem machine no store, desde
+que pertençam ao `machinesRoot` desta instalação (SIGTERM, espera curta,
+SIGKILL). O filtro por uid e diretório impede que um daemon de teste ou outra
+instalação do usuário mate QEMUs alheios.
 
 O `MachineManager` (`src/machines/MachineManager.{h,cpp}`) orquestra o
 provisionamento: valida nome RFC 1123 (1..63, `[a-z0-9-]`), CPUs (1..256),

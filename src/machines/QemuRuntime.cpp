@@ -2,18 +2,24 @@
 
 #include "machines/QemuRuntime.h"
 
+#include "core/Logging.h"
 #include "machines/QmpClient.h"
 
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
+#include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 
 #include <chrono>
 #include <csignal>
 #include <thread>
+#include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 namespace PodStack {
 namespace {
@@ -78,6 +84,59 @@ PidRead readPidFile(const QString &path, qint64 *pid, QString *detail)
     return PidRead::Ok;
 }
 
+/// Lê o cmdline e extrai o id de uma machine marcada por um argumento
+/// exatamente igual a `podstack:<id>`. Só aceita processos do usuário atual:
+/// a varredura nunca deve alcançar o processo de outro usuário.
+bool processMachineId(qint64 pid, QString *machineId)
+{
+    if (pid <= 0) {
+        return false;
+    }
+
+    const QString processPath = QStringLiteral("/proc/%1").arg(pid);
+    struct stat status {};
+    const QByteArray nativePath = QFile::encodeName(processPath);
+    if (::stat(nativePath.constData(), &status) != 0
+        || status.st_uid != ::getuid()) {
+        return false;
+    }
+
+    QFile cmdline(processPath + QStringLiteral("/cmdline"));
+    if (!cmdline.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+
+    const QByteArray payload = cmdline.read(kCmdlineMaxBytes + 1);
+    if (payload.isEmpty() || payload.size() > kCmdlineMaxBytes) {
+        return false;
+    }
+
+    static const QRegularExpression validId(QStringLiteral("^[A-Za-z0-9._:-]+$"));
+    QSet<QString> ids;
+    const QList<QByteArray> tokens = payload.split('\0');
+    for (const QByteArray &token : tokens) {
+        if (!token.startsWith(QByteArrayLiteral("podstack:"))) {
+            continue;
+        }
+        const QString id = QString::fromUtf8(token.mid(9)).trimmed();
+        if (id.isEmpty() || id.contains(QStringLiteral(".."))
+            || !validId.match(id).hasMatch()) {
+            continue;
+        }
+        ids.insert(id);
+    }
+
+    // Um processo com marcadores de machines diferentes é ambíguo; ignorar
+    // evita encerrar o processo errado.
+    if (ids.size() != 1) {
+        return false;
+    }
+    if (machineId) {
+        *machineId = *ids.constBegin();
+    }
+    return true;
+}
+
 /// Confirma que o PID ainda pertence à machine, evitando um PID reciclado.
 bool processMatches(qint64 pid, const QString &machineId)
 {
@@ -85,16 +144,46 @@ bool processMatches(qint64 pid, const QString &machineId)
         return false;
     }
 
-    QFile cmdline(QStringLiteral("/proc/%1/cmdline").arg(pid));
-    if (!cmdline.open(QIODevice::ReadOnly)) {
-        return false;
-    }
+    QString foundId;
+    return processMachineId(pid, &foundId) && foundId == machineId;
+}
 
-    const QByteArray payload = cmdline.read(kCmdlineMaxBytes);
-    if (payload.isEmpty()) {
-        return false;
+QHash<QString, qint64> scanRunningMachines()
+{
+    QHash<QString, qint64> running;
+    const QDir proc(QStringLiteral("/proc"));
+    const QStringList entries = proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    const qint64 self = static_cast<qint64>(::getpid());
+
+    for (const QString &entry : entries) {
+        bool ok = false;
+        const qint64 pid = entry.toLongLong(&ok);
+        if (!ok || pid <= 0 || pid == self) {
+            continue;
+        }
+
+        QString machineId;
+        if (!processMachineId(pid, &machineId)) {
+            continue;
+        }
+        if (running.contains(machineId)) {
+            qCWarning(lcCore) << "Mais de um processo para a machine" << machineId
+                              << "; mantendo o pid" << running.value(machineId);
+            continue;
+        }
+        running.insert(machineId, pid);
     }
-    return payload.contains(QByteArrayLiteral("podstack:") + machineId.toUtf8());
+    return running;
+}
+
+qint64 knownPid(const QemuSpec &spec)
+{
+    qint64 pid = 0;
+    if (readPidFile(spec.pidFile, &pid, nullptr) == PidRead::Ok
+        && processMatches(pid, spec.machineId)) {
+        return pid;
+    }
+    return scanRunningMachines().value(spec.machineId, 0);
 }
 
 bool waitForPid(const QemuSpec &spec, qint64 *pid, QString *detail)
@@ -170,6 +259,24 @@ bool waitForExit(qint64 pid, const QString &machineId, int timeoutMs)
         sleepFor(100);
     }
     return !processMatches(pid, machineId);
+}
+
+bool terminateProcess(qint64 pid, const QString &machineId, int termTimeoutMs,
+                      int killTimeoutMs)
+{
+    if (!processMatches(pid, machineId)) {
+        return true;
+    }
+
+    ::kill(static_cast<pid_t>(pid), SIGTERM);
+    if (waitForExit(pid, machineId, termTimeoutMs)) {
+        return true;
+    }
+
+    if (processMatches(pid, machineId)) {
+        ::kill(static_cast<pid_t>(pid), SIGKILL);
+    }
+    return waitForExit(pid, machineId, killTimeoutMs);
 }
 
 void removePidFile(const QemuSpec &spec)
@@ -263,10 +370,8 @@ bool QemuProcessRuntime::stop(const QemuSpec &spec, bool force, Error *error)
         *error = {};
     }
 
-    qint64 pid = 0;
-    QString detail;
-    if (readPidFile(spec.pidFile, &pid, &detail) != PidRead::Ok
-        || !processMatches(pid, spec.machineId)) {
+    qint64 pid = knownPid(spec);
+    if (pid <= 0) {
         removePidFile(spec);
         return true;
     }
@@ -309,16 +414,7 @@ bool QemuProcessRuntime::stop(const QemuSpec &spec, bool force, Error *error)
         return true;
     }
 
-    ::kill(static_cast<pid_t>(pid), SIGTERM);
-    if (waitForExit(pid, spec.machineId, kTermTimeoutMs)) {
-        removePidFile(spec);
-        return true;
-    }
-
-    if (processMatches(pid, spec.machineId)) {
-        ::kill(static_cast<pid_t>(pid), SIGKILL);
-    }
-    if (waitForExit(pid, spec.machineId, kKillTimeoutMs)) {
+    if (terminateProcess(pid, spec.machineId, kTermTimeoutMs, kKillTimeoutMs)) {
         removePidFile(spec);
         return true;
     }
@@ -337,17 +433,22 @@ bool QemuProcessRuntime::isRunning(const QemuSpec &spec, Error *error)
         *error = {};
     }
 
-    qint64 pid = 0;
-    if (readPidFile(spec.pidFile, &pid, nullptr) != PidRead::Ok) {
-        return false;
-    }
-    return processMatches(pid, spec.machineId);
+    return knownPid(spec) > 0;
 }
 
 QString QemuProcessRuntime::status(const QemuSpec &spec, Error *error)
 {
     if (error) {
         *error = {};
+    }
+
+    if (knownPid(spec) <= 0) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("A machine não está em execução."),
+                                 spec.machineId);
+        }
+        return {};
     }
 
     QmpClient client(spec.qmpSocketPath);
@@ -364,12 +465,40 @@ QString QemuProcessRuntime::status(const QemuSpec &spec, Error *error)
 
 QString QemuProcessRuntime::pid(const QemuSpec &spec)
 {
-    qint64 pid = 0;
-    if (readPidFile(spec.pidFile, &pid, nullptr) != PidRead::Ok
-        || !processMatches(pid, spec.machineId)) {
-        return {};
+    const qint64 runningPid = knownPid(spec);
+    return runningPid > 0 ? QString::number(runningPid) : QString();
+}
+
+QHash<QString, qint64> QemuProcessRuntime::runningMachines()
+{
+    return scanRunningMachines();
+}
+
+qint64 QemuProcessRuntime::findPid(const QString &machineId)
+{
+    if (machineId.isEmpty()) {
+        return 0;
     }
-    return QString::number(pid);
+    return scanRunningMachines().value(machineId, 0);
+}
+
+bool QemuProcessRuntime::terminate(const QString &machineId, qint64 pid, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (machineId.isEmpty() || pid <= 0) {
+        return true;
+    }
+
+    const bool ok = terminateProcess(pid, machineId, kOrphanTermTimeoutMs,
+                                     kOrphanKillTimeoutMs);
+    if (!ok && error) {
+        *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                             QStringLiteral("Não foi possível encerrar o processo órfão."),
+                             QStringLiteral("pid %1").arg(pid));
+    }
+    return ok;
 }
 
 } // namespace PodStack

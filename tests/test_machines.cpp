@@ -40,6 +40,9 @@
 #include <archive_entry.h>
 #include <sqlite3.h>
 
+#include <csignal>
+#include <unistd.h>
+
 using PodStack::BuildRecord;
 using PodStack::BuildStore;
 using PodStack::CloudImageCache;
@@ -56,6 +59,7 @@ using PodStack::MachinePort;
 using PodStack::MachineStatsCollector;
 using PodStack::MachineStore;
 using PodStack::QemuCommand;
+using PodStack::QemuProcessRuntime;
 using PodStack::QemuRuntime;
 using PodStack::QemuSpec;
 using PodStack::QmpClient;
@@ -414,6 +418,31 @@ public:
         return running ? QStringLiteral("4242") : QString();
     }
 
+    QHash<QString, qint64> runningMachines() override
+    {
+        QHash<QString, qint64> result;
+        if (running && !lastSpec.machineId.isEmpty()) {
+            result.insert(lastSpec.machineId, 4242);
+        }
+        return result;
+    }
+
+    qint64 findPid(const QString &machineId) override
+    {
+        return running && lastSpec.machineId == machineId ? 4242 : 0;
+    }
+
+    bool terminate(const QString &machineId, qint64 pid, PodStack::Error *error) override
+    {
+        Q_UNUSED(machineId);
+        Q_UNUSED(pid);
+        if (error) {
+            *error = {};
+        }
+        running = false;
+        return true;
+    }
+
     bool running = false;
     bool failStart = false;
     bool failStop = false;
@@ -422,6 +451,114 @@ public:
     bool lastForce = false;
     QemuSpec lastSpec;
 };
+
+/// Processo fake destacado cujo argv contém `podstack:<id>` (sem pidfile).
+class FakeMachineProcess {
+public:
+    ~FakeMachineProcess() { stop(); }
+
+    qint64 start(const QString &machineId, const QString &prefix = QString(),
+                 const QString &extraArgument = QString())
+    {
+        const QString marker = (prefix.isEmpty() ? QStringLiteral("podstack:") : prefix)
+                               + machineId;
+        m_marker = marker;
+
+        // `sleep 60 podstack:<id>` não serve: o sleep trata o marcador como
+        // segundo intervalo e sai. Python mantém o marcador no próprio argv
+        // sem criar filho; o shell é o fallback quando o python3 não existe.
+        QString program = QStandardPaths::findExecutable(QStringLiteral("python3"));
+        QStringList arguments;
+        if (!program.isEmpty()) {
+            arguments = {QStringLiteral("-c"),
+                         QStringLiteral("import time; time.sleep(60)"), marker};
+        } else {
+            program = QStandardPaths::findExecutable(QStringLiteral("sh"));
+            if (program.isEmpty()) {
+                return 0;
+            }
+            arguments = {QStringLiteral("-c"),
+                         QStringLiteral("while :; do sleep 0.05; done"), marker};
+        }
+        if (!extraArgument.isEmpty()) {
+            arguments.append(extraArgument);
+        }
+
+        qint64 pid = 0;
+        if (!QProcess::startDetached(program, arguments, QString(), &pid)) {
+            return 0;
+        }
+        m_pid = pid;
+        return m_pid;
+    }
+
+    qint64 pid() const { return m_pid; }
+
+    void stop()
+    {
+        if (m_pid > 0 && markerPresent()) {
+            ::kill(static_cast<pid_t>(m_pid), SIGKILL);
+        }
+        m_pid = 0;
+    }
+
+private:
+    bool markerPresent() const
+    {
+        QFile cmdline(QStringLiteral("/proc/%1/cmdline").arg(m_pid));
+        if (!cmdline.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+        const QByteArray payload = cmdline.read(64 * 1024);
+        return payload.contains(m_marker.toUtf8());
+    }
+
+    qint64 m_pid = 0;
+    QString m_marker;
+};
+
+bool waitForMachinePid(PodStack::QemuRuntime *runtime, const QString &machineId,
+                       qint64 expected, int timeoutMs = 3000)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs) {
+        if (runtime->findPid(machineId) == expected) {
+            return true;
+        }
+        QTest::qWait(20);
+    }
+    return runtime->findPid(machineId) == expected;
+}
+
+bool waitForMachineGone(PodStack::QemuRuntime *runtime, const QString &machineId,
+                        int timeoutMs = 3000)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs) {
+        if (runtime->findPid(machineId) == 0) {
+            return true;
+        }
+        QTest::qWait(20);
+    }
+    return runtime->findPid(machineId) == 0;
+}
+
+bool seedMachine(const QString &storePath, const QString &machinesRoot,
+                 const MachineMeta &meta)
+{
+    const QString directory = machinesRoot + QLatin1Char('/') + meta.id;
+    if (!QDir().mkpath(directory)
+        || !MachineMetaFile::write(directory + QStringLiteral("/meta.json"), meta, nullptr)) {
+        return false;
+    }
+
+    MachineStore store(storePath);
+    PodStack::Error error;
+    return store.open(&error) && error.isEmpty() && store.upsert(meta, &error)
+           && error.isEmpty();
+}
 
 } // namespace
 
@@ -472,6 +609,10 @@ private slots:
     void machineManagerLifecycle();
     void machineManagerCancelled();
     void machineManagerPort();
+    void qemuRuntimeFallback();
+    void machineManagerReconcile();
+    void machineManagerStartFallback();
+    void machineManagerRemoveOrphan();
     void sshConfigPreserves();
     void machineManagerSsh();
     void machineStats();
@@ -2190,6 +2331,242 @@ void MachinesTest::machineManagerPort()
     QVERIFY(second.sshPort > busyPort);
     QVERIFY(second.sshPort <= busyPort + 19);
     QVERIFY(second.sshPort != first.sshPort);
+}
+
+void MachinesTest::qemuRuntimeFallback()
+{
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000001101");
+    const QString foreignId = QStringLiteral("0190f0f0-0000-7000-8000-000000001102");
+    const QString root = m_root + QStringLiteral("/runtime-fallback");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QemuSpec spec = qemuSpec(root);
+    spec.machineId = id;
+    spec.pidFile = root + QStringLiteral("/qemu.pid");
+    spec.qmpSocketPath = root + QStringLiteral("/qmp.sock");
+    QVERIFY(!QFileInfo::exists(spec.pidFile));
+
+    FakeMachineProcess process;
+    QVERIFY2(process.start(id) > 0, "não foi possível iniciar o processo fake");
+    FakeMachineProcess foreign;
+    QVERIFY2(foreign.start(foreignId, QStringLiteral("notpodstack:")) > 0,
+             "não foi possível iniciar o processo estranho");
+
+    QemuProcessRuntime runtime;
+    QVERIFY(waitForMachinePid(&runtime, id, process.pid()));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        QFileInfo(QStringLiteral("/proc/%1").arg(foreign.pid())).isDir(), 3000);
+
+    // O fallback encontra o processo sem pidfile, mas ignora prefixos alheios.
+    QCOMPARE(runtime.findPid(id), process.pid());
+    QCOMPARE(runtime.runningMachines().value(id), process.pid());
+    QCOMPARE(runtime.findPid(foreignId), 0);
+    QVERIFY(!runtime.runningMachines().contains(foreignId));
+    QVERIFY2(runtime.isRunning(spec, nullptr), "isRunning deveria usar o cmdline");
+    QCOMPARE(runtime.pid(spec), QString::number(process.pid()));
+
+    // status também deve reconhecer o processo sem pidfile (o QMP não existe,
+    // mas o erro é de conexão, não de "machine parada").
+    PodStack::Error statusError;
+    QCOMPARE(runtime.status(spec, &statusError), QString());
+    QCOMPARE(statusError.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    // stop encerra o processo mesmo sem pidfile.
+    PodStack::Error error;
+    QVERIFY2(runtime.stop(spec, true, &error), qPrintable(error.message));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(waitForMachineGone(&runtime, id));
+    QVERIFY(!runtime.isRunning(spec, nullptr));
+    QVERIFY(runtime.pid(spec).isEmpty());
+
+    // O processo de prefixo diferente permanece vivo (só o guard o encerra).
+    QCOMPARE(runtime.findPid(foreignId), 0);
+    QVERIFY(QFileInfo(QStringLiteral("/proc/%1").arg(foreign.pid())).isDir());
+}
+
+void MachinesTest::machineManagerReconcile()
+{
+    const QString root = m_root + QStringLiteral("/manager-reconcile");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    MachineManager::Options options;
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.sshConfigPath = root + QStringLiteral("/ssh/config");
+    const QString storePath = options.storePath;
+    const QString machinesRoot = options.machinesRoot;
+    MachineManager manager(std::move(options));
+
+    const QString missingId = QStringLiteral("0190f0f0-0000-7000-8000-000000001103");
+    const QString liveId = QStringLiteral("0190f0f0-0000-7000-8000-000000001104");
+    const QString stoppedLiveId = QStringLiteral("0190f0f0-0000-7000-8000-000000001105");
+    const QString orphanId = QStringLiteral("0190f0f0-0000-7000-8000-000000001106");
+    const QString outsideId = QStringLiteral("0190f0f0-0000-7000-8000-000000001109");
+
+    MachineMeta missing = testMachine(missingId, QStringLiteral("reconcile-missing"));
+    missing.state = QStringLiteral("running");
+    missing.lastBootAt = QStringLiteral("2026-11-09T10:00:00.000Z");
+    QVERIFY(seedMachine(storePath, machinesRoot, missing));
+
+    MachineMeta live = testMachine(liveId, QStringLiteral("reconcile-live"));
+    live.state = QStringLiteral("starting");
+    live.lastBootAt.clear();
+    live.diskPath = machinesRoot + QLatin1Char('/') + liveId
+                    + QStringLiteral("/disk.qcow2");
+    QVERIFY(seedMachine(storePath, machinesRoot, live));
+
+    MachineMeta stoppedLive = testMachine(stoppedLiveId, QStringLiteral("reconcile-adopt"));
+    stoppedLive.state = QStringLiteral("stopped");
+    QVERIFY(seedMachine(storePath, machinesRoot, stoppedLive));
+
+    FakeMachineProcess liveProcess;
+    QVERIFY2(liveProcess.start(liveId) > 0, "não foi possível iniciar o processo live");
+    FakeMachineProcess stoppedProcess;
+    QVERIFY2(stoppedProcess.start(stoppedLiveId) > 0,
+             "não foi possível iniciar o processo adotado");
+    FakeMachineProcess orphanProcess;
+    QVERIFY2(orphanProcess.start(
+                 orphanId, QString(),
+                 machinesRoot + QLatin1Char('/') + orphanId) > 0,
+             "não foi possível iniciar o órfão");
+    FakeMachineProcess outsideProcess;
+    QVERIFY2(outsideProcess.start(outsideId) > 0,
+             "não foi possível iniciar o processo de outra instalação");
+
+    QemuProcessRuntime scanner;
+    QVERIFY(waitForMachinePid(&scanner, liveId, liveProcess.pid()));
+    QVERIFY(waitForMachinePid(&scanner, stoppedLiveId, stoppedProcess.pid()));
+    QVERIFY(waitForMachinePid(&scanner, orphanId, orphanProcess.pid()));
+    QVERIFY(waitForMachinePid(&scanner, outsideId, outsideProcess.pid()));
+
+    PodStack::Error error;
+    manager.reconcile(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const MachineMeta missingAfter = manager.get(missingId, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(missingAfter.state, QStringLiteral("stopped"));
+    QVERIFY(missingAfter.error.isEmpty());
+
+    const MachineMeta liveAfter = manager.get(liveId, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(liveAfter.state, QStringLiteral("running"));
+    QVERIFY(!liveAfter.lastBootAt.isEmpty());
+    QCOMPARE(manager.get(stoppedLiveId, &error).state, QStringLiteral("running"));
+
+    QCOMPARE(MachineMetaFile::read(machinesRoot + QLatin1Char('/') + missingId
+                                       + QStringLiteral("/meta.json"), &error)
+                 .state,
+             QStringLiteral("stopped"));
+    QCOMPARE(MachineMetaFile::read(machinesRoot + QLatin1Char('/') + liveId
+                                       + QStringLiteral("/meta.json"), &error)
+                 .state,
+             QStringLiteral("running"));
+
+    QVERIFY(waitForMachineGone(&scanner, orphanId));
+    QCOMPARE(scanner.findPid(liveId), liveProcess.pid());
+    QCOMPARE(scanner.findPid(stoppedLiveId), stoppedProcess.pid());
+    // Processo marcado com podstack:<id> de outra instalação não é tocado.
+    QCOMPARE(scanner.findPid(outsideId), outsideProcess.pid());
+
+    // Reconciliar de novo é idempotente.
+    error = {};
+    manager.reconcile(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(manager.get(liveId, &error).state, QStringLiteral("running"));
+    QVERIFY(waitForMachineGone(&scanner, orphanId));
+    QCOMPARE(scanner.findPid(outsideId), outsideProcess.pid());
+}
+
+void MachinesTest::machineManagerStartFallback()
+{
+    const QString root = m_root + QStringLiteral("/manager-start-fallback");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+
+    MachineManager::Options options;
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.sshConfigPath = root + QStringLiteral("/ssh/config");
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    const QString storePath = options.storePath;
+    const QString machinesRoot = options.machinesRoot;
+    MachineManager manager(std::move(options));
+
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000001107");
+    const QString directory = machinesRoot + QLatin1Char('/') + id;
+    MachineMeta meta = testMachine(id, QStringLiteral("start-fallback"));
+    meta.state = QStringLiteral("stopped");
+    meta.sshKeyPath.clear();
+    meta.diskPath = directory + QStringLiteral("/disk.qcow2");
+    meta.seedPath = directory + QStringLiteral("/seed.iso");
+    QVERIFY(writeTestFile(meta.diskPath, QByteArrayLiteral("fake-disk")));
+    QVERIFY(writeTestFile(meta.seedPath, QByteArrayLiteral("fake-seed")));
+    QVERIFY(seedMachine(storePath, machinesRoot, meta));
+
+    FakeMachineProcess process;
+    QVERIFY2(process.start(id) > 0, "não foi possível iniciar o processo fake");
+
+    QemuProcessRuntime scanner;
+    QVERIFY(waitForMachinePid(&scanner, id, process.pid()));
+
+    // Sem pidfile e com processo vivo, start adota em vez de lançar outro QEMU.
+    PodStack::Error error;
+    const MachineMeta started = manager.start(id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(started.state, QStringLiteral("running"));
+    QVERIFY(!started.lastBootAt.isEmpty());
+    QCOMPARE(scanner.findPid(id), process.pid());
+    QVERIFY(QFileInfo(QStringLiteral("/proc/%1").arg(process.pid())).isDir());
+
+    process.stop();
+}
+
+void MachinesTest::machineManagerRemoveOrphan()
+{
+    const QString root = m_root + QStringLiteral("/manager-remove-orphan");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    MachineManager::Options options;
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.sshConfigPath = root + QStringLiteral("/ssh/config");
+    const QString storePath = options.storePath;
+    const QString machinesRoot = options.machinesRoot;
+    MachineManager manager(std::move(options));
+
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000001108");
+    const QString directory = machinesRoot + QLatin1Char('/') + id;
+    MachineMeta meta = testMachine(id, QStringLiteral("remove-orphan"));
+    meta.state = QStringLiteral("running");
+    meta.sshKeyPath = directory + QStringLiteral("/id_ed25519");
+    QVERIFY(seedMachine(storePath, machinesRoot, meta));
+
+    FakeMachineProcess process;
+    QVERIFY2(process.start(id) > 0, "não foi possível iniciar o processo fake");
+
+    QemuProcessRuntime scanner;
+    QVERIFY(waitForMachinePid(&scanner, id, process.pid()));
+    QVERIFY(!QFileInfo::exists(directory + QStringLiteral("/qemu.pid")));
+
+    PodStack::Error error;
+    QVERIFY2(manager.remove(id, false, &error), qPrintable(error.message));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(waitForMachineGone(&scanner, id));
+    QVERIFY(!QFileInfo::exists(directory));
+
+    const MachineMeta removed = manager.get(id, &error);
+    QVERIFY(removed.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 }
 
 void MachinesTest::sshConfigPreserves()

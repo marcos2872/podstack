@@ -135,6 +135,13 @@ Daemon::Daemon()
         qCWarning(lcPodman) << "Histórico de builds indisponível:" << storeError.message
                             << storeError.detail;
     }
+
+    Error machineError;
+    m_machines.reconcile(&machineError);
+    if (!machineError.isEmpty()) {
+        qCWarning(lcRpc) << "Reconciliação de machines incompleta:" << machineError.code
+                         << machineError.message << machineError.detail;
+    }
 }
 
 QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,

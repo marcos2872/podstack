@@ -68,6 +68,8 @@ public:
 
     QVector<MachineMeta> list(Error *error = nullptr);
     MachineMeta get(const QString &idOrName, Error *error = nullptr);
+    /// Reconcilia o store com os processos vivos (chamado no start do daemon).
+    void reconcile(Error *error = nullptr);
     bool validate(const CreateMachineRequest &request, Error *error = nullptr) const;
     MachineMeta create(const CreateMachineRequest &request,
                        const std::function<void(const QString &stage, int progress)> &progress,

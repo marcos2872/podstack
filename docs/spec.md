@@ -396,7 +396,17 @@ Estados: `provisioning → running → stopping → stopped → starting → run
 - Start: QEMU + QMP; aguardar SSH.
 - Stop: ACPI shutdown (`system_powerdown`) com timeout; fallback `quit`.
 - Delete: parar, remover disco/seed/definição; `--force` remove mesmo em erro.
-- Nenhum processo QEMU órfão após crash (limpeza por PID/arquivo de lock).
+- PID: o `qemu.pid` é a fonte primária; se ele sumir ou ficar inválido, o runtime localiza o
+  processo pelo `cmdline` (`/proc/<pid>/cmdline`) com o marcador `podstack:<id>`, sempre no
+  mesmo uid. Sem pidfile, `isRunning`, `status`, `stop` e o `start` (para não duplicar QEMU)
+  usam esse fallback.
+- Reconciliação no start do daemon: para cada machine `running`/`starting`/`stopping`,
+  adota o processo encontrado como `running` (preenchendo `lastBootAt` quando vazio) ou marca
+  `stopped` quando não há processo. Processos com `podstack:<id>` sem machine no store e que
+  pertencem ao diretório de machines da instalação são encerrados (SIGTERM, espera curta,
+  SIGKILL) e logados; prefixos diferentes e processos de outro uid nunca são tocados.
+- Nenhum processo QEMU órfão após crash (limpeza por PID/arquivo de lock e reconciliação por
+  `cmdline` no start do daemon).
 
 ### 7.3 SSH
 

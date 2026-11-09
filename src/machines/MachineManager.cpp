@@ -130,6 +130,34 @@ void cleanupRuntimeFiles(const QString &directory, const MachineMeta &meta)
     }
 }
 
+/// Um órfão pertence a esta instalação quando o cmdline referencia um caminho
+/// dentro do machinesRoot (disco, seed, sockets). Isso permite limpar até um
+/// processo cujo diretório já foi apagado, sem tocar em outra instalação.
+bool processReferencesPath(qint64 pid, const QString &root)
+{
+    if (pid <= 0 || root.isEmpty()) {
+        return false;
+    }
+
+    QFile cmdline(QStringLiteral("/proc/%1/cmdline").arg(pid));
+    if (!cmdline.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    const QByteArray payload = cmdline.read(1024 * 1024 + 1);
+    if (payload.isEmpty() || payload.size() > 1024 * 1024) {
+        return false;
+    }
+
+    const QByteArray prefix = QFile::encodeName(root + QLatin1Char('/'));
+    const QList<QByteArray> tokens = payload.split('\0');
+    for (const QByteArray &token : tokens) {
+        if (token.contains(prefix)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 MachineManager::MachineManager()
@@ -354,6 +382,119 @@ MachineMeta MachineManager::get(const QString &idOrName, Error *error)
         *error = {};
     }
     return load(idOrName, error);
+}
+
+void MachineManager::reconcile(Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    Error listError;
+    const QVector<MachineMeta> machines = m_store.list(&listError);
+    if (!listError.isEmpty()) {
+        if (error) {
+            *error = listError;
+        }
+        qCWarning(lcCore) << "Reconciliação de machines: falha ao listar" << listError.code
+                          << listError.detail;
+        return;
+    }
+
+    const QHash<QString, qint64> processes = m_runtime->runningMachines();
+    QSet<QString> knownIds;
+    knownIds.reserve(machines.size());
+    for (const MachineMeta &meta : machines) {
+        knownIds.insert(meta.id);
+    }
+
+    for (MachineMeta meta : machines) {
+        const qint64 pid = processes.value(meta.id, 0);
+        if (pid > 0) {
+            if (meta.state == QStringLiteral("deleting")
+                || meta.state == QStringLiteral("deleted")) {
+                continue;
+            }
+            if (meta.state == QStringLiteral("running") && !meta.lastBootAt.isEmpty()) {
+                continue;
+            }
+
+            meta.state = QStringLiteral("running");
+            meta.error.clear();
+            if (meta.lastBootAt.isEmpty()) {
+                meta.lastBootAt = nowIso();
+            }
+            Error persistError;
+            if (!persist(meta, &persistError)) {
+                if (error && error->isEmpty()) {
+                    *error = persistError;
+                }
+                qCWarning(lcCore) << "Reconciliação: falha ao adotar a machine" << meta.name
+                                  << persistError.code;
+            } else {
+                qCInfo(lcCore) << QStringLiteral("Machine %1 adotada como running (pid %2)")
+                                      .arg(meta.name)
+                                      .arg(pid);
+            }
+            continue;
+        }
+
+        if (meta.state != QStringLiteral("running")
+            && meta.state != QStringLiteral("starting")
+            && meta.state != QStringLiteral("stopping")) {
+            continue;
+        }
+
+        meta.state = QStringLiteral("stopped");
+        meta.error.clear();
+        Error persistError;
+        if (!persist(meta, &persistError)) {
+            if (error && error->isEmpty()) {
+                *error = persistError;
+            }
+            qCWarning(lcCore) << "Reconciliação: falha ao marcar a machine" << meta.name
+                              << "como stopped:" << persistError.code;
+        } else {
+            qCInfo(lcCore) << "Machine" << meta.name
+                           << "sem processo; estado corrigido para stopped";
+        }
+    }
+
+    for (auto it = processes.constBegin(); it != processes.constEnd(); ++it) {
+        if (knownIds.contains(it.key())) {
+            continue;
+        }
+
+        // Só limpa órfãos que pertencem a este diretório de machines. Isso
+        // impede que um daemon de teste (store temporário) encerre QEMUs de
+        // outra instalação do mesmo usuário que usem o mesmo prefixo.
+        const QString orphanDirectory = machineDirFor(it.key());
+        const bool ownsDirectory = !orphanDirectory.isEmpty()
+                                   && QFileInfo(orphanDirectory).isDir();
+        if (!ownsDirectory
+            && !processReferencesPath(it.value(), m_options.machinesRoot)) {
+            qCDebug(lcCore) << "Processo com marcador podstack:" << it.key()
+                            << "ignorado: fora de" << m_options.machinesRoot;
+            continue;
+        }
+
+        Error terminateError;
+        if (m_runtime->terminate(it.key(), it.value(), &terminateError)) {
+            qCInfo(lcCore) << QStringLiteral("Processo órfão da machine %1 encerrado (pid %2)")
+                                  .arg(it.key())
+                                  .arg(it.value());
+        } else {
+            if (error && error->isEmpty()) {
+                *error = terminateError;
+            }
+            qCWarning(lcCore) << QStringLiteral(
+                                     "Falha ao encerrar processo órfão da machine %1 "
+                                     "(pid %2): %3")
+                                     .arg(it.key())
+                                     .arg(it.value())
+                                     .arg(terminateError.code);
+        }
+    }
 }
 
 bool MachineManager::resolveFirmware(const QString &arch, const QString &machineDir,
