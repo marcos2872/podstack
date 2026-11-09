@@ -51,7 +51,7 @@
 | T1-08 | P0 | Info tab (imagem, comando, portas, env, mounts, rede, labels) | T1-01 | Dados completos |
 | T1-09 | P0 | Ações em lote (multi-seleção) | T1-02, T1-03 | Confirmação com resumo |
 | T1-10 | P1 | Renomear/duplicar container | T1-02 | Nome válido; conflito tratado |
-| T1-11 | P1 | Files tab (listar/baixar/enviar) | T0-05 | Paths seguros; progresso |
+| T1-11 | P1 | Files tab (listar/baixar/enviar) | T0-05 | ✅ Aba **Arquivos** no detalhe do container (`FilesView.qml` sobre `ContainerDetail`), com caminho editável, navegação por clique em diretório, envio por campo local e download ao clicar; `Backend` expõe `files/filesPath/filesBusy/filesError`, `listFiles/downloadFile/uploadFile`; RPC `containers.files.list/download/upload` chama o Libpod `/archive` e valida `path`/destino, sem shell. Transferências são síncronas (sem barra de progresso nesta versão); o download extrai via libarchive matching o caminho/base name, sem escrever entradas arbitrárias do tar. Evidência: `test_rpc` cobre list/download/upload (inclusive erros de params), `test_gui` `backendFiles`/`backendMachineFiles` cobre o model e erros, `qmllint` no `FilesView`/detalhe; operação real de arquivos em container fica na validação manual/E2E |
 | T1-12 | P1 | Inspect JSON (busca/copiar/exportar) | T1-08 | JSON válido |
 | T1-13 | P1 | Abrir porta no navegador / copiar endereço | T1-08 | URL correta |
 | T1-14 | P1 | Healthcheck e status visual | T1-01 | Badge/estado correto |
@@ -67,7 +67,7 @@
 
 ## M2 — Imagens, volumes, redes, pods
 
-> **Status (2026-11-08): concluído com ressalvas.** Entregues: catálogo navegável (imagens, volumes, redes e pods), pull com progresso e cancelamento, push/tag/untag, remover/prune, histórico/digest, CRUD de volumes e redes, clone e export/import `.tar.zst`, import do host, conexão de containers em redes, lifecycle de pods e proxy global com exclusões (T2-16, entregue no M4 para containers e machines novos). `system.df` alimenta a barra de status. Ressalvas: o seletor visual de plataforma (T2-17) fica para o M3; **T2-15 (expor portas na LAN) foi entregue no M4** com helper/firewall runtime e toggle na GUI; a validação de CIDR é delegada ao Podman.
+> **Status (2026-11-08): concluído com ressalvas.** Entregues: catálogo navegável (imagens, volumes, redes e pods), pull com progresso e cancelamento, push/tag/untag, remover/prune, histórico/digest, CRUD de volumes e redes, clone e export/import `.tar.zst`, import do host, conexão de containers em redes, lifecycle de pods e proxy global com exclusões (T2-16, entregue no M4 para containers e machines novos). `system.df` alimenta a barra de status. O seletor visual de plataforma (T2-17) foi entregue no M4; **T2-15 (expor portas na LAN) foi entregue no M4** com helper/firewall runtime e toggle na GUI; a validação de CIDR é delegada ao Podman.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
@@ -87,7 +87,7 @@
 | T2-14 | P1 | Volume import do host | T2-05 | ✅ `volumes.importHostPath` |
 | T2-15 | P1 | Expor portas na LAN | T2-08 | ✅ `Firewall` do helper (firewalld/ufw runtime, 1..65535, tcp/udp, ≤32, rollback parcial) + `OpenPorts`/`ClosePorts` com polkit; `containers.create` aceita `exposeLan` (bind `0.0.0.0`, helper obrigatório antes de criar) e `containers.exposeLan` alterna containers já em `0.0.0.0` (`PODSTACK_UNSUPPORTED` para loopback); GUI com checkbox/aviso e botão no inspector; docs atualizadas. Evidência: build dev sem warnings; `ctest --preset dev -R 'core\|rpc\|cli\|gui\|machines\|setup'` **6/6**; `test_setup` **15 passed** (firewalld/ufw fake no PATH, validação, rollback, sem backend), `test_rpc/exposeLan`, `test_gui/backendExposeLan`; `qmllint` sem erros; `git diff --check` limpo. Acesso real de outro dispositivo e polkit/firewall reais ficam como validação manual |
 | T2-16 | P1 | Proxy global e exclusões | T2-08 | ✅ `Proxy` no core + daemon em `containers.create`/`containers.duplicate` + GUI (Configurações) + machines via cloud-init; env explícito e `NO_PROXY` sem duplicatas; Compose/existentes exigem recriação; coberto por `test_core/proxy*`, `test_rpc/proxyEnvironment`, `test_gui/backendProxy` e `test_machines/seedEnvironment` |
-| T2-17 | P2 | Multi-arch/platform selection | T2-02 | ◐ pull aceita `platform`; seletor visual no M3 |
+| T2-17 | P2 | Multi-arch/platform selection | T2-02 | ✅ Pull aceita `platform` e a GUI tem seletor visual (`AppSelect` com Automático, linux/amd64, linux/arm64, linux/arm/v7, linux/ppc64le, linux/s390x); Automático envia string vazia e deixa o Podman escolher. `Backend::pullImage`/`images.pull` já propagam a plataforma; o build multi-plataforma usa o mesmo campo |
 | T2-18 | P2 | Prune avançado (system df) | T2-03 | ✅ `system.df` detalhado + prévia nos diálogos de Imagens/Volumes + `podstack system df [--detailed|--json]`; coberto por `test_rpc/catalog`, `test_gui/backendCatalog` e `test_cli/systemDf` |
 
 **Saída M2:** catálogo completo navegável e operável.
