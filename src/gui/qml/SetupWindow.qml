@@ -12,6 +12,7 @@ Item {
     id: setupWindow
 
     property bool manuallyOpen: false
+    property bool jobPanelDismissed: false
     property int step: 0
     property bool installCaddy: false
     property bool installK3s: false
@@ -22,6 +23,10 @@ Item {
     readonly property bool dockerPresent: (dockerCheck.detail || "").indexOf("coexistindo") >= 0
     readonly property bool kvmReady: kvmCheck.status === "ok"
     readonly property bool validated: backend.setupMandatoryOk
+    readonly property bool jobPanelVisible: !jobPanelDismissed
+                                            && (jobActive
+                                                || (backend.setupError.length > 0
+                                                    && backend.setupLog.length > 0))
 
     // O overlay só fecha sozinho quando o setup foi concluído; reconfigurar
     // abre via Settings e pode ser fechado pelo X.
@@ -49,6 +54,7 @@ Item {
 
     function openSetup(refresh) {
         manuallyOpen = true
+        jobPanelDismissed = false
         step = 0
         if (refresh) {
             backend.setupRefresh()
@@ -863,10 +869,10 @@ Item {
             }
         }
 
-        // Progresso e log do job
+        // Progresso e log do job: some no sucesso; no erro fica com o X.
         Rectangle {
             Layout.fillWidth: true
-            visible: setupWindow.jobActive || backend.setupLog.length > 0
+            visible: setupWindow.jobPanelVisible
             Layout.preferredHeight: visible ? 132 : 0
             color: Theme.bgSurface
             border.width: 0
@@ -905,6 +911,17 @@ Item {
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
+                    }
+
+                    ActionButton {
+                        // Enquanto o job roda não há como fechar o log.
+                        visible: !setupWindow.jobActive && backend.setupError.length > 0
+                        text: ""
+                        iconName: "x"
+                        size: "sm"
+                        variant: "ghost"
+                        onClicked: setupWindow.jobPanelDismissed = true
+                        Accessible.name: qsTr("Fechar log")
                     }
                 }
 
@@ -1025,6 +1042,15 @@ Item {
         }
         }
     }
+    }
+
+    Connections {
+        target: backend
+        function onSetupJobChanged() {
+            if (backend.setupJobActive) {
+                setupWindow.jobPanelDismissed = false
+            }
+        }
     }
 
     AppDialog {

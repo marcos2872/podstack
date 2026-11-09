@@ -232,7 +232,9 @@ Janela separada, aberta no primeiro uso, por `podstack setup` ou Settings → �
 Enquanto `setup.completed=false`, o overlay cobre o app e o conteúdo fica desabilitado; não há
 “abrir mesmo assim”. O X só aparece ao reconfigurar um setup já concluído, e o botão
 **Executar configuração novamente** em Settings reabre o overlay. A conclusão só é liberada
-quando os checks obrigatórios estão `ok`.
+quando os checks obrigatórios estão `ok`. O painel de progresso/log desaparece no sucesso;
+em falha, permanece para diagnóstico com um X no canto superior direito, e o X não aparece
+enquanto o job está rodando.
 
 ---
 
