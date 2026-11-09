@@ -168,6 +168,15 @@ Rectangle {
             }
 
             ActionButton {
+                text: qsTr("SSH")
+                iconName: "terminal"
+                size: "sm"
+                enabled: root.machineId.length > 0 && root.machineState === "running"
+                         && backend.actionActive === false
+                onClicked: backend.openMachineSsh(root.machineId)
+            }
+
+            ActionButton {
                 text: qsTr("Restart")
                 size: "sm"
                 enabled: root.machineId.length > 0
@@ -327,12 +336,35 @@ Rectangle {
                     Layout.bottomMargin: 6
                     spacing: 8
 
-                    Text {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        text: qsTr("console.log")
-                        color: Theme.textTertiary
-                        font.family: Theme.monoFamily
-                        font.pixelSize: Theme.fontMicro
+                        spacing: 1
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("console.log")
+                            color: Theme.textTertiary
+                            font.family: Theme.monoFamily
+                            font.pixelSize: Theme.fontMicro
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: backend.machineLogsCapturedAt.length > 0
+                            text: qsTr("Atualizado em %1").arg(backend.machineLogsCapturedAt)
+                            color: Theme.textDisabled
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMicro
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    ActionButton {
+                        text: qsTr("Copiar")
+                        size: "sm"
+                        iconName: "copy"
+                        enabled: backend.machineLogLines.length > 0
+                        onClicked: backend.copyMachineLogs()
                     }
 
                     ActionButton {
@@ -359,14 +391,18 @@ Rectangle {
                     model: backend.machineLogLines
                     ScrollBar.vertical: ScrollBar {}
 
-                    delegate: Text {
+                    delegate: TextEdit {
                         width: ListView.view.width
                         text: modelData
                         color: Theme.textSecondary
                         font.family: Theme.monoFamily
                         font.pixelSize: Theme.fontMeta
-                        textFormat: Text.PlainText
-                        wrapMode: Text.WrapAnywhere
+                        textFormat: TextEdit.PlainText
+                        wrapMode: TextEdit.WrapAnywhere
+                        readOnly: true
+                        selectByMouse: true
+                        selectionColor: Theme.accentSoft
+                        selectedTextColor: Theme.textPrimary
                         padding: 8
                     }
 

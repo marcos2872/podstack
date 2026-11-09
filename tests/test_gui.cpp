@@ -59,6 +59,8 @@ QProcessEnvironment GuiTest::daemonEnvironment() const
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    env.insert(QStringLiteral("PODSTACK_SSH_CONFIG"),
+               m_testDataDir + QStringLiteral("/ssh/config"));
     env.insert(QStringLiteral("XDG_DATA_HOME"), m_testDataDir + QStringLiteral("/data"));
     env.insert(QStringLiteral("XDG_STATE_HOME"), m_testDataDir + QStringLiteral("/state"));
     env.insert(QStringLiteral("XDG_CONFIG_HOME"), m_testDataDir + QStringLiteral("/config"));
@@ -459,6 +461,12 @@ void GuiTest::backendMachines()
     backend.removeMachine(QStringLiteral("missing-machine"), true);
     QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
     QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    backend.openMachineSsh(QString());
+    QCOMPARE(backend.lastError(), QStringLiteral("Machine inválida."));
+    backend.openMachineSsh(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(backend.lastError().contains(QStringLiteral("não encontrada")),
+                             5000);
 
     backend.createMachine({});
     QVERIFY(!backend.machineCreateActive());

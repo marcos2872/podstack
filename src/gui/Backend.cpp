@@ -10,9 +10,12 @@
 #include "gui/Autostart.h"
 #include "gui/TerminalWindow.h"
 
+#include <QClipboard>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -109,6 +112,49 @@ Backend::Backend(QObject *parent)
             &Backend::onMachineInfoFinished);
     connect(&m_machineLogsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineLogsFinished);
+    connect(&m_machineSshWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            [this] {
+                const QJsonObject result = m_machineSshWatcher.result();
+                if (result.contains(QStringLiteral("error"))) {
+                    const QJsonObject errorObject =
+                        result.value(QStringLiteral("error")).toObject();
+                    m_lastError = errorObject.value(QStringLiteral("message")).toString();
+                    emit lastErrorChanged();
+                    return;
+                }
+
+                const QString host = result.value(QStringLiteral("host")).toString();
+                const int port = result.value(QStringLiteral("port")).toInt();
+                const QString user = result.value(QStringLiteral("user")).toString();
+                const QString identityFile =
+                    result.value(QStringLiteral("identityFile")).toString();
+                if (host.isEmpty() || port <= 0 || user.isEmpty()
+                    || identityFile.isEmpty()) {
+                    m_lastError = QStringLiteral("Resposta SSH inválida do daemon.");
+                    emit lastErrorChanged();
+                    return;
+                }
+
+                QString title = m_machineSshTitle;
+                if (title.isEmpty()) {
+                    title = QStringLiteral("machine");
+                }
+                const QStringList arguments{
+                    QStringLiteral("-i"),
+                    identityFile,
+                    QStringLiteral("-p"),
+                    QString::number(port),
+                    QStringLiteral("-o"),
+                    QStringLiteral("IdentitiesOnly=yes"),
+                    QStringLiteral("-o"),
+                    QStringLiteral("StrictHostKeyChecking=accept-new"),
+                    QStringLiteral("%1@%2").arg(user, host),
+                };
+                auto *window = new TerminalWindow(title, QStringLiteral("ssh"), arguments);
+                window->show();
+                window->raise();
+                window->activateWindow();
+            });
 
     connect(&m_setupStream, &StreamClient::setupEvent, this,
             [this](const QJsonObject &event) { applySetupJob(event); });
@@ -1547,6 +1593,42 @@ void Backend::openTerminal(const QString &id)
     window->activateWindow();
 }
 
+void Backend::openMachineSsh(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        return;
+    }
+    if (m_machineSshWatcher.isRunning()) {
+        return;
+    }
+
+    m_machineSshTitle = id;
+    for (const QVariant &value : m_machines) {
+        const QVariantMap machine = value.toMap();
+        if (machine.value(QStringLiteral("id")).toString() == id) {
+            const QString name = machine.value(QStringLiteral("name")).toString();
+            if (!name.isEmpty()) {
+                m_machineSshTitle = name;
+            }
+            break;
+        }
+    }
+
+    m_machineSshWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.ssh"),
+                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
 void Backend::listFiles(const QString &id, const QString &path)
 {
     if (m_filesWatcher.isRunning()) {
@@ -2008,6 +2090,8 @@ void Backend::onMachineLogsFinished()
             lines.append(value.toString());
         }
         m_machineLogLines = lines;
+        m_machineLogsCapturedAt =
+            QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
         emit machineLogsChanged();
     }
 
@@ -2017,6 +2101,17 @@ void Backend::onMachineLogsFinished()
         m_pendingMachineLogsId.clear();
         loadMachineLogs(next, tail);
     }
+}
+
+void Backend::copyMachineLogs()
+{
+    if (m_machineLogLines.isEmpty()) {
+        return;
+    }
+    if (QClipboard *clipboard = QGuiApplication::clipboard()) {
+        clipboard->setText(m_machineLogLines.join(QLatin1Char('\n')));
+    }
+    emit actionFinished(true, {});
 }
 
 void Backend::machineLifecycle(const QString &action, const QString &id, bool force)
@@ -2114,6 +2209,10 @@ void Backend::createMachine(const QVariantMap &spec)
     const QString userData = spec.value(QStringLiteral("userData")).toString();
     if (!userData.isEmpty()) {
         params.insert(QStringLiteral("userData"), userData);
+    }
+    const QString password = spec.value(QStringLiteral("password")).toString();
+    if (!password.isEmpty()) {
+        params.insert(QStringLiteral("password"), password);
     }
     params.insert(QStringLiteral("isolateNetwork"),
                   spec.value(QStringLiteral("isolateNetwork")).toBool());

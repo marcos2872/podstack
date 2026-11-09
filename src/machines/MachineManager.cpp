@@ -32,7 +32,10 @@ constexpr int kMaximumCpus = 256;
 constexpr int kPortAttempts = 20;
 constexpr int kQemuImgStartTimeoutMs = 5000;
 constexpr int kQemuImgTimeoutMs = 60000;
+constexpr int kSshKeygenStartTimeoutMs = 5000;
+constexpr int kSshKeygenTimeoutMs = 30000;
 constexpr int kMaxProcessOutput = 4096;
+constexpr qint64 kMaxPublicKeyBytes = 64 * 1024;
 
 const QString kOvmfCodeAmd64 = QStringLiteral("/usr/share/edk2/ovmf/OVMF_CODE.fd");
 const QString kOvmfVarsAmd64 = QStringLiteral("/usr/share/edk2/ovmf/OVMF_VARS.fd");
@@ -144,6 +147,7 @@ MachineManager::MachineManager(Options options)
     , m_cache(m_options.imageCacheDir.isEmpty()
                   ? QString()
                   : QDir(m_options.imageCacheDir).absolutePath())
+    , m_sshConfig(m_options.sshConfigPath)
 {
     if (m_options.machinesRoot.isEmpty()) {
         m_options.machinesRoot = Paths::machinesDir();
@@ -485,10 +489,153 @@ bool MachineManager::createDisk(const QString &diskPath, const QString &backingP
     return true;
 }
 
+bool MachineManager::ensureSshKey(const QString &directory, const QString &name,
+                                  QString *privatePath, QString *publicKey, Error *error)
+{
+    if (privatePath) {
+        *privatePath = directory + QStringLiteral("/id_ed25519");
+    }
+    if (publicKey) {
+        publicKey->clear();
+    }
+
+    QString binary = m_options.sshKeygenBinary;
+    if (binary.isEmpty()) {
+        binary = QStandardPaths::findExecutable(QStringLiteral("ssh-keygen"));
+    }
+    if (binary.isEmpty()) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                                 QStringLiteral("O binário ssh-keygen não foi encontrado."),
+                                 QStringLiteral("ssh-keygen"),
+                                 QStringLiteral("Instale o OpenSSH client (openssh-clients no "
+                                                "Fedora ou openssh-client no Debian/Ubuntu).")));
+    }
+
+    const QString keyPath = directory + QStringLiteral("/id_ed25519");
+    const QString publicPath = keyPath + QStringLiteral(".pub");
+    const QFileInfo privateInfo(keyPath);
+    const QFileInfo publicInfo(publicPath);
+
+    if (privateInfo.exists() && publicInfo.exists()) {
+        if (privateInfo.isSymLink() || !privateInfo.isFile() || publicInfo.isSymLink()
+            || !publicInfo.isFile()) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                     QStringLiteral("A chave SSH existente é inválida."),
+                                     keyPath));
+        }
+        if (!QFile::setPermissions(keyPath, QFileDevice::ReadOwner
+                                                | QFileDevice::WriteOwner)) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
+                                     QStringLiteral("Não foi possível restringir a chave SSH "
+                                                    "a 0600."),
+                                     keyPath));
+        }
+        if (!QFile::setPermissions(publicPath, QFileDevice::ReadOwner
+                                                   | QFileDevice::WriteOwner
+                                                   | QFileDevice::ReadGroup
+                                                   | QFileDevice::ReadOther)) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
+                                     QStringLiteral("Não foi possível ajustar a chave pública "
+                                                    "para 0644."),
+                                     publicPath));
+        }
+    } else if (privateInfo.exists() != publicInfo.exists()) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O par de chaves SSH da machine está incompleto."),
+                                 keyPath,
+                                 QStringLiteral("Remova a chave restante e recrie a machine.")));
+    } else {
+        const QStringList arguments{
+            QStringLiteral("-q"),
+            QStringLiteral("-t"),
+            QStringLiteral("ed25519"),
+            QStringLiteral("-N"),
+            QString(),
+            QStringLiteral("-C"),
+            QStringLiteral("podstack:%1").arg(name),
+            QStringLiteral("-f"),
+            keyPath,
+        };
+
+        QProcess process;
+        process.setProcessChannelMode(QProcess::SeparateChannels);
+        process.start(binary, arguments);
+        if (!process.waitForStarted(kSshKeygenStartTimeoutMs)) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                     QStringLiteral("Não foi possível executar o ssh-keygen."),
+                                     process.errorString()));
+        }
+        if (!process.waitForFinished(kSshKeygenTimeoutMs)) {
+            process.kill();
+            process.waitForFinished(1000);
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_TIMEOUT"),
+                                     QStringLiteral("O ssh-keygen excedeu o tempo limite."),
+                                     keyPath));
+        }
+        if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                     QStringLiteral("O ssh-keygen falhou ao gerar a chave."),
+                                     processDetail(process.readAllStandardError())));
+        }
+        if (!QFileInfo(keyPath).isFile() || !QFileInfo(publicPath).isFile()) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                     QStringLiteral("O ssh-keygen não criou o par de chaves."),
+                                     keyPath));
+        }
+        if (!QFile::setPermissions(keyPath, QFileDevice::ReadOwner
+                                                | QFileDevice::WriteOwner)) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
+                                     QStringLiteral("Não foi possível restringir a chave SSH "
+                                                    "a 0600."),
+                                     keyPath));
+        }
+        if (!QFile::setPermissions(publicPath, QFileDevice::ReadOwner
+                                                   | QFileDevice::WriteOwner
+                                                   | QFileDevice::ReadGroup
+                                                   | QFileDevice::ReadOther)) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
+                                     QStringLiteral("Não foi possível ajustar a chave pública "
+                                                    "para 0644."),
+                                     publicPath));
+        }
+    }
+
+    QFile file(publicPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível ler a chave pública SSH."),
+                                 file.errorString()));
+    }
+    const QByteArray payload = file.read(kMaxPublicKeyBytes);
+    const QString key = QString::fromUtf8(payload).trimmed();
+    if (key.isEmpty() || key.contains(QLatin1Char('\n'))
+        || key.contains(QLatin1Char('\r'))) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("A chave pública SSH está vazia ou inválida."),
+                                 publicPath));
+    }
+    if (publicKey) {
+        *publicKey = key;
+    }
+    return true;
+}
+
 bool MachineManager::persist(MachineMeta &meta, Error *error)
 {
     meta.updatedAt = nowIso();
-
     const QString directory = machineDirFor(meta.id);
     if (directory.isEmpty()) {
         return fails(error, invalidParams(QStringLiteral("Identificador de machine inválido."),
@@ -659,6 +806,13 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         return {};
     }
 
+    QString sshKeyPath;
+    QString sshPublicKey;
+    if (!ensureSshKey(directory, request.name, &sshKeyPath, &sshPublicKey, error)) {
+        cleanupDirectory(directory);
+        return {};
+    }
+
     if (progress) {
         progress(QStringLiteral("disk"), 75);
     }
@@ -678,6 +832,7 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     seed.user = normalizedUser(request.user);
     seed.password = request.password;
     seed.userData = request.userData;
+    seed.sshAuthorizedKeys = {sshPublicKey};
     if (seed.userData.isEmpty()) {
         seed.environment = proxyEnvironmentFromConfig();
     }
@@ -711,6 +866,7 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     meta.diskBytes = request.diskBytes;
     meta.diskPath = diskPath;
     meta.seedPath = seedPath;
+    meta.sshKeyPath = sshKeyPath;
     meta.sshPort = sshPort;
     meta.sshUser = seed.user;
     meta.state = QStringLiteral("provisioning");
@@ -727,6 +883,16 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     if (!persist(meta, error)) {
         m_store.remove(meta.id, nullptr);
         cleanupDirectory(directory);
+        return {};
+    }
+
+    Error sshConfigError;
+    if (!m_sshConfig.sync(meta, request.forwardSshAgent, &sshConfigError)) {
+        m_store.remove(meta.id, nullptr);
+        cleanupDirectory(directory);
+        if (error) {
+            *error = sshConfigError;
+        }
         return {};
     }
 
@@ -788,6 +954,20 @@ MachineMeta MachineManager::start(const QString &idOrName, Error *error)
         fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
                                  QStringLiteral("A machine está sendo removida."), meta.id));
         return meta;
+    }
+
+    // Machines criadas antes da T4-04 não têm chave; não bloqueia o start delas.
+    if (!meta.sshKeyPath.isEmpty()) {
+        Error sshConfigError;
+        if (!m_sshConfig.sync(meta, meta.forwardSshAgent, &sshConfigError)) {
+            meta.state = QStringLiteral("error");
+            meta.error = errorText(sshConfigError);
+            persist(meta, nullptr);
+            if (error) {
+                *error = sshConfigError;
+            }
+            return meta;
+        }
     }
 
     Error specError;
@@ -982,6 +1162,59 @@ bool MachineManager::remove(const QString &idOrName, bool force, Error *error)
     if (!m_store.remove(meta.id, error)) {
         return false;
     }
+
+    Error sshConfigError;
+    if (!m_sshConfig.remove(meta.name, &sshConfigError)) {
+        qCWarning(lcCore) << "Não foi possível remover o bloco SSH da machine" << meta.name
+                          << sshConfigError.code;
+    }
+    return true;
+}
+
+bool MachineManager::sshInfo(const QString &idOrName, SshInfo *info, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!info) {
+        return fails(error, invalidParams(QStringLiteral("Destino SSH inválido.")));
+    }
+    *info = {};
+
+    const MachineMeta meta = load(idOrName, error);
+    if (meta.id.isEmpty()) {
+        return false;
+    }
+
+    const QFileInfo keyInfo(meta.sshKeyPath);
+    if (meta.sshKeyPath.isEmpty() || keyInfo.isSymLink() || !keyInfo.isFile()) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("A chave SSH da machine não existe."),
+                                 meta.id,
+                                 QStringLiteral("Recrie a machine para gerar uma nova chave.")));
+    }
+    if (!QFile::setPermissions(meta.sshKeyPath, QFileDevice::ReadOwner
+                                                   | QFileDevice::WriteOwner)) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
+                                 QStringLiteral("Não foi possível restringir a chave SSH "
+                                                "a 0600."),
+                                 meta.id));
+    }
+
+    Error syncError;
+    if (!m_sshConfig.sync(meta, meta.forwardSshAgent, &syncError)) {
+        if (error) {
+            *error = syncError;
+        }
+        return false;
+    }
+
+    info->host = QStringLiteral("127.0.0.1");
+    info->port = meta.sshPort;
+    info->user = meta.sshUser;
+    info->identityFile = meta.sshKeyPath;
     return true;
 }
 

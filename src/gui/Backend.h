@@ -51,6 +51,8 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList machineDistros READ machineDistros NOTIFY machineDistrosChanged)
     Q_PROPERTY(QVariantMap machineInfo READ machineInfo NOTIFY machineInfoChanged)
     Q_PROPERTY(QStringList machineLogLines READ machineLogLines NOTIFY machineLogsChanged)
+    Q_PROPERTY(QString machineLogsCapturedAt READ machineLogsCapturedAt
+               NOTIFY machineLogsChanged)
     Q_PROPERTY(bool machineCreateActive READ machineCreateActive NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateJobId READ machineCreateJobId NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateStage READ machineCreateStage NOTIFY machineCreateStateChanged)
@@ -114,6 +116,7 @@ public:
     QVariantList machineDistros() const { return m_machineDistros; }
     QVariantMap machineInfo() const { return m_machineInfo; }
     QStringList machineLogLines() const { return m_machineLogLines; }
+    QString machineLogsCapturedAt() const { return m_machineLogsCapturedAt; }
     bool machineCreateActive() const { return m_machineCreateActive; }
     QString machineCreateJobId() const { return m_machineCreateJobId; }
     QString machineCreateStage() const { return m_machineCreateStage; }
@@ -182,6 +185,8 @@ public:
     Q_INVOKABLE void refreshMachineDistros();
     Q_INVOKABLE void loadMachineInfo(const QString &id);
     Q_INVOKABLE void loadMachineLogs(const QString &id, int tail = 200);
+    Q_INVOKABLE void copyMachineLogs();
+    Q_INVOKABLE void openMachineSsh(const QString &id);
     Q_INVOKABLE void machineLifecycle(const QString &action, const QString &id,
                                       bool force = false);
     Q_INVOKABLE void removeMachine(const QString &id, bool force);
@@ -288,6 +293,7 @@ private:
     QFutureWatcher<QJsonObject> m_machineDistrosWatcher;
     QFutureWatcher<QJsonObject> m_machineInfoWatcher;
     QFutureWatcher<QJsonObject> m_machineLogsWatcher;
+    QFutureWatcher<QJsonObject> m_machineSshWatcher;
     QString m_setupPendingMethod;
     QString m_catalogSection;
     QStringList m_catalogQueue;
@@ -341,9 +347,11 @@ private:
     QVariantList m_machineDistros;
     QVariantMap m_machineInfo;
     QStringList m_machineLogLines;
+    QString m_machineLogsCapturedAt;
     QString m_pendingMachineInfoId;
     QString m_pendingMachineLogsId;
     int m_pendingMachineLogsTail = 200;
+    QString m_machineSshTitle;
     bool m_machineDistrosLoaded = false;
     bool m_machinesRefreshAgain = false;
     bool m_machineCreateActive = false;

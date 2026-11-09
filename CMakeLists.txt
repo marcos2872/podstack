@@ -66,6 +66,7 @@ add_library(podstack_machines STATIC
     src/machines/HttpDownloader.cpp
     src/machines/CloudImageCache.cpp
     src/machines/CloudInit.cpp
+    src/machines/SshConfig.cpp
     src/machines/MachineMeta.cpp
     src/machines/MachineStore.cpp
     src/machines/QemuCommand.cpp

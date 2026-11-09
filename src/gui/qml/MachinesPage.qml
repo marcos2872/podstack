@@ -125,6 +125,7 @@ ColumnLayout {
             memoryGiB: Number(machineMemory.text || 4),
             diskGiB: Number(machineDisk.text || 20),
             user: machineUser.text,
+            password: machinePassword.text,
             userData: machineUserData.text,
             isolateNetwork: isolateNetworkBox.checked,
             forwardSshAgent: forwardSshAgentBox.checked
@@ -153,6 +154,7 @@ ColumnLayout {
                 machineMemory.text = "4"
                 machineDisk.text = "20"
                 machineUser.text = ""
+                machinePassword.text = ""
                 machineUserData.text = ""
                 isolateNetworkBox.checked = false
                 forwardSshAgentBox.checked = false
@@ -296,6 +298,15 @@ ColumnLayout {
                     placeholderText: qsTr("usuário padrão do host")
                     enabled: !backend.machineCreateActive
                 }
+
+                Text { text: qsTr("Senha do usuário"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                FormField {
+                    id: machinePassword
+                    Layout.fillWidth: true
+                    echoMode: TextInput.Password
+                    placeholderText: qsTr("opcional; gravada só como hash")
+                    enabled: !backend.machineCreateActive
+                }
             }
 
             Text {
@@ -411,7 +422,14 @@ ColumnLayout {
         title: qsTr("Remover machine?")
         modal: true
         width: 440
+        anchors.centerIn: parent
         standardButtons: Dialog.Yes | Dialog.No
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
 
         contentItem: Text {
             text: qsTr("A machine e o disco serão removidos. Esta ação não pode ser desfeita.")

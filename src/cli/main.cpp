@@ -16,6 +16,11 @@
 #include <limits>
 #include <unistd.h>
 
+#include <cerrno>
+#include <cstring>
+#include <string>
+#include <vector>
+
 namespace {
 
 constexpr int kExitOk = 0;
@@ -64,8 +69,10 @@ void printUsage()
           << "  build <contexto> -t <tag> [-f Dockerfile] [--build-arg K=V]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
-          << "  machine <list|info|logs|create|start|stop|restart|delete|distros>\n"
+          << "  machine <list|info|logs|create|start|stop|restart|delete|distros|ssh>\n"
           << "                          Gerencia machines QEMU/KVM\n"
+          << "  ssh <id|nome> [-- cmd...]\n"
+          << "                          Abre SSH na machine com a chave gerenciada\n"
           << "  top [--once] [--interval S] [--json] [--plain]\n"
           << "                          Monitora CPU/memória/containers\n"
           << "  system df [--detailed] [--json]\n"
@@ -1342,6 +1349,8 @@ void printMachineUsage(QTextStream &stream)
            << "                          Reinicia uma machine\n"
            << "  delete <id|nome> [--force] [--json]\n"
            << "                          Remove uma machine e seus dados\n"
+           << "  ssh <id|nome> [-- cmd...]\n"
+           << "                          Abre SSH com a chave gerenciada\n"
            << "  distros [--json]         Lista imagens cloud e cache local\n";
     stream.flush();
 }
@@ -1845,6 +1854,86 @@ int machineDeleteCommand(const QStringList &args)
     return kExitOk;
 }
 
+int machineSshCommand(const QStringList &args)
+{
+    QString id;
+    QStringList command;
+    for (int i = 0; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--")) {
+            command = args.mid(i + 1);
+            break;
+        }
+        if (arg == QStringLiteral("--help") || arg == QStringLiteral("-h")) {
+            printMachineUsage(out());
+            return kExitOk;
+        }
+        if (id.isEmpty() && !arg.startsWith(QLatin1Char('-'))) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.ssh"),
+                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    const QString host = result.value(QStringLiteral("host")).toString();
+    const int port = result.value(QStringLiteral("port")).toInt();
+    const QString user = result.value(QStringLiteral("user")).toString();
+    const QString identityFile = result.value(QStringLiteral("identityFile")).toString();
+    if (host.isEmpty() || port <= 0 || user.isEmpty() || identityFile.isEmpty()) {
+        err() << "resposta SSH inválida do daemon\n";
+        err().flush();
+        return kExitError;
+    }
+
+    QStringList sshArguments{
+        QStringLiteral("-i"),
+        identityFile,
+        QStringLiteral("-p"),
+        QString::number(port),
+        QStringLiteral("-o"),
+        QStringLiteral("IdentitiesOnly=yes"),
+        QStringLiteral("-o"),
+        QStringLiteral("StrictHostKeyChecking=accept-new"),
+        QStringLiteral("%1@%2").arg(user, host),
+    };
+    sshArguments += command;
+
+    std::vector<std::string> storage;
+    storage.reserve(static_cast<size_t>(sshArguments.size()) + 2);
+    storage.emplace_back("ssh");
+    for (const QString &argument : sshArguments) {
+        storage.emplace_back(argument.toStdString());
+    }
+
+    std::vector<char *> argv;
+    argv.reserve(storage.size() + 1);
+    for (std::string &argument : storage) {
+        argv.push_back(argument.data());
+    }
+    argv.push_back(nullptr);
+
+    execvp("ssh", argv.data());
+    const int savedErrno = errno;
+    err() << "não foi possível executar o ssh: "
+          << QString::fromLocal8Bit(std::strerror(savedErrno)) << '\n';
+    err().flush();
+    return kExitError;
+}
+
 void printTopSample(const QJsonObject &sample)
 {
     const QJsonObject host = sample.value(QStringLiteral("host")).toObject();
@@ -2172,6 +2261,9 @@ int commandMachine(const QStringList &args)
     if (subcommand == QStringLiteral("delete") || subcommand == QStringLiteral("rm")) {
         return machineDeleteCommand(args);
     }
+    if (subcommand == QStringLiteral("ssh")) {
+        return machineSshCommand(args.mid(1));
+    }
     if (subcommand == QStringLiteral("distros")) {
         bool json = false;
         for (int i = 1; i < args.size(); ++i) {
@@ -2495,6 +2587,9 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("machine")) {
         return commandMachine(args);
+    }
+    if (command == QStringLiteral("ssh")) {
+        return machineSshCommand(args);
     }
     if (command == QStringLiteral("setup")) {
         return commandSetup(args);

@@ -16,6 +16,7 @@
 #include "machines/QemuCommand.h"
 #include "machines/QemuRuntime.h"
 #include "machines/QmpClient.h"
+#include "machines/SshConfig.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -56,6 +57,8 @@ using PodStack::QemuCommand;
 using PodStack::QemuRuntime;
 using PodStack::QemuSpec;
 using PodStack::QmpClient;
+using PodStack::SshConfig;
+using PodStack::SshInfo;
 
 namespace {
 
@@ -302,6 +305,44 @@ QString createQemuImgScript(const QString &root)
     return path;
 }
 
+QString createSshKeygenScript(const QString &root)
+{
+    const QString path = root + QStringLiteral("/ssh-keygen-fake.sh");
+    const QByteArray script = QByteArrayLiteral(
+        "#!/bin/sh\n"
+        "key=\"\"\n"
+        "while [ $# -gt 0 ]; do\n"
+        "  case \"$1\" in\n"
+        "    -f) shift; key=\"$1\";;\n"
+        "  esac\n"
+        "  shift\n"
+        "done\n"
+        "if [ -z \"$key\" ]; then echo 'missing -f' >&2; exit 1; fi\n"
+        "printf 'FAKE-PRIVATE-KEY' > \"$key\"\n"
+        "printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEPODSTACKKEY podstack:fake'"
+        " > \"$key.pub\"\n"
+        "chmod 600 \"$key\"\n"
+        "chmod 644 \"$key.pub\"\n"
+        "exit 0\n");
+    if (!writeTestFile(path, script,
+                       QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                           | QFileDevice::ExeOwner)) {
+        return {};
+    }
+    return path;
+}
+
+bool configureSshOptions(MachineManager::Options *options, const QString &root)
+{
+    const QString keygen = createSshKeygenScript(root);
+    if (keygen.isEmpty()) {
+        return false;
+    }
+    options->sshKeygenBinary = keygen;
+    options->sshConfigPath = root + QStringLiteral("/ssh/config");
+    return true;
+}
+
 int freePortHint()
 {
     QTcpServer probe;
@@ -429,6 +470,8 @@ private slots:
     void machineManagerLifecycle();
     void machineManagerCancelled();
     void machineManagerPort();
+    void sshConfigPreserves();
+    void machineManagerSsh();
     void qemuRuntimeIntegration();
 
 private:
@@ -1616,6 +1659,7 @@ void MachinesTest::machineManagerCreate()
     FakeQemuRuntime *fake = runtime.get();
 
     MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
     options.storePath = root + QStringLiteral("/podstack.db");
     options.machinesRoot = root + QStringLiteral("/machines");
     options.imageCacheDir = root + QStringLiteral("/images");
@@ -1674,7 +1718,7 @@ void MachinesTest::machineManagerCreate()
     QCOMPARE(meta.sshUser, QStringLiteral("podstack"));
     QVERIFY(meta.sshPort >= portStart);
     QVERIFY(meta.sshPort < portStart + 20);
-    QVERIFY(meta.sshKeyPath.isEmpty());
+    QVERIFY(!meta.sshKeyPath.isEmpty());
     QCOMPARE(meta.state, QStringLiteral("running"));
     QVERIFY(meta.error.isEmpty());
     QVERIFY(!meta.lastBootAt.isEmpty());
@@ -1684,6 +1728,7 @@ void MachinesTest::machineManagerCreate()
     QCOMPARE(meta.ports.at(0).label, QStringLiteral("ssh"));
 
     const QString directory = machinesRoot + QLatin1Char('/') + meta.id;
+    QCOMPARE(meta.sshKeyPath, directory + QStringLiteral("/id_ed25519"));
     QCOMPARE(meta.diskPath, directory + QStringLiteral("/disk.qcow2"));
     QCOMPARE(meta.seedPath, directory + QStringLiteral("/seed.iso"));
     QVERIFY(ownerOnly(QFileInfo(directory).permissions(), true));
@@ -1699,6 +1744,13 @@ void MachinesTest::machineManagerCreate()
     QVERIFY(seedYaml.contains(QStringLiteral("      HTTPS_PROXY=http://127.0.0.1:3128\n")));
     QVERIFY(seedYaml.contains(QStringLiteral("      NO_PROXY=localhost,127.0.0.1,::1,"
                                              "*.localhost,.internal")));
+    QVERIFY(seedYaml.contains(QStringLiteral("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEPODSTACKKEY")));
+    QVERIFY(ownerOnly(QFileInfo(meta.sshKeyPath).permissions(), false));
+    const QFileInfo publicKeyInfo(meta.sshKeyPath + QStringLiteral(".pub"));
+    QVERIFY(publicKeyInfo.isFile());
+    QCOMPARE(publicKeyInfo.permissions(),
+             QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadUser
+                 | QFileDevice::WriteUser | QFileDevice::ReadGroup | QFileDevice::ReadOther);
 
     config.set(QStringLiteral("network.proxy"), QStringLiteral("auto"));
     config.set(QStringLiteral("network.proxyExclude"), QJsonArray{});
@@ -1775,6 +1827,7 @@ void MachinesTest::machineManagerValidation()
 
     auto runtime = std::make_unique<FakeQemuRuntime>();
     MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
     options.storePath = root + QStringLiteral("/podstack.db");
     options.machinesRoot = root + QStringLiteral("/machines");
     options.imageCacheDir = root + QStringLiteral("/images");
@@ -1902,6 +1955,7 @@ void MachinesTest::machineManagerLifecycle()
     auto runtime = std::make_unique<FakeQemuRuntime>();
     FakeQemuRuntime *fake = runtime.get();
     MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
     options.storePath = root + QStringLiteral("/podstack.db");
     options.machinesRoot = root + QStringLiteral("/machines");
     options.imageCacheDir = root + QStringLiteral("/images");
@@ -2026,6 +2080,7 @@ void MachinesTest::machineManagerCancelled()
     auto runtime = std::make_unique<FakeQemuRuntime>();
     FakeQemuRuntime *fake = runtime.get();
     MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
     options.storePath = root + QStringLiteral("/podstack.db");
     options.machinesRoot = root + QStringLiteral("/machines");
     options.imageCacheDir = root + QStringLiteral("/images");
@@ -2097,6 +2152,7 @@ void MachinesTest::machineManagerPort()
 
     auto runtime = std::make_unique<FakeQemuRuntime>();
     MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
     options.storePath = root + QStringLiteral("/podstack.db");
     options.machinesRoot = root + QStringLiteral("/machines");
     options.imageCacheDir = root + QStringLiteral("/images");
@@ -2131,6 +2187,195 @@ void MachinesTest::machineManagerPort()
     QVERIFY(second.sshPort > busyPort);
     QVERIFY(second.sshPort <= busyPort + 19);
     QVERIFY(second.sshPort != first.sshPort);
+}
+
+void MachinesTest::sshConfigPreserves()
+{
+    const QString root = m_root + QStringLiteral("/ssh-config");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString configPath = root + QStringLiteral("/home/.ssh/config");
+    QVERIFY(QDir().mkpath(QFileInfo(configPath).absolutePath()));
+    const QByteArray original = QByteArrayLiteral("Host github.com\n"
+                                                  "  HostName github.com\n"
+                                                  "  User git\n");
+    QVERIFY(writeTestFile(configPath, original));
+
+    MachineMeta meta = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000099"),
+                                   QStringLiteral("ssh-demo"));
+    meta.sshPort = 32222;
+    meta.sshUser = QStringLiteral("alice");
+    meta.sshKeyPath = root + QStringLiteral("/machines/id_ed25519");
+
+    SshConfig config(configPath);
+    PodStack::Error error;
+    QVERIFY2(config.sync(meta, false, &error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+
+    QFile file(configPath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QString content = QString::fromUtf8(file.readAll());
+    file.close();
+    QVERIFY(content.contains(QStringLiteral("Host github.com")));
+    QVERIFY(content.contains(QStringLiteral("# >>> podstack: ssh-demo")));
+    QVERIFY(content.contains(QStringLiteral("Host ssh-demo.podstack ssh-demo")));
+    QVERIFY(content.contains(QStringLiteral("  Port 32222")));
+    QVERIFY(content.contains(QStringLiteral("  User alice")));
+    QVERIFY(content.contains(QStringLiteral("  IdentityFile ") + meta.sshKeyPath));
+    QVERIFY(content.contains(QStringLiteral("  IdentitiesOnly yes")));
+    QVERIFY(!content.contains(QStringLiteral("ForwardAgent yes")));
+    QVERIFY(content.contains(QStringLiteral("# <<< podstack: ssh-demo")));
+    QVERIFY(ownerOnly(QFileInfo(configPath).permissions(), false));
+    QVERIFY(ownerOnly(QFileInfo(QFileInfo(configPath).absolutePath()).permissions(), true));
+
+    QVERIFY2(config.sync(meta, false, &error), qPrintable(error.message));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    content = QString::fromUtf8(file.readAll());
+    file.close();
+    QCOMPARE(content.count(QStringLiteral("# >>> podstack: ssh-demo")), 1);
+    QCOMPARE(content.count(QStringLiteral("Host ssh-demo.podstack ssh-demo")), 1);
+    QCOMPARE(content.count(QStringLiteral("Host github.com")), 1);
+
+    meta.sshPort = 33333;
+    QVERIFY2(config.sync(meta, false, &error), qPrintable(error.message));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    content = QString::fromUtf8(file.readAll());
+    file.close();
+    QVERIFY(content.contains(QStringLiteral("  Port 33333")));
+    QVERIFY(!content.contains(QStringLiteral("  Port 32222")));
+    QCOMPARE(content.count(QStringLiteral("Host ssh-demo.podstack ssh-demo")), 1);
+
+    QVERIFY2(config.sync(meta, true, &error), qPrintable(error.message));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    content = QString::fromUtf8(file.readAll());
+    file.close();
+    QVERIFY(content.contains(QStringLiteral("  ForwardAgent yes")));
+
+    QVERIFY2(config.remove(QStringLiteral("ssh-demo"), &error), qPrintable(error.message));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    content = QString::fromUtf8(file.readAll());
+    file.close();
+    QVERIFY(!content.contains(QStringLiteral("podstack: ssh-demo")));
+    QVERIFY(!content.contains(QStringLiteral("Host ssh-demo.podstack")));
+    QVERIFY(content.contains(QStringLiteral("Host github.com")));
+
+    // Remover de novo e remover de arquivo inexistente são sucessos.
+    QVERIFY2(config.remove(QStringLiteral("ssh-demo"), &error), qPrintable(error.message));
+    SshConfig missing(root + QStringLiteral("/missing/config"));
+    QVERIFY2(missing.remove(QStringLiteral("ssh-demo"), &error), qPrintable(error.message));
+
+    meta.name = QStringLiteral("Bad_Name");
+    QVERIFY(!config.sync(meta, false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    meta.name = QStringLiteral("ssh-demo");
+    meta.sshPort = 0;
+    QVERIFY(!config.sync(meta, false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void MachinesTest::machineManagerSsh()
+{
+    const QString root = m_root + QStringLiteral("/manager-ssh");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 's');
+    m_server.setResponse(QStringLiteral("/manager-ssh.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-ssh.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest request;
+    request.name = QStringLiteral("manager-ssh");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta meta = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!meta.sshKeyPath.isEmpty());
+    QCOMPARE(meta.sshKeyPath, root + QStringLiteral("/machines/") + meta.id
+                                  + QStringLiteral("/id_ed25519"));
+    QVERIFY(QFileInfo(meta.sshKeyPath).isFile());
+    QVERIFY(ownerOnly(QFileInfo(meta.sshKeyPath).permissions(), false));
+
+    const QFileInfo publicKeyInfo(meta.sshKeyPath + QStringLiteral(".pub"));
+    QVERIFY(publicKeyInfo.isFile());
+    QCOMPARE(publicKeyInfo.permissions(),
+             QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadUser
+                 | QFileDevice::WriteUser | QFileDevice::ReadGroup | QFileDevice::ReadOther);
+    QFile publicKey(publicKeyInfo.absoluteFilePath());
+    QVERIFY(publicKey.open(QIODevice::ReadOnly));
+    const QString publicKeyText = QString::fromUtf8(publicKey.readAll()).trimmed();
+    QVERIFY(publicKeyText.startsWith(QStringLiteral("ssh-ed25519 ")));
+
+    QByteArray seedUserData;
+    QVERIFY(readIsoEntry(meta.seedPath, QStringLiteral("user-data"), &seedUserData));
+    QVERIFY(QString::fromUtf8(seedUserData).contains(publicKeyText));
+
+    const QString configPath = root + QStringLiteral("/ssh/config");
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::ReadOnly));
+    const QString configText = QString::fromUtf8(config.readAll());
+    config.close();
+    QVERIFY(configText.contains(QStringLiteral("# >>> podstack: manager-ssh")));
+    QVERIFY(configText.contains(QStringLiteral("  Port %1").arg(meta.sshPort)));
+    QCOMPARE(configText.count(QStringLiteral("# >>> podstack: manager-ssh")), 1);
+
+    SshInfo info;
+    QVERIFY2(manager.sshInfo(meta.name, &info, &error), qPrintable(error.message));
+    QCOMPARE(info.host, QStringLiteral("127.0.0.1"));
+    QCOMPARE(info.port, meta.sshPort);
+    QCOMPARE(info.user, QStringLiteral("podstack"));
+    QCOMPARE(info.identityFile, meta.sshKeyPath);
+
+    SshInfo byId;
+    QVERIFY2(manager.sshInfo(meta.id, &byId, &error), qPrintable(error.message));
+    QCOMPARE(byId.identityFile, meta.sshKeyPath);
+
+    QVERIFY(!manager.sshInfo(QStringLiteral("missing"), &info, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    // start reaplica o bloco removido manualmente (idempotente).
+    SshConfig configFile(configPath);
+    QVERIFY2(configFile.remove(meta.name, &error), qPrintable(error.message));
+    QVERIFY(config.open(QIODevice::ReadOnly));
+    QVERIFY(!QString::fromUtf8(config.readAll()).contains(QStringLiteral("podstack: manager-ssh")));
+    config.close();
+    const MachineMeta started = manager.start(meta.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(started.state, QStringLiteral("running"));
+    QVERIFY(config.open(QIODevice::ReadOnly));
+    QVERIFY(QString::fromUtf8(config.readAll()).contains(QStringLiteral("podstack: manager-ssh")));
+    config.close();
+
+    QVERIFY2(manager.remove(meta.id, true, &error), qPrintable(error.message));
+    QVERIFY(config.open(QIODevice::ReadOnly));
+    QVERIFY(!QString::fromUtf8(config.readAll()).contains(QStringLiteral("podstack: manager-ssh")));
+    config.close();
+    QVERIFY(!QFileInfo::exists(meta.sshKeyPath));
 }
 
 void MachinesTest::qemuRuntimeIntegration()

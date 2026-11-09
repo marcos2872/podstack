@@ -8,6 +8,7 @@
 #include "machines/MachineMeta.h"
 #include "machines/MachineStore.h"
 #include "machines/QemuRuntime.h"
+#include "machines/SshConfig.h"
 
 #include <QString>
 #include <QVector>
@@ -32,6 +33,14 @@ struct CreateMachineRequest {
     bool forwardSshAgent = false;
 };
 
+/// Destino de SSH de uma machine pronta para uso pelo CLI/GUI.
+struct SshInfo {
+    QString host;
+    int port = 0;
+    QString user;
+    QString identityFile;
+};
+
 /// Orquestra provisionamento e ciclo de vida das machines QEMU/KVM.
 class MachineManager {
 public:
@@ -40,6 +49,8 @@ public:
         QString machinesRoot;   // vazio = Paths::machinesDir()
         QString imageCacheDir;  // vazio = Paths::cloudImagesDir()
         QString qemuImgBinary;  // vazio = QStandardPaths
+        QString sshKeygenBinary; // vazio = QStandardPaths
+        QString sshConfigPath;   // vazio = PODSTACK_SSH_CONFIG ou ~/.ssh/config
         QString ovmfCodePath;   // vazio = autodetectar
         QString ovmfVarsPath;
         int sshPortStart = 32222;
@@ -65,6 +76,7 @@ public:
     MachineMeta stop(const QString &idOrName, bool force, Error *error = nullptr);
     MachineMeta restart(const QString &idOrName, Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
+    bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
 
 private:
     MachineMeta load(const QString &idOrName, Error *error);
@@ -77,6 +89,8 @@ private:
                          QString *varsPath, Error *error);
     bool createDisk(const QString &diskPath, const QString &backingPath, qint64 diskBytes,
                     Error *error);
+    bool ensureSshKey(const QString &directory, const QString &name, QString *privatePath,
+                      QString *publicKey, Error *error);
     bool persist(MachineMeta &meta, Error *error);
     static QString normalizeArch(const QString &arch);
     static QString normalizedUser(const QString &user);
@@ -87,6 +101,7 @@ private:
     std::unique_ptr<QemuRuntime> m_runtime;
     MachineStore m_store;
     CloudImageCache m_cache;
+    SshConfig m_sshConfig;
 };
 
 } // namespace PodStack

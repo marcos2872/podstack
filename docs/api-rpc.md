@@ -253,7 +253,8 @@ Regras de normalização:
 ### 4.6 `machines.*`
 
 Implementados na T4-03 (M4) e T4-06: registry, listagem, inspeção, criação assíncrona,
-logs do console e ciclo de vida. Os demais métodos continuam planejados para as tarefas
+logs do console e ciclo de vida. A T4-04 adiciona `machines.ssh` (chave ed25519 e bloco
+gerenciado no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas
 seguintes.
 
 | Método | Params | Result |
@@ -268,6 +269,7 @@ seguintes.
 | `machines.restart` | `{id, force?}` | `Machine` |
 | `machines.delete` | `{id, force?}` | `{deleted:true}` |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
+| `machines.ssh` | `{id}` | `{host, port, user, identityFile}` |
 
 **Planejados (não implementados ainda):**
 
@@ -277,7 +279,6 @@ seguintes.
 | `machines.clone` | `{id, name}` | `JobRef` | T4-10 |
 | `machines.export` | `{id, path}` | `JobRef` | T4-09 |
 | `machines.import` | `{path, name}` | `JobRef` | T4-09 |
-| `machines.ssh` | `{id}` | `{host, port, user, identityFile}` | T4-04 |
 | `machines.files.pull` / `push` | `{id, source, destination}` | `JobRef` | T4-07/T4-08 |
 | `machines.ports.list` / `set` | `{id, ports?}` | `{items}` | T4-12 |
 | `machines.console` | `{id}` | `Subscription` (stream serial) | T4-15 |
@@ -320,6 +321,13 @@ e não pode ser symlink; a leitura usa no máximo os últimos 512 KiB e devolve 
 `tail` linhas (`tail` default 200, limitado a 1..2000). Se a machine ainda não bootou e o
 arquivo não existe, a resposta é `{lines:[]}`. A leitura é one-shot; não há follow/stream
 neste método (console serial é a T4-15).
+
+**SSH.** `machines.ssh` resolve ID ou nome, exige que a chave privada da machine exista
+(`0600`, reparada se necessário), garante o bloco gerenciado em `~/.ssh/config` e devolve
+`{host:"127.0.0.1", port, user, identityFile}`. O bloco é idempotente e não expõe o
+conteúdo da chave. `PODSTACK_SSH_CONFIG` sobrescreve o caminho do config em dev/teste.
+Erros: `PODSTACK_NOT_FOUND` (machine inexistente), `PODSTACK_IO_ERROR` (chave/config
+inacessível) e `PODSTACK_PERMISSION_DENIED` (permissões não corrigíveis).
 
 `DistroImage`: `{distro, version, arch, default, url, checksum, algorithm, size, cached}`.
 `machines.distros` lê o registry pinado no binário e consulta o cache local (sem hash e sem

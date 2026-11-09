@@ -140,17 +140,24 @@ encerra a janela da instância já em execução.
 | Segredo | Armazenamento | Acesso |
 |---|---|---|
 | Credenciais de registry | `~/.config/containers/auth.json` (0600) ou keyring | Podman/daemon |
-| Chaves SSH das máquinas | `~/.local/share/podstack/machines/<id>/id_ed25519` (0600) | daemon, `ssh` |
+| Chaves SSH das máquinas | `~/.local/share/podstack/machines/<id>/id_ed25519` (0600) e `.pub` (0644) | daemon, `ssh` |
+| Bloco SSH gerenciado | `~/.ssh/config` (0600; `~/.ssh` 0700) | daemon, `ssh` |
 | Chave da CA | `~/.local/share/podstack/ca/key.pem` (0600) | Caddy/daemon |
 | Tokens de update | keyring | daemon |
 | Senhas de máquina | cloud-init seed (`seed.iso` e arquivos internos `0600`, senha só como hash SHA-512 crypt; apagada após o boot) / keyring | daemon |
 
 - Nunca em `config.json`, logs, relatório ou argv (visível em `ps`).
 - `machines.create` aceita `password` apenas no corpo JSON-RPC; o daemon não devolve o campo,
-  não o inclui em `machines.delta`/`machines.done` e não o registra em log. O CLI não expõe
-  `--password`/`--set-password` (a T4-04 usa prompt/SSH), mantendo a senha fora de `ps` e do
-  histórico do shell.
+  não o inclui em `machines.delta`/`machines.done` e não o registra em log. A GUI envia a
+  senha no corpo do RPC (campo `echoMode: Password`); o CLI não expõe
+  `--password`/`--set-password`, mantendo a senha fora de `ps` e do histórico do shell. O
+  acesso padrão do CLI é por chave ed25519 gerada pelo daemon.
 - Redaction: chaves que casam `(?i)(token|password|secret|authorization|key)` em env/labels são mascaradas.
+- SSH de machines: a chave privada é gerada pelo daemon com `ssh-keygen` (sem shell), fica
+  `0600` e a pública `0644`; o bloco em `~/.ssh/config` é gravado atomicamente com `0600`
+  (`~/.ssh` `0700`) e preserva blocos de terceiros. `machines.ssh` devolve apenas
+  `host/port/user/identityFile`; o conteúdo da chave nunca aparece em log, UI ou resposta.
+  O CLI usa `StrictHostKeyChecking=accept-new` e `IdentitiesOnly=yes`.
 - Proxy: a URL de `network.proxy` pode conter usuário/senha. Ela **nunca** é registrada em
   log, ecoada em erro de validação ou incluída em diagnóstico; os erros são genéricos. O
   `config.json` é `0600`, e as variáveis vão ao container/machine pelo ambiente/cloud-init,

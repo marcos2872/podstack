@@ -136,11 +136,11 @@ Abas por tipo (estado do M2):
 | **Terminal** | janela nativa | planejado | — | — | QTermWidget; embutir no inspector no M3 |
 | **Inspect** | CLI `podstack inspect` | — | — | — | aba GUI no M2 |
 
-Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod, mostra progresso/steps e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info e Logs do `console.log` e permite criar, start/stop/restart e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
+Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod, mostra progresso/steps e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info e Logs do `console.log` (com seleção de texto, copiar e horário da captura) e permite criar (com senha opcional só em hash), start/stop/restart, abrir SSH em terminal e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 
-- Cabeçalho: ícone, nome, status, ações (start/stop/restart/delete).
+- Cabeçalho: ícone, nome, status, ações (start/stop/ssh/restart/delete).
 - Grid de metadados copiáveis: imagem, comando, portas, env, mounts, rede/IP, labels, health, criado/uptime.
 - Ações: abrir no navegador, copiar ID, revelar no gerenciador.
 
@@ -155,7 +155,9 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - Toolbar: follow (toggle), busca, filtro (só matching), wrap, timestamps, pretty JSON, limpar, exportar.
 - Lista virtualizada com cores por stream (stdout neutro, stderr vermelho suave).
 - Auto-scroll pausa ao subir; badge "novas linhas".
-- Machines (M4): `console.log` one-shot com as últimas 200 linhas e botão Atualizar; follow/console serial ficam para a T4-15.
+- Machines (M4): `console.log` one-shot com as últimas 200 linhas, seleção de texto, botão
+  Copiar e indicador "Atualizado em" (horário da captura); follow/console serial ficam para
+  a T4-15.
 
 ### 5.4 Terminal
 

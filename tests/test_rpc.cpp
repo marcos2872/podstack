@@ -32,6 +32,7 @@ private slots:
     void machinesDistros();
     void machinesFlow();
     void machineLogs();
+    void machineSsh();
     void composeAndBuilds();
     void setupFlow();
     void invalidRequests();
@@ -91,6 +92,8 @@ void RpcTest::initTestCase()
     environment.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     environment.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     environment.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    environment.insert(QStringLiteral("PODSTACK_SSH_CONFIG"),
+                       m_testDataDir + QStringLiteral("/ssh/config"));
     environment.insert(QStringLiteral("XDG_DATA_HOME"),
                        m_testDataDir + QStringLiteral("/data"));
     environment.insert(QStringLiteral("XDG_STATE_HOME"),
@@ -1012,6 +1015,70 @@ void RpcTest::machineLogs()
     QDir(machinesRoot + QLatin1Char('/') + unstarted.id).removeRecursively();
     QDir(symlinkDir).removeRecursively();
     QFile::remove(outside);
+}
+
+void RpcTest::machineSsh()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.ssh"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-ssh-1");
+    meta.name = QStringLiteral("ssh-demo");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/id_ed25519");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    QVERIFY(QDir().mkpath(QFileInfo(meta.sshKeyPath).absolutePath()));
+    QFile key(meta.sshKeyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.ssh"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("ssh-demo")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("host")).toString(), QStringLiteral("127.0.0.1"));
+    QCOMPARE(result.value(QStringLiteral("port")).toInt(), 32222);
+    QCOMPARE(result.value(QStringLiteral("user")).toString(), QStringLiteral("podstack"));
+    QCOMPARE(result.value(QStringLiteral("identityFile")).toString(), meta.sshKeyPath);
+    QVERIFY(!result.contains(QStringLiteral("name")));
+    QVERIFY(!result.contains(QStringLiteral("keyContent")));
+
+    const QJsonObject byId =
+        client.call(QStringLiteral("machines.ssh"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(byId.value(QStringLiteral("identityFile")).toString(), meta.sshKeyPath);
+
+    const QString configPath = m_testDataDir + QStringLiteral("/ssh/config");
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::ReadOnly));
+    QVERIFY(QString::fromUtf8(config.readAll())
+                .contains(QStringLiteral("# >>> podstack: ssh-demo")));
+    config.close();
+
+    QVERIFY(store.remove(meta.id));
+    QFile::remove(meta.sshKeyPath);
+    QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
 }
 
 void RpcTest::composeAndBuilds()

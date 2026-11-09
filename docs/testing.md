@@ -58,7 +58,9 @@
   `create` sem nome/distro ou com CPUs/memória inválidas → `PODSTACK_INVALID_PARAMS`,
   `mounts`/`isolated:true` → `PODSTACK_UNSUPPORTED` (sem QEMU nem rede); `logs` inexistente
   → `PODSTACK_NOT_FOUND`, machine semeada devolve as últimas linhas e respeita `tail`,
-  `console.log` ausente → `{lines:[]}` e symlink → `PODSTACK_IO_ERROR`.
+  `console.log` ausente → `{lines:[]}` e symlink → `PODSTACK_IO_ERROR`; `ssh` inexistente →
+  `PODSTACK_NOT_FOUND` e machine semeada com chave/config devolve
+  `{host,port,user,identityFile}`.
 - `system.df`: detalhado devolve `sections.images/containers/volumes` com contagens, itens,
   flags (`dangling`, `unused`, `running`, `inUse`) e totais; `detailed:false` mantém
   contagens/totais e omite `items`; `json` bruto permanece intacto (fixture do
@@ -73,7 +75,10 @@
 - Machines: `machine list --json` vazio, `machine info` inexistente (exit 1), `machine create`
   com nome inválido (exit 1, validação síncrona sem download), tamanho de memória/disco
   inválido e `machine --help`/usage; `machine logs` inexistente (exit 1), sem ID (usage) e
-  machine semeada com `--tail`/`--json` (one-shot, sem follow).
+  machine semeada com `--tail`/`--json` (one-shot, sem follow). `machine ssh`/`ssh`
+  inexistente (exit 1), sem nome (usage 2) e machine semeada com `ssh` falso no `PATH`
+  verificando `-i`, `-p`, `IdentitiesOnly=yes`, `StrictHostKeyChecking=accept-new`,
+  `user@host` e o comando após `--`.
 - `top --once --interval 1 --json` devolve uma amostra com `host`/`containers`/`totals` e
   `--help` funciona; o modo contínuo é interrompido com Ctrl+C.
 - `system df --json` devolve as seções normalizadas; `system df` mostra o resumo e
@@ -142,7 +147,7 @@
 | `test_gui` | `backendCatalog` | `prunePreview` populado via `refreshCatalog`/`refreshDiskUsage` |
 | `test_notifications` | `summaryFor*`, `cooldown*` | falha/OOM/unhealthy, eventos normais ignorados e cooldown |
 | `test_setup` | `check*`, `status*`, `validate*`, `rejectsInvalidActions` | checks read-only, resumo de status e validação de ações inválidas |
-| `test_machines` | `registry*`, `download*`, `cache*`, `pathsCacheDir`, `pathsMachinesDir`, `machineMeta*`, `machineStore*`, `seed*`, `idsUuidV7`, `machineManager*` | registry pinado (default/versão inválida/arch), download feliz/404/checksum/cancelamento, reuso e rehash do cache, `cloudImagesDir`/`machinesDir` 0700, `machineDir` com id inválido, `meta.json` round-trip/0600/JSON inválido, CRUD e cascade do índice SQLite no mesmo `podstack.db` do BuildStore, seed ISO NoCloud (entradas/label `cidata`, YAML padrão, senha só como hash `$6$`, user-data verbatim, escape/validação e modo 0600), UUIDv7 (versão/variante/unicidade/ordem) e manager com runtime falso (create/validação/ciclo de vida/cancelamento/portas) |
+| `test_machines` | `registry*`, `download*`, `cache*`, `pathsCacheDir`, `pathsMachinesDir`, `machineMeta*`, `machineStore*`, `seed*`, `idsUuidV7`, `machineManager*`, `sshConfigPreserves` | registry pinado (default/versão inválida/arch), download feliz/404/checksum/cancelamento, reuso e rehash do cache, `cloudImagesDir`/`machinesDir` 0700, `machineDir` com id inválido, `meta.json` round-trip/0600/JSON inválido, CRUD e cascade do índice SQLite no mesmo `podstack.db` do BuildStore, seed ISO NoCloud (entradas/label `cidata`, YAML padrão, senha só como hash `$6$`, user-data verbatim, escape/validação e modo 0600), UUIDv7 (versão/variante/unicidade/ordem), manager com runtime falso (create/validação/ciclo de vida/cancelamento/portas) e sincronização idempotente do bloco SSH (preservação, update de porta, `ForwardAgent`, remoção, 0600/0700) |
 | `test_core` | `setupActionsMapPodmanStatus` | `missing` → `install-podman`; `warn` → `enable-socket`; `ok` → sem ação |
 | `test_core` | `setupPolicyMandatoryChecks` | obrigatórios (Podman, systemd-user, SQLite, QEMU/OVMF/virtiofsd) bloqueiam; KVM/Docker/Caddy/k3s não |
 
@@ -163,9 +168,9 @@ gera `Notify` com “Container falhou”.
 | Seed ISO (`test_machines`) | label `cidata` no PVD, exatamente `meta-data`/`user-data`/`network-config` na raiz, YAML padrão, `network-config` v2/DHCP, senha só como hash `$6$`, user-data verbatim, escape YAML, entradas inválidas e ISO `0600` |
 | Metadados e índice (`test_machines`) | `MachineMeta`: round-trip de todos os campos + portas/mounts, `meta.json` `0600` em diretório `0700` e sem temporário residual; arquivo ausente → `PODSTACK_NOT_FOUND`, JSON inválido → `PODSTACK_IO_ERROR`. `MachineStore`: open em DB temporário, upsert/list/get/getByName/updateState/remove, cascade de portas/mounts, mesmas tabelas no `podstack.db` do `BuildStore` (WAL, conexões independentes) e `machinesDir`/`machineDir` com validação de id |
 | QEMU/QMP (`test_machines`) | `QemuCommand`: x86 KVM/TCG, arm64, UEFI, `restrict=on` no isolamento e caminhos/recursos inválidos. `QmpClient` com `MockQmpServer` em `QThread`: handshake, `query-status`, `system_powerdown`, erro QMP, evento intercalado, timeout, `quit` com evento `SHUTDOWN`/fechamento e socket inexistente |
-| Runtime/manager (`test_machines`) | `MachineManager` com `FakeQemuRuntime` e `qemu-img` falso: `validate` público e create baixa a imagem do mock, cria disco/seed/OVMF vars com 0600 em diretório 0700, grava `meta.json` e SQLite, escolhe porta livre, registra `-b` no qemu-img e inicia o runtime. Validação de nome/cpus/memória/disco/arch/distro e conflito de nome; start/stop/restart/remove com estados e erros refletidos no store e no `meta.json`; cancelamento durante o download sem diretório/DB; portas ocupadas puladas. Teste com QEMU/KVM real é opcional (`PODSTACK_QEMU_INTEGRATION=1`) e faz `QSKIP` sem binário, `/dev/kvm` ou OVMF |
-| RPC/CLI de machines (`test_rpc`, `test_cli`) | `machines.list/get/create/cancel/start/stop/restart/delete/logs` com erros estáveis; `machine list/info/logs/create/start/stop/restart/delete/--help`. `logs` cobre `tail`, arquivo ausente, symlink e machine inexistente. A criação real (download + QEMU + cloud-init) **não** roda no CI: é manual ou integração opt-in, pois exige rede, QEMU/KVM e OVMF |
-| GUI de machines (`test_gui`) | `machines` vazio + sinal, `loadMachineInfo`/`loadMachineLogs` inexistente → erro, `machineLifecycle`/`removeMachine` inexistente → `actionFinished(false)`, `createMachine({})` falha na validação síncrona sem QEMU, e machine semeada no `MachineStore` lista/info/logs com `tail` |
+| Runtime/manager (`test_machines`) | `MachineManager` com `FakeQemuRuntime`, `qemu-img` e `ssh-keygen` falsos: `validate` público e create baixa a imagem do mock, cria chave ed25519 (0600) + pública (0644), disco/seed/OVMF vars com 0600 em diretório 0700, injeta a pública no seed, preenche `sshKeyPath`, grava `meta.json`/SQLite e bloco SSH, escolhe porta livre, registra `-b` no qemu-img e inicia o runtime. Validação de nome/cpus/memória/disco/arch/distro e conflito de nome; start/stop/restart/remove com estados e erros refletidos no store e no `meta.json`; `sshInfo` por ID/nome e remoção do bloco; cancelamento durante o download sem diretório/DB; portas ocupadas puladas. Teste com QEMU/KVM real é opcional (`PODSTACK_QEMU_INTEGRATION=1`) e faz `QSKIP` sem binário, `/dev/kvm` ou OVMF |
+| RPC/CLI de machines (`test_rpc`, `test_cli`) | `machines.list/get/create/cancel/start/stop/restart/delete/logs/ssh` com erros estáveis; `machine list/info/logs/create/start/stop/restart/delete/ssh/--help`. `logs` cobre `tail`, arquivo ausente, symlink e machine inexistente; `ssh` cobre machine inexistente, campos retornados e argumentos montados pelo CLI com um `ssh` falso. A criação real (download + QEMU + cloud-init) **não** roda no CI: é manual ou integração opt-in, pois exige rede, QEMU/KVM e OVMF |
+| GUI de machines (`test_gui`) | `machines` vazio + sinal, `loadMachineInfo`/`loadMachineLogs` inexistente → erro, `machineLifecycle`/`removeMachine`/`openMachineSsh` inexistente → `lastError`/`actionFinished(false)`, `createMachine({})` falha na validação síncrona sem QEMU, e machine semeada no `MachineStore` lista/info/logs com `tail`. O sucesso do SSH (QTermWidget) é manual |
 | Criar Ubuntu 24.04 | SSH responde ≤ 60 s; hostname/user corretos |
 | cloud-init | arquivo criado, pacote instalado, comando executado |
 | Stop/start | estado consistente; sem QEMU órfão |
@@ -294,7 +299,10 @@ CI cobre o subconjunto P0; matriz completa no release candidate.
 
 **Registry e cache de machines:** `test_machines` usa `MockHttpServer` (QTcpServer em
 loopback) e não acessa a rede externa. Os testes de metadados/índice usam banco e arquivos
-temporários, sem QEMU. Rodar isolado:
+temporários, sem QEMU. O SSH usa `ssh-keygen` falso via `MachineManager::Options.sshKeygenBinary`
+e escreve em um config temporário via `Options.sshConfigPath`. No daemon e no CLI, o teste
+define `PODSTACK_SSH_CONFIG` para isolar o `~/.ssh/config` real; o mesmo override pode ser
+usado no desenvolvimento. Rodar isolado:
 
 ```bash
 ctest --preset dev -R machines --output-on-failure

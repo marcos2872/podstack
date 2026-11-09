@@ -384,8 +384,9 @@ Estados: `provisioning → running → stopping → stopped → starting → run
 
 ### 7.3 SSH
 
-- Chave ed25519 por máquina em `~/.local/share/podstack/machines/<id>/id_ed25519` (0600).
-- Bloco gerenciado em `~/.ssh/config`:
+- Chave ed25519 por máquina em `~/.local/share/podstack/machines/<id>/id_ed25519` (0600),
+  gerada por `ssh-keygen` na criação; a pública (`.pub`, 0644) vai para o seed cloud-init.
+- Bloco gerenciado em `~/.ssh/config` (0600; diretório `~/.ssh` 0700):
 
 ```
 # >>> podstack: <name>
@@ -394,18 +395,22 @@ Host <name>.podstack <name>
   Port <porta>
   User <user>
   IdentityFile <path>
+  IdentitiesOnly yes
 # <<< podstack: <name>
 ```
 
-- Comando `podstack ssh <name> [-- cmd]`.
+- Comando `podstack ssh <name> [-- cmd]` (alias `machine ssh`), com
+  `StrictHostKeyChecking=accept-new` e `IdentitiesOnly=yes`.
 - Agent forwarding opcional (`ForwardAgent yes` no bloco).
-- Nunca sobrescrever blocos de terceiros; backup antes de alterar.
+- Blocos de terceiros e o restante do arquivo são preservados; a escrita é atômica
+  (`QSaveFile`). O bloco é substituído pelo nome, sem duplicação.
+- `PODSTACK_SSH_CONFIG` sobrescreve o caminho do config (dev/teste).
 
 **Critérios:**
 
-- [ ] `ssh <name>` funciona após criação.
-- [ ] Remover máquina remove o bloco e a chave.
-- [ ] Bloco idempotente (sem duplicação).
+- [x] `ssh <name>` funciona após criação.
+- [x] Remover máquina remove o bloco e a chave.
+- [x] Bloco idempotente (sem duplicação).
 
 ### 7.4 Arquivos
 

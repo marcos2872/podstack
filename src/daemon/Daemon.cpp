@@ -310,6 +310,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.logs")) {
         return machineLogs(params, error);
     }
+    if (method == QStringLiteral("machines.ssh")) {
+        return machineSsh(params, error);
+    }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
     }
@@ -713,6 +716,26 @@ QJsonObject Daemon::machineLogs(const QJsonObject &params, Error *error)
         array.append(line);
     }
     return QJsonObject{{QStringLiteral("lines"), array}};
+}
+
+QJsonObject Daemon::machineSsh(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(id, &info, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("host"), info.host);
+    result.insert(QStringLiteral("port"), info.port);
+    result.insert(QStringLiteral("user"), info.user);
+    result.insert(QStringLiteral("identityFile"), info.identityFile);
+    return result;
 }
 
 QJsonObject Daemon::systemHello() const

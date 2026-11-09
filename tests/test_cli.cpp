@@ -34,6 +34,7 @@ private slots:
     void catalog();
     void machineDistros();
     void machineCommands();
+    void machineSsh();
     void topCommand();
     void systemDf();
     void composeAndBuild();
@@ -69,6 +70,8 @@ QProcessEnvironment CliTest::environment(const QString &controlSocket) const
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    env.insert(QStringLiteral("PODSTACK_SSH_CONFIG"),
+               m_testDataDir + QStringLiteral("/ssh/config"));
     env.insert(QStringLiteral("XDG_DATA_HOME"), m_testDataDir + QStringLiteral("/data"));
     env.insert(QStringLiteral("XDG_STATE_HOME"), m_testDataDir + QStringLiteral("/state"));
     env.insert(QStringLiteral("XDG_CONFIG_HOME"), m_testDataDir + QStringLiteral("/config"));
@@ -591,6 +594,107 @@ void CliTest::machineCommands()
         QCOMPARE(result.code, 1);
         QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
     }
+}
+
+void CliTest::machineSsh()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("machine"), QStringLiteral("ssh"),
+                            QStringLiteral("missing")},
+                           env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("ssh")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    result = run({QStringLiteral("ssh")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    const QString binDir = m_testDataDir + QStringLiteral("/bin");
+    QVERIFY(QDir().mkpath(binDir));
+    const QString fakeSsh = binDir + QStringLiteral("/ssh");
+    QFile script(fakeSsh);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\n"
+                 "log=\"${PODSTACK_FAKE_SSH_LOG:-}\"\n"
+                 "if [ -n \"$log\" ]; then\n"
+                 "  : > \"$log\"\n"
+                 "  for arg in \"$@\"; do printf '%s\\n' \"$arg\" >> \"$log\"; done\n"
+                 "fi\n"
+                 "exit 0\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                  | QFileDevice::ExeOwner));
+
+    const QString logPath = m_testDataDir + QStringLiteral("/ssh-args.log");
+    QProcessEnvironment sshEnv = env;
+    sshEnv.insert(QStringLiteral("PATH"),
+                  binDir + QLatin1Char(':') + qEnvironmentVariable("PATH"));
+    sshEnv.insert(QStringLiteral("PODSTACK_FAKE_SSH_LOG"), logPath);
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("cli-machine-ssh");
+    meta.name = QStringLiteral("cli-ssh");
+    meta.distro = QStringLiteral("fedora");
+    meta.distroVersion = QStringLiteral("44");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/cli_ed25519");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+    QVERIFY(QDir().mkpath(QFileInfo(meta.sshKeyPath).absolutePath()));
+    QFile key(meta.sshKeyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("ssh"),
+                  QStringLiteral("cli-ssh"), QStringLiteral("--"),
+                  QStringLiteral("echo"), QStringLiteral("hello")},
+                 sshEnv);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QFile log(logPath);
+    QVERIFY(log.open(QIODevice::ReadOnly));
+    const QStringList args =
+        QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    log.close();
+    QCOMPARE(args.size(), 11);
+    QCOMPARE(args.value(0), QStringLiteral("-i"));
+    QCOMPARE(args.value(1), meta.sshKeyPath);
+    QCOMPARE(args.value(2), QStringLiteral("-p"));
+    QCOMPARE(args.value(3), QStringLiteral("32222"));
+    QCOMPARE(args.value(4), QStringLiteral("-o"));
+    QCOMPARE(args.value(5), QStringLiteral("IdentitiesOnly=yes"));
+    QCOMPARE(args.value(6), QStringLiteral("-o"));
+    QCOMPARE(args.value(7), QStringLiteral("StrictHostKeyChecking=accept-new"));
+    QCOMPARE(args.value(8), QStringLiteral("podstack@127.0.0.1"));
+    QCOMPARE(args.value(9), QStringLiteral("echo"));
+    QCOMPARE(args.value(10), QStringLiteral("hello"));
+
+    result = run({QStringLiteral("ssh"), QStringLiteral("cli-ssh")}, sshEnv);
+    QCOMPARE(result.code, 0);
+    QVERIFY(log.open(QIODevice::ReadOnly));
+    const QStringList directArgs =
+        QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    log.close();
+    QCOMPARE(directArgs.size(), 9);
+    QCOMPARE(directArgs.value(8), QStringLiteral("podstack@127.0.0.1"));
+
+    QVERIFY(store.remove(meta.id));
+    QFile::remove(meta.sshKeyPath);
+    QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
 }
 
 void CliTest::topCommand()
