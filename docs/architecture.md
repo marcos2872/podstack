@@ -288,6 +288,7 @@ erDiagram
 ```
 
 - **Fonte de verdade:** Podman para containers/imagens/volumes/redes/pods; `meta.json` + SQLite para machines/builds/clusters/settings/jobs.
+- **Machines:** `~/.local/share/podstack/machines/<id>/meta.json` é a fonte de verdade recuperável da machine (formato em `data-model.md` §6), gravado de forma atômica com permissão `0600` em diretório `0700`. O SQLite mantém `machines`, `machine_ports` e `machine_mounts` como índice para listagem/consulta; se o índice faltar ou divergir, pode ser reconstruído a partir dos `meta.json`.
 - **SQLite (WAL):** tabelas `machines`, `machine_ports`, `machine_mounts`, `builds`, `build_steps`, `clusters`, `jobs`, `job_events`, `settings`, `domains`.
 - **Migrações:** `user_version` + scripts idempotentes; backup `.bak` antes.
 - **Config:** `config.json` com `schemaVersion`; leitura tolerante a campos desconhecidos.

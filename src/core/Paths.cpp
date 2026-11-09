@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QString>
 #include <QStringList>
@@ -78,6 +79,21 @@ QString cloudImagesDir()
     return cacheDir() + QStringLiteral("/images");
 }
 
+QString machinesDir()
+{
+    return dataDir() + QStringLiteral("/machines");
+}
+
+QString machineDir(const QString &id)
+{
+    static const QRegularExpression validId(QStringLiteral("^[A-Za-z0-9._:-]+$"));
+    if (id.isEmpty() || id == QStringLiteral(".") || id.contains(QStringLiteral(".."))
+        || !validId.match(id).hasMatch()) {
+        return {};
+    }
+    return machinesDir() + QLatin1Char('/') + id;
+}
+
 QString runtimeDir()
 {
     return runtimeBase() + QStringLiteral("/podstack");
@@ -104,7 +120,7 @@ QString podmanSocket()
 bool ensureDirs(QString *error)
 {
     const QStringList dirs{configDir(), dataDir(), stateDir(), cacheDir(), cloudImagesDir(),
-                           runtimeDir()};
+                           machinesDir(), runtimeDir()};
     for (const QString &dir : dirs) {
         if (!ensureDir(dir, error)) {
             return false;

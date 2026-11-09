@@ -96,7 +96,7 @@ Não persistido. Cache em memória reconstruído por eventos.
 | `name` | string | único |
 | `distro` | string | `ubuntu`, `debian`, ... |
 | `distroVersion` | string? | `24.04`, `noble`, ... |
-| `arch` | enum | `x86_64`, `aarch64` |
+| `arch` | enum | `amd64`, `arm64` |
 | `cpus` | int | 1..N |
 | `memoryBytes` | int64 | ≥ 1 GiB |
 | `diskBytes` | int64 | ≥ 1 GiB |
@@ -111,9 +111,10 @@ Não persistido. Cache em memória reconstruído por eventos.
 | `forwardSshAgent` | bool | |
 | `httpPort` / `httpsPort` | int? | portas anunciadas |
 | `lastBootAt` | timestamp? | |
-| `createdAt` / `updatedAt` | timestamp | |
+| `createdAt` / `updatedAt` | timestamp | RFC 3339 UTC com ms |
 | `error` | string? | último erro |
-| `podmanMachine` | bool | false (QEMU direto) |
+
+> `httpPort`/`httpsPort` são colunas reservadas no esquema SQLite; o `meta.json` atual não as grava.
 
 ### 2.7 MachinePort / MachineMount
 
@@ -412,22 +413,42 @@ CREATE INDEX idx_domains_hostname ON domains(hostname);
 
 ```json
 {
-  "schemaVersion": 1,
   "id": "0193f2c4-...",
   "name": "dev-ubuntu",
   "distro": "ubuntu",
   "distroVersion": "24.04",
-  "arch": "x86_64",
-  "resources": { "cpus": 2, "memoryBytes": 4294967296, "diskBytes": 21474836480 },
-  "network": { "sshPort": 32222, "httpPort": 8080, "httpsPort": 8443 },
-  "ssh": { "user": "marcos", "keyPath": "id_ed25519" },
-  "mounts": [{ "source": "/home/marcos/Projetos", "target": "/mnt/projetos", "readOnly": false }],
+  "arch": "amd64",
+  "cpus": 2,
+  "memoryBytes": 4294967296,
+  "diskBytes": 21474836480,
+  "diskPath": "/home/marcos/.local/share/podstack/machines/0193f2c4-.../disk.qcow2",
+  "seedPath": "/home/marcos/.local/share/podstack/machines/0193f2c4-.../seed.iso",
+  "sshKeyPath": "/home/marcos/.local/share/podstack/machines/0193f2c4-.../id_ed25519",
+  "sshPort": 32222,
+  "sshUser": "marcos",
+  "state": "running",
   "isolated": false,
-  "createdAt": "2026-11-08T12:00:00Z"
+  "isolateNetwork": false,
+  "forwardSshAgent": false,
+  "lastBootAt": "2026-11-08T12:05:00.000Z",
+  "createdAt": "2026-11-08T12:00:00.000Z",
+  "updatedAt": "2026-11-08T12:05:00.000Z",
+  "error": "",
+  "ports": [
+    { "id": "0193f2c5-...", "hostPort": 32222, "guestPort": 22, "protocol": "tcp",
+      "exposeLan": false, "label": "ssh" }
+  ],
+  "mounts": [
+    { "id": "0193f2c6-...", "source": "/home/marcos/Projetos", "target": "/mnt/projetos",
+      "readOnly": false, "tag": "host" }
+  ]
 }
 ```
 
-`meta.json` é a fonte de verdade recuperável; SQLite é índice/cache.
+- Arquivo `0600` em diretório `0700`, escrito por `QSaveFile` (rename atômico).
+- Timestamps em RFC 3339 UTC com milissegundos.
+- Sem senha ou outro segredo: a senha existe apenas no seed cloud-init como hash SHA-512 crypt.
+- `meta.json` é a fonte de verdade recuperável; SQLite é índice/cache.
 
 ---
 

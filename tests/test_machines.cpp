@@ -4,9 +4,12 @@
 #include "MockQmpServer.h"
 
 #include "core/Paths.h"
+#include "daemon/BuildStore.h"
 #include "machines/CloudImageCache.h"
 #include "machines/CloudInit.h"
 #include "machines/DistroRegistry.h"
+#include "machines/MachineMeta.h"
+#include "machines/MachineStore.h"
 #include "machines/QemuCommand.h"
 #include "machines/QmpClient.h"
 
@@ -15,18 +18,27 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTest>
 
 #include <archive.h>
 #include <archive_entry.h>
+#include <sqlite3.h>
 
+using PodStack::BuildRecord;
+using PodStack::BuildStore;
 using PodStack::CloudImageCache;
 using PodStack::CloudInit;
 using PodStack::CloudInitOptions;
 using PodStack::DistroImage;
 using PodStack::DistroRegistry;
+using PodStack::MachineMeta;
+using PodStack::MachineMetaFile;
+using PodStack::MachineMount;
+using PodStack::MachinePort;
+using PodStack::MachineStore;
 using PodStack::QemuCommand;
 using PodStack::QemuSpec;
 using PodStack::QmpClient;
@@ -181,6 +193,56 @@ QString valueAfter(const QStringList &args, const QString &flag)
     return args.at(index + 1);
 }
 
+MachineMeta testMachine(const QString &id, const QString &name)
+{
+    MachineMeta meta;
+    meta.id = id;
+    meta.name = name;
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 4294967296LL;
+    meta.diskBytes = 21474836480LL;
+    meta.diskPath = QStringLiteral("/tmp/podstack-test/disk.qcow2");
+    meta.seedPath = QStringLiteral("/tmp/podstack-test/seed.iso");
+    meta.sshKeyPath = QStringLiteral("/tmp/podstack-test/id_ed25519");
+    meta.sshPort = 32222;
+    meta.sshUser = QStringLiteral("marcos");
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-11-08T12:00:00.000Z");
+    meta.updatedAt = QStringLiteral("2000-01-01T00:00:00.000Z");
+    return meta;
+}
+
+int machineRowCount(const QString &dbPath, const QString &table, const QString &machineId)
+{
+    sqlite3 *db = nullptr;
+    if (sqlite3_open_v2(dbPath.toUtf8().constData(), &db, SQLITE_OPEN_READONLY, nullptr)
+        != SQLITE_OK) {
+        sqlite3_close(db);
+        return -1;
+    }
+
+    const QByteArray sql =
+        QStringLiteral("SELECT COUNT(*) FROM %1 WHERE machine_id = ?").arg(table).toUtf8();
+    sqlite3_stmt *statement = nullptr;
+    if (sqlite3_prepare_v2(db, sql.constData(), -1, &statement, nullptr) != SQLITE_OK) {
+        sqlite3_close(db);
+        return -1;
+    }
+
+    const QByteArray id = machineId.toUtf8();
+    sqlite3_bind_text(statement, 1, id.constData(), id.size(), SQLITE_TRANSIENT);
+    int count = -1;
+    if (sqlite3_step(statement) == SQLITE_ROW) {
+        count = sqlite3_column_int(statement, 0);
+    }
+    sqlite3_finalize(statement);
+    sqlite3_close(db);
+    return count;
+}
+
 } // namespace
 
 class MachinesTest : public QObject {
@@ -193,6 +255,11 @@ private slots:
     void registryRejectsInvalid();
     void registryLists();
     void pathsCacheDir();
+    void pathsMachinesDir();
+    void machineMetaRoundTrip();
+    void machineMetaInvalid();
+    void machineStoreCrud();
+    void machineStoreSharesDb();
     void downloadAndReuse();
     void downloadHttpError();
     void downloadChecksumMismatch();
@@ -373,6 +440,289 @@ void MachinesTest::pathsCacheDir()
     const QFileInfo info(PodStack::Paths::cloudImagesDir());
     QVERIFY(info.isDir());
     QVERIFY(ownerOnly(info.permissions(), true));
+}
+
+void MachinesTest::pathsMachinesDir()
+{
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000000001");
+    QCOMPARE(PodStack::Paths::machinesDir(), m_root + QStringLiteral("/data/podstack/machines"));
+    QCOMPARE(PodStack::Paths::machineDir(id),
+             PodStack::Paths::machinesDir() + QLatin1Char('/') + id);
+    QCOMPARE(PodStack::Paths::machineDir(QStringLiteral("name:with.dots")),
+             PodStack::Paths::machinesDir() + QStringLiteral("/name:with.dots"));
+    QCOMPARE(PodStack::Paths::machineDir(QStringLiteral("name_with_underscore")),
+             PodStack::Paths::machinesDir() + QStringLiteral("/name_with_underscore"));
+
+    QVERIFY(PodStack::Paths::machineDir(QString()).isEmpty());
+    QVERIFY(PodStack::Paths::machineDir(QStringLiteral(".")).isEmpty());
+    QVERIFY(PodStack::Paths::machineDir(QStringLiteral("..")).isEmpty());
+    QVERIFY(PodStack::Paths::machineDir(QStringLiteral("a..b")).isEmpty());
+    QVERIFY(PodStack::Paths::machineDir(QStringLiteral("../escape")).isEmpty());
+    QVERIFY(PodStack::Paths::machineDir(QStringLiteral("a/b")).isEmpty());
+    QVERIFY(PodStack::Paths::machineDir(QStringLiteral("a b")).isEmpty());
+    QVERIFY(PodStack::Paths::machineDir(QStringLiteral("ação")).isEmpty());
+
+    QString error;
+    QVERIFY2(PodStack::Paths::ensureDirs(&error), qPrintable(error));
+    const QFileInfo info(PodStack::Paths::machinesDir());
+    QVERIFY(info.isDir());
+    QVERIFY(ownerOnly(info.permissions(), true));
+}
+
+void MachinesTest::machineMetaRoundTrip()
+{
+    const QString directory = m_root + QStringLiteral("/meta-roundtrip/machine");
+    QDir(directory).removeRecursively();
+    const QString path = directory + QStringLiteral("/meta.json");
+
+    MachineMeta meta = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000010"),
+                                   QStringLiteral("dev-ubuntu"));
+    meta.cpus = 4;
+    meta.memoryBytes = 8589934592LL;
+    meta.diskBytes = 32212254720LL;
+    meta.state = QStringLiteral("running");
+    meta.isolated = true;
+    meta.isolateNetwork = true;
+    meta.forwardSshAgent = true;
+    meta.lastBootAt = QStringLiteral("2026-11-09T10:00:00.123Z");
+    meta.updatedAt = QStringLiteral("2026-11-09T10:00:00.123Z");
+    meta.error = QStringLiteral("último erro simulado");
+    meta.ports = {
+        MachinePort{QStringLiteral("port-ssh"), 32222, 22, QStringLiteral("tcp"), false,
+                    QStringLiteral("ssh")},
+        MachinePort{QStringLiteral("port-http"), 8080, 80, QStringLiteral("tcp"), true,
+                    QStringLiteral("http")},
+    };
+    meta.mounts = {
+        MachineMount{QStringLiteral("mount-projetos"),
+                     QStringLiteral("/home/marcos/Projetos"),
+                     QStringLiteral("/mnt/projetos"), false, QStringLiteral("host")},
+    };
+
+    PodStack::Error error;
+    QVERIFY2(MachineMetaFile::write(path, meta, &error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+
+    const QFileInfo fileInfo(path);
+    QVERIFY(fileInfo.isFile());
+    QVERIFY(ownerOnly(fileInfo.permissions(), false));
+    QVERIFY(ownerOnly(QFileInfo(directory).permissions(), true));
+    QCOMPARE(QDir(directory).entryList(QDir::Files | QDir::Hidden),
+             QStringList{QStringLiteral("meta.json")});
+    QVERIFY(!QFileInfo::exists(path + QStringLiteral(".tmp")));
+
+    QFile raw(path);
+    QVERIFY(raw.open(QIODevice::ReadOnly));
+    const QJsonObject object = QJsonDocument::fromJson(raw.readAll()).object();
+    QCOMPARE(object.value(QStringLiteral("distroVersion")).toString(),
+             QStringLiteral("24.04"));
+    QCOMPARE(object.value(QStringLiteral("memoryBytes")).toInteger(), 8589934592LL);
+    QCOMPARE(object.value(QStringLiteral("forwardSshAgent")).toBool(), true);
+    QCOMPARE(object.value(QStringLiteral("ports")).toArray().size(), 2);
+    QCOMPARE(object.value(QStringLiteral("mounts")).toArray().size(), 1);
+    QVERIFY(!object.contains(QStringLiteral("password")));
+
+    const MachineMeta reloaded = MachineMetaFile::read(path, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(QJsonDocument(reloaded.toJson()).toJson(QJsonDocument::Compact),
+             QJsonDocument(meta.toJson()).toJson(QJsonDocument::Compact));
+    QCOMPARE(reloaded.ports.size(), 2);
+    QCOMPARE(reloaded.ports.at(1).hostPort, 8080);
+    QCOMPARE(reloaded.ports.at(1).label, QStringLiteral("http"));
+    QCOMPARE(reloaded.mounts.size(), 1);
+    QCOMPARE(reloaded.mounts.at(0).tag, QStringLiteral("host"));
+}
+
+void MachinesTest::machineMetaInvalid()
+{
+    const QString root = m_root + QStringLiteral("/meta-invalid");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    PodStack::Error error;
+    const MachineMeta missing = MachineMetaFile::read(root + QStringLiteral("/missing/meta.json"),
+                                                      &error);
+    QVERIFY(missing.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    const QString path = root + QStringLiteral("/meta.json");
+    {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QVERIFY(file.write(QByteArrayLiteral("{ \"id\": ")) > 0);
+    }
+    QVERIFY(MachineMetaFile::read(path, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QVERIFY(file.write(QByteArrayLiteral("[]")) > 0);
+    }
+    QVERIFY(MachineMetaFile::read(path, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const MachineMeta meta = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000011"),
+                                         QStringLiteral("invalid-write"));
+    QVERIFY(!MachineMetaFile::write(root, meta, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void MachinesTest::machineStoreCrud()
+{
+    const QString directory = m_root + QStringLiteral("/store-crud");
+    const QString dbPath = directory + QStringLiteral("/podstack.db");
+    QDir(directory).removeRecursively();
+
+    MachineStore store(dbPath);
+    QCOMPARE(store.path(), dbPath);
+    PodStack::Error error;
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+    QVERIFY(QFileInfo(dbPath).isFile());
+    QVERIFY(ownerOnly(QFileInfo(dbPath).permissions(), false));
+    QVERIFY(QFileInfo::exists(dbPath + QStringLiteral("-wal")));
+    QVERIFY(QFileInfo::exists(dbPath + QStringLiteral("-shm")));
+    QVERIFY(ownerOnly(QFileInfo(dbPath + QStringLiteral("-wal")).permissions(), false));
+    QVERIFY(ownerOnly(QFileInfo(dbPath + QStringLiteral("-shm")).permissions(), false));
+
+    MachineMeta first = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000020"),
+                                    QStringLiteral("dev-ubuntu"));
+    first.ports = {
+        MachinePort{QStringLiteral("port-http"), 8080, 80, QStringLiteral("tcp"), true,
+                    QStringLiteral("http")},
+        MachinePort{QStringLiteral("port-ssh"), 32222, 22, QStringLiteral("tcp"), false,
+                    QStringLiteral("ssh")},
+    };
+    first.mounts = {
+        MachineMount{QStringLiteral("mount-projetos"),
+                     QStringLiteral("/home/marcos/Projetos"),
+                     QStringLiteral("/mnt/projetos"), false, QStringLiteral("host")},
+    };
+
+    MachineMeta second = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000021"),
+                                     QStringLiteral("dev-debian"));
+    second.distro = QStringLiteral("debian");
+    second.distroVersion = QStringLiteral("12");
+    second.createdAt = QStringLiteral("2026-11-08T12:01:00.000Z");
+    second.ports = {
+        MachinePort{QStringLiteral("port-ssh-debian"), 32223, 22, QStringLiteral("tcp"), false,
+                    QStringLiteral("ssh")},
+    };
+
+    QVERIFY2(store.upsert(first, &error), qPrintable(error.message));
+    QVERIFY2(store.upsert(second, &error), qPrintable(error.message));
+    QCOMPARE(store.list(&error).size(), 2);
+
+    const MachineMeta loaded = store.get(first.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(QJsonDocument(loaded.toJson()).toJson(QJsonDocument::Compact),
+             QJsonDocument(first.toJson()).toJson(QJsonDocument::Compact));
+
+    const MachineMeta byName = store.getByName(QStringLiteral("dev-ubuntu"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(byName.id, first.id);
+    QCOMPARE(byName.ports.size(), 2);
+    QCOMPARE(byName.mounts.size(), 1);
+
+    QVERIFY(store.get(QStringLiteral("missing"), &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    QVERIFY(store.getByName(QStringLiteral("missing"), &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    MachineMeta updated = first;
+    updated.cpus = 8;
+    updated.state = QStringLiteral("stopped");
+    updated.ports = {
+        MachinePort{QStringLiteral("port-ssh"), 32000, 22, QStringLiteral("tcp"), false,
+                    QStringLiteral("ssh")},
+    };
+    updated.mounts.clear();
+    QVERIFY2(store.upsert(updated, &error), qPrintable(error.message));
+
+    const MachineMeta afterUpsert = store.get(first.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(afterUpsert.cpus, 8);
+    QCOMPARE(afterUpsert.ports.size(), 1);
+    QCOMPARE(afterUpsert.ports.at(0).hostPort, 32000);
+    QVERIFY(afterUpsert.mounts.isEmpty());
+
+    QVERIFY2(store.updateState(first.id, QStringLiteral("running"), QString(), &error),
+             qPrintable(error.message));
+    const MachineMeta running = store.get(first.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(running.state, QStringLiteral("running"));
+    QVERIFY(running.error.isEmpty());
+    QVERIFY(running.updatedAt > updated.updatedAt);
+
+    QVERIFY2(store.updateState(first.id, QStringLiteral("error"),
+                               QStringLiteral("falha simulada"), &error),
+             qPrintable(error.message));
+    const MachineMeta failed = store.get(first.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(failed.state, QStringLiteral("error"));
+    QCOMPARE(failed.error, QStringLiteral("falha simulada"));
+
+    QVERIFY(!store.updateState(QStringLiteral("missing"), QStringLiteral("running"), {},
+                               &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QVERIFY2(store.remove(first.id, &error), qPrintable(error.message));
+    QVERIFY(store.get(first.id, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    QCOMPARE(store.list(&error).size(), 1);
+    QCOMPARE(machineRowCount(dbPath, QStringLiteral("machine_ports"), first.id), 0);
+    QCOMPARE(machineRowCount(dbPath, QStringLiteral("machine_mounts"), first.id), 0);
+    QCOMPARE(machineRowCount(dbPath, QStringLiteral("machine_ports"), second.id), 1);
+
+    QVERIFY(!store.remove(first.id, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    QVERIFY2(store.remove(second.id, &error), qPrintable(error.message));
+    QVERIFY(store.list(&error).isEmpty());
+}
+
+void MachinesTest::machineStoreSharesDb()
+{
+    const QString directory = m_root + QStringLiteral("/shared-db");
+    const QString dbPath = directory + QStringLiteral("/podstack.db");
+    QDir(directory).removeRecursively();
+
+    PodStack::Error error;
+    BuildStore builds(dbPath);
+    QVERIFY2(builds.open(&error), qPrintable(error.message));
+
+    BuildRecord build;
+    build.id = QStringLiteral("0190f0f0-0000-7000-8000-000000000030");
+    build.imageRef = QStringLiteral("localhost/podstack-test:latest");
+    build.status = QStringLiteral("success");
+    build.startedAt = QStringLiteral("2026-11-09T11:00:00.000Z");
+    build.finishedAt = QStringLiteral("2026-11-09T11:00:05.000Z");
+    build.durationMs = 5000;
+    build.trigger = QStringLiteral("gui");
+    build.contextPath = QStringLiteral("/tmp/podstack-test/context");
+    build.dockerfile = QStringLiteral("Dockerfile");
+    build.logPath = QStringLiteral("/tmp/podstack-test/build.log");
+    QVERIFY2(builds.insert(build, &error), qPrintable(error.message));
+
+    MachineStore machines(dbPath);
+    QVERIFY2(machines.open(&error), qPrintable(error.message));
+    const MachineMeta meta = testMachine(
+        QStringLiteral("0190f0f0-0000-7000-8000-000000000031"), QStringLiteral("shared-db"));
+    QVERIFY2(machines.upsert(meta, &error), qPrintable(error.message));
+
+    QCOMPARE(builds.get(build.id, &error).imageRef, build.imageRef);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(machines.get(meta.id, &error).name, meta.name);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    BuildStore buildsReader(dbPath);
+    QVERIFY2(buildsReader.open(&error), qPrintable(error.message));
+    QCOMPARE(buildsReader.get(build.id, &error).status, QStringLiteral("success"));
+
+    MachineStore machinesReader(dbPath);
+    QVERIFY2(machinesReader.open(&error), qPrintable(error.message));
+    QCOMPARE(machinesReader.getByName(meta.name, &error).id, meta.id);
+    QCOMPARE(machinesReader.list(&error).size(), 1);
 }
 
 void MachinesTest::downloadAndReuse()

@@ -120,7 +120,7 @@
 | `test_stats` | `parses*` | parsers de `/proc/stat`, `/proc/meminfo`, `/proc/net/dev` e `/proc/diskstats` |
 | `test_notifications` | `summaryFor*`, `cooldown*` | falha/OOM/unhealthy, eventos normais ignorados e cooldown |
 | `test_setup` | `check*`, `status*`, `validate*`, `rejectsInvalidActions` | checks read-only, resumo de status e validação de ações inválidas |
-| `test_machines` | `registry*`, `download*`, `cache*`, `pathsCacheDir`, `seed*` | registry pinado (default/versão inválida/arch), download feliz/404/checksum/cancelamento, reuso e rehash do cache, `cloudImagesDir` 0700 e seed ISO NoCloud (entradas/label `cidata`, YAML padrão, senha só como hash `$6$`, user-data verbatim, escape/validação e modo 0600) |
+| `test_machines` | `registry*`, `download*`, `cache*`, `pathsCacheDir`, `pathsMachinesDir`, `machineMeta*`, `machineStore*`, `seed*` | registry pinado (default/versão inválida/arch), download feliz/404/checksum/cancelamento, reuso e rehash do cache, `cloudImagesDir`/`machinesDir` 0700, `machineDir` com id inválido, `meta.json` round-trip/0600/JSON inválido, CRUD e cascade do índice SQLite no mesmo `podstack.db` do BuildStore e seed ISO NoCloud (entradas/label `cidata`, YAML padrão, senha só como hash `$6$`, user-data verbatim, escape/validação e modo 0600) |
 | `test_core` | `setupActionsMapPodmanStatus` | `missing` → `install-podman`; `warn` → `enable-socket`; `ok` → sem ação |
 | `test_core` | `setupPolicyMandatoryChecks` | obrigatórios (Podman, systemd-user, SQLite, QEMU/OVMF/virtiofsd) bloqueiam; KVM/Docker/Caddy/k3s não |
 
@@ -139,6 +139,7 @@ gera `Notify` com “Container falhou”.
 | Teste | Verificação |
 |---|---|
 | Seed ISO (`test_machines`) | label `cidata` no PVD, exatamente `meta-data`/`user-data`/`network-config` na raiz, YAML padrão, `network-config` v2/DHCP, senha só como hash `$6$`, user-data verbatim, escape YAML, entradas inválidas e ISO `0600` |
+| Metadados e índice (`test_machines`) | `MachineMeta`: round-trip de todos os campos + portas/mounts, `meta.json` `0600` em diretório `0700` e sem temporário residual; arquivo ausente → `PODSTACK_NOT_FOUND`, JSON inválido → `PODSTACK_IO_ERROR`. `MachineStore`: open em DB temporário, upsert/list/get/getByName/updateState/remove, cascade de portas/mounts, mesmas tabelas no `podstack.db` do `BuildStore` (WAL, conexões independentes) e `machinesDir`/`machineDir` com validação de id |
 | QEMU/QMP (`test_machines`) | `QemuCommand`: x86 KVM/TCG, arm64, UEFI, `restrict=on` no isolamento e caminhos/recursos inválidos. `QmpClient` com `MockQmpServer` em `QThread`: handshake, `query-status`, `system_powerdown`, erro QMP, evento intercalado, timeout, `quit` com evento `SHUTDOWN`/fechamento e socket inexistente |
 | Criar Ubuntu 24.04 | SSH responde ≤ 60 s; hostname/user corretos |
 | cloud-init | arquivo criado, pacote instalado, comando executado |
@@ -259,7 +260,8 @@ CI cobre o subconjunto P0; matriz completa no release candidate.
 - Cloud images fixadas por checksum.
 
 **Registry e cache de machines:** `test_machines` usa `MockHttpServer` (QTcpServer em
-loopback) e não acessa a rede externa. Rodar isolado:
+loopback) e não acessa a rede externa. Os testes de metadados/índice usam banco e arquivos
+temporários, sem QEMU. Rodar isolado:
 
 ```bash
 ctest --preset dev -R machines --output-on-failure

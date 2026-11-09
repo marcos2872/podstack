@@ -63,6 +63,8 @@ add_library(podstack_machines STATIC
     src/machines/HttpDownloader.cpp
     src/machines/CloudImageCache.cpp
     src/machines/CloudInit.cpp
+    src/machines/MachineMeta.cpp
+    src/machines/MachineStore.cpp
     src/machines/QemuCommand.cpp
     src/machines/QmpClient.cpp
 )
@@ -73,6 +75,7 @@ target_link_libraries(podstack_machines PUBLIC
     Qt6::Network
     CURL::libcurl
     LibArchive::LibArchive
+    SQLite::SQLite3
     ${CRYPT_LIBRARY}
 )
 
