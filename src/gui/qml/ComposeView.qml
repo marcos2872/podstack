@@ -10,6 +10,18 @@ ColumnLayout {
 
     property bool compact: false
 
+    function openProject(project, service, logs) {
+        for (let i = 0; i < backend.composeProjects.length; ++i) {
+            if (backend.composeProjects[i].name === project) {
+                composeList.currentRow = i
+                break
+            }
+        }
+        if (logs) {
+            backend.subscribeComposeLogs(project, service || "")
+        }
+    }
+
     ViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: compact ? 14 : 22

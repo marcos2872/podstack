@@ -126,6 +126,10 @@ flowchart TB
 - Timeout de inatividade (5 min) para clientes ociosos.
 - Log de conexões rejeitadas (uid, pid quando disponível).
 
+**Socket da GUI (instância única):** `$XDG_RUNTIME_DIR/podstack/gui.sock`, dir `0700`, socket
+`0600`, `SO_PEERCRED` (uid) e comandos allowlisted `show`/`quit`. Não é um canal RPC: só ativa ou
+encerra a janela da instância já em execução.
+
 ---
 
 ## 6. Segredos

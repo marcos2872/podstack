@@ -12,7 +12,7 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** **M3 concluído** (Compose por labels + provider, logs por serviço/agregados, builds via Libpod com histórico SQLite, eventos globais em toasts) sobre o M2 (imagens/volumes/redes/pods) e o M1 (containers, logs, stats, files, terminal, batch, health, rootful). **Onboarding/setup implementado** (`SetupManager`, `SetupWindow` com 7 etapas, `setup.*`, `podstack setup` e `podstack-helper` com polkit/allowlist); falta validar a instalação real em máquina limpa. 7 testes, cobertura 82,5% com gate de 80%. Ressalvas para o M4: buildx multi-plataforma real, stack Supabase, T2-15/T2-16 (LAN/proxy), terminal embutido e prévia de prune. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
+**Status atual:** **M3 concluído** (Compose por labels + provider, logs por serviço/agregados, builds via Libpod com histórico SQLite, eventos globais em toasts) sobre o M2 (imagens/volumes/redes/pods) e o M1 (containers, logs, stats, files, terminal, batch, health, rootful). **Onboarding/setup implementado** (`SetupManager`, `SetupWindow` com 7 etapas, `setup.*`, `podstack setup` e `podstack-helper` com polkit/allowlist); falta validar a instalação real em máquina limpa. **Bandeja implementada** (`TrayController` SNI, fechar-para-bandeja, menu de containers por projeto Compose, Activity Monitor, configurações, autostart, notificações de falha/OOM/unhealthy e instância única). 13 testes; cobertura **79,7%** após a bandeja (gate de 80% ainda não atingido; ver `docs/testing.md`). Ressalvas para o M4: buildx multi-plataforma real, stack Supabase, T2-15/T2-16 (LAN/proxy), terminal embutido e prévia de prune; tray de Machines/K8s e updates dependem de M4/M5 e T7-06. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
 
 ---
 
@@ -306,7 +306,7 @@ Uma tarefa só está concluída quando:
 
 **Engenharia:** [`docs/architecture.md`](docs/architecture.md) · [`docs/data-model.md`](docs/data-model.md) · [`docs/api-rpc.md`](docs/api-rpc.md) · [`docs/ui-map.md`](docs/ui-map.md) · [`docs/branding.md`](docs/branding.md) · [`docs/cli-parity.md`](docs/cli-parity.md) · [`docs/settings.md`](docs/settings.md) · [`docs/security.md`](docs/security.md) · [`docs/packaging.md`](docs/packaging.md) · [`docs/roadmap.md`](docs/roadmap.md)
 
-**ADRs:** [`0001`](docs/adr/0001-daemon-json-rpc.md) · [`0002`](docs/adr/0002-libpod-libcurl.md) · [`0003`](docs/adr/0003-machines-qemu-kvm.md) · [`0004`](docs/adr/0004-domains-localhost-helper.md) · [`0005`](docs/adr/0005-terminal-backend.md) · [`0006`](docs/adr/0006-rpm-first.md) · [`0007`](docs/adr/0007-compose-provider.md) · [`0008`](docs/adr/0008-docker-coexistence-setup.md)
+**ADRs:** [`0001`](docs/adr/0001-daemon-json-rpc.md) · [`0002`](docs/adr/0002-libpod-libcurl.md) · [`0003`](docs/adr/0003-machines-qemu-kvm.md) · [`0004`](docs/adr/0004-domains-localhost-helper.md) · [`0005`](docs/adr/0005-terminal-backend.md) · [`0006`](docs/adr/0006-rpm-first.md) · [`0007`](docs/adr/0007-compose-provider.md) · [`0008`](docs/adr/0008-docker-coexistence-setup.md) · [`0009`](docs/adr/0009-tray-sni-lifecycle.md)
 
 **Referência OrbStack:** [`análise do DMG`](docs/reference/orbstack-2.2.5.md) · [`notas oficiais`](docs/reference/orbstack-2.2.5-official-notes.md) · [`árvore do CLI`](docs/reference/cli-tree.json) · [`árvore legível`](docs/reference/cli-tree.md) · [`arquivos Swift`](docs/reference/swift-files.txt) · [`settings keys`](docs/reference/settings-keys.txt)
 

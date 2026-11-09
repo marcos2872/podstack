@@ -46,6 +46,9 @@ QJsonObject Config::defaults()
     QJsonObject app;
     app.insert(QStringLiteral("startAtLogin"), false);
     app.insert(QStringLiteral("waitForContainerStop"), true);
+    app.insert(QStringLiteral("keepRunningInTray"), true);
+    app.insert(QStringLiteral("showInTray"), true);
+    app.insert(QStringLiteral("notifications"), true);
     app.insert(QStringLiteral("theme"), QStringLiteral("system"));
     app.insert(QStringLiteral("language"), QStringLiteral("pt-BR"));
     app.insert(QStringLiteral("showOnboarding"), true);

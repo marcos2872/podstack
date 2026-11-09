@@ -32,6 +32,7 @@ Window {
     }
 
     readonly property var podmanCheck: checkFor("podman")
+    readonly property string podmanAction: backend.setupPodmanAction
     readonly property var dockerCheck: checkFor("docker")
     readonly property var kvmCheck: checkFor("kvm")
     readonly property var qemuCheck: checkFor("qemu")
@@ -469,8 +470,12 @@ Window {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: qsTr("Instala ou atualiza o Podman e ativa o podman.socket de usuário. "
-                                           + "A ação não altera o Docker.")
+                                text: setupWindow.podmanAction === "enable-socket"
+                                      ? qsTr("O Podman já está instalado. Esta ação ativa o "
+                                             + "podman.socket de usuário, sem precisar do helper "
+                                             + "privilegiado.")
+                                      : qsTr("Instala ou atualiza o Podman e ativa o "
+                                             + "podman.socket de usuário. A ação não altera o Docker.")
                                 color: Theme.textSecondary
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontMicro
@@ -479,14 +484,14 @@ Window {
 
                             ActionButton {
                                 text: setupWindow.podmanReady ? qsTr("Engine pronto")
-                                                              : setupWindow.podmanCheck.status === "warn"
-                                                                ? qsTr("Preparar Podman")
+                                                              : setupWindow.podmanAction === "enable-socket"
+                                                                ? qsTr("Ativar podman.socket")
                                                                 : qsTr("Instalar Podman")
                                 iconName: setupWindow.podmanReady ? "check" : "download"
                                 variant: "primary"
-                                enabled: !setupWindow.podmanReady && !setupWindow.jobActive
-                                onClicked: backend.setupApply(setupWindow.podmanCheck.status === "warn"
-                                                              ? "upgrade-podman" : "install-podman")
+                                enabled: setupWindow.podmanAction.length > 0
+                                         && !setupWindow.jobActive
+                                onClicked: backend.setupApply(setupWindow.podmanAction)
                             }
                         }
 

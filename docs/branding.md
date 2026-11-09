@@ -109,7 +109,7 @@ Contraste: texto branco sobre `#3730A3` atende AA para texto grande; para texto 
 | Contexto | Implementação |
 |---|---|
 | Ícone do app | `podstack-icon.svg` + PNGs 16–512 em `hicolor` |
-| Bandeja (SNI) | `podstack-capsule-small.svg` em 16/22/24, com variante de status (atenção/erro) |
+| Bandeja (SNI) | PNGs `podstack-tray-{16,22,24,32}.png`; badge de status (atenção `#D29922` / erro `#F85149`) desenhado em runtime sobre o ícone base |
 | Sidebar | cápsula 20 px + wordmark opcional no topo |
 | Onboarding | cápsula + wordmark, fundo escuro |
 | CLI | cápsula compacta em `--help`/`version` (sem arte pesada) |

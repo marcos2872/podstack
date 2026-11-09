@@ -109,6 +109,8 @@ interface Subscription { subscriptionId: string }
 | `system.doctor` | `{deep?:bool}` | `{checks:[{id,status,detail,remediation}]}` |
 | `system.report` | `{includeLogs?:bool}` | `{path, bytes, sha256}` |
 | `system.df` | `{}` | `{json:{ImagesSize,Images:[],Containers:[],Volumes:[]}}` |
+| `system.stats.subscribe` | `{intervalSeconds?}` | `Subscription`; notifica `system.stats.delta` |
+| `system.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 | `system.shutdown` | `{stopContainers?:bool}` | `{}` |
 
 ### 4.2 `containers.*`
@@ -342,7 +344,31 @@ Todas usam `method: "<canal>.delta"` e `params.subscriptionId`.
 { "jsonrpc":"2.0", "method":"containers.exec.exit", "params": { "sessionId":"s1", "exitCode":0 } }
 ```
 
-### 5.5 Job
+### 5.5 Stats do sistema (Activity Monitor)
+
+```json
+{ "jsonrpc":"2.0", "method":"system.stats.delta",
+  "params": {
+    "subscriptionId":"sub-3",
+    "ts": 1794180316689,
+    "host": { "cpuPercent":5.34, "memUsed":8836042752, "memTotal":25035829248,
+              "memPercent":35.29, "netRx":89, "netTx":159,
+              "diskRead":0, "diskWrite":29383281 },
+    "containers": [
+      { "id":"abc", "name":"web", "cpuPercent":0.12, "memUsed":1744896,
+        "memLimit":25035829248, "memPercent":0.01, "netRx":0, "netTx":0,
+        "diskRead":0, "diskWrite":0, "pids":1 }
+    ],
+    "totals": { "cpuPercent":0.12, "memUsed":1744896, "memLimit":25035829248,
+                "memPercent":0.01, "netRx":0, "netTx":0, "pids":1 }
+  } }
+```
+
+- Taxas de rede/disco e CPU do host são diferenças entre amostras; a primeira amostra vem zerada.
+- `intervalSeconds` é limitado a `1..10` (default `2`).
+- `system.stats.error` segue o mesmo formato de erro das demais subscriptions.
+
+### 5.6 Job
 
 ```json
 { "jsonrpc":"2.0", "method":"job.progress", "params": { "jobId":"j1", "progress":42, "message":"extraindo camada 3/5" } }

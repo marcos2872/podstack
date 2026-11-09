@@ -50,6 +50,22 @@ void StreamClient::subscribeStats(const QString &id, int intervalSeconds)
     connectSocket();
 }
 
+void StreamClient::subscribeSystemStats(int intervalSeconds)
+{
+    stop(true);
+    m_kind = QStringLiteral("system-stats");
+    m_unsubscribeMethod = QStringLiteral("system.stats.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("system.stats.subscribe")},
+        {QStringLiteral("params"),
+         QJsonObject{{QStringLiteral("intervalSeconds"), intervalSeconds}}},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
 void StreamClient::pullImage(const QString &reference, const QString &platform)
 {
     stop(true);
@@ -269,6 +285,8 @@ void StreamClient::onReadyRead()
             emit logLine(params.value(QStringLiteral("line")).toString());
         } else if (method == QStringLiteral("containers.stats.delta")) {
             emit stats(params);
+        } else if (method == QStringLiteral("system.stats.delta")) {
+            emit systemStats(params);
         } else if (method == QStringLiteral("images.pull.delta")) {
             emit pullEvent(params);
         } else if (method == QStringLiteral("compose.logs.delta")) {
@@ -305,7 +323,8 @@ void StreamClient::onReadyRead()
             m_kind.clear();
             m_socket.abort();
         } else if (method == QStringLiteral("containers.logs.error")
-                   || method == QStringLiteral("containers.stats.error")) {
+                   || method == QStringLiteral("containers.stats.error")
+                   || method == QStringLiteral("system.stats.error")) {
             emit error(params.value(QStringLiteral("error"))
                            .toObject()
                            .value(QStringLiteral("message"))

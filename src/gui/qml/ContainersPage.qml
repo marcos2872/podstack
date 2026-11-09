@@ -11,6 +11,8 @@ Item {
     property var selectedIds: ({})
     property int anchorIndex: -1
     property string currentId: ""
+    property string pendingOpenId: ""
+    property string pendingOpenTab: ""
     property string filterText: ""
     property string filter: "all"
 
@@ -100,6 +102,30 @@ Item {
             selectOnly(index)
         }
         pruneSelection()
+        applyPendingOpen()
+    }
+
+    function openContainer(id, tab) {
+        pendingOpenId = id
+        pendingOpenTab = tab
+        applyPendingOpen()
+    }
+
+    function applyPendingOpen() {
+        if (pendingOpenId.length === 0) {
+            return
+        }
+        for (let i = 0; i < visibleItems.length; ++i) {
+            if (visibleItems[i].id === pendingOpenId) {
+                currentId = pendingOpenId
+                containerList.currentIndex = i
+                selectOnly(i)
+                inspector.openTab(pendingOpenTab.length > 0 ? pendingOpenTab : "info")
+                pendingOpenId = ""
+                pendingOpenTab = ""
+                return
+            }
+        }
     }
 
     function pruneSelection() {

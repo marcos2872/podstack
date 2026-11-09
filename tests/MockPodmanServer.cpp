@@ -263,6 +263,11 @@ void MockPodmanServer::handleClient(int clientFd)
             200, "OK",
             R"({"Id":"rawcgroup","name":"raw","cpu_stats":{"cpu_usage":{"total_usage":2000},"system_cpu_usage":4000,"online_cpus":2},"precpu_stats":{"cpu_usage":{"total_usage":1000},"system_cpu_usage":2000},"memory_stats":{"usage":1024,"limit":2048},"networks":{"eth0":{"rx_bytes":10,"tx_bytes":20}},"blkio_stats":{"io_service_bytes_recursive":[{"op":"read","value":30},{"op":"write","value":40}]},"pids_stats":{"current":7}})");
     } else if (pathOnly.contains(QStringLiteral("/containers/stats"))
+               && path.contains(QStringLiteral("all=true"))) {
+        response = httpResponse(
+            200, "OK",
+            R"({"Error":null,"Stats":[{"AvgCPU":1.5,"ContainerID":"stats-a","Name":"web","CPU":1.5,"MemUsage":1048576,"MemLimit":10485760,"MemPerc":10.0,"Network":{"eth0":{"RxBytes":1000,"TxBytes":2000}},"BlockInput":100,"BlockOutput":200,"PIDs":3},{"AvgCPU":0.5,"ContainerID":"stats-b","Name":"db","CPU":0.5,"MemUsage":2097152,"MemLimit":10485760,"MemPerc":20.0,"Network":{"eth0":{"RxBytes":3000,"TxBytes":4000}},"BlockInput":300,"BlockOutput":400,"PIDs":1}]})");
+    } else if (pathOnly.contains(QStringLiteral("/containers/stats"))
                && path.contains(QStringLiteral("containers=rawstats"))) {
         response = httpResponse(
             200, "OK",

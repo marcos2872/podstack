@@ -177,15 +177,20 @@
 
 ## M7 — Desktop, settings, updates
 
+> **Status (2026-11-08):** tray implementado (`TrayController`/SNI, fechar-para-bandeja, Abrir,
+> Containers por projeto Compose, Activity Monitor, Configurações, Sair, instância única e
+> autostart). Activity Monitor e notificações de falha/OOM/unhealthy entregues; submenus de
+> Machines/Kubernetes e “Verificar atualizações” seguem bloqueados por M4/M5 e T7-06.
+
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
 | T7-01 | P0 | Settings GUI + CLI (schema, validação, sync) | T0-09 | Chaves equivalentes |
 | T7-02 | P0 | Tema claro/escuro + escala de fonte | T0-11 | Troca em runtime |
-| T7-03 | P1 | Tray SNI + menu de contexto | T0-11 | Noctalia/KDE |
-| T7-04 | P1 | Activity Monitor (gráficos + `podstack top`) | T1-07 | Dados corretos |
-| T7-05 | P1 | Notificações (OOM, falha, update, disco) | T3-07 | Respeita DND |
+| T7-03 | P1 | Bandeja SNI + menu de contexto | T0-11 | Noctalia/KDE — implementado (Abrir, Containers por projeto, Activity Monitor, Settings, Sair; fechar esconde; instância única); submenus Machines/K8s dependem de M4/M5 |
+| T7-04 | P1 | Activity Monitor (gráficos + `podstack top`) | T1-07 | Dados corretos — implementado (`system.stats.subscribe` + `ActivityMonitorWindow`); comando CLI `podstack top` pendente |
+| T7-05 | P1 | Notificações (OOM, falha, update, disco) | T3-07 | Respeita DND — implementado para OOM/falha/unhealthy (D-Bus, cooldown); update/disco pendentes |
 | T7-06 | P1 | Check de updates assinado + canal | T7-01 | Assinatura validada |
-| T7-07 | P0 | Onboarding e setup da máquina (diagnóstico, Podman, coexistência Docker, QEMU/KVM, componentes, validação) | T0-11 | Fluxo completo; reexecutável — implementado (SetupManager, SetupWindow e setup.*); validar instalação real com o helper instalado |
+| T7-07 | P0 | Onboarding e setup da máquina (diagnóstico, Podman, coexistência Docker, QEMU/KVM, componentes, validação) | T0-11 | Fluxo completo; reexecutável — implementado (SetupManager, SetupWindow e setup.*); `warn` do Podman usa `enable-socket` (sem helper); helper em dev via `scripts/dev-helper.sh`; validar instalação real em máquina limpa |
 | T7-08 | P1 | Diagnóstico/report com redaction | T0-15 | Revisão antes de enviar |
 | T7-09 | P1 | Janelas/abas múltiplas + restauração | T0-11 | Estado persiste |
 | T7-10 | P1 | Atalhos e acessibilidade | T0-11 | Teclado completo |

@@ -249,6 +249,14 @@ pergunta se o usuário quer continuar depois (`app.showOnboarding=false`) e o bo
 - Clique simples abre a janela; clique do meio abre Activity Monitor.
 - "Manter rodando ao fechar" configurável.
 
+**Implementação (2026-11-08):** `TrayController` usa `QSystemTrayIcon` + `QMenu` (SNI via
+DBusMenu no Wayland/Noctalia). O menu entrega **Abrir PodStack**, **Containers** (agrupado por
+projeto Compose, com iniciar/parar/reiniciar/logs/abrir), **Activity Monitor**, **Configurações**
+e **Sair**. O ícone reflete normal/atenção (setup pendente ou container unhealthy)/erro (daemon
+indisponível); fechar a janela esconde para a bandeja; a segunda instância foca a primeira; e o
+`SetupWindow` nunca é escondido para o tray. Pendentes: submenus de Machines/Kubernetes (M4/M5) e
+“Verificar atualizações” (T7-06).
+
 ---
 
 ## 10. Design tokens

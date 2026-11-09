@@ -1,5 +1,7 @@
 #include "MockPodmanServer.h"
 
+#include "core/Config.h"
+#include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
 
@@ -33,6 +35,9 @@ private slots:
     void backendErrors();
     void backendTheme();
     void backendSetup();
+    void backendTray();
+    void backendActivityMonitor();
+    void guiStartsAndQuits();
 
 private:
     QProcessEnvironment daemonEnvironment() const;
@@ -505,6 +510,102 @@ void GuiTest::backendTheme()
     QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
              QStringLiteral("system"));
     QVERIFY(actionSpy.count() >= 2);
+}
+
+void GuiTest::backendTray()
+{
+    PodStack::Backend backend;
+    QSignalSpy containersSpy(&backend, &PodStack::Backend::containersChanged);
+    QTRY_VERIFY_WITH_TIMEOUT(containersSpy.count() > 0, 5000);
+    QCOMPARE(backend.containers().size(),
+             containersSpy.last().at(0).value<QVariantList>().size());
+
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    backend.lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
+    QVERIFY(backend.actionActive());
+    backend.lifecycle(QStringLiteral("unpause"), QStringLiteral("abc123"));
+    QVERIFY(backend.actionActive());
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() >= 2, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.actionActive(), 5000);
+
+    backend.saveTraySettings(false, false, true, false);
+    const QVariantMap settings = backend.settings();
+    QCOMPARE(settings.value(QStringLiteral("keepRunningInTray")).toBool(), false);
+    QCOMPARE(settings.value(QStringLiteral("showInTray")).toBool(), false);
+    QCOMPARE(settings.value(QStringLiteral("startAtLogin")).toBool(), true);
+    QCOMPARE(settings.value(QStringLiteral("notifications")).toBool(), false);
+    QVERIFY(QFile::exists(PodStack::Autostart::filePath()));
+
+    backend.saveTraySettings(true, true, false, true);
+    QVERIFY(!QFile::exists(PodStack::Autostart::filePath()));
+}
+
+void GuiTest::guiStartsAndQuits()
+{
+    PodStack::Config config = PodStack::Config::load();
+    config.set(QStringLiteral("app.showInTray"), false);
+    QString error;
+    QVERIFY2(config.save(&error), qPrintable(error));
+
+    const QString runtimeDir = m_testDataDir + QStringLiteral("/runtime");
+    QDir().mkpath(runtimeDir);
+    QFile::setPermissions(runtimeDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                         | QFileDevice::ExeOwner);
+    const QString guiPath =
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../podstack-gui"));
+
+    QProcessEnvironment environment = daemonEnvironment();
+    environment.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+    environment.insert(QStringLiteral("QT_QUICK_BACKEND"), QStringLiteral("software"));
+    environment.insert(QStringLiteral("XDG_RUNTIME_DIR"), runtimeDir);
+
+    QProcess gui;
+    gui.setProcessEnvironment(environment);
+    gui.setProcessChannelMode(QProcess::ForwardedChannels);
+    gui.start(guiPath, {QStringLiteral("--hidden")});
+    QVERIFY2(gui.waitForStarted(5000), qPrintable(gui.errorString()));
+
+    const QString instanceSocket = runtimeDir + QStringLiteral("/podstack/gui.sock");
+    for (int attempt = 0; attempt < 100 && !QFileInfo::exists(instanceSocket); ++attempt) {
+        QTest::qWait(50);
+    }
+    QVERIFY(QFileInfo::exists(instanceSocket));
+
+    QProcess quit;
+    quit.setProcessEnvironment(environment);
+    quit.start(guiPath, {QStringLiteral("--quit")});
+    QVERIFY(quit.waitForFinished(5000));
+    QCOMPARE(quit.exitCode(), 0);
+
+    QVERIFY(gui.waitForFinished(5000));
+    QCOMPARE(gui.exitCode(), 0);
+
+    config.set(QStringLiteral("app.showInTray"), true);
+    QVERIFY2(config.save(&error), qPrintable(error));
+}
+
+void GuiTest::backendActivityMonitor()
+{
+    PodStack::Backend backend;
+    QSignalSpy activitySpy(&backend, &PodStack::Backend::activityChanged);
+
+    backend.startActivityMonitor();
+    QVERIFY(backend.activityActive());
+    QTRY_VERIFY_WITH_TIMEOUT(activitySpy.count() > 1, 7000);
+    QTRY_COMPARE(backend.activityStats()
+                     .value(QStringLiteral("containers"))
+                     .toList()
+                     .size(),
+                 2);
+    QVERIFY(backend.activityStats()
+                .value(QStringLiteral("host"))
+                .toMap()
+                .value(QStringLiteral("memTotal"))
+                .toLongLong()
+            > 0);
+
+    backend.stopActivityMonitor();
+    QVERIFY(!backend.activityActive());
 }
 
 void GuiTest::backendSetup()

@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "podman/UnixHttpClient.h"
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QMap>
 #include <QString>
@@ -181,6 +182,9 @@ public:
     bool streamStats(const QString &id, int intervalSeconds,
                      const std::function<bool(const QByteArray &)> &onLine,
                      std::atomic_bool *cancel, Error *error = nullptr);
+
+    /// Snapshot de stats de todos os containers (uma chamada ao Libpod).
+    bool statsSnapshot(QJsonArray *containers, Error *error = nullptr);
 
     bool streamEvents(const std::function<bool(const QByteArray &)> &onData,
                       std::atomic_bool *cancel, Error *error = nullptr);

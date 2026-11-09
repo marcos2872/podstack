@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
+#include "daemon/StatsCollector.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -14,6 +15,9 @@
 #include <QRegularExpression>
 #include <QStringList>
 #include <QtConcurrent>
+
+#include <chrono>
+#include <thread>
 
 namespace PodStack {
 namespace {
@@ -271,8 +275,12 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("containers.stats.subscribe")) {
         return subscribeStats(params, notify, error);
     }
+    if (method == QStringLiteral("system.stats.subscribe")) {
+        return subscribeSystemStats(params, notify, error);
+    }
     if (method == QStringLiteral("containers.logs.unsubscribe")
         || method == QStringLiteral("containers.stats.unsubscribe")
+        || method == QStringLiteral("system.stats.unsubscribe")
         || method == QStringLiteral("images.pull.unsubscribe")
         || method == QStringLiteral("images.push.unsubscribe")
         || method == QStringLiteral("compose.logs.unsubscribe")
@@ -809,6 +817,48 @@ QJsonObject Daemon::subscribeStats(const QJsonObject &params, const Notify &noti
             payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
             payload.insert(QStringLiteral("error"), streamError.toJson());
             notify(QStringLiteral("containers.stats.error"), payload);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::subscribeSystemStats(const QJsonObject &params, const Notify &notify,
+                                         Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    const int interval = qBound(1, params.value(QStringLiteral("intervalSeconds")).toInt(2), 10);
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+
+    (void)QtConcurrent::run([this, interval, subscriptionId, subscription, notify] {
+        StatsCollector collector;
+        while (!subscription->cancel.load()) {
+            Error sampleError;
+            QJsonObject sample = collector.sample(m_podman, &sampleError);
+            if (!sample.isEmpty()) {
+                sample.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                notify(QStringLiteral("system.stats.delta"), sample);
+            } else if (!sampleError.isEmpty()) {
+                QJsonObject payload;
+                payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                payload.insert(QStringLiteral("error"), sampleError.toJson());
+                notify(QStringLiteral("system.stats.error"), payload);
+                break;
+            }
+
+            for (int tick = 0; tick < interval * 10; ++tick) {
+                if (subscription->cancel.load()) {
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
         }
         removeSubscription(subscriptionId);
     });

@@ -144,6 +144,24 @@ ProtectControlGroups=yes
   de pacotes. A proteção efetiva é a allowlist fechada de pacotes + polkit + auditoria no journal.
 - O helper nunca recebe `Exec`/shell; cada método monta `dnf`/`apt-get`/`pacman` com argumentos fixos.
 
+### 4.1 Helper em desenvolvimento
+
+`scripts/dev.sh` sobe apenas daemon/GUI do usuário e **não** instala o helper (que é root).
+Para testar ações de setup que instalam/removem pacotes em uma máquina de dev:
+
+```bash
+cmake --build --preset dev
+./scripts/dev-helper.sh          # pede confirmação e usa sudo
+./scripts/dev-helper.sh --yes    # não interativo
+./scripts/dev-helper.sh --uninstall
+```
+
+O script copia o binário do build para `/usr/libexec/podstack`, a unit para
+`/usr/lib/systemd/system`, a política polkit e o D-Bus conf; depois habilita/inicia o serviço e
+tenta recarregar o `dbus-broker`. Reinicie a sessão/máquina se o system bus ainda não tiver lido a
+política. Para o caso comum de **Podman instalado e só `podman.socket` inativo**, não é necessário
+helper: o setup usa `enable-socket` (`systemctl --user enable --now podman.socket`).
+
 ---
 
 ## 5. polkit

@@ -62,6 +62,7 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 | [`adr/0006-rpm-first.md`](adr/0006-rpm-first.md) | RPM como formato primário |
 | [`adr/0007-compose-provider.md`](adr/0007-compose-provider.md) | Compose via provider Docker Compose + labels |
 | [`adr/0008-docker-coexistence-setup.md`](adr/0008-docker-coexistence-setup.md) | Docker e Podman coexistem; setup não destrutivo e remoção opt-in |
+| [`adr/0009-tray-sni-lifecycle.md`](adr/0009-tray-sni-lifecycle.md) | Bandeja SNI (`QSystemTrayIcon`), fechar-para-bandeja e instância única |
 
 ## Referência
 
