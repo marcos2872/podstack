@@ -22,7 +22,7 @@ Item {
     readonly property bool podmanReady: podmanCheck.status === "ok"
     readonly property bool dockerPresent: (dockerCheck.detail || "").indexOf("coexistindo") >= 0
     readonly property bool kvmReady: kvmCheck.status === "ok"
-    readonly property bool caddyInstalled: (caddyCheck.detail || "").indexOf("Caddy instalado") >= 0
+    readonly property bool caddyInstalled: caddyCheck.status === "ok"
     readonly property bool validated: backend.setupMandatoryOk
     readonly property bool jobPanelVisible: !jobPanelDismissed
                                             && (jobActive
