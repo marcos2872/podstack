@@ -112,7 +112,7 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 | [`assets/podstack-layers.svg`](assets/podstack-layers.svg) | Símbolo secundário (camadas) |
 | [`assets/podstack-capsule-small.svg`](assets/podstack-capsule-small.svg) | Cápsula compacta para 16–24 px |
 | [`assets/podstack-icon.svg`](assets/podstack-icon.svg) | Ícone do app (256×256) |
-| [`assets/png/`](assets/png/) | Ícones PNG 16–512 e bandeja 16/22/24/32 |
+| [`assets/png/`](assets/png/) | Ícones PNG 16–512 e bandeja 16/22/24/32/48/64 |
 | [`assets/favicon.ico`](assets/favicon.ico) / [`favicon-32.png`](assets/favicon-32.png) | Favicon multi-size e PNG 32×32 |
 | [`assets/og-image.png`](assets/og-image.png) / [`og-image.svg`](assets/og-image.svg) | Open Graph 1200×630 |
 | [`assets/podstack_logo_concepts.svg`](assets/podstack_logo_concepts.svg) | Folha histórica de conceitos |

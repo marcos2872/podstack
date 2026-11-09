@@ -25,7 +25,7 @@ bool configBool(const QString &key, bool fallback)
 QIcon makeTrayIcon(const QString &status)
 {
     QIcon icon;
-    for (int size : {16, 22, 24, 32}) {
+    for (int size : {16, 22, 24, 32, 48, 64}) {
         QPixmap pixmap(QStringLiteral(":/qt/qml/PodStack/assets/png/tray/podstack-tray-%1.png")
                            .arg(size));
         if (pixmap.isNull()) {

@@ -244,11 +244,12 @@ Detalhes em [`docs/security.md`](docs/security.md).
 - Usar os arquivos em [`assets/`](assets/) e as regras em [`docs/branding.md`](docs/branding.md):
   - `podstack-capsule.svg` — símbolo principal
   - `podstack-layers.svg` — símbolo secundário
-  - `podstack-capsule-small.svg` — 16–24 px (bandeja/favicon)
+  - `podstack-capsule-small.svg` — 16–24 px (favicon)
+  - `podstack-capsule-tray.svg` — 16–64 px (bandeja)
   - `podstack-icon.svg` — ícone do app
   - `podstack-logo.svg` — lockup (cápsula + wordmark)
   - `png/podstack-icon-*.png` — ícones 16–512 para `hicolor`
-  - `png/tray/*` — bandeja 16/22/24/32
+  - `png/tray/*` — bandeja 16/22/24/32/48/64
   - `favicon.ico` / `favicon-32.png` — favicon
   - `og-image.png` — Open Graph 1200×630
 - Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`.

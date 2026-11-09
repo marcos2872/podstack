@@ -42,6 +42,8 @@ qt_add_resources(test_tray "tray_icons"
         ../assets/png/tray/podstack-tray-22.png
         ../assets/png/tray/podstack-tray-24.png
         ../assets/png/tray/podstack-tray-32.png
+        ../assets/png/tray/podstack-tray-48.png
+        ../assets/png/tray/podstack-tray-64.png
 )
 add_test(NAME tray COMMAND test_tray)
 set_tests_properties(tray PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

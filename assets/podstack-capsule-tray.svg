@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Variante da cápsula para a bandeja: mesma paleta e blocos, com o corpo
+     mais alto para preencher melhor o slot quadrado do SNI em 16–64 px. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img"
+     aria-labelledby="title desc">
+  <title id="title">PodStack — cápsula para bandeja</title>
+  <desc id="desc">Cápsula compacta com proporção mais alta para a bandeja do sistema.</desc>
+  <rect x="0.5" y="3" width="31" height="26" rx="13" fill="#3730A3"/>
+  <rect x="7.5" y="9.5" width="7.5" height="13" rx="3.5" fill="#22D3EE"/>
+  <rect x="17" y="9.5" width="7.5" height="13" rx="3.5" fill="#6366F1"/>
+</svg>

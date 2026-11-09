@@ -6,7 +6,7 @@ Esses três conceitos partem do nome (Pod + Stack) e do que o PRD pede: containe
 - **Camadas e integração:** o PRD vende "uma única experiência" para containers, VMs, K8s e domínios locais, então uma pilha ou um agrupamento funciona bem.
 - **Velocidade e leveza:** as metas são startup abaixo de 1 s e uso baixo de memória. Formas simples e geometria limpa passam essa ideia.
 - **Identidade própria:** o princípio 7 do PRD pede paleta e ícones originais, sem copiar o OrbStack. Por isso evitei esferas e órbitas, que são o território visual dele, e também a baleia do Docker e a paleta roxa/lilás típica do Podman.
-- **Funcionar em tamanho pequeno:** o ícone vai aparecer na bandeja do sistema (StatusNotifierItem), na sidebar e no launcher do Fedora. Ele tem que ser legível com 16–24 px, em modo escuro e claro.
+- **Funcionar em tamanho pequeno:** o ícone vai aparecer na bandeja do sistema (StatusNotifierItem), na sidebar e no launcher do Fedora. Ele tem que ser legível com 16–64 px, em modo escuro e claro.
 
 **Como eu avaliaria cada direção**
 1. **Camadas:** é a mais literal, e a barra ciano no topo dá um ponto de destaque. É clara e fácil de reduzir, mas pode parecer genérica, porque pilhas são comuns em produtos de infraestrutura.
