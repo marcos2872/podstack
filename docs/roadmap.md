@@ -122,6 +122,10 @@ gantt
 
 ### M4 — Machines (4 semanas)
 
+**Status:** **em andamento** — T4-01 (registry/cache de imagens), T4-02 (seed cloud-init)
+e T4-03 (qcow2/QEMU/QMP + RPC/CLI + ciclo de vida) concluídas em 2026-11-09. SSH, logs,
+virtiofs, arquivos, export/import e clones seguem nas tarefas seguintes.
+
 **Objetivo:** VMs Linux integradas (J2).
 
 **Entregáveis:**
