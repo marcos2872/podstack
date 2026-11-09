@@ -85,6 +85,16 @@ public:
     MachineMeta restart(const QString &idOrName, Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
     bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
+    /// Renomeia a machine, atualiza o bloco SSH e a máquina default do Config.
+    MachineMeta rename(const QString &idOrName, const QString &newName, Error *error = nullptr);
+    /// Cria uma cópia independente (disco próprio, chave/seed copiados e nova porta).
+    MachineMeta clone(const QString &idOrName, const QString &newName,
+                      const std::function<void(const QString &stage, int progress)> &progress,
+                      const std::function<bool()> &cancelled, Error *error = nullptr);
+    /// Nome da máquina default do CLI (`machines.default`); vazio quando não definida.
+    QString defaultMachine(Error *error = nullptr);
+    /// Define a máquina default do CLI; aceita ID ou nome e grava o nome canônico.
+    bool setDefaultMachine(const QString &idOrName, Error *error = nullptr);
     /// Empacota a machine em `.tar.zst` (pausa e reinicia se estava rodando).
     MachineMeta exportMachine(const QString &idOrName, const QString &archivePath, bool force,
                               const std::function<void(const QString &stage, int progress)>
@@ -115,7 +125,8 @@ private:
     bool createDisk(const QString &diskPath, const QString &backingPath, qint64 diskBytes,
                     Error *error);
     bool flattenDisk(const QString &diskPath, const QString &targetPath,
-                     const std::function<bool()> &cancelled, Error *error);
+                     const std::function<bool()> &cancelled, Error *error,
+                     const QString &operation = QStringLiteral("Exportação"));
     QString qemuImgBinary(Error *error) const;
     bool ensureSshKey(const QString &directory, const QString &name, QString *privatePath,
                       QString *publicKey, Error *error);

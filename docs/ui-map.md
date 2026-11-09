@@ -271,7 +271,9 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   o botão **SSH** do card lateral abre direto na aba Terminal (`tab=3`).
 - Ações de ciclo de vida continuam no cabeçalho; **Exportar** abre o diálogo de
   arquivo `.tar.zst` (com progresso e cancelamento) e **Excluir** pede confirmação
-  nativa e fecha o overlay após remover.
+  nativa e fecha o overlay após remover. **Renomear** abre um diálogo só com o novo nome
+  (`machines.rename`) e **Clonar** pede o nome da cópia e acompanha o job de clone com o
+  mesmo bloco de progresso/erro do export/import (`archiveStageLabel` + `machineCreate*`).
 
 ---
 
@@ -282,10 +284,10 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 | Criar container | imagem, nome, comando, portas, env, volumes, workdir, user, flags, recursos, expor na LAN | imagem existente/pull; nome único; portas válidas; helper para LAN |
 | Criar rede | nome, driver, subnet4, gateway, IPv6, labels | CIDR válido; sem sobreposição |
 | Criar máquina | distro/versão, nome, CPU/mem/disco, user, user-data, mounts (`origem:destino[:ro]`, até 8), isolado, SSH agent | recursos mínimos; nome único; YAML válido; mounts absolutos/existentes e tags seguras |
-| Clonar máquina | origem, novo nome | nome único |
+| Clonar máquina | novo nome; progresso (`stopping`/`disk`/`copy`/`metadata`/`starting`) | nome único; RFC 1123 |
 | Exportar máquina | arquivo `.tar.zst`, substituir | caminho absoluto; padrão em `~/Downloads/<nome>.tar.zst` |
 | Importar máquina | arquivo `.tar.zst`, nome, substituir | checksum/manifesto; nome RFC 1123 |
-| Renomear | novo nome | RFC 1123 |
+| Renomear | novo nome | nome único; RFC 1123 |
 | Confirmar remoção | lista + impacto | requer confirmação ou `force` |
 | Reset Docker/K8s | escopo + aviso | digitar nome/`--yes` |
 | Instalar helper/CLI | explicação + polkit | consentimento |

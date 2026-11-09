@@ -93,6 +93,9 @@ private:
     QJsonObject machineCancel(const QJsonObject &params, Error *error);
     QJsonObject machineExport(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject machineImport(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject machineRename(const QJsonObject &params, Error *error);
+    QJsonObject machineClone(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject machineDefault(const QJsonObject &params, Error *error);
     QJsonObject machineAction(const QString &method, const QJsonObject &params, Error *error);
     QJsonObject machineDelete(const QJsonObject &params, Error *error);
     QJsonObject machineLogs(const QJsonObject &params, Error *error);

@@ -81,7 +81,7 @@ o conteúdo não é mesclado.
 
 | Chave | Tipo | Default | Reinício | Descrição |
 |---|---|---|---|---|
-| `machines.default` | string? | `null` | não | Máquina default do CLI |
+| `machines.default` | string? | `null` | não | Máquina default do CLI (T4-10: get/set via `machine default`; limpa ao remover a machine) |
 | `machines.forwardPorts` | bool | `true` | não | Encaminha portas da máquina ao host |
 | `machines.exposePortsToLan` | bool | `false` | não | Expõe portas da máquina na LAN |
 | `machines.cpus` | int | `2` | não | Default de CPUs (1..N) |

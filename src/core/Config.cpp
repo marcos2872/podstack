@@ -70,6 +70,7 @@ QJsonObject Config::defaults()
     network.insert(QStringLiteral("domainsMode"), QStringLiteral("localhost"));
 
     QJsonObject machines;
+    machines.insert(QStringLiteral("default"), QJsonValue::Null);
     machines.insert(QStringLiteral("forwardPorts"), true);
     machines.insert(QStringLiteral("exposePortsToLan"), false);
 

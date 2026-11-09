@@ -664,12 +664,14 @@ void CliTest::machineSsh()
     QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
 
     result = run({QStringLiteral("machine"), QStringLiteral("ssh")}, env);
-    QCOMPARE(result.code, 2);
-    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("Nenhuma machine default definida")));
+    QVERIFY(result.err.contains(QStringLiteral("machine default <nome>")));
 
     result = run({QStringLiteral("ssh")}, env);
-    QCOMPARE(result.code, 2);
-    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("Nenhuma machine default definida")));
+    QVERIFY(result.err.contains(QStringLiteral("machine default <nome>")));
 
     const QString binDir = m_testDataDir + QStringLiteral("/bin");
     QVERIFY(QDir().mkpath(binDir));

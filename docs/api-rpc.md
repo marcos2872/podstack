@@ -264,10 +264,10 @@ Regras de normalização:
 
 ### 4.6 `machines.*`
 
-Implementados na T4-03 (M4), T4-06, T4-07 e T4-08: registry, listagem, inspeção, criação
-assíncrona, logs do console, ciclo de vida, mounts virtiofs e arquivos. A T4-04 adiciona
-`machines.ssh` (chave ed25519 e bloco gerenciado no `~/.ssh/config`). Os demais métodos
-continuam planejados para as tarefas seguintes.
+Implementados na T4-03 (M4), T4-06, T4-07, T4-08 e T4-10: registry, listagem, inspeção,
+criação assíncrona, logs do console, ciclo de vida, mounts virtiofs, arquivos, clone/rename e
+a machine default do CLI. A T4-04 adiciona `machines.ssh` (chave ed25519 e bloco gerenciado
+no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas seguintes.
 
 | Método | Params | Result |
 |---|---|---|
@@ -282,6 +282,9 @@ continuam planejados para as tarefas seguintes.
 | `machines.delete` | `{id, force?}` | `{deleted:true}` |
 | `machines.export` | `{id, path, force?}` | `JobRef` + `Subscription` |
 | `machines.import` | `{path, name?, force?}` | `JobRef` + `Subscription` |
+| `machines.rename` | `{id, name}` | `Machine` |
+| `machines.clone` | `{id, name}` | `JobRef` + `Subscription` |
+| `machines.default` | `{name?}` | `{name}` (sem `name` = get; com `name` = set) |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile}` |
 | `machines.files.list` | `{id, path?}` | `{path, items: MachineFile[]}` |
@@ -295,8 +298,6 @@ continuam planejados para as tarefas seguintes.
 
 | Método | Params | Result | Tarefa |
 |---|---|---|---|
-| `machines.rename` | `{id, name}` | `Machine` | T4-10 |
-| `machines.clone` | `{id, name}` | `JobRef` | T4-10 |
 | `machines.ports.list` / `set` | `{id, ports?}` | `{items}` | T4-12 |
 | `machines.console` | `{id}` | `Subscription` (stream serial) | T4-15 |
 
@@ -365,6 +366,21 @@ aceita o `jobId` dos dois jobs. Export/import são serializados entre si e uma
 segunda operação na mesma machine (start/stop/restart/delete/export) retorna
 `PODSTACK_CONFLICT` enquanto o job estiver em andamento. O arquivo final fica
 `0600` (contém a chave privada SSH da machine).
+
+**Clone/rename/default (T4-10).** `machines.rename {id, name}` valida o nome RFC 1123 e
+recusa machines em `provisioning`/`deleting` ou com o nome já usado por outra machine
+(`PODSTACK_CONFLICT`). O método remove o bloco SSH antigo, troca o nome em `meta.json`/SQLite,
+recria o bloco SSH e atualiza `machines.default` quando ele apontava para o nome antigo.
+`machines.clone {id, name}` cria uma machine independente: para a origem se estiver rodando,
+gera um novo ID/porta, converte o disco para um qcow2 autocontido com `qemu-img convert`,
+copia `seed.iso`, `id_ed25519` e `id_ed25519.pub`, grava metadados/bloco SSH e deixa a cópia
+`stopped` com apenas a porta SSH e sem mounts; a origem volta a rodar ao final (sucesso ou
+falha). O job emite `machines.delta {jobId, stage, progress}` com `stopping`, `disk`, `copy`,
+`metadata`, `starting` e `done` e termina em `machines.done {jobId, name, machine?, error?}`.
+Cancelamento usa `machines.cancel` e termina em `PODSTACK_CANCELLED`, apagando diretório,
+store e bloco SSH parciais. `machines.default {name?}` lê ou grava a chave
+`machines.default` do Config (aceita ID ou nome e persiste o nome canônico); machine
+inexistente retorna `PODSTACK_NOT_FOUND`. Remover a machine default limpa a chave.
 
 **Logs do console.** `machines.logs` resolve `id` ou nome e lê apenas
 `machines/<id>/console.log`, sem expor o caminho na resposta. O arquivo precisa ser regular

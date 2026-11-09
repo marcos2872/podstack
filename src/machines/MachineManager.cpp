@@ -52,6 +52,20 @@ Error invalidParams(const QString &message, const QString &detail = {},
     return Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"), message, detail, remediation);
 }
 
+bool validMachineName(const QString &name)
+{
+    static const QRegularExpression pattern(
+        QStringLiteral("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"));
+    return !name.isEmpty() && name.size() <= 63 && pattern.match(name).hasMatch();
+}
+
+Error invalidMachineName(const QString &name)
+{
+    return invalidParams(QStringLiteral("Nome de machine inválido."), name,
+                         QStringLiteral("Use 1..63 caracteres [a-z0-9-], começando e "
+                                        "terminando por letra ou número."));
+}
+
 bool fails(Error *error, const Error &value)
 {
     if (error) {
@@ -235,15 +249,8 @@ bool MachineManager::kvmAvailable()
 
 bool MachineManager::validate(const CreateMachineRequest &request, Error *error) const
 {
-    static const QRegularExpression namePattern(
-        QStringLiteral("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"));
-
-    if (request.name.isEmpty() || request.name.size() > 63
-        || !namePattern.match(request.name).hasMatch()) {
-        return fails(error,
-                     invalidParams(QStringLiteral("Nome de machine inválido."), request.name,
-                                   QStringLiteral("Use 1..63 caracteres [a-z0-9-], começando e "
-                                                  "terminando por letra ou número.")));
+    if (!validMachineName(request.name)) {
+        return fails(error, invalidMachineName(request.name));
     }
     if (request.cpus < 1 || request.cpus > kMaximumCpus) {
         return fails(error,
@@ -882,7 +889,8 @@ bool MachineManager::createDisk(const QString &diskPath, const QString &backingP
 }
 
 bool MachineManager::flattenDisk(const QString &diskPath, const QString &targetPath,
-                                 const std::function<bool()> &cancelled, Error *error)
+                                 const std::function<bool()> &cancelled, Error *error,
+                                 const QString &operation)
 {
     const QString binary = qemuImgBinary(error);
     if (binary.isEmpty()) {
@@ -921,7 +929,7 @@ bool MachineManager::flattenDisk(const QString &diskPath, const QString &targetP
                 QFile::remove(targetPath);
                 return fails(error,
                              Error::make(QStringLiteral("PODSTACK_CANCELLED"),
-                                         QStringLiteral("Exportação cancelada.")));
+                                         QStringLiteral("%1 cancelada.").arg(operation)));
             }
             if (timer.elapsed() > kExportTimeoutMs) {
                 process.kill();
@@ -1743,6 +1751,16 @@ bool MachineManager::remove(const QString &idOrName, bool force, Error *error)
         qCWarning(lcCore) << "Não foi possível remover o bloco SSH da machine" << meta.name
                           << sshConfigError.code;
     }
+
+    Config config = Config::load();
+    if (config.get(QStringLiteral("machines.default")).toString() == meta.name) {
+        config.set(QStringLiteral("machines.default"), QJsonValue::Null);
+        QString configError;
+        if (!config.save(&configError)) {
+            qCWarning(lcCore) << "Não foi possível limpar a machine default ao remover"
+                              << meta.name << configError;
+        }
+    }
     return true;
 }
 
@@ -2200,6 +2218,429 @@ MachineMeta MachineManager::importMachine(
         progress(QStringLiteral("done"), 100);
     }
     return meta;
+}
+
+MachineMeta MachineManager::rename(const QString &idOrName, const QString &newName,
+                                   Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    MachineMeta meta = load(idOrName, error);
+    if (meta.id.isEmpty()) {
+        return {};
+    }
+    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("deleting")
+        || meta.state == QStringLiteral("deleted")) {
+        fails(error,
+              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                          QStringLiteral("A machine está em transição; tente novamente."),
+                          meta.id));
+        return {};
+    }
+
+    std::shared_ptr<std::recursive_mutex> lockHolder;
+    std::unique_lock<std::recursive_mutex> machineGuard;
+    if (!tryLockMachine(meta.id, &lockHolder, &machineGuard)) {
+        fails(error,
+              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                          QStringLiteral("A machine está em outra operação."), meta.id,
+                          QStringLiteral("Aguarde a operação atual terminar.")));
+        return {};
+    }
+
+    const QString targetName = newName.trimmed();
+    if (targetName == meta.name) {
+        return meta;
+    }
+    if (!validMachineName(targetName)) {
+        fails(error, invalidMachineName(targetName));
+        return {};
+    }
+
+    Error listError;
+    const QVector<MachineMeta> existing = existingMachines(&listError);
+    if (!listError.isEmpty()) {
+        if (error) {
+            *error = listError;
+        }
+        return {};
+    }
+    for (const MachineMeta &machine : existing) {
+        if (machine.id != meta.id && machine.name == targetName) {
+            fails(error,
+                  Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                              QStringLiteral("Já existe uma machine com esse nome."), targetName,
+                              QStringLiteral("Escolha outro nome.")));
+            return {};
+        }
+    }
+
+    const QString oldName = meta.name;
+    Error sshError;
+    if (!m_sshConfig.remove(oldName, &sshError)) {
+        if (error) {
+            *error = sshError;
+        }
+        return {};
+    }
+
+    meta.name = targetName;
+    Error persistError;
+    if (!persist(meta, &persistError)) {
+        meta.name = oldName;
+        persist(meta, nullptr);
+        m_sshConfig.sync(meta, meta.forwardSshAgent, nullptr);
+        if (error) {
+            *error = persistError;
+        }
+        return {};
+    }
+
+    Error syncError;
+    if (!m_sshConfig.sync(meta, meta.forwardSshAgent, &syncError)) {
+        meta.name = oldName;
+        persist(meta, nullptr);
+        m_sshConfig.remove(targetName, nullptr);
+        m_sshConfig.sync(meta, meta.forwardSshAgent, nullptr);
+        if (error) {
+            *error = syncError;
+        }
+        return {};
+    }
+
+    Config config = Config::load();
+    if (config.get(QStringLiteral("machines.default")).toString() == oldName) {
+        config.set(QStringLiteral("machines.default"), targetName);
+        QString configError;
+        if (!config.save(&configError)) {
+            qCWarning(lcCore) << "Não foi possível atualizar a machine default após o rename:"
+                              << configError;
+        }
+    }
+
+    return meta;
+}
+
+MachineMeta MachineManager::clone(
+    const QString &idOrName, const QString &newName,
+    const std::function<void(const QString &, int)> &progress,
+    const std::function<bool()> &cancelled, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    MachineMeta source = load(idOrName, error);
+    if (source.id.isEmpty()) {
+        return {};
+    }
+    if (source.state == QStringLiteral("provisioning")
+        || source.state == QStringLiteral("deleting")
+        || source.state == QStringLiteral("deleted")) {
+        fails(error,
+              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                          QStringLiteral("A machine está em transição; tente novamente."),
+                          source.id));
+        return {};
+    }
+
+    std::shared_ptr<std::recursive_mutex> lockHolder;
+    std::unique_lock<std::recursive_mutex> machineGuard;
+    if (!tryLockMachine(source.id, &lockHolder, &machineGuard)) {
+        fails(error,
+              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                          QStringLiteral("A machine está em outra operação."), source.id,
+                          QStringLiteral("Aguarde a operação atual terminar.")));
+        return {};
+    }
+
+    const QString targetName = newName.trimmed();
+    if (!validMachineName(targetName)) {
+        fails(error, invalidMachineName(targetName));
+        return {};
+    }
+
+    Error listError;
+    QVector<MachineMeta> existing = existingMachines(&listError);
+    if (!listError.isEmpty()) {
+        if (error) {
+            *error = listError;
+        }
+        return {};
+    }
+    if (nameExists(existing, targetName)) {
+        fails(error,
+              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                          QStringLiteral("Já existe uma machine com esse nome."), targetName,
+                          QStringLiteral("Escolha outro nome.")));
+        return {};
+    }
+
+    const auto cancelledNow = [&cancelled]() {
+        return cancelled && cancelled();
+    };
+    if (cancelledNow()) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CANCELLED"),
+                                 QStringLiteral("Clonagem cancelada.")));
+        return {};
+    }
+
+    const QemuSpec spec = specFor(source, false, error);
+    if (spec.machineId.isEmpty()) {
+        return {};
+    }
+    const bool wasRunning = source.state == QStringLiteral("running")
+                            || source.state == QStringLiteral("starting")
+                            || m_runtime->isRunning(spec, nullptr);
+    if (wasRunning) {
+        if (progress) {
+            progress(QStringLiteral("stopping"), 5);
+        }
+        Error stopError;
+        source = stop(source.id, false, &stopError);
+        if (!stopError.isEmpty()) {
+            if (error) {
+                *error = stopError;
+            }
+            return {};
+        }
+    }
+
+    const QString sourceId = source.id;
+    const auto resume = [this, wasRunning, sourceId]() {
+        if (!wasRunning) {
+            return;
+        }
+        Error resumeError;
+        start(sourceId, &resumeError);
+        if (!resumeError.isEmpty()) {
+            qCWarning(lcCore) << "Falha ao reiniciar a machine" << sourceId
+                              << "após a clonagem:" << resumeError.code;
+        }
+    };
+
+    if (cancelledNow()) {
+        resume();
+        fails(error, Error::make(QStringLiteral("PODSTACK_CANCELLED"),
+                                 QStringLiteral("Clonagem cancelada.")));
+        return {};
+    }
+
+    const int sshPort = findFreePort(existing, error);
+    if (sshPort == 0) {
+        resume();
+        return {};
+    }
+
+    const QString id = newUuidV7();
+    const QString directory = machineDirFor(id);
+    if (directory.isEmpty() || QFileInfo::exists(directory)) {
+        resume();
+        fails(error, Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                 QStringLiteral("Falha ao gerar o identificador da machine.")));
+        return {};
+    }
+
+    QDir rootDirectory;
+    if (!rootDirectory.mkpath(m_options.machinesRoot) || !rootDirectory.mkpath(directory)) {
+        resume();
+        fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível criar o diretório da machine."),
+                                 directory));
+        return {};
+    }
+    setOwnerOnly(m_options.machinesRoot, true);
+    setOwnerOnly(directory, true);
+
+    const auto cleanup = [this, directory, id, targetName]() {
+        QDir(directory).removeRecursively();
+        m_store.remove(id, nullptr);
+        m_sshConfig.remove(targetName, nullptr);
+    };
+
+    const QString diskPath = directory + QStringLiteral("/disk.qcow2");
+    if (progress) {
+        progress(QStringLiteral("disk"), 10);
+    }
+    Error flattenError;
+    if (!flattenDisk(source.diskPath, diskPath, cancelled, &flattenError,
+                     QStringLiteral("Clonagem"))) {
+        cleanup();
+        resume();
+        if (error) {
+            *error = flattenError;
+        }
+        return {};
+    }
+    if (cancelledNow()) {
+        cleanup();
+        resume();
+        fails(error, Error::make(QStringLiteral("PODSTACK_CANCELLED"),
+                                 QStringLiteral("Clonagem cancelada.")));
+        return {};
+    }
+    if (progress) {
+        progress(QStringLiteral("disk"), 80);
+        progress(QStringLiteral("copy"), 85);
+    }
+
+    const QString seedPath = directory + QStringLiteral("/seed.iso");
+    const QString sshKeyPath = directory + QStringLiteral("/id_ed25519");
+    const QString publicKeyPath = sshKeyPath + QStringLiteral(".pub");
+    const auto copyPrivate = [](const QString &from, const QString &to, Error *copyError) {
+        if (from.isEmpty() || !QFileInfo(from).isFile()) {
+            return fails(copyError,
+                         Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                     QStringLiteral("Um arquivo da machine de origem não existe."),
+                                     from));
+        }
+        if (!QFile::copy(from, to)) {
+            return fails(copyError,
+                         Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                     QStringLiteral("Não foi possível copiar um arquivo da "
+                                                    "machine de origem."),
+                                     to));
+        }
+        if (!QFile::setPermissions(to, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
+            return fails(copyError,
+                         Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
+                                     QStringLiteral("Não foi possível ajustar as permissões do "
+                                                    "arquivo clonado."),
+                                     to));
+        }
+        return true;
+    };
+
+    Error copyError;
+    if (!copyPrivate(source.seedPath, seedPath, &copyError)
+        || !copyPrivate(source.sshKeyPath, sshKeyPath, &copyError)
+        || !copyPrivate(source.sshKeyPath + QStringLiteral(".pub"), publicKeyPath, &copyError)) {
+        cleanup();
+        resume();
+        if (error) {
+            *error = copyError;
+        }
+        return {};
+    }
+    if (!QFile::setPermissions(publicKeyPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                                  | QFileDevice::ReadGroup
+                                                  | QFileDevice::ReadOther)) {
+        cleanup();
+        resume();
+        fails(error, Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
+                                 QStringLiteral("Não foi possível ajustar as permissões da "
+                                                "chave pública clonada."),
+                                 publicKeyPath));
+        return {};
+    }
+
+    if (cancelledNow()) {
+        cleanup();
+        resume();
+        fails(error, Error::make(QStringLiteral("PODSTACK_CANCELLED"),
+                                 QStringLiteral("Clonagem cancelada.")));
+        return {};
+    }
+    if (progress) {
+        progress(QStringLiteral("metadata"), 95);
+    }
+
+    const QString timestamp = nowIso();
+    MachineMeta meta;
+    meta.id = id;
+    meta.name = targetName;
+    meta.distro = source.distro;
+    meta.distroVersion = source.distroVersion;
+    meta.arch = source.arch;
+    meta.cpus = source.cpus;
+    meta.memoryBytes = source.memoryBytes;
+    meta.diskBytes = source.diskBytes;
+    meta.diskPath = diskPath;
+    meta.seedPath = seedPath;
+    meta.sshKeyPath = sshKeyPath;
+    meta.sshPort = sshPort;
+    meta.sshUser = source.sshUser;
+    meta.state = QStringLiteral("stopped");
+    meta.isolated = false;
+    meta.isolateNetwork = source.isolateNetwork;
+    meta.forwardSshAgent = source.forwardSshAgent;
+    meta.createdAt = timestamp;
+    meta.updatedAt = timestamp;
+    meta.ports = {
+        MachinePort{newUuidV7(), sshPort, 22, QStringLiteral("tcp"), false,
+                    QStringLiteral("ssh")},
+    };
+
+    Error persistError;
+    if (!persist(meta, &persistError)) {
+        cleanup();
+        resume();
+        if (error) {
+            *error = persistError;
+        }
+        return {};
+    }
+
+    Error sshError;
+    if (!m_sshConfig.sync(meta, meta.forwardSshAgent, &sshError)) {
+        cleanup();
+        resume();
+        if (error) {
+            *error = sshError;
+        }
+        return {};
+    }
+
+    if (wasRunning) {
+        if (progress) {
+            progress(QStringLiteral("starting"), 98);
+        }
+        resume();
+    }
+    if (progress) {
+        progress(QStringLiteral("done"), 100);
+    }
+    return meta;
+}
+
+QString MachineManager::defaultMachine(Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    const Config config = Config::load();
+    const QJsonValue value = config.get(QStringLiteral("machines.default"));
+    return value.isString() ? value.toString().trimmed() : QString();
+}
+
+bool MachineManager::setDefaultMachine(const QString &idOrName, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    const MachineMeta meta = load(idOrName, error);
+    if (meta.id.isEmpty()) {
+        return false;
+    }
+
+    Config config = Config::load();
+    config.set(QStringLiteral("machines.default"), meta.name);
+    QString configError;
+    if (!config.save(&configError)) {
+        const QString code = configError.contains(QStringLiteral("ermission"), Qt::CaseInsensitive)
+                                 ? QStringLiteral("PODSTACK_PERMISSION_DENIED")
+                                 : QStringLiteral("PODSTACK_IO_ERROR");
+        fails(error,
+              Error::make(code,
+                          QStringLiteral("Não foi possível salvar a machine default."),
+                          configError,
+                          QStringLiteral("Verifique as permissões de ~/.config/podstack.")));
+        return false;
+    }
+    return true;
 }
 
 bool MachineManager::sshInfo(const QString &idOrName, SshInfo *info, Error *error)

@@ -771,6 +771,9 @@ private slots:
     void machineManagerMounts();
     void machineManagerValidation();
     void machineManagerLifecycle();
+    void machineManagerRename();
+    void machineManagerClone();
+    void machineDefaultConfig();
     void machineManagerExportImport();
     void machineManagerExportConcurrency();
     void machineManagerImportChecksum();
@@ -2725,6 +2728,287 @@ void MachinesTest::machineManagerLifecycle()
 
     QVERIFY(!manager.remove(meta.id, false, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+}
+
+void MachinesTest::machineManagerRename()
+{
+    const QString root = m_root + QStringLiteral("/manager-rename");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(1024, 'r');
+    m_server.setResponse(QStringLiteral("/manager-rename.qcow2"), 200, payload);
+    const DistroImage image =
+        testImage(QStringLiteral("/manager-rename.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    const QString sshConfigPath = options.sshConfigPath;
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    MachineManager manager(std::move(options));
+
+    PodStack::Config config = PodStack::Config::load();
+    config.set(QStringLiteral("machines.default"), QJsonValue::Null);
+    QString configError;
+    QVERIFY2(config.save(&configError), qPrintable(configError));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("rename-orig");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta origin = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(origin.state, QStringLiteral("running"));
+
+    CreateMachineRequest taken = request;
+    taken.name = QStringLiteral("rename-taken");
+    const MachineMeta other = manager.create(taken, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QVERIFY2(manager.setDefaultMachine(origin.id, &error), qPrintable(error.message));
+    QCOMPARE(manager.defaultMachine(&error), origin.name);
+
+    const MachineMeta renamed = manager.rename(origin.id, QStringLiteral("renamed-machine"),
+                                               &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QCOMPARE(renamed.id, origin.id);
+    QCOMPARE(renamed.name, QStringLiteral("renamed-machine"));
+    QCOMPARE(manager.get(renamed.id, &error).name, QStringLiteral("renamed-machine"));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(manager.get(QStringLiteral("renamed-machine"), &error).id, origin.id);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(manager.get(QStringLiteral("rename-orig"), &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QFile sshFile(sshConfigPath);
+    QVERIFY(sshFile.open(QIODevice::ReadOnly));
+    const QString sshConfig = QString::fromUtf8(sshFile.readAll());
+    QVERIFY(sshConfig.contains(QStringLiteral("# >>> podstack: renamed-machine")));
+    QVERIFY(sshConfig.contains(QStringLiteral("Host renamed-machine.podstack "
+                                              "renamed-machine")));
+    QVERIFY(!sshConfig.contains(QStringLiteral("# >>> podstack: rename-orig")));
+    QVERIFY(sshConfig.contains(QStringLiteral("# >>> podstack: rename-taken")));
+    QCOMPARE(manager.defaultMachine(&error), QStringLiteral("renamed-machine"));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const MachineMeta conflict =
+        manager.rename(renamed.id, QStringLiteral("rename-taken"), &error);
+    QVERIFY(conflict.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QCOMPARE(manager.get(renamed.id, &error).name, QStringLiteral("renamed-machine"));
+
+    const MachineMeta invalid =
+        manager.rename(renamed.id, QStringLiteral("Bad_Name"), &error);
+    QVERIFY(invalid.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY2(manager.remove(renamed.id, true, &error), qPrintable(error.message));
+    QVERIFY2(manager.defaultMachine(&error).isEmpty(), qPrintable(error.message));
+    QVERIFY2(manager.remove(other.id, true, &error), qPrintable(error.message));
+}
+
+void MachinesTest::machineManagerClone()
+{
+    const QString root = m_root + QStringLiteral("/manager-clone");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+    const QString qemuImgLog = root + QStringLiteral("/qemu-img.log");
+    qputenv("PODSTACK_QEMU_IMG_LOG", qemuImgLog.toUtf8());
+
+    const QByteArray payload(2048, 'c');
+    m_server.setResponse(QStringLiteral("/manager-clone.qcow2"), 200, payload);
+    const DistroImage image =
+        testImage(QStringLiteral("/manager-clone.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    const QString sshConfigPath = options.sshConfigPath;
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    const QString machinesRoot = options.machinesRoot;
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("clone-origin");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.cpus = 3;
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+    request.isolateNetwork = true;
+
+    PodStack::Error error;
+    const MachineMeta origin = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(origin.state, QStringLiteral("running"));
+    const int startsBeforeClone = fake->startCount;
+    const int stopsBeforeClone = fake->stopCount;
+
+    QStringList stages;
+    const MachineMeta clone = manager.clone(
+        origin.id, QStringLiteral("clone-copy"),
+        [&stages](const QString &stage, int) { stages.append(stage); }, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QVERIFY(!clone.id.isEmpty());
+    QVERIFY(clone.id != origin.id);
+    QCOMPARE(clone.name, QStringLiteral("clone-copy"));
+    QCOMPARE(clone.state, QStringLiteral("stopped"));
+    QCOMPARE(clone.distro, origin.distro);
+    QCOMPARE(clone.distroVersion, origin.distroVersion);
+    QCOMPARE(clone.arch, origin.arch);
+    QCOMPARE(clone.cpus, origin.cpus);
+    QCOMPARE(clone.memoryBytes, origin.memoryBytes);
+    QCOMPARE(clone.diskBytes, origin.diskBytes);
+    QCOMPARE(clone.sshUser, origin.sshUser);
+    QCOMPARE(clone.isolateNetwork, origin.isolateNetwork);
+    QCOMPARE(clone.forwardSshAgent, origin.forwardSshAgent);
+    QVERIFY(clone.sshPort > 0);
+    QVERIFY(clone.sshPort != origin.sshPort);
+    QCOMPARE(clone.ports.size(), 1);
+    QCOMPARE(clone.ports.at(0).hostPort, clone.sshPort);
+    QCOMPARE(clone.ports.at(0).guestPort, 22);
+    QCOMPARE(clone.ports.at(0).label, QStringLiteral("ssh"));
+    QVERIFY(clone.mounts.isEmpty());
+
+    const QString cloneDirectory = machinesRoot + QLatin1Char('/') + clone.id;
+    QCOMPARE(clone.diskPath, cloneDirectory + QStringLiteral("/disk.qcow2"));
+    QCOMPARE(clone.seedPath, cloneDirectory + QStringLiteral("/seed.iso"));
+    QCOMPARE(clone.sshKeyPath, cloneDirectory + QStringLiteral("/id_ed25519"));
+    QVERIFY(clone.lastBootAt.isEmpty());
+
+    const auto readFile = [](const QString &path) {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return QByteArray();
+        }
+        return file.readAll();
+    };
+    QVERIFY(QFileInfo(clone.diskPath).isFile());
+    QCOMPARE(readFile(clone.diskPath), readFile(origin.diskPath));
+    QCOMPARE(readFile(clone.seedPath), readFile(origin.seedPath));
+    QCOMPARE(readFile(clone.sshKeyPath), readFile(origin.sshKeyPath));
+    QCOMPARE(readFile(clone.sshKeyPath + QStringLiteral(".pub")),
+             readFile(origin.sshKeyPath + QStringLiteral(".pub")));
+    QVERIFY(ownerOnly(QFileInfo(clone.sshKeyPath).permissions(), false));
+    QVERIFY(ownerOnly(QFileInfo(clone.seedPath).permissions(), false));
+
+    QFile logFile(qemuImgLog);
+    QVERIFY(logFile.open(QIODevice::ReadOnly));
+    const QStringList args = QString::fromUtf8(logFile.readAll())
+                                 .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(args.size(), 5);
+    QCOMPARE(args.value(0), QStringLiteral("convert"));
+    QCOMPARE(args.value(1), QStringLiteral("-O"));
+    QCOMPARE(args.value(2), QStringLiteral("qcow2"));
+    QCOMPARE(args.value(3), origin.diskPath);
+    QCOMPARE(args.value(4), clone.diskPath);
+
+    QFile sshFile(sshConfigPath);
+    QVERIFY(sshFile.open(QIODevice::ReadOnly));
+    const QString sshConfig = QString::fromUtf8(sshFile.readAll());
+    QVERIFY(sshConfig.contains(QStringLiteral("# >>> podstack: clone-origin")));
+    QVERIFY(sshConfig.contains(QStringLiteral("# >>> podstack: clone-copy")));
+
+    QCOMPARE(manager.get(origin.id, &error).state, QStringLiteral("running"));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(fake->stopCount, stopsBeforeClone + 1);
+    QVERIFY(fake->startCount >= startsBeforeClone + 1);
+
+    QVERIFY(stages.contains(QStringLiteral("stopping")));
+    QVERIFY(stages.contains(QStringLiteral("disk")));
+    QVERIFY(stages.contains(QStringLiteral("copy")));
+    QVERIFY(stages.contains(QStringLiteral("metadata")));
+    QVERIFY(stages.contains(QStringLiteral("starting")));
+    QCOMPARE(stages.last(), QStringLiteral("done"));
+
+    const MachineMeta started = manager.start(clone.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QCOMPARE(started.state, QStringLiteral("running"));
+
+    QVERIFY2(manager.remove(clone.id, true, &error), qPrintable(error.message));
+    QVERIFY2(manager.remove(origin.id, true, &error), qPrintable(error.message));
+    qunsetenv("PODSTACK_QEMU_IMG_LOG");
+}
+
+void MachinesTest::machineDefaultConfig()
+{
+    const QString root = m_root + QStringLiteral("/manager-default");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    PodStack::Config config = PodStack::Config::load();
+    config.set(QStringLiteral("machines.default"), QJsonValue::Null);
+    QString configError;
+    QVERIFY2(config.save(&configError), qPrintable(configError));
+
+    MachineManager::Options options;
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.sshConfigPath = root + QStringLiteral("/ssh/config");
+    MachineManager manager(std::move(options));
+
+    const MachineMeta meta = testMachine(
+        QStringLiteral("0190f0f0-0000-7000-8000-0000000000d1"),
+        QStringLiteral("default-machine"));
+    QVERIFY(seedMachine(root + QStringLiteral("/podstack.db"), root + QStringLiteral("/machines"),
+                        meta));
+
+    PodStack::Error error;
+    QVERIFY(manager.defaultMachine(&error).isEmpty());
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QVERIFY2(manager.setDefaultMachine(QStringLiteral("default-machine"), &error),
+             qPrintable(error.message));
+    QCOMPARE(manager.defaultMachine(&error), QStringLiteral("default-machine"));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QVERIFY2(manager.setDefaultMachine(meta.id, &error), qPrintable(error.message));
+    QCOMPARE(manager.defaultMachine(&error), QStringLiteral("default-machine"));
+
+    QVERIFY(!manager.setDefaultMachine(QStringLiteral("missing-machine"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    QCOMPARE(manager.defaultMachine(&error), QStringLiteral("default-machine"));
+
+    QVERIFY2(manager.remove(meta.id, true, &error), qPrintable(error.message));
+    QVERIFY2(manager.defaultMachine(&error).isEmpty(), qPrintable(error.message));
 }
 
 void MachinesTest::machineManagerExportImport()

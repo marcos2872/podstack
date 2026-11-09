@@ -1,20 +1,20 @@
 PENDÊNCIAS — PodStack
 Atualizado: 2026-11-09
-Parada solicitada: após a T4-09 (concluída).
+Parada solicitada: após a T4-10 (concluída), antes da T4-11.
 
 SITUAÇÃO ATUAL
 - Branch feat/m4-machines; PR #11 aberta (feat/m4-machines -> main).
 - Últimos commits: 0031fcb (pendências pós-T4-08), 2a48e9e (T4-08 arquivos SSH/SCP),
-  29c1350 (T4-07 virtiofs), 601a7ce (T4-05 reconciliação/órfãos) + o commit da T4-09
-  nesta sessão.
+  29c1350 (T4-07 virtiofs), 601a7ce (T4-05 reconciliação/órfãos) + os commits da
+  T4-09 e T4-10 nesta sessão.
 - T4-05, T4-07 e T4-08 concluídas e pushadas; T4-09 concluída (export/import .tar.zst
-  com manifesto/checksums, RPC, CLI e GUI).
+  com manifesto/checksums, RPC, CLI e GUI). T4-10 concluída nesta sessão
+  (rename/clone/default + RPC/CLI/GUI).
 - CI da PR bloqueada por partial outage do GitHub Actions (runs sem job,
   "Internal server error"). Reexecutar quando o Actions normalizar:
   gh run rerun <run-id>
 
 PRÓXIMAS TAREFAS DO M4 (em ordem)
-- T4-10 (P1) — clone/rename/default (clone independente, novo bloco SSH, default do CLI).
 - T4-11 (P1) — limites de CPU/memória/disco e restart (aplicar no QEMU/qemu-img).
 - T4-12 (P1) — port forwarding da machine (hostfwd extra, persistir portas, GUI/CLI).
 - T4-13 (P1) — SSH agent forwarding (ForwardAgent, flag no meta/CLI/GUI).

@@ -72,10 +72,10 @@ void printUsage()
           << "        [--platform p1,p2]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
-          << "  machine <list|info|logs|create|start|stop|restart|delete|distros|ssh|files|pull|push>\n"
+          << "  machine <list|info|logs|create|start|stop|restart|delete|rename|clone|default|distros|ssh|files|pull|push>\n"
           << "                          Gerencia machines QEMU/KVM\n"
-          << "  ssh <id|nome> [-- cmd...]\n"
-          << "                          Abre SSH na machine com a chave gerenciada\n"
+          << "  ssh [id|nome] [-- cmd...]\n"
+          << "                          Abre SSH (sem id usa a machine default)\n"
           << "  top [--once] [--interval S] [--json] [--plain]\n"
           << "                          Monitora CPU/memória/containers\n"
           << "  system df [--detailed] [--json]\n"
@@ -1366,8 +1366,14 @@ void printMachineUsage(QTextStream &stream)
            << "                          Reinicia uma machine\n"
            << "  delete <id|nome> [--force] [--json]\n"
            << "                          Remove uma machine e seus dados\n"
-           << "  ssh <id|nome> [-- cmd...]\n"
-           << "                          Abre SSH com a chave gerenciada\n"
+           << "  rename <id|nome> <novo> [--json]\n"
+           << "                          Renomeia uma machine (atualiza o SSH)\n"
+           << "  clone <id|nome> <novo> [--json]\n"
+           << "                          Cria uma cópia independente da machine\n"
+           << "  default [<id|nome>] [--json]\n"
+           << "                          Mostra ou define a machine default\n"
+           << "  ssh [id|nome] [-- cmd...]\n"
+           << "                          Abre SSH (sem id usa a machine default)\n"
            << "  files ls <id|nome> [--path P] [--json]\n"
            << "                          Lista arquivos da machine via SSH\n"
            << "  pull <id|nome> <remoto> <local>\n"
@@ -2040,6 +2046,167 @@ int machineImportCommand(const QStringList &args)
     return kExitOk;
 }
 
+int machineRenameCommand(const QStringList &args)
+{
+    QString id;
+    QString name;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && name.isEmpty()) {
+            name = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() || name.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.rename"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("name"), name}},
+                    &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    out() << "machine " << result.value(QStringLiteral("id")).toString()
+          << " renomeada para " << result.value(QStringLiteral("name")).toString() << '\n';
+    out().flush();
+    return kExitOk;
+}
+
+int machineCloneCommand(const QStringList &args)
+{
+    QString id;
+    QString name;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && name.isEmpty()) {
+            name = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() || name.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QJsonObject donePayload;
+    PodStack::Error doneError;
+    PodStack::RpcStream stream;
+    PodStack::Error error;
+    const bool ok = stream.run(
+        QStringLiteral("machines.clone"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("name"), name}},
+        [&](const QString &method, const QJsonObject &payload) {
+            if (method == QStringLiteral("machines.delta")) {
+                if (!json) {
+                    out() << '[' << payload.value(QStringLiteral("stage")).toString() << "] "
+                          << payload.value(QStringLiteral("progress")).toInt() << "%\n";
+                    out().flush();
+                }
+            } else if (method == QStringLiteral("machines.done")) {
+                donePayload = payload;
+                const QJsonObject errorObject =
+                    payload.value(QStringLiteral("error")).toObject();
+                if (!errorObject.isEmpty()) {
+                    doneError = errorFromJson(errorObject);
+                }
+            }
+        },
+        &error);
+    if (!ok) {
+        return fail(error);
+    }
+    if (!doneError.isEmpty()) {
+        return fail(doneError);
+    }
+
+    if (json) {
+        out() << QJsonDocument(donePayload).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonObject machine = donePayload.value(QStringLiteral("machine")).toObject();
+    out() << "machine " << machine.value(QStringLiteral("id")).toString() << " clonada como "
+          << machine.value(QStringLiteral("name")).toString() << " ("
+          << machine.value(QStringLiteral("state")).toString() << ")\n";
+    out().flush();
+    return kExitOk;
+}
+
+int machineDefaultCommand(const QStringList &args)
+{
+    QString name;
+    bool hasName = false;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && !hasName) {
+            name = arg;
+            hasName = true;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+
+    QJsonObject params;
+    if (hasName) {
+        params.insert(QStringLiteral("name"), name);
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.default"), params, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QString resolved = result.value(QStringLiteral("name")).toString();
+    if (resolved.isEmpty()) {
+        out() << "nenhuma machine default definida (use: podstack machine default <nome>)\n";
+    } else {
+        out() << "machine default: " << resolved << '\n';
+    }
+    out().flush();
+    return kExitOk;
+}
+
 int machineSshCommand(const QStringList &args)
 {
     QString id;
@@ -2061,13 +2228,23 @@ int machineSshCommand(const QStringList &args)
             return kExitUsage;
         }
     }
-    if (id.isEmpty()) {
-        printMachineUsage(err());
-        return kExitUsage;
-    }
-
     PodStack::RpcClient client;
     PodStack::Error error;
+    if (id.isEmpty()) {
+        const QJsonObject defaultResult =
+            client.call(QStringLiteral("machines.default"), {}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        id = defaultResult.value(QStringLiteral("name")).toString();
+        if (id.isEmpty()) {
+            return fail(PodStack::Error::make(
+                QStringLiteral("PODSTACK_NOT_FOUND"),
+                QStringLiteral("Nenhuma machine default definida."), {},
+                QStringLiteral("Defina a machine default com: podstack machine default <nome>.")));
+        }
+    }
+
     const QJsonObject result =
         client.call(QStringLiteral("machines.ssh"),
                     QJsonObject{{QStringLiteral("id"), id}}, &error);
@@ -2614,6 +2791,15 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("import")) {
         return machineImportCommand(args);
+    }
+    if (subcommand == QStringLiteral("rename")) {
+        return machineRenameCommand(args);
+    }
+    if (subcommand == QStringLiteral("clone")) {
+        return machineCloneCommand(args);
+    }
+    if (subcommand == QStringLiteral("default")) {
+        return machineDefaultCommand(args);
     }
     if (subcommand == QStringLiteral("ssh")) {
         return machineSshCommand(args.mid(1));

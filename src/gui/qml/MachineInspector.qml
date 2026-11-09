@@ -36,6 +36,8 @@ Rectangle {
 
     signal deleteRequested(string id)
     signal exportRequested(string id)
+    signal renameRequested(string id)
+    signal cloneRequested(string id)
     signal closeRequested()
     signal expandRequested(string id, int tab)
     signal terminalAreaChanged(rect area, bool visible)
@@ -455,6 +457,26 @@ Rectangle {
                          && root.machineState !== "deleting"
                          && backend.machineCreateActive === false
                 onClicked: root.exportRequested(root.machineId)
+            }
+
+            ActionButton {
+                text: qsTr("Renomear")
+                size: "sm"
+                enabled: root.machineId.length > 0
+                         && root.machineState !== "provisioning"
+                         && root.machineState !== "deleting"
+                         && backend.machineCreateActive === false
+                onClicked: root.renameRequested(root.machineId)
+            }
+
+            ActionButton {
+                text: qsTr("Clonar")
+                size: "sm"
+                enabled: root.machineId.length > 0
+                         && root.machineState !== "provisioning"
+                         && root.machineState !== "deleting"
+                         && backend.machineCreateActive === false
+                onClicked: root.cloneRequested(root.machineId)
             }
 
             ActionButton {

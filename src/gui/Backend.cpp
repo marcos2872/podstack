@@ -2755,6 +2755,56 @@ void Backend::removeMachine(const QString &id, bool force)
               120000);
 }
 
+void Backend::renameMachine(const QString &id, const QString &name)
+{
+    if (id.isEmpty() || name.trimmed().isEmpty()) {
+        m_lastError = QStringLiteral("Informe a machine e o novo nome.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    runAction(QStringLiteral("machines.rename"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("name"), name.trimmed()}});
+}
+
+void Backend::cloneMachine(const QString &id, const QString &name)
+{
+    const auto fail = [this](const QString &message) {
+        m_machineCreateActive = false;
+        m_machineCreateStage = QStringLiteral("error");
+        m_machineCreateProgress = 0;
+        m_machineCreateError = message;
+        emit machineCreateStateChanged();
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (m_machineCreateActive) {
+        fail(QStringLiteral("Já existe uma operação de machine em andamento."));
+        return;
+    }
+    if (id.isEmpty() || name.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe a machine de origem e o nome da cópia."));
+        return;
+    }
+
+    m_machineCreateActive = true;
+    m_machineJobKind = QStringLiteral("clone");
+    m_machineCreateJobId.clear();
+    m_machineCreateStage = QStringLiteral("validating");
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    emit machineCreateStateChanged();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    params.insert(QStringLiteral("name"), name.trimmed());
+    m_machineCreateStream.startMachineClone(params);
+}
+
 void Backend::createMachine(const QVariantMap &spec)
 {
     const auto fail = [this](const QString &message) {

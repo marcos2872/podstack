@@ -9,6 +9,8 @@ ColumnLayout {
     property string selectedMachineId: ""
     property string pendingDeleteId: ""
     property string pendingExportId: ""
+    property string pendingRenameId: ""
+    property string pendingCloneId: ""
 
     signal machineExpandRequested(string id, int tab)
 
@@ -140,6 +142,9 @@ ColumnLayout {
         }
         if (stage === "disk") {
             return qsTr("Preparando o disco…")
+        }
+        if (stage === "copy") {
+            return qsTr("Copiando chaves e seed…")
         }
         if (stage === "archive") {
             return qsTr("Compactando o arquivo…")
@@ -295,6 +300,17 @@ ColumnLayout {
                 backend.resetMachineCreateState()
                 exportDialog.open()
             }
+            onRenameRequested: function(id) {
+                machinesPage.pendingRenameId = id
+                renameName.text = ""
+                renameDialog.open()
+            }
+            onCloneRequested: function(id) {
+                machinesPage.pendingCloneId = id
+                cloneName.text = ""
+                backend.resetMachineCreateState()
+                cloneDialog.open()
+            }
         }
     }
 
@@ -315,6 +331,8 @@ ColumnLayout {
                 exportDialog.close()
             } else if (backend.machineJobKind === "import") {
                 importDialog.close()
+            } else if (backend.machineJobKind === "clone") {
+                cloneDialog.close()
             }
         }
     }
@@ -803,6 +821,166 @@ ColumnLayout {
                          && backend.machineCreateStage !== "done"
                 onClicked: backend.importMachine(importPath.text, importName.text,
                                                  importForce.checked)
+            }
+        }
+    }
+
+    AppDialog {
+        id: renameDialog
+        title: qsTr("Renomear machine")
+        modal: true
+        width: 440
+        anchors.centerIn: parent
+        onClosed: machinesPage.pendingRenameId = ""
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Text {
+                text: qsTr("Novo nome")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
+            FormField {
+                id: renameName
+                Layout.fillWidth: true
+                placeholderText: qsTr("novo-nome")
+                onAccepted: {
+                    if (renameName.text.trim().length > 0
+                            && machinesPage.pendingRenameId.length > 0) {
+                        backend.renameMachine(machinesPage.pendingRenameId,
+                                              renameName.text.trim())
+                        renameDialog.close()
+                    }
+                }
+            }
+        }
+
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: qsTr("Cancelar")
+                variant: "secondary"
+                onClicked: renameDialog.close()
+            }
+            ActionButton {
+                text: qsTr("Renomear")
+                variant: "primary"
+                enabled: renameName.text.trim().length > 0
+                         && machinesPage.pendingRenameId.length > 0
+                onClicked: {
+                    backend.renameMachine(machinesPage.pendingRenameId,
+                                          renameName.text.trim())
+                    renameDialog.close()
+                }
+            }
+        }
+    }
+
+    AppDialog {
+        id: cloneDialog
+        title: qsTr("Clonar machine")
+        modal: true
+        width: 520
+        anchors.centerIn: parent
+        closePolicy: backend.machineCreateActive ? Popup.NoAutoClose
+                                                 : Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onClosed: machinesPage.pendingCloneId = ""
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Text {
+                text: qsTr("Nome da nova machine")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
+            FormField {
+                id: cloneName
+                Layout.fillWidth: true
+                placeholderText: qsTr("copia-da-machine")
+                enabled: !backend.machineCreateActive
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 4
+                visible: backend.machineCreateActive || backend.machineCreateError.length > 0
+                         || backend.machineCreateStage === "cancelled"
+                         || backend.machineCreateStage === "done"
+
+                Text {
+                    Layout.fillWidth: true
+                    text: machinesPage.archiveStageLabel(backend.machineCreateStage)
+                    color: backend.machineCreateError.length > 0 ? Theme.danger
+                                                                 : Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    elide: Text.ElideRight
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 6
+                    radius: 3
+                    color: Theme.bgSurface2
+
+                    Rectangle {
+                        width: parent.width
+                               * Math.max(0, Math.min(1, backend.machineCreateProgress / 100))
+                        height: parent.height
+                        radius: parent.radius
+                        color: Theme.indigo500
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: backend.machineCreateError.length > 0
+                    text: backend.machineCreateError
+                    color: Theme.danger
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: backend.machineCreateActive ? qsTr("Cancelar clone") : qsTr("Fechar")
+                variant: "secondary"
+                onClicked: {
+                    if (backend.machineCreateActive) {
+                        backend.cancelMachineCreate()
+                    } else {
+                        cloneDialog.close()
+                    }
+                }
+            }
+            ActionButton {
+                text: qsTr("Clonar")
+                variant: "primary"
+                enabled: !backend.machineCreateActive && cloneName.text.trim().length > 0
+                         && machinesPage.pendingCloneId.length > 0
+                         && backend.machineCreateStage !== "done"
+                onClicked: backend.cloneMachine(machinesPage.pendingCloneId,
+                                                cloneName.text.trim())
             }
         }
     }

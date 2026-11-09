@@ -153,6 +153,11 @@ void StreamClient::startMachineImport(const QJsonObject &params)
     startMachineJob(QStringLiteral("machines.import"), params);
 }
 
+void StreamClient::startMachineClone(const QJsonObject &params)
+{
+    startMachineJob(QStringLiteral("machines.clone"), params);
+}
+
 void StreamClient::startMachineJob(const QString &method, const QJsonObject &params)
 {
     // Não há `machines.unsubscribe`: o daemon remove a subscription ao terminar.

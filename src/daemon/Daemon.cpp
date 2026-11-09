@@ -333,6 +333,15 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.import")) {
         return machineImport(params, notify, error);
     }
+    if (method == QStringLiteral("machines.rename")) {
+        return machineRename(params, error);
+    }
+    if (method == QStringLiteral("machines.clone")) {
+        return machineClone(params, notify, error);
+    }
+    if (method == QStringLiteral("machines.default")) {
+        return machineDefault(params, error);
+    }
     if (method == QStringLiteral("machines.start") || method == QStringLiteral("machines.stop")
         || method == QStringLiteral("machines.restart")) {
         return machineAction(method, params, error);
@@ -766,6 +775,131 @@ QJsonObject Daemon::machineImport(const QJsonObject &params, const Notify &notif
     result.insert(QStringLiteral("jobId"), jobId);
     result.insert(QStringLiteral("subscriptionId"), subscriptionId);
     return result;
+}
+
+QJsonObject Daemon::machineRename(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o novo nome da machine."));
+        }
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.rename(id, name, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineClone(const QJsonObject &params, const Notify &notify,
+                                 Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o nome da machine clonada."));
+        }
+        return {};
+    }
+
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        jobId = QStringLiteral("machine-clone-%1-%2")
+                    .arg(QDateTime::currentSecsSinceEpoch())
+                    .arg(m_nextMachineJob++);
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        m_machineSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, id, name, notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("machines.delta"), payload);
+        };
+        const auto cancelled = [subscription] {
+            return subscription->cancel.load();
+        };
+
+        Error cloneError;
+        MachineMeta machine = m_machines.clone(id, name, progress, cancelled, &cloneError);
+        if (cloneError.isEmpty() && machine.id.isEmpty()) {
+            cloneError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                     QStringLiteral("Falha ao clonar a machine."));
+        }
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        payload.insert(QStringLiteral("name"), name);
+        if (cloneError.isEmpty()) {
+            payload.insert(QStringLiteral("machine"), machine.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), cloneError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("machines.done"), payload);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+            m_machineSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::machineDefault(const QJsonObject &params, Error *error)
+{
+    const QJsonValue nameValue = params.value(QStringLiteral("name"));
+    if (!nameValue.isUndefined() && !nameValue.isNull()) {
+        if (!nameValue.isString() || nameValue.toString().trimmed().isEmpty()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("O nome da machine default é inválido."));
+            }
+            return {};
+        }
+        if (!m_machines.setDefaultMachine(nameValue.toString().trimmed(), error)) {
+            return {};
+        }
+    }
+
+    const QString name = m_machines.defaultMachine(error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("name"), name}};
 }
 
 QJsonObject Daemon::machineCancel(const QJsonObject &params, Error *error)
