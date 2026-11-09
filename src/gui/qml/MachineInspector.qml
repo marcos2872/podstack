@@ -409,12 +409,16 @@ Rectangle {
             }
         }
 
-        RowLayout {
+        // A barra de ações cresceu com o M4; um RowLayout estourava a largura
+        // do card em janelas estreitas e cortava os botões da direita. O Flow
+        // quebra em quantas linhas forem necessárias.
+        Flow {
             Layout.fillWidth: true
             Layout.leftMargin: 14
             Layout.rightMargin: 14
             Layout.bottomMargin: 10
             spacing: 7
+            flow: Flow.LeftToRight
 
             ActionButton {
                 text: qsTr("Start")
