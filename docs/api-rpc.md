@@ -192,6 +192,7 @@ interface Subscription { subscriptionId: string }
 
 | Método | Params | Result |
 |---|---|---|
+| `machines.distros` | `{}` | `{items: DistroImage[]}` |
 | `machines.list` | `{}` | `{items: Machine[]}` |
 | `machines.get` | `{id}` | `Machine` |
 | `machines.create` | `{name, distro, version?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, mounts?, isolated?, isolateNetwork?, forwardSshAgent?}` | `JobRef` |
@@ -206,6 +207,10 @@ interface Subscription { subscriptionId: string }
 | `machines.ports.list` / `set` | `{id, ports?}` | `{items}` |
 | `machines.logs` | `{id, tail?}` | `{lines:[]}` |
 | `machines.console` | `{id}` | `Subscription` (stream serial) |
+
+`DistroImage`: `{distro, version, arch, default, url, checksum, algorithm, size, cached}`.
+`machines.distros` lê o registry pinado no binário e consulta o cache local (sem hash e sem
+download); `cached` reflete apenas arquivo + sidecar válidos.
 
 ### 4.7 `compose.*` e `builds.*`
 

@@ -177,6 +177,10 @@ encerra a janela da instância já em execução.
 - Rejeitar `..`, paths absolutos em archives, symlinks que escapam, hardlinks.
 - Uploads: validar tamanho, tipo e destino; gravar em tmp e mover atomicamente.
 - Downloads: gerar em tmp com nome seguro; nunca sobrescrever sem confirmação.
+- Imagens cloud: URLs do registry pinado são **HTTPS obrigatório**; o checksum
+  (**SHA-256/SHA-512**) é obrigatório e verificado antes de usar a imagem. O cache em
+  `~/.cache/podstack/images/` é `0700` e os arquivos/sidecars são `0600`; download em
+  `.part` com rename atômico e lock por imagem.
 - Import de máquina/volume: validar manifest/checksum; extrair em dir temporário e mover.
 - `O_NOFOLLOW`/`openat2(RESOLVE_BENEATH)` quando disponível.
 

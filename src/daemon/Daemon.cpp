@@ -4,6 +4,7 @@
 #include "core/Logging.h"
 #include "core/Paths.h"
 #include "daemon/StatsCollector.h"
+#include "machines/DistroRegistry.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -245,6 +246,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("builds.remove")) {
         return buildRemove(params, error);
     }
+    if (method == QStringLiteral("machines.distros")) {
+        return machinesDistros();
+    }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
     }
@@ -298,6 +302,29 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
                              QStringLiteral("Método RPC desconhecido: %1").arg(method));
     }
     return {};
+}
+
+QJsonObject Daemon::machinesDistros()
+{
+    QJsonArray items;
+    const QVector<DistroImage> images = DistroRegistry::images();
+    for (const DistroImage &image : images) {
+        QJsonObject item;
+        item.insert(QStringLiteral("distro"), image.distro);
+        item.insert(QStringLiteral("version"), image.version);
+        item.insert(QStringLiteral("arch"), image.arch);
+        item.insert(QStringLiteral("default"), image.isDefault);
+        item.insert(QStringLiteral("url"), image.url);
+        item.insert(QStringLiteral("checksum"), image.checksum);
+        item.insert(QStringLiteral("algorithm"), DistroRegistry::algorithmName(image.algorithm));
+        item.insert(QStringLiteral("size"), static_cast<double>(image.size));
+        item.insert(QStringLiteral("cached"), m_cloudImages.isCached(image));
+        items.append(item);
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("items"), items);
+    return result;
 }
 
 QJsonObject Daemon::systemHello() const

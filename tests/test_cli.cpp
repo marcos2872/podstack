@@ -30,6 +30,7 @@ private slots:
     void execAndDoctor();
     void lifecycleAndInspect();
     void catalog();
+    void machineDistros();
     void composeAndBuild();
     void setupCommand();
     void errorPaths();
@@ -66,6 +67,7 @@ QProcessEnvironment CliTest::environment(const QString &controlSocket) const
     env.insert(QStringLiteral("XDG_DATA_HOME"), m_testDataDir + QStringLiteral("/data"));
     env.insert(QStringLiteral("XDG_STATE_HOME"), m_testDataDir + QStringLiteral("/state"));
     env.insert(QStringLiteral("XDG_CONFIG_HOME"), m_testDataDir + QStringLiteral("/config"));
+    env.insert(QStringLiteral("XDG_CACHE_HOME"), m_testDataDir + QStringLiteral("/cache"));
     return env;
 }
 
@@ -421,6 +423,39 @@ void CliTest::catalog()
 
     QDir(sourceDir).removeRecursively();
     QDir(destinationDir).removeRecursively();
+}
+
+void CliTest::machineDistros()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("machine"), QStringLiteral("distros")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("ubuntu")));
+    QVERIFY(result.out.contains(QStringLiteral("debian")));
+    QVERIFY(result.out.contains(QStringLiteral("fedora")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("distros"),
+                  QStringLiteral("--json")},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QVERIFY(document.isObject());
+
+    const QJsonArray items =
+        document.object().value(QStringLiteral("items")).toArray();
+    QVERIFY(items.size() >= 3);
+
+    QStringList distros;
+    for (const QJsonValue &value : items) {
+        distros.append(value.toObject().value(QStringLiteral("distro")).toString());
+    }
+    QVERIFY(distros.contains(QStringLiteral("ubuntu")));
+    QVERIFY(distros.contains(QStringLiteral("debian")));
+    QVERIFY(distros.contains(QStringLiteral("fedora")));
 }
 
 void CliTest::composeAndBuild()

@@ -118,7 +118,7 @@
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T4-01 | P0 | Registry de distros (URL/checksum/versão) + cache | T0-03 | Ubuntu/Debian/Fedora |
+| T4-01 | P0 | Registry de distros (URL/checksum/versão) + cache | T0-03 | ✅ Registry pinado (ubuntu 24.04, debian 12, fedora 44/amd64) + `CloudImageCache`/`HttpDownloader`; `machines.distros` + `podstack machine distros [--json]`; `test_machines` 9 casos e `rpc`/`cli` verdes |
 | T4-02 | P0 | Gerar seed ISO cloud-init (NoCloud) | T4-01 | `cloud-init` aplica user-data |
 | T4-03 | P0 | Criar disco qcow2 + QEMU + QMP | T4-01 | VM sobe; QMP responde |
 | T4-04 | P0 | SSH: chave, porta, bloco `~/.ssh/config`, `podstack ssh` | T4-03 | SSH funciona; bloco idempotente |

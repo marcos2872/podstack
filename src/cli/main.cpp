@@ -60,6 +60,8 @@ void printUsage()
           << "  build <contexto> -t <tag> [-f Dockerfile] [--build-arg K=V]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
+          << "  machine distros [--json]\n"
+          << "                          Lista imagens cloud e cache local\n"
           << "  setup [--check|--status|--validate]\n"
           << "        [--apply podman|qemu|components|socket]\n"
           << "        [--remove-docker --yes]\n"
@@ -1314,6 +1316,72 @@ int commandBuild(const QStringList &args)
     return kExitOk;
 }
 
+int commandMachine(const QStringList &args)
+{
+    if (args.isEmpty()) {
+        err() << "Uso: podstack machine distros [--json]\n";
+        return kExitUsage;
+    }
+
+    const QString subcommand = args.first();
+    if (subcommand != QStringLiteral("distros")) {
+        err() << "subcomando desconhecido: machine " << subcommand << '\n';
+        err() << "Uso: podstack machine distros [--json]\n";
+        return kExitUsage;
+    }
+
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result = client.call(QStringLiteral("machines.distros"), {}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+    out() << QStringLiteral("%1 %2 %3 %4 %5 %6\n")
+                 .arg(QStringLiteral("DISTRO").leftJustified(10),
+                      QStringLiteral("VERSÃO").leftJustified(8),
+                      QStringLiteral("ARCH").leftJustified(7),
+                      QStringLiteral("PADRÃO").leftJustified(8),
+                      QStringLiteral("CACHE").leftJustified(7),
+                      QStringLiteral("URL"));
+    for (const QJsonValue &value : items) {
+        const QJsonObject item = value.toObject();
+        out() << QStringLiteral("%1 %2 %3 %4 %5 %6\n")
+                     .arg(item.value(QStringLiteral("distro")).toString().leftJustified(10),
+                          item.value(QStringLiteral("version")).toString().leftJustified(8),
+                          item.value(QStringLiteral("arch")).toString().leftJustified(7),
+                          (item.value(QStringLiteral("default")).toBool()
+                               ? QStringLiteral("sim")
+                               : QStringLiteral("não"))
+                              .leftJustified(8),
+                          (item.value(QStringLiteral("cached")).toBool()
+                               ? QStringLiteral("sim")
+                               : QStringLiteral("não"))
+                              .leftJustified(7),
+                          item.value(QStringLiteral("url")).toString());
+    }
+    out().flush();
+    return kExitOk;
+}
+
 int commandBuilds(const QStringList &args)
 {
     const QString sub = args.isEmpty() ? QStringLiteral("ls") : args.first();
@@ -1576,6 +1644,9 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("builds")) {
         return commandBuilds(args);
+    }
+    if (command == QStringLiteral("machine")) {
+        return commandMachine(args);
     }
     if (command == QStringLiteral("setup")) {
         return commandSetup(args);

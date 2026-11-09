@@ -55,6 +55,7 @@
 | `clone SRC DST` | `machine clone SRC DST` | — | CoW quando possível |
 | `rename M NEW` | `machine rename M NEW` | — | Atualiza SSH config |
 | `default [M]` | `machine default [M]` | — | Get/set |
+| — | `machine distros` | `--json` | Lista imagens cloud pinadas (ubuntu/debian/fedora), checksum e cache local; não baixa |
 | `serial list` | `device serial list` | `--format` | |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host |
 

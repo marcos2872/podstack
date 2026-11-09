@@ -212,6 +212,11 @@ src/
 ### 7.1 Provisionamento
 
 - Imagens cloud (qcow2) por distro/versão; cache em `~/.cache/podstack/images/`.
+- Registry **pinado no código** (ubuntu 24.04, debian 12 e fedora 44, amd64) com URL HTTPS e
+  checksum SHA-256/SHA-512 verificados; sem fetch de manifesto em runtime. O cache usa
+  `<distro>-<version>-<arch>-<checksum[0..12]>.qcow2` + sidecar `.json`, lock por imagem,
+  `.part` e rename atômico. Ubuntu/Debian não publicam tamanho fixo; o sidecar registra o
+  tamanho real após o download.
 - seed ISO via `cloud-localds` com `meta-data`, `user-data`, `network-config`.
 - QEMU:
 

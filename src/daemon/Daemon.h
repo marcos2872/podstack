@@ -4,6 +4,7 @@
 #include "daemon/BuildStore.h"
 #include "daemon/ComposeManager.h"
 #include "daemon/SetupManager.h"
+#include "machines/CloudImageCache.h"
 #include "podman/PodmanClient.h"
 
 #include <QHash>
@@ -81,6 +82,7 @@ private:
     QJsonObject buildsList(const QJsonObject &params, Error *error);
     QJsonObject buildGet(const QJsonObject &params, Error *error);
     QJsonObject buildRemove(const QJsonObject &params, Error *error);
+    QJsonObject machinesDistros();
     QJsonObject setupStatus();
     QJsonObject setupCheck(const QJsonObject &params);
     QJsonObject setupValidate();
@@ -104,6 +106,7 @@ private:
     ComposeManager m_compose;
     BuildStore m_buildStore;
     SetupManager m_setup;
+    CloudImageCache m_cloudImages;
     std::mutex m_subscriptionsMutex;
     QHash<QString, std::shared_ptr<Subscription>> m_subscriptions;
     std::mutex m_buildMutex;

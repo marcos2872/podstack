@@ -61,6 +61,23 @@ QString stateDir()
     return state + QStringLiteral("/podstack");
 }
 
+QString cacheDir()
+{
+    QString cache = qEnvironmentVariable("XDG_CACHE_HOME");
+    if (cache.isEmpty()) {
+        cache = baseLocation(QStandardPaths::GenericCacheLocation);
+    }
+    if (cache.isEmpty()) {
+        cache = QDir::homePath() + QStringLiteral("/.cache");
+    }
+    return cache + QStringLiteral("/podstack");
+}
+
+QString cloudImagesDir()
+{
+    return cacheDir() + QStringLiteral("/images");
+}
+
 QString runtimeDir()
 {
     return runtimeBase() + QStringLiteral("/podstack");
@@ -86,7 +103,8 @@ QString podmanSocket()
 
 bool ensureDirs(QString *error)
 {
-    const QStringList dirs{configDir(), dataDir(), stateDir(), runtimeDir()};
+    const QStringList dirs{configDir(), dataDir(), stateDir(), cacheDir(), cloudImagesDir(),
+                           runtimeDir()};
     for (const QString &dir : dirs) {
         if (!ensureDir(dir, error)) {
             return false;

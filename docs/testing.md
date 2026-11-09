@@ -120,6 +120,7 @@
 | `test_stats` | `parses*` | parsers de `/proc/stat`, `/proc/meminfo`, `/proc/net/dev` e `/proc/diskstats` |
 | `test_notifications` | `summaryFor*`, `cooldown*` | falha/OOM/unhealthy, eventos normais ignorados e cooldown |
 | `test_setup` | `check*`, `status*`, `validate*`, `rejectsInvalidActions` | checks read-only, resumo de status e validação de ações inválidas |
+| `test_machines` | `registry*`, `download*`, `cache*`, `pathsCacheDir` | registry pinado (default/versão inválida/arch), download feliz/404/checksum/cancelamento, reuso e rehash do cache e `cloudImagesDir` 0700 |
 | `test_core` | `setupActionsMapPodmanStatus` | `missing` → `install-podman`; `warn` → `enable-socket`; `ok` → sem ação |
 | `test_core` | `setupPolicyMandatoryChecks` | obrigatórios (Podman, systemd-user, SQLite, QEMU/OVMF/virtiofsd) bloqueiam; KVM/Docker/Caddy/k3s não |
 
@@ -254,6 +255,13 @@ CI cobre o subconjunto P0; matriz completa no release candidate.
 - JSON reais capturados de Podman 5.8/6.x, versionados em `tests/fixtures/`.
 - Imagens de teste fixadas por digest.
 - Cloud images fixadas por checksum.
+
+**Registry e cache de machines:** `test_machines` usa `MockHttpServer` (QTcpServer em
+loopback) e não acessa a rede externa. Rodar isolado:
+
+```bash
+ctest --preset dev -R machines --output-on-failure
+```
 
 ---
 

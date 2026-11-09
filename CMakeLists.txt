@@ -50,6 +50,22 @@ add_library(podstack_podman STATIC
 target_link_libraries(podstack_podman PUBLIC podstack_core CURL::libcurl LibArchive::LibArchive)
 
 # ---------------------------------------------------------------------------
+# Machines: registry de distros, download e cache de imagens cloud
+# ---------------------------------------------------------------------------
+add_library(podstack_machines STATIC
+    src/machines/DistroRegistry.cpp
+    src/machines/HttpDownloader.cpp
+    src/machines/CloudImageCache.cpp
+)
+target_include_directories(podstack_machines PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(podstack_machines PUBLIC
+    podstack_core
+    Qt6::Core
+    Qt6::Network
+    CURL::libcurl
+)
+
+# ---------------------------------------------------------------------------
 # Daemon
 # ---------------------------------------------------------------------------
 add_executable(podstackd
@@ -63,6 +79,7 @@ add_executable(podstackd
 )
 target_link_libraries(podstackd PRIVATE
     podstack_podman
+    podstack_machines
     Qt6::Concurrent
     Qt6::DBus
     SQLite::SQLite3

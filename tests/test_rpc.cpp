@@ -27,6 +27,7 @@ private slots:
     void lifecycle();
     void subscriptions();
     void catalog();
+    void machinesDistros();
     void composeAndBuilds();
     void setupFlow();
     void invalidRequests();
@@ -92,6 +93,8 @@ void RpcTest::initTestCase()
                        m_testDataDir + QStringLiteral("/state"));
     environment.insert(QStringLiteral("XDG_CONFIG_HOME"),
                        m_testDataDir + QStringLiteral("/config"));
+    environment.insert(QStringLiteral("XDG_CACHE_HOME"),
+                       m_testDataDir + QStringLiteral("/cache"));
     m_daemon.setProcessEnvironment(environment);
     m_daemon.setProcessChannelMode(QProcess::ForwardedChannels);
     m_daemon.start(daemonPath, {QStringLiteral("--socket"), m_controlSocket});
@@ -620,6 +623,35 @@ void RpcTest::catalog()
 
     QDir(sourceDir).removeRecursively();
     QDir(destinationDir).removeRecursively();
+}
+
+void RpcTest::machinesDistros()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject result = client.call(QStringLiteral("machines.distros"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+    QVERIFY(items.size() >= 3);
+
+    QStringList distros;
+    for (const QJsonValue &value : items) {
+        const QJsonObject item = value.toObject();
+        distros.append(item.value(QStringLiteral("distro")).toString());
+        QVERIFY(!item.value(QStringLiteral("version")).toString().isEmpty());
+        QCOMPARE(item.value(QStringLiteral("arch")).toString(), QStringLiteral("amd64"));
+        QVERIFY(!item.value(QStringLiteral("url")).toString().isEmpty());
+        QVERIFY(!item.value(QStringLiteral("checksum")).toString().isEmpty());
+        QVERIFY(!item.value(QStringLiteral("algorithm")).toString().isEmpty());
+        QVERIFY(item.contains(QStringLiteral("size")));
+        QVERIFY(item.contains(QStringLiteral("default")));
+        QVERIFY(item.contains(QStringLiteral("cached")));
+    }
+    QVERIFY(distros.contains(QStringLiteral("ubuntu")));
+    QVERIFY(distros.contains(QStringLiteral("debian")));
+    QVERIFY(distros.contains(QStringLiteral("fedora")));
 }
 
 void RpcTest::composeAndBuilds()
