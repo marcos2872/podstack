@@ -64,7 +64,7 @@ void printUsage()
           << "  build <contexto> -t <tag> [-f Dockerfile] [--build-arg K=V]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
-          << "  machine <list|info|create|start|stop|restart|delete|distros>\n"
+          << "  machine <list|info|logs|create|start|stop|restart|delete|distros>\n"
           << "                          Gerencia machines QEMU/KVM\n"
           << "  top [--once] [--interval S] [--json] [--plain]\n"
           << "                          Monitora CPU/memória/containers\n"
@@ -1330,6 +1330,8 @@ void printMachineUsage(QTextStream &stream)
            << "Comandos:\n"
            << "  list [--json]            Lista machines\n"
            << "  info <id|nome> [--json]  Mostra os dados de uma machine\n"
+           << "  logs <id|nome> [--tail N] [--json]\n"
+           << "                          Mostra as últimas linhas do console.log\n"
            << "  create DISTRO[:VER] NOME [--cpus N] [--memory 4G] [--disk 20G]\n"
            << "         [--user U] [--user-data ARQUIVO] [--isolate-network]\n"
            << "                          Cria uma machine (a senha entra na T4-04)\n"
@@ -1551,6 +1553,59 @@ int machineInfoCommand(const QStringList &args)
     const QString machineError = machine.value(QStringLiteral("error")).toString();
     if (!machineError.isEmpty()) {
         out() << "erro: " << machineError << '\n';
+    }
+    out().flush();
+    return kExitOk;
+}
+
+int machineLogsCommand(const QStringList &args)
+{
+    QString id;
+    int tail = 200;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--tail") && i + 1 < args.size()) {
+            bool ok = false;
+            tail = args.at(++i).toInt(&ok);
+            if (!ok || tail < 1) {
+                err() << "--tail exige um inteiro positivo\n";
+                return kExitUsage;
+            }
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.logs"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("tail"), tail}},
+                    &error, 30000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonArray lines = result.value(QStringLiteral("lines")).toArray();
+    for (const QJsonValue &line : lines) {
+        out() << line.toString() << '\n';
     }
     out().flush();
     return kExitOk;
@@ -2103,6 +2158,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("info")) {
         return machineInfoCommand(args);
+    }
+    if (subcommand == QStringLiteral("logs")) {
+        return machineLogsCommand(args);
     }
     if (subcommand == QStringLiteral("create")) {
         return machineCreateCommand(args);

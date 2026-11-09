@@ -121,6 +121,22 @@ void StreamClient::startBuild(const QJsonObject &params)
     connectSocket();
 }
 
+void StreamClient::startMachineCreate(const QJsonObject &params)
+{
+    // Não há `machines.unsubscribe`: o daemon remove a subscription ao terminar.
+    stop(false);
+    m_kind = QStringLiteral("machine-create");
+    m_unsubscribeMethod.clear();
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("machines.create")},
+        {QStringLiteral("params"), params},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
 void StreamClient::startSetup(const QJsonObject &params)
 {
     stop(true);
@@ -296,6 +312,14 @@ void StreamClient::onReadyRead()
             emit buildEvent(params);
         } else if (method == QStringLiteral("builds.done")) {
             emit buildFinished(params);
+            m_subscriptionId.clear();
+            m_kind.clear();
+            m_socket.abort();
+        } else if (method == QStringLiteral("machines.delta")) {
+            emit machineCreateEvent(params);
+        } else if (method == QStringLiteral("machines.done")) {
+            // O daemon remove a subscription quando o job termina; não há unsubscribe.
+            emit machineCreateFinished(params);
             m_subscriptionId.clear();
             m_kind.clear();
             m_socket.abort();

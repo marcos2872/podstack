@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -268,6 +269,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("machines.delete")) {
         return machineDelete(params, error);
+    }
+    if (method == QStringLiteral("machines.logs")) {
+        return machineLogs(params, error);
     }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
@@ -561,6 +565,117 @@ QJsonObject Daemon::machineDelete(const QJsonObject &params, Error *error)
         return {};
     }
     return QJsonObject{{QStringLiteral("deleted"), true}};
+}
+
+QJsonObject Daemon::machineLogs(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    int tail = params.value(QStringLiteral("tail")).toInt(200);
+    if (tail <= 0) {
+        tail = 200;
+    }
+    tail = qBound(1, tail, 2000);
+
+    const QString directory = Paths::machineDir(machine.id);
+    if (directory.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                 QStringLiteral("Identificador de machine inválido."));
+        }
+        return {};
+    }
+
+    const QString path = directory + QStringLiteral("/console.log");
+    const QFileInfo info(path);
+    if (info.isSymLink()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O console da machine não pode ser lido."),
+                                 QStringLiteral("symlink rejeitado"));
+        }
+        return {};
+    }
+    if (!info.exists()) {
+        return QJsonObject{{QStringLiteral("lines"), QJsonArray{}}};
+    }
+    if (!info.isFile()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O console da machine não é um arquivo regular."));
+        }
+        return {};
+    }
+
+    const QString canonicalDir = QFileInfo(directory).canonicalFilePath();
+    const QString canonicalFile = info.canonicalFilePath();
+    if (canonicalDir.isEmpty() || canonicalFile.isEmpty()
+        || !canonicalFile.startsWith(canonicalDir + QLatin1Char('/'))) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O console da machine está fora do diretório "
+                                                "esperado."));
+        }
+        return {};
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível ler o console da machine."));
+        }
+        return {};
+    }
+
+    constexpr qint64 kMaxReadBytes = 512 * 1024;
+    const qint64 size = file.size();
+    const qint64 start = qMax<qint64>(0, size - kMaxReadBytes);
+    if (start > 0 && !file.seek(start)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível posicionar no console da "
+                                                "machine."));
+        }
+        return {};
+    }
+
+    QString text = QString::fromUtf8(file.readAll());
+    if (start > 0) {
+        const int newline = text.indexOf(QLatin1Char('\n'));
+        if (newline >= 0) {
+            text.remove(0, newline + 1);
+        } else {
+            text.clear();
+        }
+    }
+
+    QStringList lines = text.split(QLatin1Char('\n'));
+    if (!lines.isEmpty() && lines.last().isEmpty()) {
+        lines.removeLast();
+    }
+    for (QString &line : lines) {
+        if (line.endsWith(QLatin1Char('\r'))) {
+            line.chop(1);
+        }
+    }
+    if (lines.size() > tail) {
+        lines = lines.mid(lines.size() - tail);
+    }
+
+    QJsonArray array;
+    for (const QString &line : lines) {
+        array.append(line);
+    }
+    return QJsonObject{{QStringLiteral("lines"), array}};
 }
 
 QJsonObject Daemon::systemHello() const

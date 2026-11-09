@@ -66,6 +66,25 @@ QJsonObject runBatchAction(const QString &action, const QStringList &ids)
     return result;
 }
 
+QVariantMap machineVariant(const QJsonObject &machine)
+{
+    QVariantMap item = machine.toVariantMap();
+    const QString distro = machine.value(QStringLiteral("distro")).toString();
+    const QString version = machine.value(QStringLiteral("distroVersion")).toString();
+    item.insert(QStringLiteral("distroLabel"),
+                version.isEmpty() ? distro : distro + QLatin1Char(':') + version);
+    const int sshPort = machine.value(QStringLiteral("sshPort")).toInt();
+    QString sshUser = machine.value(QStringLiteral("sshUser")).toString();
+    if (sshUser.isEmpty()) {
+        sshUser = QStringLiteral("podstack");
+    }
+    item.insert(QStringLiteral("ssh"),
+                sshPort > 0
+                    ? QStringLiteral("%1@127.0.0.1:%2").arg(sshUser).arg(sshPort)
+                    : QStringLiteral("-"));
+    return item;
+}
+
 } // namespace
 
 Backend::Backend(QObject *parent)
@@ -81,6 +100,14 @@ Backend::Backend(QObject *parent)
             &Backend::onCatalogFinished);
     connect(&m_setupWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onSetupFinished);
+    connect(&m_machinesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachinesFinished);
+    connect(&m_machineDistrosWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineDistrosFinished);
+    connect(&m_machineInfoWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineInfoFinished);
+    connect(&m_machineLogsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineLogsFinished);
 
     connect(&m_setupStream, &StreamClient::setupEvent, this,
             [this](const QJsonObject &event) { applySetupJob(event); });
@@ -287,6 +314,78 @@ Backend::Backend(QObject *parent)
         emit lastErrorChanged();
     });
 
+    connect(&m_machineCreateStream, &StreamClient::subscriptionReady, this,
+            [this](const QJsonObject &result) {
+                const QString jobId = result.value(QStringLiteral("jobId")).toString();
+                if (!jobId.isEmpty()) {
+                    m_machineCreateJobId = jobId;
+                    emit machineCreateStateChanged();
+                }
+            });
+
+    connect(&m_machineCreateStream, &StreamClient::machineCreateEvent, this,
+            [this](const QJsonObject &event) {
+                const QString jobId = event.value(QStringLiteral("jobId")).toString();
+                if (!jobId.isEmpty()) {
+                    m_machineCreateJobId = jobId;
+                }
+                const QString stage = event.value(QStringLiteral("stage")).toString();
+                if (!stage.isEmpty()) {
+                    m_machineCreateStage = stage;
+                }
+                m_machineCreateProgress =
+                    qMax(m_machineCreateProgress,
+                         qBound(0, event.value(QStringLiteral("progress")).toInt(), 100));
+                emit machineCreateStateChanged();
+            });
+
+    connect(&m_machineCreateStream, &StreamClient::machineCreateFinished, this,
+            [this](const QJsonObject &result) {
+                const QJsonObject errorObject =
+                    result.value(QStringLiteral("error")).toObject();
+                const QString code = errorObject.value(QStringLiteral("code")).toString();
+                m_machineCreateActive = false;
+                m_machineCreateProgress = 100;
+                m_machineCreateError.clear();
+                if (!errorObject.isEmpty() && code != QStringLiteral("PODSTACK_CANCELLED")) {
+                    m_machineCreateStage = QStringLiteral("error");
+                    m_machineCreateError =
+                        errorObject.value(QStringLiteral("message")).toString();
+                    const QString remediation =
+                        errorObject.value(QStringLiteral("remediation")).toString();
+                    if (!remediation.isEmpty()) {
+                        m_machineCreateError += QLatin1Char(' ') + remediation;
+                    }
+                } else if (code == QStringLiteral("PODSTACK_CANCELLED")) {
+                    m_machineCreateStage = QStringLiteral("cancelled");
+                } else {
+                    m_machineCreateStage = QStringLiteral("done");
+                }
+                emit machineCreateStateChanged();
+                refreshMachines();
+                if (!m_machineCreateError.isEmpty()) {
+                    m_lastError = m_machineCreateError;
+                    emit lastErrorChanged();
+                    emit actionFinished(false, m_machineCreateError);
+                } else {
+                    emit actionFinished(true, {});
+                }
+            });
+
+    connect(&m_machineCreateStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                if (!m_machineCreateActive) {
+                    return;
+                }
+                m_machineCreateActive = false;
+                m_machineCreateStage = QStringLiteral("error");
+                m_machineCreateError = message;
+                emit machineCreateStateChanged();
+                m_lastError = message;
+                emit lastErrorChanged();
+                emit actionFinished(false, message);
+            });
+
     connect(&m_eventsStream, &StreamClient::eventReceived, this,
             [this](const QJsonObject &event) {
                 if (event.value(QStringLiteral("Type")).toString()
@@ -364,6 +463,7 @@ Backend::Backend(QObject *parent)
 
     QTimer::singleShot(0, this, &Backend::refresh);
     QTimer::singleShot(0, this, &Backend::refreshCatalog);
+    QTimer::singleShot(0, this, &Backend::refreshMachines);
 }
 
 QString Backend::version() const
@@ -1670,6 +1770,326 @@ void Backend::removeBuild(const QString &id)
     runAction(QStringLiteral("builds.remove"), QJsonObject{{QStringLiteral("id"), id}});
 }
 
+void Backend::refreshMachines()
+{
+    if (m_machinesWatcher.isRunning()) {
+        m_machinesRefreshAgain = true;
+        return;
+    }
+
+    m_machinesWatcher.setFuture(QtConcurrent::run([] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(QStringLiteral("machines.list"), {}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachinesFinished()
+{
+    const QJsonObject result = m_machinesWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+    } else {
+        QVariantList items;
+        const QJsonArray array = result.value(QStringLiteral("items")).toArray();
+        items.reserve(array.size());
+        for (const QJsonValue &value : array) {
+            items.append(machineVariant(value.toObject()));
+        }
+        m_machines = items;
+        emit machinesChanged();
+    }
+
+    if (m_machinesRefreshAgain) {
+        m_machinesRefreshAgain = false;
+        refreshMachines();
+    }
+}
+
+void Backend::refreshMachineDistros()
+{
+    if (m_machineDistrosLoaded || m_machineDistrosWatcher.isRunning()) {
+        return;
+    }
+
+    m_machineDistrosWatcher.setFuture(QtConcurrent::run([] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.distros"), {}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineDistrosFinished()
+{
+    const QJsonObject result = m_machineDistrosWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+        return;
+    }
+
+    QVariantList items;
+    const QJsonArray array = result.value(QStringLiteral("items")).toArray();
+    items.reserve(array.size());
+    for (const QJsonValue &value : array) {
+        const QJsonObject distro = value.toObject();
+        QVariantMap item = distro.toVariantMap();
+        const QString name = distro.value(QStringLiteral("distro")).toString();
+        const QString version = distro.value(QStringLiteral("version")).toString();
+        item.insert(QStringLiteral("label"),
+                    version.isEmpty() ? name : name + QLatin1Char(':') + version);
+        items.append(item);
+    }
+    m_machineDistros = items;
+    m_machineDistrosLoaded = true;
+    emit machineDistrosChanged();
+}
+
+void Backend::loadMachineInfo(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        return;
+    }
+
+    if (m_machineInfoWatcher.isRunning()) {
+        m_pendingMachineInfoId = id;
+        return;
+    }
+
+    m_machineInfoWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.get"),
+                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineInfoFinished()
+{
+    const QJsonObject result = m_machineInfoWatcher.result();
+    // O objeto Machine tem um campo "error" (string) que não é um erro de RPC.
+    if (result.value(QStringLiteral("error")).isObject()) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+    } else if (!result.value(QStringLiteral("id")).toString().isEmpty()) {
+        m_machineInfo = machineVariant(result);
+        emit machineInfoChanged();
+    }
+
+    if (!m_pendingMachineInfoId.isEmpty()) {
+        const QString next = m_pendingMachineInfoId;
+        m_pendingMachineInfoId.clear();
+        loadMachineInfo(next);
+    }
+}
+
+void Backend::loadMachineLogs(const QString &id, int tail)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        return;
+    }
+
+    if (tail <= 0) {
+        tail = 200;
+    }
+    tail = qBound(1, tail, 2000);
+
+    if (m_machineLogsWatcher.isRunning()) {
+        m_pendingMachineLogsId = id;
+        m_pendingMachineLogsTail = tail;
+        return;
+    }
+
+    m_machineLogsWatcher.setFuture(QtConcurrent::run([id, tail] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.logs"),
+                        QJsonObject{{QStringLiteral("id"), id},
+                                    {QStringLiteral("tail"), tail}},
+                        &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineLogsFinished()
+{
+    const QJsonObject result = m_machineLogsWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+    } else {
+        QStringList lines;
+        const QJsonArray array = result.value(QStringLiteral("lines")).toArray();
+        lines.reserve(array.size());
+        for (const QJsonValue &value : array) {
+            lines.append(value.toString());
+        }
+        m_machineLogLines = lines;
+        emit machineLogsChanged();
+    }
+
+    if (!m_pendingMachineLogsId.isEmpty()) {
+        const QString next = m_pendingMachineLogsId;
+        const int tail = m_pendingMachineLogsTail;
+        m_pendingMachineLogsId.clear();
+        loadMachineLogs(next, tail);
+    }
+}
+
+void Backend::machineLifecycle(const QString &action, const QString &id, bool force)
+{
+    if (id.isEmpty()
+        || (action != QStringLiteral("start") && action != QStringLiteral("stop")
+            && action != QStringLiteral("restart"))) {
+        m_lastError = QStringLiteral("Ação ou machine inválida.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+    runAction(QStringLiteral("machines.") + action, params, 120000);
+}
+
+void Backend::removeMachine(const QString &id, bool force)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    runAction(QStringLiteral("machines.delete"),
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}},
+              120000);
+}
+
+void Backend::createMachine(const QVariantMap &spec)
+{
+    const auto fail = [this](const QString &message) {
+        m_machineCreateActive = false;
+        m_machineCreateStage = QStringLiteral("error");
+        m_machineCreateProgress = 0;
+        m_machineCreateError = message;
+        emit machineCreateStateChanged();
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    const QString name = spec.value(QStringLiteral("name")).toString().trimmed();
+    static const QRegularExpression namePattern(
+        QStringLiteral("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"));
+    if (name.isEmpty() || !namePattern.match(name).hasMatch()) {
+        fail(QStringLiteral("Nome de machine inválido."));
+        return;
+    }
+
+    const QString distro = spec.value(QStringLiteral("distro")).toString().trimmed();
+    if (distro.isEmpty()) {
+        fail(QStringLiteral("Informe a distro da machine."));
+        return;
+    }
+
+    const int cpus = spec.value(QStringLiteral("cpus"), 2).toInt();
+    if (cpus < 1 || cpus > 256) {
+        fail(QStringLiteral("Número de CPUs fora do intervalo 1..256."));
+        return;
+    }
+
+    const int memoryGiB = spec.value(QStringLiteral("memoryGiB"), 4).toInt();
+    const int diskGiB = spec.value(QStringLiteral("diskGiB"), 20).toInt();
+    if (memoryGiB < 1) {
+        fail(QStringLiteral("Memória insuficiente (mínimo 1 GiB)."));
+        return;
+    }
+    if (diskGiB < 1) {
+        fail(QStringLiteral("Disco insuficiente (mínimo 1 GiB)."));
+        return;
+    }
+
+    constexpr qint64 kGiB = 1024LL * 1024LL * 1024LL;
+    QJsonObject params;
+    params.insert(QStringLiteral("name"), name);
+    params.insert(QStringLiteral("distro"), distro);
+    const QString version = spec.value(QStringLiteral("version")).toString().trimmed();
+    if (!version.isEmpty()) {
+        params.insert(QStringLiteral("version"), version);
+    }
+    params.insert(QStringLiteral("cpus"), cpus);
+    params.insert(QStringLiteral("memoryBytes"), static_cast<qint64>(memoryGiB) * kGiB);
+    params.insert(QStringLiteral("diskBytes"), static_cast<qint64>(diskGiB) * kGiB);
+    const QString user = spec.value(QStringLiteral("user")).toString();
+    if (!user.isEmpty()) {
+        params.insert(QStringLiteral("user"), user);
+    }
+    const QString userData = spec.value(QStringLiteral("userData")).toString();
+    if (!userData.isEmpty()) {
+        params.insert(QStringLiteral("userData"), userData);
+    }
+    params.insert(QStringLiteral("isolateNetwork"),
+                  spec.value(QStringLiteral("isolateNetwork")).toBool());
+    params.insert(QStringLiteral("forwardSshAgent"),
+                  spec.value(QStringLiteral("forwardSshAgent")).toBool());
+
+    m_machineCreateActive = true;
+    m_machineCreateJobId.clear();
+    m_machineCreateStage = QStringLiteral("validating");
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    emit machineCreateStateChanged();
+    m_machineCreateStream.startMachineCreate(params);
+}
+
+void Backend::cancelMachineCreate()
+{
+    if (m_machineCreateJobId.isEmpty()) {
+        return;
+    }
+
+    const QString jobId = m_machineCreateJobId;
+    m_machineCreateStage = QStringLiteral("cancelling");
+    emit machineCreateStateChanged();
+    (void)QtConcurrent::run([jobId] {
+        RpcClient client;
+        Error error;
+        client.call(QStringLiteral("machines.cancel"),
+                    QJsonObject{{QStringLiteral("jobId"), jobId}}, &error, 30000);
+    });
+}
+
 void Backend::runAction(const QString &method, const QJsonObject &params, int timeoutMs)
 {
     const PendingAction pending{method, params, timeoutMs};
@@ -1683,6 +2103,7 @@ void Backend::runAction(const QString &method, const QJsonObject &params, int ti
 void Backend::startAction(const PendingAction &action)
 {
     m_actionActive = true;
+    m_activeActionMethod = action.method;
     emit actionStateChanged();
 
     if (action.method == QStringLiteral("__batch__")) {
@@ -1737,6 +2158,10 @@ void Backend::onActionFinished()
         emit actionFinished(true, {});
         refresh();
         refreshCatalog();
+    }
+
+    if (m_activeActionMethod.startsWith(QStringLiteral("machines."))) {
+        refreshMachines();
     }
 
     if (!m_actionQueue.isEmpty()) {

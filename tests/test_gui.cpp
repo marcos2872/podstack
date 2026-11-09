@@ -4,6 +4,7 @@
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
+#include "machines/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -31,6 +32,7 @@ private slots:
     void backendActions();
     void backendStreams();
     void backendCatalog();
+    void backendMachines();
     void backendM3();
     void backendErrors();
     void backendTheme();
@@ -420,6 +422,98 @@ void GuiTest::backendCatalog()
     QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 15, 5000);
     QCOMPARE(actionSpy.last().at(0).toBool(), true);
     QDir(hostDir).removeRecursively();
+}
+
+void GuiTest::backendMachines()
+{
+    PodStack::Backend backend;
+    QSignalSpy machinesSpy(&backend, &PodStack::Backend::machinesChanged);
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    QTRY_VERIFY_WITH_TIMEOUT(machinesSpy.count() > 0, 5000);
+    QCOMPARE(backend.machines().size(), 0);
+
+    QSignalSpy distrosSpy(&backend, &PodStack::Backend::machineDistrosChanged);
+    backend.refreshMachineDistros();
+    QTRY_VERIFY_WITH_TIMEOUT(distrosSpy.count() > 0, 5000);
+    QVERIFY(backend.machineDistros().size() >= 3);
+    QVERIFY(backend.machineDistros()
+                .first()
+                .toMap()
+                .contains(QStringLiteral("label")));
+
+    backend.loadMachineInfo(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.lastError().isEmpty(), 5000);
+
+    int errorsBefore = errorSpy.count();
+    backend.loadMachineLogs(QStringLiteral("missing-machine"), 10);
+    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
+
+    backend.machineLifecycle(QStringLiteral("start"), QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    backend.removeMachine(QStringLiteral("missing-machine"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    backend.createMachine({});
+    QVERIFY(!backend.machineCreateActive());
+    QVERIFY(!backend.machineCreateError().isEmpty());
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("gui-machine-logs");
+    meta.name = QStringLiteral("gui-logs");
+    meta.distro = QStringLiteral("debian");
+    meta.distroVersion = QStringLiteral("12");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    QFile console(machineDir + QStringLiteral("/console.log"));
+    QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    console.write("gui boot 1\ngui boot 2\ngui boot 3\n");
+    console.close();
+
+    backend.refreshMachines();
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machines().size(), 1, 5000);
+    const QVariantMap item = backend.machines().first().toMap();
+    QCOMPARE(item.value(QStringLiteral("name")).toString(), QStringLiteral("gui-logs"));
+    QCOMPARE(item.value(QStringLiteral("distroLabel")).toString(),
+             QStringLiteral("debian:12"));
+    QCOMPARE(item.value(QStringLiteral("ssh")).toString(),
+             QStringLiteral("podstack@127.0.0.1:32222"));
+
+    backend.loadMachineInfo(meta.id);
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineInfo()
+                                  .value(QStringLiteral("id"))
+                                  .toString(),
+                              meta.id, 5000);
+    QCOMPARE(backend.machineInfo().value(QStringLiteral("state")).toString(),
+             QStringLiteral("stopped"));
+
+    backend.loadMachineLogs(meta.id, 2);
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineLogLines().size(), 2, 5000);
+    QCOMPARE(backend.machineLogLines().first(), QStringLiteral("gui boot 2"));
+    QCOMPARE(backend.machineLogLines().last(), QStringLiteral("gui boot 3"));
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
 }
 
 void GuiTest::backendM3()

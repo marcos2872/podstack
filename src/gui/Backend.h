@@ -47,6 +47,17 @@ class Backend : public QObject {
     Q_PROPERTY(bool buildActive READ buildActive NOTIFY buildStateChanged)
     Q_PROPERTY(QString buildStatus READ buildStatus NOTIFY buildStateChanged)
     Q_PROPERTY(QString activeBuildId READ activeBuildId NOTIFY buildStateChanged)
+    Q_PROPERTY(QVariantList machines READ machines NOTIFY machinesChanged)
+    Q_PROPERTY(QVariantList machineDistros READ machineDistros NOTIFY machineDistrosChanged)
+    Q_PROPERTY(QVariantMap machineInfo READ machineInfo NOTIFY machineInfoChanged)
+    Q_PROPERTY(QStringList machineLogLines READ machineLogLines NOTIFY machineLogsChanged)
+    Q_PROPERTY(bool machineCreateActive READ machineCreateActive NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineCreateJobId READ machineCreateJobId NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineCreateStage READ machineCreateStage NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(int machineCreateProgress READ machineCreateProgress
+               NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineCreateError READ machineCreateError
+               NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
     Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
     Q_PROPERTY(bool setupCompleted READ setupCompleted NOTIFY setupChanged)
@@ -99,6 +110,15 @@ public:
     bool buildActive() const { return m_buildActive; }
     QString buildStatus() const { return m_buildStatus; }
     QString activeBuildId() const { return m_activeBuildId; }
+    QVariantList machines() const { return m_machines; }
+    QVariantList machineDistros() const { return m_machineDistros; }
+    QVariantMap machineInfo() const { return m_machineInfo; }
+    QStringList machineLogLines() const { return m_machineLogLines; }
+    bool machineCreateActive() const { return m_machineCreateActive; }
+    QString machineCreateJobId() const { return m_machineCreateJobId; }
+    QString machineCreateStage() const { return m_machineCreateStage; }
+    int machineCreateProgress() const { return m_machineCreateProgress; }
+    QString machineCreateError() const { return m_machineCreateError; }
     QString eventMessage() const { return m_eventMessage; }
     QString eventKind() const { return m_eventKind; }
     bool setupCompleted() const { return m_setupCompleted; }
@@ -158,6 +178,15 @@ public:
     Q_INVOKABLE void startBuild(const QVariantMap &spec);
     Q_INVOKABLE void cancelBuild();
     Q_INVOKABLE void removeBuild(const QString &id);
+    Q_INVOKABLE void refreshMachines();
+    Q_INVOKABLE void refreshMachineDistros();
+    Q_INVOKABLE void loadMachineInfo(const QString &id);
+    Q_INVOKABLE void loadMachineLogs(const QString &id, int tail = 200);
+    Q_INVOKABLE void machineLifecycle(const QString &action, const QString &id,
+                                      bool force = false);
+    Q_INVOKABLE void removeMachine(const QString &id, bool force);
+    Q_INVOKABLE void createMachine(const QVariantMap &spec);
+    Q_INVOKABLE void cancelMachineCreate();
     Q_INVOKABLE void lifecycle(const QString &action, const QString &id);
     Q_INVOKABLE void removeContainer(const QString &id, bool force, bool volumes);
     Q_INVOKABLE void createContainer(const QVariantMap &spec, bool start);
@@ -212,6 +241,11 @@ signals:
     void buildsChanged();
     void buildLogChanged();
     void buildStateChanged();
+    void machinesChanged();
+    void machineDistrosChanged();
+    void machineInfoChanged();
+    void machineLogsChanged();
+    void machineCreateStateChanged();
     void eventsChanged();
     void containerEvent(const QVariantMap &event);
     void settingsChanged();
@@ -224,6 +258,10 @@ private:
     void onFilesFinished();
     void onCatalogFinished();
     void onSetupFinished();
+    void onMachinesFinished();
+    void onMachineDistrosFinished();
+    void onMachineInfoFinished();
+    void onMachineLogsFinished();
     void applySetupStatus(const QJsonObject &status);
     void applySetupJob(const QJsonObject &job);
     void runSetupRequest(const QString &method, const QJsonObject &params);
@@ -245,6 +283,10 @@ private:
     QFutureWatcher<QJsonObject> m_filesWatcher;
     QFutureWatcher<QJsonObject> m_catalogWatcher;
     QFutureWatcher<QJsonObject> m_setupWatcher;
+    QFutureWatcher<QJsonObject> m_machinesWatcher;
+    QFutureWatcher<QJsonObject> m_machineDistrosWatcher;
+    QFutureWatcher<QJsonObject> m_machineInfoWatcher;
+    QFutureWatcher<QJsonObject> m_machineLogsWatcher;
     QString m_setupPendingMethod;
     QString m_catalogSection;
     QStringList m_catalogQueue;
@@ -253,6 +295,7 @@ private:
     StreamClient m_pullStream;
     StreamClient m_composeStream;
     StreamClient m_buildStream;
+    StreamClient m_machineCreateStream;
     StreamClient m_setupStream;
     StreamClient m_eventsStream;
     QTimer m_eventTimer;
@@ -293,6 +336,21 @@ private:
     bool m_buildActive = false;
     QString m_buildStatus;
     QString m_activeBuildId;
+    QVariantList m_machines;
+    QVariantList m_machineDistros;
+    QVariantMap m_machineInfo;
+    QStringList m_machineLogLines;
+    QString m_pendingMachineInfoId;
+    QString m_pendingMachineLogsId;
+    int m_pendingMachineLogsTail = 200;
+    bool m_machineDistrosLoaded = false;
+    bool m_machinesRefreshAgain = false;
+    bool m_machineCreateActive = false;
+    QString m_machineCreateJobId;
+    QString m_machineCreateStage;
+    int m_machineCreateProgress = 0;
+    QString m_machineCreateError;
+    QString m_activeActionMethod;
     QString m_eventMessage;
     QString m_eventKind;
     QSet<QString> m_recentEvents;

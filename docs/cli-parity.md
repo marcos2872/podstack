@@ -45,7 +45,7 @@
 | `delete [MACHINE...]` | `machine delete <id\|nome>` | `--force` | Dados perdidos; sem confirmação interativa no CLI (use `--force` para ignorar erro) | ✅ T4-03 |
 | `list` | `machine list` | `--json` | Colunas NOME, DISTRO, ARCH, STATE e SSH | ✅ T4-03 |
 | `info M` | `machine info M` | `--json` | Aceita ID ou nome | ✅ T4-03 |
-| `logs [M]` | `machine logs [M]` | `--all` | Console/boot | ⬜ T4-06 |
+| `logs [M]` | `machine logs <id\|nome>` | `--tail N` | Console/boot one-shot (sem follow) | ✅ T4-06 |
 | `ssh` | `machine ssh` / `ssh M` | `-u`, `-m` | Escreve `~/.ssh/config` | ⬜ T4-04 |
 | `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | | ⬜ |
 | `pull [-m M] SRC [DST]` | `machine pull` | `-m` | Host→guest? Ver §3 | ⬜ T4-08 |

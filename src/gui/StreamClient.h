@@ -21,6 +21,9 @@ public:
     void pullImage(const QString &reference, const QString &platform = {});
     void subscribeComposeLogs(const QString &project, const QString &service = {});
     void startBuild(const QJsonObject &params);
+    /// Inicia `machines.create` e entrega `machines.delta`/`machines.done` sem unsubscribe:
+    /// o daemon remove a subscription quando o job termina.
+    void startMachineCreate(const QJsonObject &params);
     void startSetup(const QJsonObject &params);
     void startSetupRemoveDocker(const QJsonObject &params);
     void subscribeSetup(const QString &jobId);
@@ -37,6 +40,8 @@ signals:
     void composeLog(const QString &service, const QString &line);
     void buildEvent(const QJsonObject &event);
     void buildFinished(const QJsonObject &result);
+    void machineCreateEvent(const QJsonObject &event);
+    void machineCreateFinished(const QJsonObject &result);
     void setupEvent(const QJsonObject &event);
     void setupFinished(const QJsonObject &result);
     void eventReceived(const QJsonObject &event);

@@ -56,7 +56,9 @@
 - Subscriptions: subscribe/unsubscribe, backpressure, drop.
 - Machines: `list` vazio, `get`/lifecycle/cancel inexistentes → `PODSTACK_NOT_FOUND`,
   `create` sem nome/distro ou com CPUs/memória inválidas → `PODSTACK_INVALID_PARAMS`,
-  `mounts`/`isolated:true` → `PODSTACK_UNSUPPORTED` (sem QEMU nem rede).
+  `mounts`/`isolated:true` → `PODSTACK_UNSUPPORTED` (sem QEMU nem rede); `logs` inexistente
+  → `PODSTACK_NOT_FOUND`, machine semeada devolve as últimas linhas e respeita `tail`,
+  `console.log` ausente → `{lines:[]}` e symlink → `PODSTACK_IO_ERROR`.
 - `system.df`: detalhado devolve `sections.images/containers/volumes` com contagens, itens,
   flags (`dangling`, `unused`, `running`, `inUse`) e totais; `detailed:false` mantém
   contagens/totais e omite `items`; `json` bruto permanece intacto (fixture do
@@ -70,7 +72,8 @@
 - Modo não interativo (sem TTY).
 - Machines: `machine list --json` vazio, `machine info` inexistente (exit 1), `machine create`
   com nome inválido (exit 1, validação síncrona sem download), tamanho de memória/disco
-  inválido e `machine --help`/usage.
+  inválido e `machine --help`/usage; `machine logs` inexistente (exit 1), sem ID (usage) e
+  machine semeada com `--tail`/`--json` (one-shot, sem follow).
 - `top --once --interval 1 --json` devolve uma amostra com `host`/`containers`/`totals` e
   `--help` funciona; o modo contínuo é interrompido com Ctrl+C.
 - `system df --json` devolve as seções normalizadas; `system df` mostra o resumo e
@@ -161,7 +164,8 @@ gera `Notify` com “Container falhou”.
 | Metadados e índice (`test_machines`) | `MachineMeta`: round-trip de todos os campos + portas/mounts, `meta.json` `0600` em diretório `0700` e sem temporário residual; arquivo ausente → `PODSTACK_NOT_FOUND`, JSON inválido → `PODSTACK_IO_ERROR`. `MachineStore`: open em DB temporário, upsert/list/get/getByName/updateState/remove, cascade de portas/mounts, mesmas tabelas no `podstack.db` do `BuildStore` (WAL, conexões independentes) e `machinesDir`/`machineDir` com validação de id |
 | QEMU/QMP (`test_machines`) | `QemuCommand`: x86 KVM/TCG, arm64, UEFI, `restrict=on` no isolamento e caminhos/recursos inválidos. `QmpClient` com `MockQmpServer` em `QThread`: handshake, `query-status`, `system_powerdown`, erro QMP, evento intercalado, timeout, `quit` com evento `SHUTDOWN`/fechamento e socket inexistente |
 | Runtime/manager (`test_machines`) | `MachineManager` com `FakeQemuRuntime` e `qemu-img` falso: `validate` público e create baixa a imagem do mock, cria disco/seed/OVMF vars com 0600 em diretório 0700, grava `meta.json` e SQLite, escolhe porta livre, registra `-b` no qemu-img e inicia o runtime. Validação de nome/cpus/memória/disco/arch/distro e conflito de nome; start/stop/restart/remove com estados e erros refletidos no store e no `meta.json`; cancelamento durante o download sem diretório/DB; portas ocupadas puladas. Teste com QEMU/KVM real é opcional (`PODSTACK_QEMU_INTEGRATION=1`) e faz `QSKIP` sem binário, `/dev/kvm` ou OVMF |
-| RPC/CLI de machines (`test_rpc`, `test_cli`) | `machines.list/get/create/cancel/start/stop/restart/delete` com erros estáveis; `machine list/info/create/start/stop/restart/delete/--help`. A criação real (download + QEMU + cloud-init) **não** roda no CI: é manual ou integração opt-in, pois exige rede, QEMU/KVM e OVMF |
+| RPC/CLI de machines (`test_rpc`, `test_cli`) | `machines.list/get/create/cancel/start/stop/restart/delete/logs` com erros estáveis; `machine list/info/logs/create/start/stop/restart/delete/--help`. `logs` cobre `tail`, arquivo ausente, symlink e machine inexistente. A criação real (download + QEMU + cloud-init) **não** roda no CI: é manual ou integração opt-in, pois exige rede, QEMU/KVM e OVMF |
+| GUI de machines (`test_gui`) | `machines` vazio + sinal, `loadMachineInfo`/`loadMachineLogs` inexistente → erro, `machineLifecycle`/`removeMachine` inexistente → `actionFinished(false)`, `createMachine({})` falha na validação síncrona sem QEMU, e machine semeada no `MachineStore` lista/info/logs com `tail` |
 | Criar Ubuntu 24.04 | SSH responde ≤ 60 s; hostname/user corretos |
 | cloud-init | arquivo criado, pacote instalado, comando executado |
 | Stop/start | estado consistente; sem QEMU órfão |

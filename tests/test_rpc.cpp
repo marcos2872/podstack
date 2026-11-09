@@ -1,6 +1,7 @@
 #include "MockPodmanServer.h"
 
 #include "core/RpcClient.h"
+#include "machines/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -29,6 +30,7 @@ private slots:
     void catalog();
     void machinesDistros();
     void machinesFlow();
+    void machineLogs();
     void composeAndBuilds();
     void setupFlow();
     void invalidRequests();
@@ -821,6 +823,103 @@ void RpcTest::machinesFlow()
     const QJsonObject after = client.call(QStringLiteral("machines.list"), {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(after.value(QStringLiteral("items")).toArray().size(), 0);
+}
+
+void RpcTest::machineLogs()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.logs"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-logs-1");
+    meta.name = QStringLiteral("logs-demo");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString machinesRoot = m_testDataDir + QStringLiteral("/data/podstack/machines");
+    const QString machineDir = machinesRoot + QLatin1Char('/') + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+
+    QFile console(machineDir + QStringLiteral("/console.log"));
+    QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    console.write("boot 1\nboot 2\nboot 3\nboot 4\nboot 5\n");
+    console.close();
+    QVERIFY(console.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    const QJsonObject all =
+        client.call(QStringLiteral("machines.logs"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QJsonArray lines = all.value(QStringLiteral("lines")).toArray();
+    QCOMPARE(lines.size(), 5);
+    QCOMPARE(lines.first().toString(), QStringLiteral("boot 1"));
+    QCOMPARE(lines.last().toString(), QStringLiteral("boot 5"));
+
+    const QJsonObject tail =
+        client.call(QStringLiteral("machines.logs"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("logs-demo")},
+                                {QStringLiteral("tail"), 2}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    lines = tail.value(QStringLiteral("lines")).toArray();
+    QCOMPARE(lines.size(), 2);
+    QCOMPARE(lines.first().toString(), QStringLiteral("boot 4"));
+    QCOMPARE(lines.last().toString(), QStringLiteral("boot 5"));
+
+    PodStack::MachineMeta unstarted = meta;
+    unstarted.id = QStringLiteral("machine-logs-2");
+    unstarted.name = QStringLiteral("no-console");
+    QVERIFY2(store.upsert(unstarted, &storeError), qPrintable(storeError.message));
+    QVERIFY(QDir().mkpath(machinesRoot + QLatin1Char('/') + unstarted.id));
+
+    const QJsonObject empty =
+        client.call(QStringLiteral("machines.logs"),
+                    QJsonObject{{QStringLiteral("id"), unstarted.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(empty.value(QStringLiteral("lines")).toArray().size(), 0);
+
+    PodStack::MachineMeta symlinked = meta;
+    symlinked.id = QStringLiteral("machine-logs-3");
+    symlinked.name = QStringLiteral("symlink-console");
+    QVERIFY2(store.upsert(symlinked, &storeError), qPrintable(storeError.message));
+    const QString symlinkDir = machinesRoot + QLatin1Char('/') + symlinked.id;
+    QVERIFY(QDir().mkpath(symlinkDir));
+    const QString outside = m_testDataDir + QStringLiteral("/outside.log");
+    QFile outsideFile(outside);
+    QVERIFY(outsideFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    outsideFile.write("secret\n");
+    outsideFile.close();
+    QVERIFY(QFile::link(outside, symlinkDir + QStringLiteral("/console.log")));
+
+    PodStack::Error symlinkError;
+    client.call(QStringLiteral("machines.logs"),
+                QJsonObject{{QStringLiteral("id"), symlinked.id}}, &symlinkError);
+    QCOMPARE(symlinkError.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(store.remove(meta.id));
+    QVERIFY(store.remove(unstarted.id));
+    QVERIFY(store.remove(symlinked.id));
+    QDir(machineDir).removeRecursively();
+    QDir(machinesRoot + QLatin1Char('/') + unstarted.id).removeRecursively();
+    QDir(symlinkDir).removeRecursively();
+    QFile::remove(outside);
 }
 
 void RpcTest::composeAndBuilds()

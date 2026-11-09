@@ -247,8 +247,9 @@ Regras de normalização:
 
 ### 4.6 `machines.*`
 
-Implementados na T4-03 (M4): registry, listagem, inspeção, criação assíncrona e ciclo de
-vida. Os demais métodos continuam planejados para as tarefas seguintes.
+Implementados na T4-03 (M4) e T4-06: registry, listagem, inspeção, criação assíncrona,
+logs do console e ciclo de vida. Os demais métodos continuam planejados para as tarefas
+seguintes.
 
 | Método | Params | Result |
 |---|---|---|
@@ -261,6 +262,7 @@ vida. Os demais métodos continuam planejados para as tarefas seguintes.
 | `machines.stop` | `{id, force?}` | `Machine` |
 | `machines.restart` | `{id, force?}` | `Machine` |
 | `machines.delete` | `{id, force?}` | `{deleted:true}` |
+| `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 
 **Planejados (não implementados ainda):**
 
@@ -273,7 +275,6 @@ vida. Os demais métodos continuam planejados para as tarefas seguintes.
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile}` | T4-04 |
 | `machines.files.pull` / `push` | `{id, source, destination}` | `JobRef` | T4-07/T4-08 |
 | `machines.ports.list` / `set` | `{id, ports?}` | `{items}` | T4-12 |
-| `machines.logs` | `{id, tail?}` | `{lines:[]}` | T4-06 |
 | `machines.console` | `{id}` | `Subscription` (stream serial) | T4-15 |
 
 ```ts
@@ -307,6 +308,13 @@ Progresso e resultado chegam como notificações:
 A subscription é removida quando o job termina; cancelar um job inexistente retorna
 `PODSTACK_NOT_FOUND`. `mounts` e `isolated:true` ainda retornam `PODSTACK_UNSUPPORTED`
 (T4-07/T4-14); `isolateNetwork` e `forwardSshAgent` são persistidos no metadado.
+
+**Logs do console.** `machines.logs` resolve `id` ou nome e lê apenas
+`machines/<id>/console.log`, sem expor o caminho na resposta. O arquivo precisa ser regular
+e não pode ser symlink; a leitura usa no máximo os últimos 512 KiB e devolve as últimas
+`tail` linhas (`tail` default 200, limitado a 1..2000). Se a machine ainda não bootou e o
+arquivo não existe, a resposta é `{lines:[]}`. A leitura é one-shot; não há follow/stream
+neste método (console serial é a T4-15).
 
 `DistroImage`: `{distro, version, arch, default, url, checksum, algorithm, size, cached}`.
 `machines.distros` lê o registry pinado no binário e consulta o cache local (sem hash e sem

@@ -110,7 +110,7 @@ ApplicationWindow {
             { key: "pods", label: "Pods", icon: "pods" }
         ] },
         { group: "Linux", items: [
-            { key: "machines", label: "Machines", icon: "machines", disabled: true },
+            { key: "machines", label: "Machines", icon: "machines" },
             { key: "devices", label: "Devices", icon: "devices", disabled: true }
         ] }
     ]
@@ -154,6 +154,9 @@ ApplicationWindow {
         if (key === "pods") {
             return backend.pods.length
         }
+        if (key === "machines") {
+            return backend.machines.length
+        }
         return -1
     }
 
@@ -176,6 +179,9 @@ ApplicationWindow {
         if (key === "pods") {
             return 6
         }
+        if (key === "machines") {
+            return 7
+        }
         return 0
     }
 
@@ -194,6 +200,8 @@ ApplicationWindow {
             backend.refreshCompose()
         } else if (section === "builds") {
             backend.refreshBuilds()
+        } else if (section === "machines") {
+            backend.refreshMachines()
         }
     }
 
@@ -585,6 +593,17 @@ ApplicationWindow {
                         anchors.fill: parent
                     }
                 }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    MachinesPage {
+                        id: machinesPage
+                        anchors.fill: parent
+                    }
+                }
             }
 
             // Statusbar
@@ -659,6 +678,22 @@ ApplicationWindow {
                     Text {
                         visible: !window.compactStatus
                         text: backend.volumes.length + qsTr(" volumes")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Text {
+                        visible: !window.compactStatus
+                        text: "·"
+                        color: Theme.textDisabled
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Text {
+                        visible: !window.compactStatus
+                        text: backend.machines.length + qsTr(" machines")
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro

@@ -123,7 +123,7 @@
 | T4-03 | P0 | Criar disco qcow2 + QEMU + QMP | T4-01 | ✅ Disco qcow2 esparso, seed cloud-init, OVMF e `QemuProcessRuntime`/QMP; RPC `machines.list/get/create/cancel/start/stop/restart/delete` + CLI `machine list/info/create/start/stop/restart/delete`. Evidência: `cmake --build --preset dev` sem warnings; `ctest --preset dev` **14/14**; `test_machines` **42 passed / 1 skipped** (QEMU real opt-in `PODSTACK_QEMU_INTEGRATION=1`); `test_rpc` e `test_cli` verdes; `git diff --check` limpo. Senha/SSH/mounts/isolated ficam na T4-04/T4-07/T4-14 |
 | T4-04 | P0 | SSH: chave, porta, bloco `~/.ssh/config`, `podstack ssh` | T4-03 | SSH funciona; bloco idempotente |
 | T4-05 | P0 | Ciclo de vida start/stop/restart/delete + limpeza | T4-03 | Sem órfãos |
-| T4-06 | P0 | Listar/info/logs de machines na GUI | T4-03 | Estado consistente |
+| T4-06 | P0 | Listar/info/logs de machines na GUI | T4-03 | ✅ `machines.logs` (tail 1..2000, 512 KiB, symlink rejeitado) + `MachinesPage`/`MachineInspector` (NOME/DISTRO/ESTADO/SSH, Info, Logs, criar com progresso, start/stop/restart/delete) + `machine logs` one-shot. Evidência: build sem warnings novos; `ctest --preset dev` **14/14**; `test_rpc`/`test_cli`/`test_gui`/`test_machines` verdes; `qmllint` sem erros (só avisos `unqualified`/layout padrão); `git diff --check` limpo |
 | T4-07 | P1 | Virtiofs mounts + file manager | T4-03 | Arquivos visíveis |
 | T4-08 | P1 | pull/push de arquivos | T4-04 | Progresso |
 | T4-09 | P1 | Export/import `.tar.zst` | T4-05 | Integridade; pausa |

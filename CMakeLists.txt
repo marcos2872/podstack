@@ -191,6 +191,8 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/VolumesView.qml
         src/gui/qml/NetworksView.qml
         src/gui/qml/PodsView.qml
+        src/gui/qml/MachinesPage.qml
+        src/gui/qml/MachineInspector.qml
         src/gui/qml/ComposeView.qml
         src/gui/qml/BuildsView.qml
         src/gui/qml/Toast.qml

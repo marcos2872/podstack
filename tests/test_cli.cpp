@@ -1,5 +1,7 @@
 #include "MockPodmanServer.h"
 
+#include "machines/MachineStore.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -492,6 +494,66 @@ void CliTest::machineCommands()
                  env);
     QCOMPARE(result.code, 1);
     QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("logs"), QStringLiteral("missing")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("logs")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("cli-machine-logs");
+    meta.name = QStringLiteral("cli-logs");
+    meta.distro = QStringLiteral("fedora");
+    meta.distroVersion = QStringLiteral("44");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    QFile console(machineDir + QStringLiteral("/console.log"));
+    QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    console.write("cli boot 1\ncli boot 2\ncli boot 3\n");
+    console.close();
+
+    result = run({QStringLiteral("machine"), QStringLiteral("logs"),
+                  QStringLiteral("cli-logs")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("cli boot 1")));
+    QVERIFY(result.out.contains(QStringLiteral("cli boot 3")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("logs"),
+                  QStringLiteral("cli-logs"), QStringLiteral("--tail"),
+                  QStringLiteral("1")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(!result.out.contains(QStringLiteral("cli boot 1")));
+    QVERIFY(result.out.contains(QStringLiteral("cli boot 3")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("logs"),
+                  QStringLiteral("cli-logs"), QStringLiteral("--json")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError logsParse{};
+    const QJsonDocument logsDocument =
+        QJsonDocument::fromJson(result.out.toUtf8(), &logsParse);
+    QCOMPARE(logsParse.error, QJsonParseError::NoError);
+    QCOMPARE(logsDocument.object().value(QStringLiteral("lines")).toArray().size(), 3);
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
 
     result = run({QStringLiteral("machine"), QStringLiteral("create"),
                   QStringLiteral("ubuntu:24.04"), QStringLiteral("Bad_Name")},
