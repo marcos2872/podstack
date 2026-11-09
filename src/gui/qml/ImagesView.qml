@@ -173,10 +173,12 @@ ColumnLayout {
                 placeholderText: "nginx:alpine"
             }
 
-            FormField {
+            AppSelect {
                 id: pullPlatform
                 Layout.fillWidth: true
-                placeholderText: "plataforma (opcional, ex.: linux/arm64)"
+                model: [qsTr("Automático"), "linux/amd64", "linux/arm64",
+                        "linux/arm/v7", "linux/ppc64le", "linux/s390x"]
+                currentIndex: 0
             }
 
             Label {
@@ -212,7 +214,9 @@ ColumnLayout {
                 text: "Pull"
                 enabled: pullReference.text.length > 0 && !backend.pullActive
                 onClicked: {
-                    backend.pullImage(pullReference.text, pullPlatform.text)
+                    backend.pullImage(pullReference.text,
+                                      pullPlatform.currentIndex > 0
+                                      ? pullPlatform.currentText : "")
                 }
             }
         }
