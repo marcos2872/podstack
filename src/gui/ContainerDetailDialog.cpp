@@ -2,6 +2,7 @@
 #include "gui/ContainerDetailDialog.h"
 
 #include "gui/Backend.h"
+#include "gui/ExternalTerminal.h"
 #include "gui/TerminalView.h"
 
 #include <QColor>
@@ -9,12 +10,12 @@
 #include <QEvent>
 #include <QFrame>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPalette>
 #include <QQmlContext>
 #include <QQmlError>
 #include <QQuickItem>
 #include <QQuickWidget>
-#include <QTabWidget>
 #include <QVBoxLayout>
 #include <QVariant>
 
@@ -37,7 +38,7 @@ ContainerDetailDialog::ContainerDetailDialog(Backend *backend, QWidget *parent, 
         "QWidget#containerDetailDialog { background-color: rgba(0, 0, 0, 160); }"));
 
     // A UI QML e o QTermWidget são escuros; alinhe os widgets nativos do card
-    // (barra de abas, páginas e terminal) com o restante do app.
+    // (terminal) com o restante do app.
     QPalette darkPalette = palette();
     darkPalette.setColor(QPalette::Window, QColor(QStringLiteral("#0e1118")));
     darkPalette.setColor(QPalette::WindowText, QColor(QStringLiteral("#e7eaf0")));
@@ -80,18 +81,8 @@ void ContainerDetailDialog::setupInterface(bool loadQml)
     cardLayout->setContentsMargins(kCardPadding, kCardPadding, kCardPadding, kCardPadding);
     cardLayout->setSpacing(0);
 
-    m_tabs = new QTabWidget(m_card);
-    m_tabs->setObjectName(QStringLiteral("containerDetailTabs"));
-    m_tabs->setDocumentMode(true);
-    cardLayout->addWidget(m_tabs);
-
-    auto *detailsTab = new QWidget(m_tabs);
-    auto *detailsLayout = new QVBoxLayout(detailsTab);
-    detailsLayout->setContentsMargins(0, 0, 0, 0);
-    detailsLayout->setSpacing(0);
-
     if (loadQml) {
-        m_quickWidget = new QQuickWidget(detailsTab);
+        m_quickWidget = new QQuickWidget(m_card);
         m_quickWidget->setObjectName(QStringLiteral("containerDetailQuickWidget"));
         m_quickWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
         m_quickWidget->setClearColor(palette().color(QPalette::Window));
@@ -110,31 +101,12 @@ void ContainerDetailDialog::setupInterface(bool loadQml)
         m_quickWidget->loadFromModule(QStringLiteral("PodStack"),
                                       QStringLiteral("ContainerDetail"));
         connectQmlSignals();
-        detailsLayout->addWidget(m_quickWidget);
+        cardLayout->addWidget(m_quickWidget);
     } else {
-        auto *placeholder = new QLabel(tr("Detalhes indisponíveis neste contexto."), detailsTab);
+        auto *placeholder = new QLabel(tr("Detalhes indisponíveis neste contexto."), m_card);
         placeholder->setAlignment(Qt::AlignCenter);
-        detailsLayout->addWidget(placeholder);
+        cardLayout->addWidget(placeholder);
     }
-
-    m_tabs->addTab(detailsTab, tr("Detalhes"));
-
-    m_terminalTab = new QWidget(m_tabs);
-    auto *terminalLayout = new QVBoxLayout(m_terminalTab);
-    terminalLayout->setContentsMargins(0, 0, 0, 0);
-    terminalLayout->setSpacing(0);
-    m_tabs->addTab(m_terminalTab, tr("Terminal"));
-
-    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
-        if (!isVisible()) {
-            return;
-        }
-        if (index == 0 && m_quickWidget) {
-            m_quickWidget->setFocus(Qt::OtherFocusReason);
-        } else if (index == 1 && m_terminal) {
-            m_terminal->focusTerminal();
-        }
-    });
 }
 
 void ContainerDetailDialog::connectQmlSignals()
@@ -148,6 +120,11 @@ void ContainerDetailDialog::connectQmlSignals()
     }
     m_qmlSignalsConnected = true;
     connect(root, SIGNAL(closeRequested()), this, SLOT(handleCloseRequested()));
+    // O QML declara `rect`, que o Qt registra como QRectF no metaobjeto.
+    connect(root, SIGNAL(terminalAreaChanged(QRectF,bool)), this,
+            SLOT(applyTerminalArea(QRectF,bool)));
+    connect(root, SIGNAL(externalTerminalRequested()), this,
+            SLOT(handleExternalTerminalRequested()));
 }
 
 bool ContainerDetailDialog::qmlLoaded() const
@@ -171,16 +148,15 @@ void ContainerDetailDialog::openContainer(const QString &id, int detailTab)
     m_containerId = id;
     resetTerminalSession();
 
-    if (m_tabs) {
-        m_tabs->setCurrentIndex(0);
-    }
-
     if (m_quickWidget && m_quickWidget->rootObject()) {
         QObject *root = m_quickWidget->rootObject();
         QMetaObject::invokeMethod(root, "open", Q_ARG(QVariant, id));
         if (detailTab > 0) {
             root->setProperty("tabIndex", detailTab);
         }
+        // O QML pode não emitir nada se a aba inicial não mudou; reaplica a
+        // área depois de abrir para o terminal acompanhar o placeholder.
+        QMetaObject::invokeMethod(root, "syncTerminalArea");
     }
 
     applyOverlayGeometry();
@@ -195,20 +171,24 @@ void ContainerDetailDialog::openContainer(const QString &id, int detailTab)
 void ContainerDetailDialog::resetTerminalSession()
 {
     stopTerminalSession();
-    if (!m_terminalTab || m_containerId.isEmpty()) {
+    if (m_containerId.isEmpty() || !m_card) {
         return;
     }
 
+    // Sem QML (teste) a sessão vive no card; com QML, ela é filha do
+    // QQuickWidget para usar as coordenadas do root sobre o placeholder.
+    QWidget *parent = m_quickWidget ? static_cast<QWidget *>(m_quickWidget)
+                                    : static_cast<QWidget *>(m_card);
     m_terminal = new TerminalView(
         tr("Terminal — %1").arg(m_containerId), QStringLiteral("podman"),
         {QStringLiteral("exec"), QStringLiteral("-it"), m_containerId,
          QStringLiteral("/bin/sh")},
-        m_terminalTab);
+        parent);
+    // A barra do TerminalView duplicaria o cabeçalho da aba Terminal; o QML
+    // oferece o botão "Nova sessão em janela".
     m_terminal->setTitleVisible(false);
-    m_terminalTab->layout()->addWidget(m_terminal);
-    if (m_tabs && m_tabs->currentIndex() == 1) {
-        m_terminal->focusTerminal();
-    }
+    m_terminal->setToolbarVisible(false);
+    m_terminal->hide();
 }
 
 void ContainerDetailDialog::stopTerminalSession()
@@ -216,9 +196,48 @@ void ContainerDetailDialog::stopTerminalSession()
     if (!m_terminal) {
         return;
     }
-    m_terminalTab->layout()->removeWidget(m_terminal);
     delete m_terminal;
     m_terminal = nullptr;
+    m_terminalVisible = false;
+}
+
+void ContainerDetailDialog::applyTerminalArea(const QRectF &area, bool visible)
+{
+    if (!m_terminal) {
+        return;
+    }
+    if (!visible || area.width() <= 0 || area.height() <= 0) {
+        m_terminal->hide();
+        m_terminalVisible = false;
+        return;
+    }
+
+    const bool wasVisible = m_terminalVisible;
+    m_terminal->setGeometry(area.toRect());
+    m_terminal->show();
+    m_terminal->raise();
+    m_terminalVisible = true;
+    if (!wasVisible) {
+        m_terminal->focusTerminal();
+    }
+}
+
+void ContainerDetailDialog::handleExternalTerminalRequested()
+{
+    if (m_containerId.isEmpty()) {
+        return;
+    }
+
+    QString error;
+    if (ExternalTerminal::launch(QStringLiteral("podman"),
+                                 {QStringLiteral("exec"), QStringLiteral("-it"),
+                                  m_containerId, QStringLiteral("/bin/sh")},
+                                 &error)) {
+        return;
+    }
+
+    qWarning().noquote() << "Falha ao abrir a nova sessão em janela:" << error;
+    QMessageBox::warning(this, tr("Terminal externo"), error);
 }
 
 void ContainerDetailDialog::closeOverlay()

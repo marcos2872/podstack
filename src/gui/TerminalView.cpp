@@ -28,18 +28,18 @@ TerminalView::TerminalView(const QString &title, const QString &program,
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
-    auto *toolbar = new QWidget(this);
-    toolbar->setObjectName(QStringLiteral("terminalToolbar"));
-    auto *toolbarLayout = new QHBoxLayout(toolbar);
+    m_toolbar = new QWidget(this);
+    m_toolbar->setObjectName(QStringLiteral("terminalToolbar"));
+    auto *toolbarLayout = new QHBoxLayout(m_toolbar);
     toolbarLayout->setContentsMargins(6, 3, 6, 3);
     toolbarLayout->setSpacing(6);
 
-    m_titleLabel = new QLabel(title, toolbar);
+    m_titleLabel = new QLabel(title, m_toolbar);
     m_titleLabel->setObjectName(QStringLiteral("terminalTitle"));
     m_titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     toolbarLayout->addWidget(m_titleLabel, 1);
 
-    m_externalButton = new QToolButton(toolbar);
+    m_externalButton = new QToolButton(m_toolbar);
     m_externalButton->setObjectName(QStringLiteral("terminalExternalButton"));
     m_externalButton->setText(tr("Abrir externo"));
     m_externalButton->setToolTip(tr("Abrir a mesma sessão em um terminal externo"));
@@ -52,7 +52,7 @@ TerminalView::TerminalView(const QString &title, const QString &program,
     connect(m_externalButton, &QToolButton::clicked, this, &TerminalView::openExternal);
     toolbarLayout->addWidget(m_externalButton);
 
-    layout->addWidget(toolbar);
+    layout->addWidget(m_toolbar);
 
     m_terminal = new QTermWidget(0, this);
     m_terminal->setObjectName(QStringLiteral("terminal"));
@@ -92,6 +92,13 @@ void TerminalView::setTitleVisible(bool visible)
 {
     if (m_titleLabel) {
         m_titleLabel->setVisible(visible);
+    }
+}
+
+void TerminalView::setToolbarVisible(bool visible)
+{
+    if (m_toolbar) {
+        m_toolbar->setVisible(visible);
     }
 }
 

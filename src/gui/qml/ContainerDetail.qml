@@ -3,15 +3,18 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import PodStack
 
-// Conteúdo do detalhe de um container, hospedado na aba "Detalhes" do
+// Conteúdo do detalhe de um container, hospedado diretamente no card do
 // ContainerDetailDialog (overlay integrado à MainWindow). As abas usam
 // `containers.inspect` para metadados e streams próprios de logs/stats,
-// separados do stream compartilhado do Backend.
+// separados do stream compartilhado do Backend. A aba Terminal reserva um
+// placeholder onde o C++ sobrepõe o QTermWidget da sessão embutida.
 Rectangle {
     id: root
 
     color: Theme.bgBase
     clip: true
+
+    readonly property int terminalTabIndex: 7
 
     property string containerId: ""
     property int tabIndex: 0
@@ -177,6 +180,8 @@ Rectangle {
     readonly property string inspectText: root.loaded ? JSON.stringify(root.detail, null, 2) : ""
 
     signal closeRequested()
+    signal terminalAreaChanged(rect area, bool visible)
+    signal externalTerminalRequested()
 
     Shortcut {
         sequence: "Esc"
@@ -195,6 +200,7 @@ Rectangle {
         root.tabIndex = 0
         root.removePending = false
         root.reloadPending = false
+        root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
         backend.loadContainerDetail(id)
         backend.startContainerDetailStats(id)
         backend.startContainerDetailLogs(id, 200, true)
@@ -204,12 +210,35 @@ Rectangle {
         if (root.tabIndex === 6 && root.containerId.length > 0) {
             backend.listFiles(root.containerId, "/")
         }
+        root.syncTerminalArea()
+    }
+
+    onWidthChanged: root.syncTerminalArea()
+    onHeightChanged: root.syncTerminalArea()
+
+    // Emite a área do placeholder da aba Terminal para o C++ posicionar o
+    // QTermWidget sobre ele. Fora da aba (ou sem tamanho) emite visible=false
+    // e a sessão continua viva, apenas oculta.
+    function syncTerminalArea() {
+        if (root.containerId.length === 0 || root.tabIndex !== root.terminalTabIndex
+                || terminalPlaceholder.width <= 0 || terminalPlaceholder.height <= 0) {
+            root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
+            return
+        }
+        const point = terminalPlaceholder.mapToItem(root, 0, 0)
+        root.terminalAreaChanged(Qt.rect(point.x, point.y, terminalPlaceholder.width,
+                                         terminalPlaceholder.height), true)
+    }
+
+    function openExternalTerminal() {
+        root.externalTerminalRequested()
     }
 
     function close() {
         if (root.containerId.length === 0) {
             return
         }
+        root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
         backend.stopContainerDetailStats()
         backend.stopContainerDetailLogs()
         backend.clearContainerDetailLogs()
@@ -542,7 +571,8 @@ Rectangle {
 
                 Repeater {
                     model: [qsTr("Visão geral"), qsTr("Logs"), qsTr("Info"), qsTr("Ambiente"),
-                            qsTr("Redes"), qsTr("Volumes"), qsTr("Arquivos"), qsTr("Inspect")]
+                            qsTr("Redes"), qsTr("Volumes"), qsTr("Arquivos"), qsTr("Terminal"),
+                            qsTr("Inspect")]
 
                     ItemDelegate {
                         id: detailTab
@@ -1154,6 +1184,51 @@ Rectangle {
                 }
             }
 
+            // Terminal — o QTermWidget é sobreposto pelo C++ (overlay QWidget)
+            Item {
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    anchors.topMargin: 4
+                    anchors.bottomMargin: 16
+                    spacing: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Sessão embutida — podman exec -it %1 /bin/sh")
+                                      .arg(root.containerId)
+                            color: Theme.textSecondary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMeta
+                            elide: Text.ElideRight
+                        }
+
+                        ActionButton {
+                            text: qsTr("Nova sessão em janela")
+                            iconName: "external"
+                            size: "sm"
+                            variant: "secondary"
+                            enabled: root.containerId.length > 0
+                            onClicked: root.openExternalTerminal()
+                            Accessible.name: qsTr("Abrir uma nova sessão em janela")
+                        }
+                    }
+
+                    Item {
+                        id: terminalPlaceholder
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        onWidthChanged: root.syncTerminalArea()
+                        onHeightChanged: root.syncTerminalArea()
+                    }
+                }
+            }
+
             // Inspect
             Item {
                 ColumnLayout {
@@ -1244,6 +1319,10 @@ Rectangle {
         modal: true
         anchors.centerIn: parent
         standardButtons: Dialog.Yes | Dialog.No
+        // O terminal nativo ficaria sobre o diálogo QML; oculta a sessão
+        // enquanto o modal estiver aberto e reaplica a área ao fechar.
+        onOpened: root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
+        onClosed: root.syncTerminalArea()
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg

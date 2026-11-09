@@ -31,6 +31,10 @@ public:
     /// Mostra/oculta o rótulo do título na barra (o botão externo permanece).
     void setTitleVisible(bool visible);
 
+    /// Mostra/oculta a barra inteira (título + botão externo). Usado quando o
+    /// dono já oferece os próprios controles, como a aba Terminal do detalhe.
+    void setToolbarVisible(bool visible);
+
     QTermWidget *terminal() const { return m_terminal; }
 
     /// Dá foco de teclado ao terminal (ao trocar para a aba/dock).
@@ -42,6 +46,7 @@ private:
     QString m_title;
     QString m_program;
     QStringList m_arguments;
+    QWidget *m_toolbar = nullptr;
     QLabel *m_titleLabel = nullptr;
     QToolButton *m_externalButton = nullptr;
     QTermWidget *m_terminal = nullptr;

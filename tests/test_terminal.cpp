@@ -13,7 +13,9 @@
 #include <QFile>
 #include <QFrame>
 #include <QLabel>
+#include <QQuickItem>
 #include <QQuickWidget>
+#include <QRectF>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -86,6 +88,14 @@ void TerminalTest::terminalViewConfiguration()
     QVERIFY(title->isHidden());
     view.setTitleVisible(true);
     QVERIFY(!title->isHidden());
+
+    auto *toolbar = view.findChild<QWidget *>(QStringLiteral("terminalToolbar"));
+    QVERIFY(toolbar != nullptr);
+    QVERIFY(!toolbar->isHidden());
+    view.setToolbarVisible(false);
+    QVERIFY(toolbar->isHidden());
+    view.setToolbarVisible(true);
+    QVERIFY(!toolbar->isHidden());
 
     auto *external = view.findChild<QToolButton *>(QStringLiteral("terminalExternalButton"));
     QVERIFY(external != nullptr);
@@ -178,11 +188,10 @@ void TerminalTest::containerDetailDialog()
     QVERIFY(overlay.testAttribute(Qt::WA_StyledBackground));
     QCOMPARE(overlay.geometry(), host.rect());
     QVERIFY(overlay.findChild<QFrame *>(QStringLiteral("containerDetailCard")) != nullptr);
-
-    QVERIFY(overlay.tabs() != nullptr);
-    QCOMPARE(overlay.tabs()->count(), 2);
-    QCOMPARE(overlay.tabs()->tabText(0), QStringLiteral("Detalhes"));
-    QCOMPARE(overlay.tabs()->tabText(1), QStringLiteral("Terminal"));
+    // O card hospeda o conteúdo QML diretamente: não há mais abas nativas
+    // Detalhes/Terminal no nível do overlay.
+    QVERIFY(overlay.findChild<QTabWidget *>() == nullptr);
+    QVERIFY(overlay.findChild<QQuickWidget *>() == nullptr);
     QCOMPARE(overlay.containerId(), QString());
 
     overlay.openContainer(QString());
@@ -196,16 +205,34 @@ void TerminalTest::containerDetailDialog()
     QCOMPARE(overlay.geometry(), host.rect());
     auto *terminal = overlay.terminalView();
     QVERIFY(terminal != nullptr);
+    // A sessão é criada ao abrir, mas só aparece quando o QML confirma que a
+    // aba Terminal está ativa e informa a área do placeholder.
+    QVERIFY(terminal->isHidden());
     QCOMPARE(terminal->program(), QStringLiteral("podman"));
     QCOMPARE(terminal->arguments(),
              QStringList({QStringLiteral("exec"), QStringLiteral("-it"),
                           QStringLiteral("abc123"), QStringLiteral("/bin/sh")}));
+    auto *terminalToolbar =
+        terminal->findChild<QWidget *>(QStringLiteral("terminalToolbar"));
+    QVERIFY(terminalToolbar != nullptr);
+    QVERIFY(terminalToolbar->isHidden());
+
+    const QRectF area(12, 34, 320, 200);
+    overlay.applyTerminalArea(area, true);
+    QVERIFY(!terminal->isHidden());
+    QCOMPARE(terminal->geometry(), area.toRect());
+
+    // Trocar de aba apenas oculta a sessão; ela continua viva.
+    overlay.applyTerminalArea(QRectF(), false);
+    QVERIFY(terminal->isHidden());
+    QCOMPARE(overlay.terminalView(), terminal);
 
     // Reabrir reaproveita o overlay e recria a sessão do terminal.
     overlay.openContainer(QStringLiteral("def456"));
     QCOMPARE(overlay.containerId(), QStringLiteral("def456"));
     QCOMPARE(overlay.findChildren<PodStack::TerminalView *>().size(), 1);
     QCOMPARE(overlay.terminalView()->arguments().at(2), QStringLiteral("def456"));
+    QVERIFY(overlay.terminalView()->isHidden());
 
     // O overlay acompanha o tamanho da janela principal.
     host.resize(1000, 700);
@@ -222,13 +249,34 @@ void TerminalTest::containerDetailDialogQml()
 {
     PodStack::Backend backend;
     QWidget host;
+    host.resize(1200, 800);
     PodStack::ContainerDetailDialog overlay(&backend, &host, /*loadQml=*/true);
     if (!overlay.qmlLoaded()) {
         QSKIP("Módulo QML PodStack indisponível neste binário de teste.");
     }
-    QVERIFY(overlay.findChild<QQuickWidget *>() != nullptr);
+    auto *quick = overlay.findChild<QQuickWidget *>();
+    QVERIFY(quick != nullptr);
+    QObject *root = quick->rootObject();
+    QVERIFY(root != nullptr);
+
+    host.show();
     overlay.openContainer(QStringLiteral("abc123"));
     QCOMPARE(overlay.containerId(), QStringLiteral("abc123"));
+
+    // A aba Terminal (índice 7) informa a área do placeholder e o C++ mostra a
+    // sessão embutida como filha do QQuickWidget; voltar oculta sem destruir.
+    root->setProperty("tabIndex", 7);
+    QTest::qWait(50);
+    QVERIFY(overlay.terminalView() != nullptr);
+    QCOMPARE(overlay.terminalView()->parentWidget(), quick);
+    QVERIFY(!overlay.terminalView()->isHidden());
+    QVERIFY(overlay.terminalView()->geometry().width() > 0);
+    QVERIFY(overlay.terminalView()->geometry().height() > 0);
+
+    root->setProperty("tabIndex", 0);
+    QTest::qWait(10);
+    QVERIFY(overlay.terminalView()->isHidden());
+
     overlay.closeOverlay();
     QCOMPARE(overlay.containerId(), QString());
 }

@@ -133,7 +133,7 @@ Abas por tipo (estado do M4 após o redesenho do detalhe):
 | **Logs** | ✅ overlay (Detalhes) | ✅ | — | — | container: streaming/follow; machine: one-shot + Atualizar |
 | **Stats** | ✅ overlay (Visão geral) | ✅ | — | — | CPU, memória, rede, disco/PIDs + gráfico; machine via SSH (2 s) |
 | **Files** | ✅ overlay (Detalhes) | planejado | planejado | — | enviar, baixar e navegar via `FilesView` no detalhe; saiu do card lateral |
-| **Terminal** | ✅ aba do overlay | SSH no dock | — | — | `TerminalView`/QTermWidget; botão para terminal externo |
+| **Terminal** | ✅ aba interna do detalhe | SSH no dock | — | — | `TerminalView`/QTermWidget em placeholder do QML; **Nova sessão em janela** via `ExternalTerminal` |
 | **Inspect** | ✅ overlay | — | — | — | JSON completo via `containers.inspect` |
 
 Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info, Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash), start/stop/restart, abrir SSH em terminal e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
@@ -209,13 +209,16 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   sessão de terminal. Ao redimensionar a janela, um event filter reajusta o overlay.
 - O card lateral mantém apenas **Info** e **Ações**; logs, stats, files, ambiente,
   redes, volumes e inspect vivem no overlay.
-- O overlay tem duas abas:
-  - **Detalhes** — conteúdo de `ContainerDetail.qml` dentro do card do overlay.
-  - **Terminal** — `TerminalView` com `podman exec -it <id> /bin/sh`, incluindo o
-    botão **Abrir externo**; só esse botão abre um terminal em janela separada.
+- O card do overlay hospeda `ContainerDetail.qml` diretamente em um `QQuickWidget`
+  (sem `QTabWidget` nativo). O terminal é uma **aba interna** do detalhe, entre
+  **Arquivos** e **Inspect**: o QML reserva a área e o C++ sobrepõe a sessão
+  `TerminalView` (`podman exec -it <id> /bin/sh`) sobre o placeholder, ocultando-a
+  ao trocar de aba e preservando a sessão até fechar o overlay. O botão **Nova
+  sessão em janela** abre uma nova sessão via `ExternalTerminal`; o **Abrir
+  externo** do `TerminalView` continua no dock e na `TerminalWindow`.
 - Cabeçalho do detalhe: nome, status, imagem, start/stop/restart, remover com
   confirmação e **x** para fechar. O terminal não fica mais no cabeçalho.
-- Abas de Detalhes:
+- Abas de Detalhes (9):
   - **Visão geral** — cards de CPU, RAM (usado/total), rede ↓/↑ e disco R/W com sparklines
     de 60 amostras; stats em stream próprio (`containerDetailStats`), ~1 s.
   - **Logs** — `LogsView` em `TextArea` único (seleção multi-linha, Ctrl+C, Copiar, busca,
@@ -226,6 +229,9 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
     authorization/key ficam mascaradas até **Mostrar valores**; Copiar respeita o mascaramento.
   - **Redes** — `NetworkSettings.Networks` (IP, gateway, MAC, aliases, NetworkID) e portas publicadas.
   - **Volumes** — `Mounts` (tipo, nome, source, destination, driver, RW e propagação).
+  - **Arquivos** — `FilesView` para navegar, baixar e enviar arquivos do container.
+  - **Terminal** — sessão embutida `podman exec -it <id> /bin/sh` sobre o placeholder,
+    com o botão **Nova sessão em janela**.
   - **Inspect** — JSON completo e indentado de `containers.inspect`, com Copiar.
 - Ao abrir: `loadContainerDetail(id)` + streams próprios de stats/logs. Ao fechar: ambos os
   streams são cancelados e os logs do detalhe são limpos. Erros de inspect aparecem no
@@ -395,7 +401,7 @@ qml/
 ├── FormCheck.qml
 ├── ContainersPage.qml
 ├── Inspector.qml
-├── ContainerDetail.qml   # conteúdo do overlay de detalhe (7 abas)
+├── ContainerDetail.qml   # conteúdo do overlay de detalhe (9 abas, inclui Terminal)
 ├── LogsView.qml
 ├── StatsView.qml
 ├── Sparkline.qml

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <QRectF>
 #include <QString>
 #include <QWidget>
 
 class QEvent;
 class QFrame;
 class QQuickWidget;
-class QTabWidget;
 
 namespace PodStack {
 
@@ -16,11 +16,12 @@ class TerminalView;
 
 /// Detalhe de um container como overlay integrado à janela principal.
 ///
-/// Reúne o conteúdo de `ContainerDetail.qml` (aba **Detalhes**) e um terminal
-/// embutido (`podman exec -it`) na aba **Terminal**. O widget cobre o parent
-/// (a `MainWindow`) com um fundo semitransparente e um card central; não é uma
-/// janela separada. É reaproveitado entre aberturas e encerra streams/sessão
-/// ao fechar.
+/// O card hospeda diretamente o conteúdo de `ContainerDetail.qml` em um
+/// `QQuickWidget`; o terminal é uma das abas internas do QML (entre Arquivos e
+/// Inspect). A sessão (`podman exec -it`) é um `TerminalView` filho do
+/// `QQuickWidget`, posicionado sobre o placeholder da aba Terminal e oculto
+/// enquanto outra aba está ativa. O widget cobre o parent (a `MainWindow`) com
+/// um fundo semitransparente e um card central; não é uma janela separada.
 class ContainerDetailDialog : public QWidget {
     Q_OBJECT
 
@@ -38,14 +39,19 @@ public:
 
     QString containerId() const { return m_containerId; }
     bool qmlLoaded() const;
-    QTabWidget *tabs() const { return m_tabs; }
     TerminalView *terminalView() const { return m_terminal; }
+
+public slots:
+    /// Posiciona a sessão embutida sobre o placeholder da aba Terminal.
+    /// `area` vem do QML em coordenadas do root (que preenche o QQuickWidget).
+    void applyTerminalArea(const QRectF &area, bool visible);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
     void handleCloseRequested();
+    void handleExternalTerminalRequested();
 
 private:
     void setupInterface(bool loadQml);
@@ -58,11 +64,10 @@ private:
     Backend *m_backend = nullptr;
     QString m_containerId;
     QFrame *m_card = nullptr;
-    QTabWidget *m_tabs = nullptr;
     QQuickWidget *m_quickWidget = nullptr;
-    QWidget *m_terminalTab = nullptr;
     TerminalView *m_terminal = nullptr;
     bool m_qmlSignalsConnected = false;
+    bool m_terminalVisible = false;
 };
 
 } // namespace PodStack

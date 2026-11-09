@@ -180,7 +180,7 @@ plataforma continua no Libpod e não usa o override.
 | `test_gui` | `backendExposeLan` | `createContainer` com `exposeLan` e `exposeContainerLan` falham sem helper; create sem LAN usa `127.0.0.1`; configurações não mudam |
 | `test_gui` | `backendContainerDetail` | `loadContainerDetail("abc123")` desembrulha `containers.inspect` (Config.Env, Mounts, Networks); id inexistente → `containerDetailError`; `copyContainerInspect` não quebra em suíte guiless; stats dedicados populam CPU/RAM/rede/disco e logs dedicados populam/limpam as linhas; ação inválida → `lastError` |
 | `test_gui` | `backendTerminal` | `openTerminal` emite `terminalRequested` com título/id, `podman` e `exec -it <id> /bin/sh`; id vazio → erro; `openMachineSsh` inexistente → erro e nenhuma sessão |
-| `test_terminal` | `constructsWindow`, `terminalViewConfiguration`, `externalTerminalCommands`, `externalTerminalDetection`, `containerDetailDialog`, `containerDetailDialogQml`, `mainWindowTerminalDock` | `TerminalView` configura QTermWidget (`DarkPastels`, keytab `linux`), barra/título e botão externo; `TerminalWindow` e dock da `MainWindow` reutilizam o componente; `ExternalTerminal::commandFor` cobre xdg-terminal-exec/gnome-terminal/kgx/konsole/xterm/xfce4-terminal/alacritty/kitty/foot/wezterm e a detecção usa um `xdg-terminal-exec` falso no `PATH` (o terminal real nunca é aberto); `ContainerDetailDialog` é um `QWidget` filho (`isWindow()==false`) com card, abas Detalhes/Terminal, reuso, acompanhamento do resize e fechamento que encerra a sessão; o carregamento QML real faz `QSKIP` quando o módulo `PodStack` não está no binário de teste |
+| `test_terminal` | `constructsWindow`, `terminalViewConfiguration`, `externalTerminalCommands`, `externalTerminalDetection`, `containerDetailDialog`, `containerDetailDialogQml`, `mainWindowTerminalDock` | `TerminalView` configura QTermWidget (`DarkPastels`, keytab `linux`), barra/título (ocultável) e botão externo; `TerminalWindow` e dock da `MainWindow` reutilizam o componente; `ExternalTerminal::commandFor` cobre xdg-terminal-exec/gnome-terminal/kgx/konsole/xterm/xfce4-terminal/alacritty/kitty/foot/wezterm e a detecção usa um `xdg-terminal-exec` falso no `PATH` (o terminal real nunca é aberto); `ContainerDetailDialog` é um `QWidget` filho (`isWindow()==false`) com card e sem `QTabWidget` nativo, a sessão `TerminalView` nasce oculta no `openContainer`, aparece com a área vinda de `applyTerminalArea`, é preservada ao ocultar e recriada ao reabrir; o carregamento QML real faz `QSKIP` quando o módulo `PodStack` não está no binário de teste |
 | `test_core` | `buildStorePlatforms` | `platforms` no insert/get/list/JSON e migração de banco sem a coluna |
 | `test_core` | `manifestBuilderValidation` | `os/arch[/variant]`, limite 1..8, rejeição de formato e `PODSTACK_UNSUPPORTED` sem CLI |
 | `test_rpc` | `multiPlatformBuild` | manifest list via CLI falso: sucesso, falha, cancelamento, `platforms` no histórico e validação 1..8/`os/arch[/variant]` |
@@ -192,10 +192,12 @@ plataforma continua no Libpod e não usa o override.
 
 O detalhe do container (`ContainerDetail.qml`) é validado por `qmllint`, pelo componente
 `ContainerDetailDialog` em `test_terminal` e pelo smoke `guiStartsAndQuits`; a navegação
-visual pelas sete abas e a seleção/cópia de logs são verificadas manualmente (a suíte
+visual pelas nove abas e a seleção/cópia de logs são verificadas manualmente (a suíte
 `test_gui` é guiless e cobre o Backend/streams). O detalhe é um overlay filho da
-`MainWindow` (sem janela flutuante); o terminal interno usa `TerminalView` e o
-lançamento externo é testado sem abrir um emulador real (fake `xdg-terminal-exec`).
+`MainWindow` (sem janela flutuante) cujo card hospeda o QML diretamente; o terminal é
+uma aba interna cujo placeholder recebe o `TerminalView` por `terminalAreaChanged`, e o
+lançamento de uma nova sessão em janela (botão do QML/`ExternalTerminal`) é testado sem
+abrir um emulador real (fake `xdg-terminal-exec`).
 
 **Validação manual da bandeja (niri + Noctalia):** fechar a janela mantém o processo e o SNI;
 `podstack-gui` (segunda instância) foca a janela; `--quit` encerra; o DBusMenu expõe Containers com
