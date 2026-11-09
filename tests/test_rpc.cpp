@@ -35,6 +35,7 @@ private slots:
     void machineLogs();
     void machineSsh();
     void composeAndBuilds();
+    void multiPlatformBuild();
     void setupFlow();
     void invalidRequests();
 
@@ -47,6 +48,7 @@ private:
     QString m_controlSocket;
     QString m_testDataDir;
     QString m_fakeProvider;
+    QString m_fakePodman;
 };
 
 namespace {
@@ -57,6 +59,31 @@ void writeFakeProvider(const QString &path)
         return;
     }
     file.write("#!/bin/sh\ncase \"$*\" in *fail*) echo \"fake failure\" >&2; exit 1;; esac\necho \"fake compose $@\"\nexit 0\n");
+    file.close();
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                        | QFileDevice::ExeOwner);
+}
+
+void writeFakePodman(const QString &path, const QString &logPath)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    const QString script = QStringLiteral(
+        "#!/bin/sh\n"
+        "echo \"$@\" >> \"%1\"\n"
+        "if [ \"$1\" = \"build\" ]; then\n"
+        "  case \"$*\" in\n"
+        "    *slow*) sleep 10; echo \"slow line\"; exit 0;;\n"
+        "    *fail-multi*) echo \"fake multi failure\" >&2; exit 1;;\n"
+        "  esac\n"
+        "  echo \"line one\"\n"
+        "  echo \"line two\"\n"
+        "fi\n"
+        "exit 0\n")
+                               .arg(logPath);
+    file.write(script.toUtf8());
     file.close();
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                         | QFileDevice::ExeOwner);
@@ -80,6 +107,8 @@ void RpcTest::initTestCase()
     QDir().mkpath(m_testDataDir);
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     writeFakeProvider(m_fakeProvider);
+    m_fakePodman = m_testDataDir + QStringLiteral("/podman-fake.sh");
+    writeFakePodman(m_fakePodman, m_testDataDir + QStringLiteral("/podman-args.log"));
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-rpc-%1.sock")
@@ -93,6 +122,7 @@ void RpcTest::initTestCase()
     environment.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     environment.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     environment.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    environment.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
     // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
     environment.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
                        QStringLiteral("unix:path=/tmp/podstack-rpc-no-system-bus.sock"));
@@ -1289,6 +1319,9 @@ void RpcTest::composeAndBuilds()
     QCOMPARE(build.value(QStringLiteral("status")).toString(), QStringLiteral("success"));
     QCOMPARE(build.value(QStringLiteral("imageRef")).toString(),
              QStringLiteral("localhost/mock:1"));
+    const QJsonArray singlePlatforms = build.value(QStringLiteral("platforms")).toArray();
+    QCOMPARE(singlePlatforms.size(), 1);
+    QCOMPARE(singlePlatforms.at(0).toString(), QStringLiteral("linux/amd64"));
 
     const QJsonObject removed =
         client.call(QStringLiteral("builds.remove"),
@@ -1389,6 +1422,199 @@ void RpcTest::composeAndBuilds()
     PodStack::Error emptyRemove;
     client.call(QStringLiteral("builds.remove"), {}, &emptyRemove);
     QCOMPARE(emptyRemove.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void RpcTest::multiPlatformBuild()
+{
+    const QString projectDir = m_testDataDir + QStringLiteral("/multi-project");
+    QDir().mkpath(projectDir);
+    QFile dockerfile(projectDir + QStringLiteral("/Dockerfile"));
+    QVERIFY(dockerfile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    dockerfile.write("FROM alpine:3.20\n");
+    dockerfile.close();
+
+    const QString argsLog = m_testDataDir + QStringLiteral("/podman-args.log");
+    QFile::remove(argsLog);
+
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+    const QJsonArray platforms{QStringLiteral("linux/amd64"), QStringLiteral("linux/arm64")};
+
+    const auto waitDone = [this](QLocalSocket &socket, QByteArray &buffer, int *deltas) {
+        QString status;
+        for (int i = 0; i < 100; ++i) {
+            const QJsonObject message = readMessage(socket, buffer, 5000);
+            if (message.isEmpty()) {
+                break;
+            }
+            const QString method = message.value(QStringLiteral("method")).toString();
+            if (method == QStringLiteral("builds.delta")) {
+                if (deltas) {
+                    ++(*deltas);
+                }
+            } else if (method == QStringLiteral("builds.done")) {
+                status = message.value(QStringLiteral("params"))
+                             .toObject()
+                             .value(QStringLiteral("status"))
+                             .toString();
+                break;
+            }
+        }
+        return status;
+    };
+
+    // Sucesso: duas plataformas viram manifest list via CLI falso.
+    QLocalSocket socket;
+    socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(socket.waitForConnected(5000));
+    QByteArray buffer;
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("builds.start")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                              {QStringLiteral("tag"), QStringLiteral("localhost/mock:multi")},
+                              {QStringLiteral("platforms"), platforms},
+                              {QStringLiteral("buildArgs"),
+                               QJsonObject{{QStringLiteral("A"), QStringLiteral("B")}}}}}});
+    const QJsonObject response = readMessage(socket, buffer);
+    const QString buildId = response.value(QStringLiteral("result"))
+                                .toObject()
+                                .value(QStringLiteral("buildId"))
+                                .toString();
+    QVERIFY(!buildId.isEmpty());
+    int deltas = 0;
+    QCOMPARE(waitDone(socket, buffer, &deltas), QStringLiteral("success"));
+    QVERIFY(deltas >= 2);
+    socket.disconnectFromServer();
+
+    QFile argsFile(argsLog);
+    QVERIFY(argsFile.open(QIODevice::ReadOnly));
+    const QString args = QString::fromUtf8(argsFile.readAll());
+    argsFile.close();
+    QVERIFY2(args.contains(QStringLiteral("manifest rm localhost/mock:multi")),
+             qPrintable(args));
+    QVERIFY2(args.contains(QStringLiteral("build --platform linux/amd64,linux/arm64 "
+                                          "--manifest localhost/mock:multi -f Dockerfile "
+                                          "--build-arg A=B ")),
+             qPrintable(args));
+    QVERIFY2(args.contains(projectDir), qPrintable(args));
+
+    const QJsonObject build =
+        client.call(QStringLiteral("builds.get"),
+                    QJsonObject{{QStringLiteral("id"), buildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(build.value(QStringLiteral("status")).toString(), QStringLiteral("success"));
+    const QJsonArray storedPlatforms = build.value(QStringLiteral("platforms")).toArray();
+    QCOMPARE(storedPlatforms.size(), 2);
+    QCOMPARE(storedPlatforms.at(0).toString(), QStringLiteral("linux/amd64"));
+    QCOMPARE(storedPlatforms.at(1).toString(), QStringLiteral("linux/arm64"));
+    client.call(QStringLiteral("builds.remove"),
+                QJsonObject{{QStringLiteral("id"), buildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    // Falha do CLI falso: o build termina como failed e mantém platforms.
+    QLocalSocket failSocket;
+    failSocket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(failSocket.waitForConnected(5000));
+    QByteArray failBuffer;
+    sendMessage(failSocket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("builds.start")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                              {QStringLiteral("tag"), QStringLiteral("localhost/mock:fail-multi")},
+                              {QStringLiteral("platforms"), platforms}}}});
+    const QString failBuildId = readMessage(failSocket, failBuffer)
+                                    .value(QStringLiteral("result"))
+                                    .toObject()
+                                    .value(QStringLiteral("buildId"))
+                                    .toString();
+    QVERIFY(!failBuildId.isEmpty());
+    QCOMPARE(waitDone(failSocket, failBuffer, nullptr), QStringLiteral("failed"));
+    failSocket.disconnectFromServer();
+
+    const QJsonObject failedBuild =
+        client.call(QStringLiteral("builds.get"),
+                    QJsonObject{{QStringLiteral("id"), failBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(failedBuild.value(QStringLiteral("status")).toString(), QStringLiteral("failed"));
+    QVERIFY(!failedBuild.value(QStringLiteral("error")).toString().isEmpty());
+    const QJsonArray failedPlatforms =
+        failedBuild.value(QStringLiteral("platforms")).toArray();
+    QCOMPARE(failedPlatforms.size(), 2);
+    QCOMPARE(failedPlatforms.at(0).toString(), QStringLiteral("linux/amd64"));
+    QCOMPARE(failedPlatforms.at(1).toString(), QStringLiteral("linux/arm64"));
+    client.call(QStringLiteral("builds.remove"),
+                QJsonObject{{QStringLiteral("id"), failBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    // Cancelamento: builds.cancel sinaliza a subscription e mata o CLI lento.
+    QLocalSocket cancelSocket;
+    cancelSocket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(cancelSocket.waitForConnected(5000));
+    QByteArray cancelBuffer;
+    sendMessage(cancelSocket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("builds.start")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                              {QStringLiteral("tag"), QStringLiteral("localhost/mock:slow")},
+                              {QStringLiteral("platform"),
+                               QStringLiteral("linux/amd64,linux/arm64")}}}});
+    const QString cancelBuildId = readMessage(cancelSocket, cancelBuffer)
+                                      .value(QStringLiteral("result"))
+                                      .toObject()
+                                      .value(QStringLiteral("buildId"))
+                                      .toString();
+    QVERIFY(!cancelBuildId.isEmpty());
+    QTest::qWait(150);
+    const QJsonObject cancelled =
+        client.call(QStringLiteral("builds.cancel"),
+                    QJsonObject{{QStringLiteral("id"), cancelBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(cancelled.value(QStringLiteral("cancelled")).toBool());
+    QCOMPARE(waitDone(cancelSocket, cancelBuffer, nullptr), QStringLiteral("cancelled"));
+    cancelSocket.disconnectFromServer();
+
+    const QJsonObject cancelledBuild =
+        client.call(QStringLiteral("builds.get"),
+                    QJsonObject{{QStringLiteral("id"), cancelBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cancelledBuild.value(QStringLiteral("status")).toString(),
+             QStringLiteral("cancelled"));
+    const QJsonArray cancelledPlatforms =
+        cancelledBuild.value(QStringLiteral("platforms")).toArray();
+    QCOMPARE(cancelledPlatforms.size(), 2);
+    QCOMPARE(cancelledPlatforms.at(0).toString(), QStringLiteral("linux/amd64"));
+    QCOMPARE(cancelledPlatforms.at(1).toString(), QStringLiteral("linux/arm64"));
+    client.call(QStringLiteral("builds.remove"),
+                QJsonObject{{QStringLiteral("id"), cancelBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    PodStack::Error invalidPlatform;
+    client.call(QStringLiteral("builds.start"),
+                QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                            {QStringLiteral("tag"), QStringLiteral("localhost/mock:invalid")},
+                            {QStringLiteral("platforms"),
+                             QJsonArray{QStringLiteral("linux/amd64/extra/v8/bad")}}},
+                &invalidPlatform);
+    QCOMPARE(invalidPlatform.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QJsonArray tooMany;
+    for (int i = 0; i < 9; ++i) {
+        tooMany.append(QStringLiteral("linux/arch%1").arg(i));
+    }
+    PodStack::Error tooManyError;
+    client.call(QStringLiteral("builds.start"),
+                QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                            {QStringLiteral("tag"), QStringLiteral("localhost/mock:too-many")},
+                            {QStringLiteral("platforms"), tooMany}},
+                &tooManyError);
+    QCOMPARE(tooManyError.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void RpcTest::setupFlow()

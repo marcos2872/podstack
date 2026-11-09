@@ -1,7 +1,8 @@
 find_package(Qt6 6.10 REQUIRED COMPONENTS Test)
 
-qt_add_executable(test_core test_core.cpp)
-target_link_libraries(test_core PRIVATE podstack_core Qt6::Test)
+qt_add_executable(test_core test_core.cpp ../src/daemon/BuildStore.cpp
+    ../src/daemon/ManifestBuilder.cpp)
+target_link_libraries(test_core PRIVATE podstack_core SQLite::SQLite3 Qt6::Test)
 add_test(NAME core COMMAND test_core)
 
 qt_add_executable(test_podman test_podman.cpp)

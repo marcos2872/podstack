@@ -67,6 +67,7 @@ void printUsage()
           << "  compose [ls|up|down|restart|stop|start|logs]\n"
           << "                          Projetos Docker Compose\n"
           << "  build <contexto> -t <tag> [-f Dockerfile] [--build-arg K=V]\n"
+          << "        [--platform p1,p2]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
           << "  machine <list|info|logs|create|start|stop|restart|delete|distros|ssh>\n"
@@ -1250,7 +1251,7 @@ int commandBuild(const QStringList &args)
     QString contextPath;
     QString tag;
     QString dockerfile = QStringLiteral("Dockerfile");
-    QString platform;
+    QStringList platforms;
     QStringList buildArgList;
 
     for (int i = 0; i < args.size(); ++i) {
@@ -1259,7 +1260,13 @@ int commandBuild(const QStringList &args)
         } else if (args.at(i) == QStringLiteral("-f") && i + 1 < args.size()) {
             dockerfile = args.at(++i);
         } else if (args.at(i) == QStringLiteral("--platform") && i + 1 < args.size()) {
-            platform = args.at(++i);
+            for (const QString &part : args.at(++i).split(QLatin1Char(','),
+                                                           Qt::SkipEmptyParts)) {
+                const QString platform = part.trimmed();
+                if (!platform.isEmpty() && !platforms.contains(platform)) {
+                    platforms.append(platform);
+                }
+            }
         } else if (args.at(i) == QStringLiteral("--build-arg") && i + 1 < args.size()) {
             buildArgList.append(args.at(++i));
         } else if (contextPath.isEmpty() && !args.at(i).startsWith(QStringLiteral("-"))) {
@@ -1269,7 +1276,7 @@ int commandBuild(const QStringList &args)
 
     if (contextPath.isEmpty() || tag.isEmpty()) {
         err() << "Uso: podstack build <contexto> -t <tag> [-f Dockerfile] "
-                 "[--build-arg K=V] [--platform p]\n";
+                 "[--build-arg K=V] [--platform p1,p2]\n";
         return kExitUsage;
     }
 
@@ -1281,12 +1288,20 @@ int commandBuild(const QStringList &args)
         }
     }
 
+    QJsonArray platformArray;
+    for (const QString &platform : platforms) {
+        platformArray.append(platform);
+    }
+
     QJsonObject params;
     params.insert(QStringLiteral("contextPath"), contextPath);
     params.insert(QStringLiteral("dockerfile"), dockerfile);
     params.insert(QStringLiteral("tag"), tag);
     params.insert(QStringLiteral("buildArgs"), buildArgs);
-    params.insert(QStringLiteral("platform"), platform);
+    params.insert(QStringLiteral("platforms"), platformArray);
+    if (platforms.size() == 1) {
+        params.insert(QStringLiteral("platform"), platforms.first());
+    }
     params.insert(QStringLiteral("trigger"), QStringLiteral("cli"));
 
     QString finalStatus;
@@ -2341,9 +2356,12 @@ int commandBuilds(const QStringList &args)
             QString status;
             QString duration;
             QString started;
+            QString platforms;
         };
         QVector<Row> rows;
         int imageWidth = 10;
+        int platformWidth = 9;
+        bool hasPlatforms = false;
         for (const QJsonValue &value : result.value(QStringLiteral("items")).toArray()) {
             const QJsonObject build = value.toObject();
             Row row;
@@ -2354,22 +2372,53 @@ int commandBuilds(const QStringList &args)
                                            / 1000.0, 'f', 1)
                            + QStringLiteral("s");
             row.started = build.value(QStringLiteral("startedAt")).toString();
+            QStringList platforms;
+            for (const QJsonValue &platform :
+                 build.value(QStringLiteral("platforms")).toArray()) {
+                const QString value = platform.toString();
+                if (!value.isEmpty()) {
+                    platforms.append(value);
+                }
+            }
+            row.platforms = platforms.join(QLatin1Char(','));
             imageWidth = qMax(imageWidth, row.image.size());
+            platformWidth = qMax(platformWidth, row.platforms.size());
+            hasPlatforms = hasPlatforms || !row.platforms.isEmpty();
             rows.append(row);
         }
-        out() << QStringLiteral("%1  %2  %3  %4  %5\n")
-                     .arg(QStringLiteral("ID").leftJustified(18))
-                     .arg(QStringLiteral("IMAGE").leftJustified(imageWidth))
-                     .arg(QStringLiteral("STATUS").leftJustified(10))
-                     .arg(QStringLiteral("DURATION").leftJustified(9))
-                     .arg(QStringLiteral("STARTED"));
-        for (const Row &row : rows) {
+        if (hasPlatforms) {
+            out() << QStringLiteral("%1  %2  %3  %4  %5  %6\n")
+                         .arg(QStringLiteral("ID").leftJustified(18))
+                         .arg(QStringLiteral("IMAGE").leftJustified(imageWidth))
+                         .arg(QStringLiteral("STATUS").leftJustified(10))
+                         .arg(QStringLiteral("DURATION").leftJustified(9))
+                         .arg(QStringLiteral("STARTED").leftJustified(24))
+                         .arg(QStringLiteral("PLATFORMS"));
+        } else {
             out() << QStringLiteral("%1  %2  %3  %4  %5\n")
-                         .arg(row.id.leftJustified(18))
-                         .arg(row.image.leftJustified(imageWidth))
-                         .arg(row.status.leftJustified(10))
-                         .arg(row.duration.leftJustified(9))
-                         .arg(row.started);
+                         .arg(QStringLiteral("ID").leftJustified(18))
+                         .arg(QStringLiteral("IMAGE").leftJustified(imageWidth))
+                         .arg(QStringLiteral("STATUS").leftJustified(10))
+                         .arg(QStringLiteral("DURATION").leftJustified(9))
+                         .arg(QStringLiteral("STARTED"));
+        }
+        for (const Row &row : rows) {
+            if (hasPlatforms) {
+                out() << QStringLiteral("%1  %2  %3  %4  %5  %6\n")
+                             .arg(row.id.leftJustified(18))
+                             .arg(row.image.leftJustified(imageWidth))
+                             .arg(row.status.leftJustified(10))
+                             .arg(row.duration.leftJustified(9))
+                             .arg(row.started.leftJustified(24))
+                             .arg(row.platforms.leftJustified(platformWidth));
+            } else {
+                out() << QStringLiteral("%1  %2  %3  %4  %5\n")
+                             .arg(row.id.leftJustified(18))
+                             .arg(row.image.leftJustified(imageWidth))
+                             .arg(row.status.leftJustified(10))
+                             .arg(row.duration.leftJustified(9))
+                             .arg(row.started);
+            }
         }
         out().flush();
         return kExitOk;

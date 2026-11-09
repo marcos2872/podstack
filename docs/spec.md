@@ -507,9 +507,16 @@ Host <name>.podstack <name>
 
 - Build via `POST /libpod/build` (tar do contexto) com `dockerfile`, `t`, `buildargs`, `platform`, `cache`.
 - Progresso NDJSON; steps e logs.
-- Persistir metadados em SQLite: id, imagem, status, início/fim, duração, trigger, log path.
+- Persistir metadados em SQLite: id, imagem, status, início/fim, duração, trigger, log path, plataformas.
 - Histórico com filtro; apagar registros (não imagens).
-- Buildx: detectar `docker buildx`/`podman buildx`; multi-plataforma quando suportado.
+- **Multi-plataforma (≥ 2):** manifest list via CLI do Podman
+  (`podman build --platform p1,p2 --manifest <tag> -f <dockerfile> [--build-arg K=V] <contexto>`),
+  com `podman manifest rm <tag>` antes para rebuild determinístico; progresso linha a linha em
+  `builds.delta` e sem steps. O CLI é executado sem shell, com timeout total (padrão 30 min) e
+  cancelamento que mata o processo.
+- **Uma ou nenhuma plataforma:** o fluxo continua via Libpod, sem manifest list.
+- Arquiteturas estrangeiras exigem `binfmt_misc` (`qemu-user-static`) no host; sem ele o Podman
+  falha com a mensagem do próprio runtime no log do build.
 
 ---
 

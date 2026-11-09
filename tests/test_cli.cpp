@@ -52,6 +52,7 @@ private:
     QString m_controlSocket;
     QString m_testDataDir;
     QString m_fakeProvider;
+    QString m_fakePodman;
 };
 
 QString CliTest::cliPath() const
@@ -70,6 +71,7 @@ QProcessEnvironment CliTest::environment(const QString &controlSocket) const
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    env.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
     env.insert(QStringLiteral("PODSTACK_SSH_CONFIG"),
                m_testDataDir + QStringLiteral("/ssh/config"));
     env.insert(QStringLiteral("XDG_DATA_HOME"), m_testDataDir + QStringLiteral("/data"));
@@ -120,6 +122,23 @@ void CliTest::initTestCase()
     provider.close();
     QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                     | QFileDevice::ExeOwner));
+
+    m_fakePodman = m_testDataDir + QStringLiteral("/podman-fake.sh");
+    QFile podman(m_fakePodman);
+    QVERIFY(podman.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    const QString fakePodman =
+        QStringLiteral("#!/bin/sh\n"
+                       "echo \"$@\" >> \"%1\"\n"
+                       "if [ \"$1\" = \"build\" ]; then\n"
+                       "  echo \"line one\"\n"
+                       "  echo \"line two\"\n"
+                       "fi\n"
+                       "exit 0\n")
+            .arg(m_testDataDir + QStringLiteral("/podman-args.log"));
+    podman.write(fakePodman.toUtf8());
+    podman.close();
+    QVERIFY(podman.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                  | QFileDevice::ExeOwner));
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-cli-%1.sock")
@@ -813,6 +832,45 @@ void CliTest::composeAndBuild()
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("STEP 1/1")));
     QVERIFY(result.out.contains(QStringLiteral("concluído")));
+
+    const QString argsLog = m_testDataDir + QStringLiteral("/podman-args.log");
+    QFile::remove(argsLog);
+    result = run({QStringLiteral("build"), projectDir, QStringLiteral("-t"),
+                  QStringLiteral("localhost/mock:multi"), QStringLiteral("--platform"),
+                  QStringLiteral("linux/amd64,linux/arm64"),
+                  QStringLiteral("--build-arg"), QStringLiteral("A=B")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("line one")));
+    QVERIFY(result.out.contains(QStringLiteral("concluído")));
+
+    QFile argsFile(argsLog);
+    QVERIFY(argsFile.open(QIODevice::ReadOnly));
+    const QString args = QString::fromUtf8(argsFile.readAll());
+    argsFile.close();
+    QVERIFY2(args.contains(QStringLiteral("manifest rm localhost/mock:multi")),
+             qPrintable(args));
+    QVERIFY2(args.contains(QStringLiteral("build --platform linux/amd64,linux/arm64 "
+                                          "--manifest localhost/mock:multi -f Dockerfile "
+                                          "--build-arg A=B ")),
+             qPrintable(args));
+
+    result = run({QStringLiteral("builds")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("PLATFORMS")));
+    QVERIFY(result.out.contains(QStringLiteral("localhost/mock:multi")));
+    QVERIFY(result.out.contains(QStringLiteral("linux/amd64,linux/arm64")));
+    QString multiBuildId;
+    const QStringList multiLines = result.out.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : multiLines) {
+        if (line.contains(QStringLiteral("localhost/mock:multi"))) {
+            multiBuildId = line.section(QLatin1Char(' '), 0, 0);
+            break;
+        }
+    }
+    QVERIFY(!multiBuildId.isEmpty());
+    result = run({QStringLiteral("builds"), QStringLiteral("rm"), multiBuildId}, env);
+    QCOMPARE(result.code, 0);
 
     result = run({QStringLiteral("builds")}, env);
     QCOMPARE(result.code, 0);

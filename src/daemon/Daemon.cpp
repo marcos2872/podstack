@@ -5,6 +5,7 @@
 #include "core/Logging.h"
 #include "core/Paths.h"
 #include "core/Proxy.h"
+#include "daemon/ManifestBuilder.h"
 #include "daemon/StatsCollector.h"
 #include "machines/DistroRegistry.h"
 
@@ -2321,7 +2322,6 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
     const QString tag = params.value(QStringLiteral("tag")).toString();
     const QString dockerfile =
         params.value(QStringLiteral("dockerfile")).toString(QStringLiteral("Dockerfile"));
-    const QString platform = params.value(QStringLiteral("platform")).toString();
     const QString trigger =
         params.value(QStringLiteral("trigger")).toString(QStringLiteral("gui"));
 
@@ -2331,6 +2331,45 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
                                  QStringLiteral("Informe o contexto e a tag do build."));
         }
         return {};
+    }
+
+    QStringList platforms;
+    const QJsonValue platformsValue = params.value(QStringLiteral("platforms"));
+    if (platformsValue.isArray()) {
+        for (const QJsonValue &value : platformsValue.toArray()) {
+            const QString platform = value.toString().trimmed();
+            if (!platform.isEmpty() && !platforms.contains(platform)) {
+                platforms.append(platform);
+            }
+        }
+    } else if (platformsValue.isString()) {
+        for (const QString &part :
+             platformsValue.toString().split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            const QString platform = part.trimmed();
+            if (!platform.isEmpty() && !platforms.contains(platform)) {
+                platforms.append(platform);
+            }
+        }
+    }
+    // Compatibilidade com clientes antigos: `platform` single ou separado por vírgula.
+    if (platforms.isEmpty()) {
+        for (const QString &part : params.value(QStringLiteral("platform"))
+                                       .toString()
+                                       .split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            const QString platform = part.trimmed();
+            if (!platform.isEmpty() && !platforms.contains(platform)) {
+                platforms.append(platform);
+            }
+        }
+    }
+    if (!platforms.isEmpty()) {
+        Error platformError;
+        if (!ManifestBuilder::validatePlatforms(platforms, &platformError)) {
+            if (error) {
+                *error = platformError;
+            }
+            return {};
+        }
     }
 
     QMap<QString, QString> buildArgs;
@@ -2355,6 +2394,7 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
     record.contextPath = contextPath;
     record.dockerfile = dockerfile;
     record.logPath = logPath;
+    record.platforms = platforms;
     if (!m_buildStore.insert(record, error)) {
         return {};
     }
@@ -2366,6 +2406,76 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
         m_buildSubscriptions.insert(buildId, subscriptionId);
     }
 
+    if (platforms.size() > 1) {
+        // Manifest list: o Libpod REST não cria manifest lists, então usamos o CLI.
+        (void)QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs,
+                                 platforms, logPath, subscriptionId, subscription, notify] {
+            QElapsedTimer timer;
+            timer.start();
+
+            QFile logFile(logPath);
+            if (!logFile.open(QIODevice::WriteOnly | QIODevice::Append)) {
+                qCWarning(lcPodman) << "Não foi possível abrir o log do build:"
+                                    << logFile.errorString();
+            }
+
+            const auto onLine = [&](const QString &line) {
+                if (logFile.isOpen()) {
+                    logFile.write(line.toUtf8());
+                    logFile.write("\n");
+                    logFile.flush();
+                }
+                QJsonObject payload;
+                payload.insert(QStringLiteral("buildId"), buildId);
+                payload.insert(QStringLiteral("line"), line);
+                notify(QStringLiteral("builds.delta"), payload);
+            };
+            const auto cancelled = [subscription] {
+                return subscription->cancel.load();
+            };
+
+            ManifestBuilder builder;
+            Error buildError;
+            const bool ok = builder.build(contextPath, dockerfile, tag, buildArgs, platforms,
+                                          onLine, cancelled, &buildError);
+            if (logFile.isOpen()) {
+                logFile.close();
+            }
+
+            const bool wasCancelled = subscription->cancel.load();
+            const QString status = wasCancelled
+                                       ? QStringLiteral("cancelled")
+                                       : (ok ? QStringLiteral("success")
+                                             : QStringLiteral("failed"));
+            const int durationMs = static_cast<int>(timer.elapsed());
+            const QString errorText = ok ? QString() : buildError.message;
+
+            m_buildStore.finish(buildId, status, errorText, durationMs);
+
+            QJsonObject payload;
+            payload.insert(QStringLiteral("buildId"), buildId);
+            payload.insert(QStringLiteral("status"), status);
+            payload.insert(QStringLiteral("imageId"), QString());
+            payload.insert(QStringLiteral("error"), errorText);
+            payload.insert(QStringLiteral("durationMs"), durationMs);
+            payload.insert(QStringLiteral("steps"), 0);
+            notify(QStringLiteral("builds.done"), payload);
+
+            {
+                std::lock_guard<std::mutex> lock(m_buildMutex);
+                m_buildSubscriptions.remove(buildId);
+            }
+            removeSubscription(subscriptionId);
+        });
+
+        QJsonObject result;
+        result.insert(QStringLiteral("buildId"), buildId);
+        result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+        result.insert(QStringLiteral("logPath"), logPath);
+        return result;
+    }
+
+    const QString platform = platforms.isEmpty() ? QString() : platforms.first();
     (void)QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs,
                              platform, logPath, subscriptionId, subscription, notify] {
         QElapsedTimer timer;

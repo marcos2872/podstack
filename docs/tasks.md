@@ -95,7 +95,7 @@
 
 ## M3 — Compose, builds e eventos
 
-> **Status (2026-11-08): concluído com ressalvas.** Entregues: detecção de projetos Compose por labels, up/down/restart/stop/start via provider (`docker-compose`/`podman compose`), logs por serviço e agregados, abrir YAML/diretório, builds via Libpod (tar + steps/logs), histórico em SQLite, cancelar/remover registros e eventos globais na UI com toasts. Ressalvas: buildx multi-plataforma real (T3-08) e o stack Supabase (T3-09) ficam para o M4; o build aceita `platform` single-arch.
+> **Status (2026-11-08): concluído com ressalvas.** Entregues: detecção de projetos Compose por labels, up/down/restart/stop/start via provider (`docker-compose`/`podman compose`), logs por serviço e agregados, abrir YAML/diretório, builds via Libpod (tar + steps/logs) e manifest list multi-plataforma via CLI do Podman, histórico em SQLite, cancelar/remover registros e eventos globais na UI com toasts. Ressalva: o stack Supabase (T3-09) fica para o M4; builds de uma plataforma usam Libpod e de duas ou mais usam manifest list (T3-08).
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
@@ -106,7 +106,7 @@
 | T3-05 | P1 | Histórico de builds em SQLite | T3-04 | ✅ `builds.list/get` + `build_steps` |
 | T3-06 | P1 | Abrir YAML/diretório do projeto | T3-01 | ✅ `openPath` (xdg-open) |
 | T3-07 | P1 | Eventos globais na UI (toasts/notificações) | T0-06 | ✅ `events.subscribe` + toast |
-| T3-08 | P2 | Buildx multi-plataforma | T3-04 | ◐ `platform` single-arch; manifest list no M4 |
+| T3-08 | P2 | Buildx multi-plataforma | T3-04 | ✅ `ManifestBuilder` (manifest list via CLI do Podman, `manifest rm` antes, timeout 30 min, cancelamento); `platforms` no BuildStore/JSON + migração idempotente; GUI/CLI exibem e enviam plataformas. Evidência: `cmake --build --preset dev` sem warnings; `ctest --preset dev` **14/14**; `test_core::buildStorePlatforms`/`manifestBuilderValidation`, `test_rpc::multiPlatformBuild`, `test_cli::composeAndBuild` e `test_gui::backendM3` verdes; `qmllint` sem erros; `git diff --check` limpo |
 | T3-09 | P2 | Supabase stack | T3-01 | ⬜ M4 |
 | T3-10 | P2 | Apagar registros de build | T3-05 | ✅ `builds.remove` (metadados + log) |
 

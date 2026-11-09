@@ -6,6 +6,8 @@
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
 #include "core/SetupPolicy.h"
+#include "daemon/BuildStore.h"
+#include "daemon/ManifestBuilder.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -16,7 +18,10 @@
 #include <QMap>
 #include <QScopeGuard>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QTest>
+
+#include <sqlite3.h>
 
 namespace {
 
@@ -38,6 +43,8 @@ private slots:
     void setupActionsMapPodmanStatus();
     void setupPolicyMandatoryChecks();
     void pathOverrides();
+    void buildStorePlatforms();
+    void manifestBuilderValidation();
     void rpcClientUnavailable();
     void loggingInit();
 };
@@ -345,6 +352,129 @@ void CoreTest::pathOverrides()
     QVERIFY2(PodStack::Paths::ensureDirs(&error), qPrintable(error));
     QVERIFY(QFileInfo::exists(PodStack::Paths::configDir()));
     QVERIFY(QFileInfo::exists(PodStack::Paths::runtimeDir()));
+}
+
+void CoreTest::buildStorePlatforms()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    const QString dbPath = directory.filePath(QStringLiteral("builds.db"));
+    PodStack::Error error;
+    {
+        PodStack::BuildStore store(dbPath);
+        QVERIFY2(store.open(&error), qPrintable(error.message));
+
+        PodStack::BuildRecord record;
+        record.id = QStringLiteral("build-platforms");
+        record.imageRef = QStringLiteral("localhost/podstack:multi");
+        record.status = QStringLiteral("success");
+        record.startedAt = QStringLiteral("2026-11-09T12:00:00.000Z");
+        record.durationMs = 1200;
+        record.trigger = QStringLiteral("cli");
+        record.contextPath = QStringLiteral("/tmp/context");
+        record.logPath = QStringLiteral("/tmp/build.log");
+        record.platforms = {QStringLiteral("linux/amd64"), QStringLiteral("linux/arm64")};
+        QVERIFY2(store.insert(record, &error), qPrintable(error.message));
+
+        const PodStack::BuildRecord loaded = store.get(record.id, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error.message));
+        QCOMPARE(loaded.platforms, record.platforms);
+
+        const QVector<PodStack::BuildRecord> items = store.list(10, 0, &error);
+        QCOMPARE(items.size(), 1);
+        QCOMPARE(items.first().platforms, record.platforms);
+
+        const QJsonArray platforms =
+            loaded.toJson().value(QStringLiteral("platforms")).toArray();
+        QCOMPARE(platforms.size(), 2);
+        QCOMPARE(platforms.at(0).toString(), QStringLiteral("linux/amd64"));
+        QCOMPARE(platforms.at(1).toString(), QStringLiteral("linux/arm64"));
+    }
+
+    // Banco criado antes da coluna platforms: a migração deve ser idempotente.
+    const QString legacyPath = directory.filePath(QStringLiteral("legacy.db"));
+    sqlite3 *legacyDb = nullptr;
+    QCOMPARE(sqlite3_open(legacyPath.toUtf8().constData(), &legacyDb), SQLITE_OK);
+    const char *legacySchema = R"SQL(
+CREATE TABLE builds (
+    id TEXT PRIMARY KEY,
+    image_ref TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    trigger TEXT NOT NULL DEFAULT 'gui',
+    context_path TEXT NOT NULL DEFAULT '',
+    dockerfile TEXT NOT NULL DEFAULT 'Dockerfile',
+    log_path TEXT NOT NULL DEFAULT '',
+    error TEXT
+);
+INSERT INTO builds (id, image_ref, status, started_at, log_path)
+VALUES ('legacy-build', 'localhost/legacy:1', 'failed', '2026-11-08T10:00:00.000Z', '');
+)SQL";
+    QCOMPARE(sqlite3_exec(legacyDb, legacySchema, nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_close(legacyDb);
+
+    PodStack::BuildStore legacyStore(legacyPath);
+    QVERIFY2(legacyStore.open(&error), qPrintable(error.message));
+    PodStack::BuildRecord legacyRecord = legacyStore.get(QStringLiteral("legacy-build"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(legacyRecord.imageRef, QStringLiteral("localhost/legacy:1"));
+    QVERIFY(legacyRecord.platforms.isEmpty());
+
+    legacyRecord.platforms = {QStringLiteral("linux/arm64")};
+    QVERIFY2(legacyStore.insert(legacyRecord, &error), qPrintable(error.message));
+    QCOMPARE(legacyStore.get(QStringLiteral("legacy-build"), &error).platforms,
+             QStringList{QStringLiteral("linux/arm64")});
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+}
+
+void CoreTest::manifestBuilderValidation()
+{
+    PodStack::Error error;
+    QVERIFY(PodStack::ManifestBuilder::validatePlatforms(
+        {QStringLiteral("linux/amd64"), QStringLiteral("linux/arm64/v8")}, &error));
+    QVERIFY(error.isEmpty());
+
+    QVERIFY(!PodStack::ManifestBuilder::validatePlatforms({}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!PodStack::ManifestBuilder::validatePlatforms(
+        {QStringLiteral("linux/amd64/extra/v8")}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QStringList tooMany;
+    for (int i = 0; i < 9; ++i) {
+        tooMany.append(QStringLiteral("linux/arch%1").arg(i));
+    }
+    QVERIFY(!PodStack::ManifestBuilder::validatePlatforms(tooMany, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QFile dockerfile(directory.filePath(QStringLiteral("Dockerfile")));
+    QVERIFY(dockerfile.open(QIODevice::WriteOnly));
+    dockerfile.write("FROM alpine:3.20\n");
+    dockerfile.close();
+
+    const QByteArray previous = qgetenv("PODSTACK_PODMAN_CLI");
+    qputenv("PODSTACK_PODMAN_CLI", "/nonexistent/podstack-podman");
+    PodStack::ManifestBuilder builder;
+    PodStack::Error unsupported;
+    const bool ok = builder.build(
+        directory.path(), QStringLiteral("Dockerfile"), QStringLiteral("localhost/test:multi"),
+        {}, {QStringLiteral("linux/amd64"), QStringLiteral("linux/arm64")},
+        [](const QString &) {}, {}, &unsupported);
+    if (previous.isNull()) {
+        qunsetenv("PODSTACK_PODMAN_CLI");
+    } else {
+        qputenv("PODSTACK_PODMAN_CLI", previous);
+    }
+
+    QVERIFY(!ok);
+    QCOMPARE(unsupported.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    QVERIFY(!unsupported.remediation.isEmpty());
 }
 
 void CoreTest::rpcClientUnavailable()

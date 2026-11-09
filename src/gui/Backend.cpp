@@ -790,6 +790,16 @@ void Backend::onCatalogFinished()
                         build.value(QStringLiteral("trigger")).toString());
             item.insert(QStringLiteral("contextPath"),
                         build.value(QStringLiteral("contextPath")).toString());
+            QStringList platforms;
+            for (const QJsonValue &platform :
+                 build.value(QStringLiteral("platforms")).toArray()) {
+                const QString value = platform.toString();
+                if (!value.isEmpty()) {
+                    platforms.append(value);
+                }
+            }
+            item.insert(QStringLiteral("platforms"),
+                        platforms.join(QStringLiteral(", ")));
             m_builds.append(item);
         }
         emit buildsChanged();
@@ -1897,12 +1907,49 @@ void Backend::startBuild(const QVariantMap &spec)
         dockerfile = QStringLiteral("Dockerfile");
     }
 
+    QStringList platforms;
+    const auto appendPlatform = [&platforms](const QString &value) {
+        const QString platform = value.trimmed();
+        if (!platform.isEmpty() && !platforms.contains(platform)) {
+            platforms.append(platform);
+        }
+    };
+    const QVariant platformsValue = spec.value(QStringLiteral("platforms"));
+    if (platformsValue.metaType().id() == QMetaType::QStringList) {
+        for (const QString &platform : platformsValue.toStringList()) {
+            appendPlatform(platform);
+        }
+    } else if (platformsValue.metaType().id() == QMetaType::QVariantList) {
+        for (const QVariant &value : platformsValue.toList()) {
+            appendPlatform(value.toString());
+        }
+    } else {
+        for (const QString &part : platformsValue.toString().split(QLatin1Char(','),
+                                                                    Qt::SkipEmptyParts)) {
+            appendPlatform(part);
+        }
+    }
+    if (platforms.isEmpty()) {
+        for (const QString &part : spec.value(QStringLiteral("platform"))
+                                       .toString()
+                                       .split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            appendPlatform(part);
+        }
+    }
+
+    QJsonArray platformArray;
+    for (const QString &platform : platforms) {
+        platformArray.append(platform);
+    }
+
     QJsonObject params;
     params.insert(QStringLiteral("contextPath"), contextPath);
     params.insert(QStringLiteral("tag"), tag);
     params.insert(QStringLiteral("dockerfile"), dockerfile);
-    params.insert(QStringLiteral("platform"),
-                  spec.value(QStringLiteral("platform")).toString());
+    params.insert(QStringLiteral("platforms"), platformArray);
+    if (platforms.size() == 1) {
+        params.insert(QStringLiteral("platform"), platforms.first());
+    }
     params.insert(QStringLiteral("buildArgs"), buildArgs);
     params.insert(QStringLiteral("trigger"), QStringLiteral("gui"));
 

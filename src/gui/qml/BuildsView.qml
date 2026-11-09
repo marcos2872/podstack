@@ -10,6 +10,15 @@ ColumnLayout {
 
     property bool compact: false
 
+    readonly property bool hasPlatforms: {
+        for (let i = 0; i < backend.builds.length; ++i) {
+            const build = backend.builds[i]
+            if (build && build.platforms && build.platforms.length > 0)
+                return true
+        }
+        return false
+    }
+
     ViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: compact ? 14 : 22
@@ -74,19 +83,24 @@ ColumnLayout {
 
         CatalogList {
             id: buildsList
-            Layout.preferredWidth: compact ? 280 : 460
+            Layout.preferredWidth: compact ? 280 : (buildsView.hasPlatforms ? 560 : 460)
             Layout.minimumWidth: 280
             Layout.fillHeight: true
             emptyIcon: "builds"
             emptyText: qsTr("Nenhum build registrado.\n"
                             + "Inicie um build informando contexto, Dockerfile e tag.")
             items: backend.builds
-            columns: [
-                { key: "imageRef", label: "IMAGEM", width: 0 },
-                { key: "status", label: "STATUS", width: compact ? 54 : 80 },
-                { key: "duration", label: "DURAÇÃO", width: compact ? 52 : 70 },
-                { key: "trigger", label: "ORIGEM", width: compact ? 50 : 60 }
-            ]
+            columns: {
+                const base = [
+                    { key: "imageRef", label: "IMAGEM", width: 0 },
+                    { key: "status", label: "STATUS", width: compact ? 54 : 80 },
+                    { key: "duration", label: "DURAÇÃO", width: compact ? 52 : 70 },
+                    { key: "trigger", label: "ORIGEM", width: compact ? 50 : 60 }
+                ]
+                if (!compact && buildsView.hasPlatforms)
+                    base.push({ key: "platforms", label: "PLATAFORMAS", width: 120 })
+                return base
+            }
         }
 
         Rectangle {
@@ -225,17 +239,18 @@ ColumnLayout {
                     placeholderText: "A=B, C=D"
                 }
 
-                Text { text: qsTr("Plataforma"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                Text { text: qsTr("Plataformas"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
                 FormField {
                     id: buildPlatform
                     Layout.fillWidth: true
-                    placeholderText: qsTr("linux/amd64 (opcional)")
+                    placeholderText: qsTr("linux/amd64,linux/arm64 (opcional)")
                 }
             }
 
             Text {
                 Layout.fillWidth: true
-                text: qsTr("O contexto é empacotado em tar (até 512 MB) e enviado via Libpod.")
+                text: qsTr("Uma plataforma usa o Libpod. Duas ou mais criam uma manifest list "
+                           + "via CLI do Podman; arquiteturas estrangeiras exigem binfmt.")
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
@@ -260,7 +275,7 @@ ColumnLayout {
                         dockerfile: buildDockerfile.text,
                         tag: buildTag.text,
                         buildArgsText: buildArgs.text,
-                        platform: buildPlatform.text
+                        platforms: buildPlatform.text
                     })
                     buildDialog.close()
                 }

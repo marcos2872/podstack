@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 
 #include <sqlite3.h>
 
@@ -40,6 +41,50 @@ bool execSql(sqlite3 *db, const char *sql, QString *error)
     return true;
 }
 
+QString encodePlatforms(const QStringList &platforms)
+{
+    QJsonArray array;
+    for (const QString &platform : platforms) {
+        array.append(platform);
+    }
+    return QString::fromUtf8(
+        QJsonDocument(array).toJson(QJsonDocument::Compact));
+}
+
+QStringList decodePlatforms(const QString &text)
+{
+    QStringList platforms;
+    const QJsonDocument document = QJsonDocument::fromJson(text.toUtf8());
+    if (!document.isArray()) {
+        return platforms;
+    }
+    for (const QJsonValue &value : document.array()) {
+        const QString platform = value.toString().trimmed();
+        if (!platform.isEmpty()) {
+            platforms.append(platform);
+        }
+    }
+    return platforms;
+}
+
+bool hasColumn(sqlite3 *db, const char *table, const char *column)
+{
+    const QByteArray sql = QByteArrayLiteral("PRAGMA table_info(") + table + ')';
+    sqlite3_stmt *statement = nullptr;
+    if (sqlite3_prepare_v2(db, sql.constData(), -1, &statement, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bool found = false;
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+        if (columnText(statement, 1) == QLatin1String(column)) {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(statement);
+    return found;
+}
+
 } // namespace
 
 QJsonObject BuildStepRecord::toJson() const
@@ -70,6 +115,11 @@ QJsonObject BuildRecord::toJson() const
     object.insert(QStringLiteral("dockerfile"), dockerfile);
     object.insert(QStringLiteral("logPath"), logPath);
     object.insert(QStringLiteral("error"), error);
+    QJsonArray platformArray;
+    for (const QString &platform : platforms) {
+        platformArray.append(platform);
+    }
+    object.insert(QStringLiteral("platforms"), platformArray);
     QJsonArray steps;
     for (const BuildStepRecord &step : this->steps) {
         steps.append(step.toJson());
@@ -149,7 +199,8 @@ CREATE TABLE IF NOT EXISTS builds (
     context_path TEXT NOT NULL DEFAULT '',
     dockerfile TEXT NOT NULL DEFAULT 'Dockerfile',
     log_path TEXT NOT NULL DEFAULT '',
-    error TEXT
+    error TEXT,
+    platforms TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS build_steps (
     id TEXT PRIMARY KEY,
@@ -174,6 +225,20 @@ CREATE INDEX IF NOT EXISTS idx_builds_started ON builds(started_at DESC);
         }
         return false;
     }
+
+    // Migração idempotente para bancos criados antes de platforms.
+    if (!hasColumn(m_db, "builds", "platforms")) {
+        if (!execSql(m_db,
+                     "ALTER TABLE builds ADD COLUMN platforms TEXT NOT NULL DEFAULT '[]';",
+                     &sqlError)) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_DB_ERROR"),
+                                     QStringLiteral("Falha ao migrar o schema de builds."),
+                                     sqlError);
+            }
+            return false;
+        }
+    }
     return true;
 }
 
@@ -190,8 +255,8 @@ bool BuildStore::insert(const BuildRecord &record, Error *error)
     const char *sql = R"SQL(
 INSERT OR REPLACE INTO builds
 (id, image_ref, status, started_at, finished_at, duration_ms, trigger,
- context_path, dockerfile, log_path, error)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ context_path, dockerfile, log_path, error, platforms)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 )SQL";
 
     sqlite3_stmt *statement = nullptr;
@@ -210,6 +275,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     bindText(statement, 9, record.dockerfile);
     bindText(statement, 10, record.logPath);
     bindText(statement, 11, record.error);
+    bindText(statement, 12, encodePlatforms(record.platforms));
 
     const bool ok = sqlite3_step(statement) == SQLITE_DONE;
     sqlite3_finalize(statement);
@@ -332,7 +398,7 @@ QVector<BuildRecord> BuildStore::list(int limit, int offset, Error *error)
 
     const char *sql = R"SQL(
 SELECT id, image_ref, status, started_at, finished_at, duration_ms, trigger,
-       context_path, dockerfile, log_path, error
+       context_path, dockerfile, log_path, error, platforms
 FROM builds ORDER BY started_at DESC LIMIT ? OFFSET ?
 )SQL";
 
@@ -361,6 +427,7 @@ FROM builds ORDER BY started_at DESC LIMIT ? OFFSET ?
         record.dockerfile = columnText(statement, 8);
         record.logPath = columnText(statement, 9);
         record.error = columnText(statement, 10);
+        record.platforms = decodePlatforms(columnText(statement, 11));
         records.append(record);
     }
     sqlite3_finalize(statement);
@@ -379,7 +446,7 @@ BuildRecord BuildStore::get(const QString &id, Error *error)
 
     const char *sql = R"SQL(
 SELECT id, image_ref, status, started_at, finished_at, duration_ms, trigger,
-       context_path, dockerfile, log_path, error
+       context_path, dockerfile, log_path, error, platforms
 FROM builds WHERE id = ?
 )SQL";
 
@@ -403,6 +470,7 @@ FROM builds WHERE id = ?
         record.dockerfile = columnText(statement, 8);
         record.logPath = columnText(statement, 9);
         record.error = columnText(statement, 10);
+        record.platforms = decodePlatforms(columnText(statement, 11));
     }
     sqlite3_finalize(statement);
 

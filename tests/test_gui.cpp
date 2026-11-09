@@ -55,6 +55,7 @@ private:
     QString m_controlSocket;
     QString m_testDataDir;
     QString m_fakeProvider;
+    QString m_fakePodman;
 };
 
 QProcessEnvironment GuiTest::daemonEnvironment() const
@@ -63,6 +64,7 @@ QProcessEnvironment GuiTest::daemonEnvironment() const
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    env.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
     // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
     env.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
                QStringLiteral("unix:path=/tmp/podstack-gui-no-system-bus.sock"));
@@ -98,6 +100,23 @@ void GuiTest::initTestCase()
     provider.close();
     QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                     | QFileDevice::ExeOwner));
+
+    m_fakePodman = m_testDataDir + QStringLiteral("/podman-fake.sh");
+    QFile podman(m_fakePodman);
+    QVERIFY(podman.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    const QString fakePodman =
+        QStringLiteral("#!/bin/sh\n"
+                       "echo \"$@\" >> \"%1\"\n"
+                       "if [ \"$1\" = \"build\" ]; then\n"
+                       "  echo \"line one\"\n"
+                       "  echo \"line two\"\n"
+                       "fi\n"
+                       "exit 0\n")
+            .arg(m_testDataDir + QStringLiteral("/podman-args.log"));
+    podman.write(fakePodman.toUtf8());
+    podman.close();
+    QVERIFY(podman.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                  | QFileDevice::ExeOwner));
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-gui-%1.sock")
@@ -608,6 +627,31 @@ void GuiTest::backendM3()
 
     QTRY_VERIFY_WITH_TIMEOUT(buildsSpy.count() > 0, 5000);
     QVERIFY(backend.builds().size() >= 1);
+
+    QFile::remove(m_testDataDir + QStringLiteral("/podman-args.log"));
+    QVariantMap multiSpec = spec;
+    multiSpec.insert(QStringLiteral("tag"), QStringLiteral("localhost/mock:multi"));
+    multiSpec.insert(QStringLiteral("platforms"),
+                     QStringLiteral("linux/amd64,linux/arm64"));
+    backend.startBuild(multiSpec);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.buildActive() && backend.builds().size() >= 2, 5000);
+    bool foundPlatforms = false;
+    for (const QVariant &value : backend.builds()) {
+        const QVariantMap build = value.toMap();
+        if (build.value(QStringLiteral("imageRef")).toString()
+            == QStringLiteral("localhost/mock:multi")) {
+            foundPlatforms = build.value(QStringLiteral("platforms")).toString()
+                             == QStringLiteral("linux/amd64, linux/arm64");
+            break;
+        }
+    }
+    QVERIFY(foundPlatforms);
+    QFile argsFile(m_testDataDir + QStringLiteral("/podman-args.log"));
+    QVERIFY(argsFile.open(QIODevice::ReadOnly));
+    const QString args = QString::fromUtf8(argsFile.readAll());
+    argsFile.close();
+    QVERIFY2(args.contains(QStringLiteral("--platform linux/amd64,linux/arm64")),
+             qPrintable(args));
 
     QTRY_VERIFY_WITH_TIMEOUT(eventsSpy.count() > 0, 5000);
     QVERIFY(backend.eventMessage().contains(QStringLiteral("start")));

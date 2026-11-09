@@ -360,7 +360,7 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 | `compose.restart` / `stop` / `start` | `{projectPath, service?}` | `{projectPath, service, action, ok:true}` |
 | `compose.logs.subscribe` | `{project, service?}` | `{subscriptionId, project}` + `compose.logs.delta {service, containerId, line}` |
 | `compose.logs.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
-| `builds.start` | `{contextPath, dockerfile?, tag, buildArgs?, platform?, trigger?}` | `{buildId, subscriptionId, logPath}` + `builds.delta {buildId, line}` + `builds.done {buildId, status, imageId, error, durationMs}` |
+| `builds.start` | `{contextPath, dockerfile?, tag, buildArgs?, platform?, platforms?:string[], trigger?}` | `{buildId, subscriptionId, logPath}` + `builds.delta {buildId, line}` + `builds.done {buildId, status, imageId, error, durationMs}` |
 | `builds.cancel` | `{id}` | `{id, subscriptionId, cancelled}` |
 | `builds.list` | `{limit?, offset?}` | `{items: Build[], total}` |
 | `builds.get` | `{id}` | `Build` (+ `steps`) |
@@ -370,6 +370,16 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > (ou `PODSTACK_COMPOSE_PROVIDER`). `up/down/restart/stop/start` são síncronos e podem
 > demorar; o cliente usa timeout de 10 min. O build empacota o contexto em tar (até 512 MB),
 > envia para `POST /libpod/build` e persiste metadados em SQLite (`builds`/`build_steps`).
+>
+> `platforms` é um array de `os/arch[/variant]` (1..8, únicos); `platform` continua aceito por
+> compatibilidade e é dividido por vírgula quando `platforms` está ausente. `Build` inclui
+> `platforms:string[]` (vazio quando não informado). Com **0/1** plataforma o build usa Libpod;
+> com **2+** o daemon remove o manifest anterior (`podman manifest rm <tag>`, falha ignorada) e
+> executa o CLI do Podman (`podman build --platform p1,p2 --manifest <tag> -f ...`) em job
+> assíncrono, sem steps. Lista inválida retorna `PODSTACK_INVALID_PARAMS` na chamada; falha do
+> CLI vira `builds.done` com `status:"failed"` e a mensagem em `error`. Cancelar mata o processo
+> e termina com `status:"cancelled"`. `PODSTACK_PODMAN_CLI` permite substituir o binário em
+> testes/dev.
 
 ### 4.8 `k8s.*`
 

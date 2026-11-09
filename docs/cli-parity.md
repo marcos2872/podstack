@@ -151,10 +151,14 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 | `podstack compose down <dir>` | `--volumes` | |
 | `podstack compose restart|stop|start <dir> [serviço]` | | |
 | `podstack compose logs <projeto> [serviço]` | | Stream agregado ou por serviço |
-| `podstack build <contexto> -t <tag>` | `-f`, `--build-arg`, `--platform` | Via Libpod |
-| `podstack builds [ls|rm <id>]` | | Histórico SQLite |
+| `podstack build <contexto> -t <tag>` | `-f`, `--build-arg`, `--platform p1,p2` | Uma plataforma via Libpod; duas ou mais via manifest list (CLI do Podman) |
+| `podstack builds [ls|rm <id>]` | | Histórico SQLite; coluna `PLATFORMS` quando houver |
 
 > O provider Compose é detectado em `docker-compose`, `podman compose` ou `docker compose`; `PODSTACK_COMPOSE_PROVIDER` força um binário.
+>
+> `--platform` aceita uma ou várias plataformas separadas por vírgula (`os/arch[/variant]`).
+> Com duas ou mais, o daemon cria uma manifest list pelo CLI do Podman (arquiteturas
+> estrangeiras exigem `binfmt_misc` no host). Com uma, o build continua via Libpod.
 
 ### 2.3.4 Setup (implementado)
 

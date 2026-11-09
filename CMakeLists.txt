@@ -93,6 +93,7 @@ add_executable(podstackd
     src/daemon/Daemon.cpp
     src/daemon/RpcServer.cpp
     src/daemon/BuildStore.cpp
+    src/daemon/ManifestBuilder.cpp
     src/daemon/ComposeManager.cpp
     src/daemon/SetupManager.cpp
     src/daemon/HelperClient.cpp

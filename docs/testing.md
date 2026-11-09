@@ -84,6 +84,29 @@
 - `system df --json` devolve as seções normalizadas; `system df` mostra o resumo e
   `--detailed` lista imagens/containers/volumes; opção desconhecida sai com 2.
 
+### 2.5 Builds multi-plataforma
+
+`PODSTACK_PODMAN_CLI` substitui o binário do Podman usado pelo `ManifestBuilder` (somente no
+fluxo com 2+ plataformas); os testes apontam para um script falso que registra o argv, imprime
+linhas e simula sucesso, falha (exit 1) ou processo lento para cancelamento. O fluxo de 0/1
+plataforma continua no Libpod e não usa o override.
+
+- `test_core::buildStorePlatforms`: round-trip de `platforms` no `BuildRecord`/JSON/SQLite e
+  migração idempotente de um banco antigo sem a coluna (`ALTER TABLE ... DEFAULT '[]'`).
+- `test_core::manifestBuilderValidation`: aceita `os/arch[/variant]` (inclusive variante),
+  rejeita vazio/9 itens/segmentos extras e retorna `PODSTACK_UNSUPPORTED` com remediação
+  quando `PODSTACK_PODMAN_CLI` aponta para um binário inexistente.
+- `test_rpc::multiPlatformBuild`: `builds.start` com `platforms` cria manifest list pelo CLI
+  falso (`manifest rm` + `build --platform ... --manifest ...`), entrega `builds.delta` e
+  `builds.done {status:"success"}`; `builds.get` devolve `platforms`; exit 1 → `failed`;
+  `builds.cancel` mata o processo lento → `cancelled`; `platform` com vírgula (compatibilidade)
+  é normalizado para a lista; lista inválida/9 plataformas → `PODSTACK_INVALID_PARAMS`.
+- `test_cli::composeAndBuild`: `build --platform linux/amd64,linux/arm64` envia as duas
+  plataformas, o argv do CLI falso contém `--platform`/`--manifest`/tag/contexto e
+  `builds ls` mostra a coluna `PLATFORMS`.
+- `test_gui::backendM3`: `startBuild` com `platforms` em texto separado por vírgula cria a
+  manifest list e o item do histórico expõe `platforms` como `linux/amd64, linux/arm64`.
+
 ---
 
 ## 3. Integração com Podman
@@ -153,6 +176,11 @@
 | `test_setup` | `firewall*` | detecção firewalld/ufw, abertura/fechamento runtime (sem `--permanent`), validação 1..65535/tcp-udp/≤32, rollback em falha parcial e ausência de backend → `PODSTACK_HELPER_REQUIRED` |
 | `test_rpc` | `exposeLan` | `containers.create` sem `exposeLan` envia `host_ip=127.0.0.1`; com `exposeLan:true` sem helper → `PODSTACK_HELPER_REQUIRED` e **nenhum** create; `containers.exposeLan` em `0.0.0.0` sem helper → `PODSTACK_HELPER_REQUIRED`, loopback → `PODSTACK_UNSUPPORTED` com remediação e id inexistente → `PODSTACK_NOT_FOUND` |
 | `test_gui` | `backendExposeLan` | `createContainer` com `exposeLan` e `exposeContainerLan` falham sem helper; create sem LAN usa `127.0.0.1`; configurações não mudam |
+| `test_core` | `buildStorePlatforms` | `platforms` no insert/get/list/JSON e migração de banco sem a coluna |
+| `test_core` | `manifestBuilderValidation` | `os/arch[/variant]`, limite 1..8, rejeição de formato e `PODSTACK_UNSUPPORTED` sem CLI |
+| `test_rpc` | `multiPlatformBuild` | manifest list via CLI falso: sucesso, falha, cancelamento, `platforms` no histórico e validação 1..8/`os/arch[/variant]` |
+| `test_cli` | `composeAndBuild` | `build --platform p1,p2` (argv do CLI falso) e coluna `PLATFORMS` em `builds ls` |
+| `test_gui` | `backendM3` | `startBuild` com `platforms` separadas por vírgula e `platforms` no item do histórico |
 
 **Validação manual da bandeja (niri + Noctalia):** fechar a janela mantém o processo e o SNI;
 `podstack-gui` (segunda instância) foca a janela; `--quit` encerra; o DBusMenu expõe Containers com
