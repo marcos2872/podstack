@@ -1006,23 +1006,118 @@ void RpcTest::machinesFlow()
                 &invalid);
     QCOMPARE(invalid.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
-    PodStack::Error unsupported;
-    client.call(QStringLiteral("machines.create"),
-                QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
-                            {QStringLiteral("distro"), QStringLiteral("ubuntu")},
-                            {QStringLiteral("mounts"),
-                             QJsonArray{QJsonObject{{QStringLiteral("source"),
-                                                     QStringLiteral("/tmp")}}}}},
-                &unsupported);
-    QCOMPARE(unsupported.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    const QString sharedSource = m_testDataDir + QStringLiteral("/shared");
+    QVERIFY(QDir().mkpath(sharedSource));
 
-    unsupported = {};
+    const auto expectInvalidMounts = [&client](const QJsonArray &mounts) {
+        PodStack::Error mountError;
+        client.call(QStringLiteral("machines.create"),
+                    QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
+                                {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+                                {QStringLiteral("mounts"), mounts}},
+                    &mountError);
+        QCOMPARE(mountError.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    };
+
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), sharedSource}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), QStringLiteral("shared")},
+        {QStringLiteral("target"), QStringLiteral("/mnt/shared")}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), m_testDataDir + QStringLiteral("/missing")},
+        {QStringLiteral("target"), QStringLiteral("/mnt/shared")}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), sharedSource},
+        {QStringLiteral("target"), QStringLiteral("mnt/shared")}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), sharedSource},
+        {QStringLiteral("target"), QStringLiteral("/mnt/../etc")}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), sharedSource},
+        {QStringLiteral("target"), QStringLiteral("/mnt/a")},
+        {QStringLiteral("tag"), QStringLiteral("Host 0")}}});
+
+    QJsonArray duplicateTags{
+        QJsonObject{{QStringLiteral("source"), sharedSource},
+                    {QStringLiteral("target"), QStringLiteral("/mnt/a")},
+                    {QStringLiteral("tag"), QStringLiteral("dados")}},
+        QJsonObject{{QStringLiteral("source"), sharedSource},
+                    {QStringLiteral("target"), QStringLiteral("/mnt/b")},
+                    {QStringLiteral("tag"), QStringLiteral("dados")}}};
+    expectInvalidMounts(duplicateTags);
+
+    QJsonArray tooManyMounts;
+    for (int i = 0; i < 9; ++i) {
+        tooManyMounts.append(QJsonObject{
+            {QStringLiteral("source"), sharedSource},
+            {QStringLiteral("target"), QStringLiteral("/mnt/%1").arg(i)}});
+    }
+    expectInvalidMounts(tooManyMounts);
+
+    PodStack::Error unsupported;
     client.call(QStringLiteral("machines.create"),
                 QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
                             {QStringLiteral("distro"), QStringLiteral("ubuntu")},
                             {QStringLiteral("isolated"), true}},
                 &unsupported);
     QCOMPARE(unsupported.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    // Com mounts válidos o create síncrono precisa aceitar o array e iniciar o
+    // job. A distro desconhecida falha antes de qualquer download/QEMU.
+    QLocalSocket mountSocket;
+    mountSocket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(mountSocket.waitForConnected(3000));
+    QByteArray mountBuffer;
+    sendMessage(mountSocket,
+                QJsonObject{
+                    {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                    {QStringLiteral("id"), 4242},
+                    {QStringLiteral("method"), QStringLiteral("machines.create")},
+                    {QStringLiteral("params"),
+                     QJsonObject{
+                         {QStringLiteral("name"), QStringLiteral("mounts-valid")},
+                         {QStringLiteral("distro"), QStringLiteral("distro-inexistente")},
+                         {QStringLiteral("mounts"),
+                          QJsonArray{QJsonObject{
+                              {QStringLiteral("source"), sharedSource},
+                              {QStringLiteral("target"), QStringLiteral("/mnt/shared")},
+                              {QStringLiteral("readOnly"), true}}}}}},
+                });
+
+    QJsonObject createResponse;
+    QJsonObject donePayload;
+    QElapsedTimer mountTimer;
+    mountTimer.start();
+    while (mountTimer.elapsed() < 5000 && donePayload.isEmpty()) {
+        const int remaining = 5000 - static_cast<int>(mountTimer.elapsed());
+        if (remaining <= 0) {
+            break;
+        }
+        const QJsonObject message = readMessage(mountSocket, mountBuffer, remaining);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 4242) {
+            createResponse = message;
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.done")) {
+            donePayload = message.value(QStringLiteral("params")).toObject();
+        }
+    }
+    QVERIFY(!createResponse.isEmpty());
+    QVERIFY(createResponse.value(QStringLiteral("error")).isUndefined());
+    QVERIFY(!createResponse.value(QStringLiteral("result"))
+                 .toObject()
+                 .value(QStringLiteral("jobId"))
+                 .toString()
+                 .isEmpty());
+    QVERIFY(!donePayload.isEmpty());
+    const QJsonObject jobError = donePayload.value(QStringLiteral("error")).toObject();
+    QVERIFY(!jobError.isEmpty());
+    QVERIFY(jobError.value(QStringLiteral("code")).toString()
+            != QStringLiteral("PODSTACK_UNSUPPORTED"));
 
     for (const QString &method :
          {QStringLiteral("machines.start"), QStringLiteral("machines.stop"),

@@ -440,9 +440,24 @@ Host <name>.podstack <name>
 
 ### 7.4 Arquivos
 
-- virtiofs: montar host paths no guest em `/mnt/podstack/<nome>`.
-- pull/push via `scp`/`rsync` com progresso.
-- File manager lista ambos os lados.
+- Virtiofs (T4-07): cada mount tem `source` (diretório absoluto do host,
+  canonicalizado), `target` (caminho absoluto no guest, sem `..`, por exemplo
+  `/mnt/podstack/<nome>`), `readOnly` e `tag` (`[a-z0-9-]{1,32}`, única,
+  default `host<N>`). Limite de **8 mounts** por machine.
+- O daemon inicia um `virtiofsd` por mount **antes** do QEMU:
+  `virtiofsd --shared-dir <source> --socket-path <machineDir>/virtiofs-<tag>.sock
+  --tag <tag> --cache=auto --xattr --sandbox=<chroot|namespace> [--readonly]`.
+  O virtiofsd 1.14 só aceita `--sandbox=chroot` como root; no modo rootless
+  (padrão do PodStack) usa-se `--sandbox=namespace`. O binário vem de
+  `Options.virtiofsdBinary`, `PODSTACK_VIRTIOFSD_BINARY`, PATH ou do fallback
+  `/usr/libexec/virtiofsd`; ausente → `PODSTACK_UNSUPPORTED` com remediação.
+- QEMU recebe, por mount, `-chardev socket,id=vfs<N>,path=<socket>` e
+  `-device vhost-user-fs-pci,chardev=vfs<N>,tag=<tag>`.
+- Ciclo de vida: o virtiofsd sobe antes do QEMU; `stop`/`remove` encerram os
+  processos (SIGTERM, espera e SIGKILL) e removem os sockets. Falha em qualquer
+  mount para os já iniciados, limpa os sockets e marca a machine como `error`.
+- pull/push via `scp`/`rsync` com progresso (T4-08).
+- File manager lista ambos os lados (T4-08).
 
 ### 7.5 Export/import
 

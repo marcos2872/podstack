@@ -18,6 +18,7 @@
 #include "machines/QemuRuntime.h"
 #include "machines/QmpClient.h"
 #include "machines/SshConfig.h"
+#include "machines/VirtiofsdProcess.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -59,12 +60,14 @@ using PodStack::MachinePort;
 using PodStack::MachineStatsCollector;
 using PodStack::MachineStore;
 using PodStack::QemuCommand;
+using PodStack::QemuMount;
 using PodStack::QemuProcessRuntime;
 using PodStack::QemuRuntime;
 using PodStack::QemuSpec;
 using PodStack::QmpClient;
 using PodStack::SshConfig;
 using PodStack::SshInfo;
+using PodStack::VirtiofsdProcess;
 
 namespace {
 
@@ -311,9 +314,69 @@ QString createQemuImgScript(const QString &root)
     return path;
 }
 
-QString createSshKeygenScript(const QString &root)
+QString createVirtiofsdScript(const QString &root)
 {
-    const QString path = root + QStringLiteral("/ssh-keygen-fake.sh");
+    const QString path = root + QStringLiteral("/virtiofsd-fake.sh");
+    const QByteArray script = QByteArrayLiteral(
+        "#!/bin/sh\n"
+        "sock=''\n"
+        "tag=''\n"
+        "prev=''\n"
+        "for arg in \"$@\"; do\n"
+        "  if [ -n \"${PODSTACK_VIRTIOFSD_LOG:-}\" ]; then\n"
+        "    printf '%s\\n' \"$arg\" >> \"$PODSTACK_VIRTIOFSD_LOG\"\n"
+        "  fi\n"
+        "  if [ \"$prev\" = '--socket-path' ]; then sock=\"$arg\"; fi\n"
+        "  if [ \"$prev\" = '--tag' ]; then tag=\"$arg\"; fi\n"
+        "  prev=\"$arg\"\n"
+        "done\n"
+        "if [ -z \"$sock\" ]; then echo 'socket-path ausente' >&2; exit 2; fi\n"
+        "if [ -n \"${PODSTACK_VIRTIOFSD_FAIL_TAG:-}\" ] &&\n"
+        "   [ \"$tag\" = \"$PODSTACK_VIRTIOFSD_FAIL_TAG\" ]; then\n"
+        "  exit 1\n"
+        "fi\n"
+        "exec python3 -c 'import os,socket,sys,time; s=socket.socket(socket.AF_UNIX);"
+        " s.bind(sys.argv[1]); s.listen(1); open(sys.argv[1] + \".pid\", \"w\")"
+        ".write(str(os.getpid())); time.sleep(120)' \"$sock\"\n");
+    if (!writeTestFile(path, script,
+                       QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                           | QFileDevice::ExeOwner)) {
+        return {};
+    }
+    return path;
+}
+
+qint64 readPidFile(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return 0;
+    }
+    bool ok = false;
+    const qint64 pid = QString::fromUtf8(file.readAll()).trimmed().toLongLong(&ok);
+    return ok ? pid : 0;
+}
+
+bool processAlive(qint64 pid)
+{
+    return pid > 0 && ::kill(static_cast<pid_t>(pid), 0) == 0;
+}
+
+bool waitForProcessGone(qint64 pid, int timeoutMs = 3000)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs) {
+        if (!processAlive(pid)) {
+            return true;
+        }
+        QTest::qWait(20);
+    }
+    return !processAlive(pid);
+}
+
+QString createSshKeygenScript(const QString &root)
+{    const QString path = root + QStringLiteral("/ssh-keygen-fake.sh");
     const QByteArray script = QByteArrayLiteral(
         "#!/bin/sh\n"
         "key=\"\"\n"
@@ -594,6 +657,7 @@ private slots:
     void qemuCommandArm64();
     void qemuCommandUefi();
     void qemuCommandIsolated();
+    void qemuCommandMounts();
     void qemuCommandInvalid();
     void qmpHandshake();
     void qmpQueryStatus();
@@ -605,6 +669,7 @@ private slots:
     void qmpConnectMissing();
     void idsUuidV7();
     void machineManagerCreate();
+    void machineManagerMounts();
     void machineManagerValidation();
     void machineManagerLifecycle();
     void machineManagerCancelled();
@@ -617,6 +682,7 @@ private slots:
     void machineManagerSsh();
     void machineStats();
     void qemuRuntimeIntegration();
+    void virtiofsdIntegration();
 
 private:
     QString cacheDirFor(const QString &name) const;
@@ -668,6 +734,10 @@ void MachinesTest::initTestCase()
 void MachinesTest::cleanupTestCase()
 {
     QDir(m_root).removeRecursively();
+    const QString shortRoot = QDir::tempPath()
+                              + QStringLiteral("/psm-%1").arg(QCoreApplication::applicationPid());
+    QDir(shortRoot).removeRecursively();
+    QDir(shortRoot + QStringLiteral("-fail")).removeRecursively();
 }
 
 void MachinesTest::registryDefaults()
@@ -1545,6 +1615,61 @@ void MachinesTest::qemuCommandIsolated()
              QStringLiteral("user,id=net0,hostfwd=tcp:127.0.0.1:32222-:22"));
 }
 
+void MachinesTest::qemuCommandMounts()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    const QemuMount first{QStringLiteral("host0"),
+                          m_root + QStringLiteral("/qemu/virtiofs-host0.sock"), false};
+    const QemuMount second{QStringLiteral("dados"),
+                           m_root + QStringLiteral("/qemu/virtiofs-dados.sock"), true};
+    spec.mounts = {first, second};
+
+    PodStack::Error error;
+    QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(args.contains(QStringLiteral("socket,id=vfs0,path=%1").arg(first.socketPath)));
+    QVERIFY(args.contains(QStringLiteral("vhost-user-fs-pci,chardev=vfs0,tag=host0")));
+    QVERIFY(args.contains(QStringLiteral("socket,id=vfs1,path=%1").arg(second.socketPath)));
+    QVERIFY(args.contains(QStringLiteral("vhost-user-fs-pci,chardev=vfs1,tag=dados")));
+    QCOMPARE(args.count(QStringLiteral("-chardev")), 3);
+    QVERIFY(!args.join(QLatin1Char(' ')).contains(QStringLiteral("vfs2")));
+
+    spec.mounts.clear();
+    args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!args.join(QLatin1Char(' ')).contains(QStringLiteral("vhost-user-fs")));
+
+    const auto rejects = [](QemuSpec candidate) {
+        PodStack::Error candidateError;
+        return QemuCommand::arguments(candidate, &candidateError).isEmpty()
+               && candidateError.code == QStringLiteral("PODSTACK_INVALID_PARAMS");
+    };
+
+    spec = qemuSpec(m_root);
+    spec.mounts = {QemuMount{QStringLiteral("Host0"), first.socketPath, false}};
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.mounts = {QemuMount{QString(), first.socketPath, false}};
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.mounts = {first, QemuMount{QStringLiteral("host0"), second.socketPath, true}};
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.mounts = {QemuMount{QStringLiteral("host0"), QStringLiteral("vfs.sock"), false}};
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    for (int i = 0; i < 9; ++i) {
+        const QString tag = QStringLiteral("host%1").arg(i);
+        spec.mounts.append(
+            QemuMount{tag, m_root + QStringLiteral("/qemu/virtiofs-%1.sock").arg(tag), false});
+    }
+    QVERIFY(rejects(spec));
+}
+
 void MachinesTest::qemuCommandInvalid()
 {
     const auto rejects = [](const QemuSpec &candidate) {
@@ -1950,6 +2075,300 @@ void MachinesTest::machineManagerCreate()
     QCOMPARE(stages.last(), QStringLiteral("running"));
 
     QVERIFY(QFileInfo(storePath).isFile());
+}
+
+void MachinesTest::machineManagerMounts()
+{
+    const QString root = QDir::tempPath()
+                         + QStringLiteral("/psm-%1").arg(QCoreApplication::applicationPid());
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+    const QString virtiofsd = createVirtiofsdScript(root);
+    QVERIFY(!virtiofsd.isEmpty());
+
+    const QString argsLog = root + QStringLiteral("/virtiofsd-args.log");
+    QFile::remove(argsLog);
+    qputenv("PODSTACK_VIRTIOFSD_LOG", argsLog.toUtf8());
+    qunsetenv("PODSTACK_VIRTIOFSD_FAIL_TAG");
+
+    const QByteArray payload(2048, 'm');
+    m_server.setResponse(QStringLiteral("/manager-mounts.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-mounts.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.virtiofsdBinary = virtiofsd;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    const QString machinesRoot = options.machinesRoot;
+    MachineManager manager(std::move(options));
+
+    const QString sourceA = root + QStringLiteral("/shared-a");
+    const QString sourceB = root + QStringLiteral("/shared-b");
+    QVERIFY(QDir().mkpath(sourceA));
+    QVERIFY(QDir().mkpath(sourceB));
+    const QString linkA = root + QStringLiteral("/shared-a-link");
+    QVERIFY(QFile::link(sourceA, linkA));
+    QVERIFY(QFileInfo(linkA).isSymLink());
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("manager-mounts");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    MachineMount first;
+    first.source = linkA;
+    first.target = QStringLiteral("/mnt/podstack/a");
+    MachineMount second;
+    second.source = sourceB + QLatin1Char('/');
+    second.target = QStringLiteral("/mnt/podstack/b/");
+    second.readOnly = true;
+    second.tag = QStringLiteral("dados");
+    request.mounts = {first, second};
+
+    PodStack::Error error;
+    QVERIFY2(manager.validate(request, &error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+
+    const auto expectInvalid = [&manager, &request](const QVector<MachineMount> &mounts) {
+        CreateMachineRequest invalid = request;
+        invalid.mounts = mounts;
+        PodStack::Error validateError;
+        QVERIFY(!manager.validate(invalid, &validateError));
+        QCOMPARE(validateError.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    };
+
+    MachineMount relativeSource;
+    relativeSource.source = QStringLiteral("shared-a");
+    relativeSource.target = QStringLiteral("/mnt/a");
+    expectInvalid({relativeSource});
+
+    MachineMount missingSource;
+    missingSource.source = root + QStringLiteral("/missing-source");
+    missingSource.target = QStringLiteral("/mnt/a");
+    expectInvalid({missingSource});
+
+    MachineMount relativeTarget;
+    relativeTarget.source = sourceA;
+    relativeTarget.target = QStringLiteral("mnt/a");
+    expectInvalid({relativeTarget});
+
+    MachineMount escapingTarget;
+    escapingTarget.source = sourceA;
+    escapingTarget.target = QStringLiteral("/mnt/../etc");
+    expectInvalid({escapingTarget});
+
+    MachineMount customTag;
+    customTag.source = sourceA;
+    customTag.target = QStringLiteral("/mnt/a");
+    customTag.tag = QStringLiteral("Host0");
+    expectInvalid({customTag});
+
+    MachineMount duplicateA;
+    duplicateA.source = sourceA;
+    duplicateA.target = QStringLiteral("/mnt/a");
+    duplicateA.tag = QStringLiteral("dados");
+    MachineMount duplicateB;
+    duplicateB.source = sourceB;
+    duplicateB.target = QStringLiteral("/mnt/b");
+    duplicateB.tag = QStringLiteral("dados");
+    expectInvalid({duplicateA, duplicateB});
+
+    QVector<MachineMount> tooMany;
+    for (int i = 0; i < 9; ++i) {
+        MachineMount mount;
+        mount.source = sourceA;
+        mount.target = QStringLiteral("/mnt/%1").arg(i);
+        tooMany.append(mount);
+    }
+    expectInvalid(tooMany);
+
+    const MachineMeta meta = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QVERIFY(!meta.id.isEmpty());
+    QCOMPARE(meta.state, QStringLiteral("running"));
+    QCOMPARE(meta.mounts.size(), 2);
+
+    const QString directory = machinesRoot + QLatin1Char('/') + meta.id;
+    const QString socketA = directory + QStringLiteral("/virtiofs-host0.sock");
+    const QString socketB = directory + QStringLiteral("/virtiofs-dados.sock");
+
+    const auto mountByTarget = [&meta](const QString &target) {
+        for (const MachineMount &mount : meta.mounts) {
+            if (mount.target == target) {
+                return mount;
+            }
+        }
+        return MachineMount{};
+    };
+    const MachineMount storedA = mountByTarget(QStringLiteral("/mnt/podstack/a"));
+    const MachineMount storedB = mountByTarget(QStringLiteral("/mnt/podstack/b"));
+    QCOMPARE(storedA.tag, QStringLiteral("host0"));
+    QCOMPARE(storedA.source, QFileInfo(sourceA).canonicalFilePath());
+    QVERIFY(!storedA.id.isEmpty());
+    QVERIFY(!storedA.readOnly);
+    QCOMPARE(storedB.tag, QStringLiteral("dados"));
+    QCOMPARE(storedB.source, QFileInfo(sourceB).canonicalFilePath());
+    QVERIFY(!storedB.id.isEmpty());
+    QVERIFY(storedB.readOnly);
+
+    QVERIFY(QFileInfo::exists(socketA));
+    QVERIFY(QFileInfo::exists(socketB));
+
+    QHash<QString, QemuMount> specMounts;
+    for (const QemuMount &mount : fake->lastSpec.mounts) {
+        specMounts.insert(mount.tag, mount);
+    }
+    QCOMPARE(specMounts.size(), 2);
+    QCOMPARE(specMounts.value(QStringLiteral("host0")).socketPath, socketA);
+    QCOMPARE(specMounts.value(QStringLiteral("dados")).socketPath, socketB);
+
+    const qint64 pidA = readPidFile(socketA + QStringLiteral(".pid"));
+    const qint64 pidB = readPidFile(socketB + QStringLiteral(".pid"));
+    QVERIFY(pidA > 0);
+    QVERIFY(pidB > 0);
+    QVERIFY(processAlive(pidA));
+    QVERIFY(processAlive(pidB));
+
+    QFile argsFile(argsLog);
+    QVERIFY(argsFile.open(QIODevice::ReadOnly));
+    const QStringList args = QString::fromUtf8(argsFile.readAll())
+                                 .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(args.count(QStringLiteral("--shared-dir")), 2);
+    QCOMPARE(args.count(QStringLiteral("--socket-path")), 2);
+    QCOMPARE(args.count(QStringLiteral("--tag")), 2);
+    QCOMPARE(args.count(QStringLiteral("--cache=auto")), 2);
+    QCOMPARE(args.count(QStringLiteral("--xattr")), 2);
+    QCOMPARE(args.count(QStringLiteral("--readonly")), 1);
+    QVERIFY(args.contains(QStringLiteral("host0")));
+    QVERIFY(args.contains(QStringLiteral("dados")));
+    QVERIFY(args.contains(socketA));
+    QVERIFY(args.contains(socketB));
+    QVERIFY(args.contains(QStringLiteral("--sandbox=chroot"))
+            || args.contains(QStringLiteral("--sandbox=namespace")));
+
+    const MachineMeta stopped = manager.stop(meta.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stopped.state, QStringLiteral("stopped"));
+    QVERIFY(waitForProcessGone(pidA));
+    QVERIFY(waitForProcessGone(pidB));
+    QVERIFY(!QFileInfo::exists(socketA));
+    QVERIFY(!QFileInfo::exists(socketB));
+    QCOMPARE(fake->stopCount, 1);
+
+    const MachineMeta started = manager.start(meta.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QCOMPARE(started.state, QStringLiteral("running"));
+    QVERIFY(QFileInfo::exists(socketA));
+    QVERIFY(QFileInfo::exists(socketB));
+    const qint64 restartedPidA = readPidFile(socketA + QStringLiteral(".pid"));
+    const qint64 restartedPidB = readPidFile(socketB + QStringLiteral(".pid"));
+    QVERIFY(restartedPidA > 0);
+    QVERIFY(restartedPidB > 0);
+    QVERIFY(processAlive(restartedPidA));
+    QVERIFY(processAlive(restartedPidB));
+    QCOMPARE(fake->startCount, 2);
+
+    // Sem processo QEMU, a reconciliação marca a machine como stopped e
+    // encerra o virtiofsd que este manager iniciou.
+    fake->running = false;
+    manager.reconcile(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(waitForProcessGone(restartedPidA));
+    QVERIFY(waitForProcessGone(restartedPidB));
+    QVERIFY(!QFileInfo::exists(socketA));
+    QVERIFY(!QFileInfo::exists(socketB));
+    QCOMPARE(manager.get(meta.id, &error).state, QStringLiteral("stopped"));
+
+    QVERIFY2(manager.remove(meta.id, true, &error), qPrintable(error.message));
+    QVERIFY(!QFileInfo::exists(directory));
+
+    // Falha no segundo virtiofsd: o primeiro precisa ser encerrado e os
+    // sockets removidos antes de a criação terminar em erro.
+    const QString failRoot = root + QStringLiteral("-fail");
+    QDir(failRoot).removeRecursively();
+    QVERIFY(QDir().mkpath(failRoot));
+    QString failCode;
+    QString failVars;
+    QVERIFY(createFirmwareFiles(failRoot, &failCode, &failVars));
+    const QString failQemuImg = createQemuImgScript(failRoot);
+    const QString failVirtiofsd = createVirtiofsdScript(failRoot);
+    QVERIFY(!failQemuImg.isEmpty());
+    QVERIFY(!failVirtiofsd.isEmpty());
+    qputenv("PODSTACK_VIRTIOFSD_FAIL_TAG", QByteArrayLiteral("host1"));
+
+    auto failRuntime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *failFake = failRuntime.get();
+    MachineManager::Options failOptions;
+    QVERIFY(configureSshOptions(&failOptions, failRoot));
+    failOptions.storePath = failRoot + QStringLiteral("/podstack.db");
+    failOptions.machinesRoot = failRoot + QStringLiteral("/machines");
+    failOptions.imageCacheDir = failRoot + QStringLiteral("/images");
+    failOptions.qemuImgBinary = failQemuImg;
+    failOptions.virtiofsdBinary = failVirtiofsd;
+    failOptions.ovmfCodePath = failCode;
+    failOptions.ovmfVarsPath = failVars;
+    failOptions.sshPortStart = freePortHint();
+    failOptions.runtime = std::move(failRuntime);
+    failOptions.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+    MachineManager failManager(std::move(failOptions));
+
+    const QString failSource = failRoot + QStringLiteral("/shared");
+    QVERIFY(QDir().mkpath(failSource));
+    CreateMachineRequest failRequest;
+    failRequest.name = QStringLiteral("manager-mounts-fail");
+    failRequest.distro = QStringLiteral("test");
+    failRequest.arch = QStringLiteral("amd64");
+    failRequest.diskBytes = 1024LL * 1024LL * 1024LL;
+    MachineMount okMount;
+    okMount.source = failSource;
+    okMount.target = QStringLiteral("/mnt/ok");
+    okMount.tag = QStringLiteral("host0");
+    MachineMount failingMount;
+    failingMount.source = failSource;
+    failingMount.target = QStringLiteral("/mnt/fail");
+    failingMount.tag = QStringLiteral("host1");
+    failRequest.mounts = {okMount, failingMount};
+
+    PodStack::Error failError;
+    const MachineMeta failed = failManager.create(failRequest, {}, {}, &failError);
+    QVERIFY(!failed.id.isEmpty());
+    QCOMPARE(failed.state, QStringLiteral("error"));
+    QVERIFY(!failError.isEmpty());
+    QVERIFY(!failed.error.isEmpty());
+    QCOMPARE(failFake->startCount, 0);
+
+    const QString failDirectory = failRoot + QStringLiteral("/machines/") + failed.id;
+    const QString failSocket = failDirectory + QStringLiteral("/virtiofs-host0.sock");
+    QVERIFY(!QFileInfo::exists(failSocket));
+    const qint64 failPid = readPidFile(failSocket + QStringLiteral(".pid"));
+    if (failPid > 0) {
+        QVERIFY(waitForProcessGone(failPid));
+    }
+
+    qunsetenv("PODSTACK_VIRTIOFSD_LOG");
+    qunsetenv("PODSTACK_VIRTIOFSD_FAIL_TAG");
 }
 
 void MachinesTest::machineManagerValidation()
@@ -2968,15 +3387,79 @@ void MachinesTest::qemuRuntimeIntegration()
     spec.ovmfCodePath = ovmfCode;
     spec.ovmfVarsPath = varsTarget;
 
+    const QString shareDir = root + QStringLiteral("/share");
+    QVERIFY(QDir().mkpath(shareDir));
+    const QString virtiofsSocket = root + QStringLiteral("/qemu/virtiofs-itest.sock");
+    VirtiofsdProcess virtiofsd;
+    if (!virtiofsd.start(QString(), shareDir, virtiofsSocket, QStringLiteral("itest"), false,
+                         &error)) {
+        QSKIP(qPrintable(QStringLiteral("virtiofsd indisponível: %1 %2")
+                             .arg(error.message, error.detail)));
+    }
+    spec.mounts = {QemuMount{QStringLiteral("itest"), virtiofsSocket, false}};
+
     PodStack::QemuProcessRuntime runtime;
-    QVERIFY2(runtime.start(spec, &error), qPrintable(error.message + QStringLiteral(" ")
-                                                         + error.detail));
+    const bool started = runtime.start(spec, &error);
+    if (!started) {
+        virtiofsd.stop(nullptr);
+    }
+    QVERIFY2(started, qPrintable(error.message + QStringLiteral(" ") + error.detail));
     QVERIFY(runtime.isRunning(spec, &error));
     QCOMPARE(runtime.status(spec, &error), QStringLiteral("running"));
     QVERIFY(!runtime.pid(spec).isEmpty());
 
     QVERIFY2(runtime.stop(spec, true, &error), qPrintable(error.message));
     QVERIFY(!runtime.isRunning(spec, &error));
+    QVERIFY2(virtiofsd.stop(&error), qPrintable(error.message));
+}
+
+void MachinesTest::virtiofsdIntegration()
+{
+    PodStack::Error error;
+
+    const QString root = m_root + QStringLiteral("/virtiofsd-integration");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/share")));
+
+    const QString envBinary = root + QStringLiteral("/env-virtiofsd");
+    const QByteArray previousVirtiofsdBinary = qgetenv("PODSTACK_VIRTIOFSD_BINARY");
+    qputenv("PODSTACK_VIRTIOFSD_BINARY", envBinary.toUtf8());
+    QCOMPARE(VirtiofsdProcess::resolveBinary(QString(), &error), envBinary);
+    QVERIFY(error.isEmpty());
+    if (previousVirtiofsdBinary.isEmpty()) {
+        qunsetenv("PODSTACK_VIRTIOFSD_BINARY");
+    } else {
+        qputenv("PODSTACK_VIRTIOFSD_BINARY", previousVirtiofsdBinary);
+    }
+
+    VirtiofsdProcess missing;
+    QVERIFY(!missing.start(root + QStringLiteral("/missing-virtiofsd"),
+                           root + QStringLiteral("/share"),
+                           root + QStringLiteral("/missing.sock"), QStringLiteral("itest"),
+                           false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    QVERIFY(!error.remediation.isEmpty());
+
+    const QString binary = VirtiofsdProcess::resolveBinary(QString(), &error);
+    if (binary.isEmpty()) {
+        QSKIP("virtiofsd não encontrado");
+    }
+
+    const QString socketPath = root + QStringLiteral("/virtiofs.sock");
+    VirtiofsdProcess process;
+    if (!process.start(QString(), root + QStringLiteral("/share"), socketPath,
+                       QStringLiteral("itest"), true, &error)) {
+        QSKIP(qPrintable(QStringLiteral("virtiofsd indisponível neste ambiente: %1 %2")
+                             .arg(error.message, error.detail)));
+    }
+
+    QVERIFY(process.isRunning());
+    QVERIFY(process.pid() > 0);
+    QVERIFY(QFileInfo::exists(socketPath));
+
+    QVERIFY2(process.stop(&error), qPrintable(error.message));
+    QVERIFY(!process.isRunning());
+    QVERIFY(!QFileInfo::exists(socketPath));
 }
 
 QTEST_GUILESS_MAIN(MachinesTest)

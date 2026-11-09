@@ -455,18 +455,13 @@ QJsonObject Daemon::machineGet(const QJsonObject &params, Error *error)
 QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notify,
                                   Error *error)
 {
-    const QJsonValue mounts = params.value(QStringLiteral("mounts"));
-    const bool hasMounts =
-        (mounts.isArray() && !mounts.toArray().isEmpty())
-        || (mounts.isObject() && !mounts.toObject().isEmpty())
-        || (mounts.isString() && !mounts.toString().trimmed().isEmpty());
-    if (hasMounts || params.value(QStringLiteral("isolated")).toBool()) {
+    if (params.value(QStringLiteral("isolated")).toBool()) {
         if (error) {
             *error = Error::make(
                 QStringLiteral("PODSTACK_UNSUPPORTED"),
-                QStringLiteral("Mounts e modo isolado ainda não são suportados."),
-                QStringLiteral("machines.create recebeu mounts/isolated."),
-                QStringLiteral("Virtiofs e isolamento chegam nas tarefas T4-07/T4-14."));
+                QStringLiteral("O modo isolado ainda não é suportado."),
+                QStringLiteral("machines.create recebeu isolated=true."),
+                QStringLiteral("O isolamento de machines chega na tarefa T4-14."));
         }
         return {};
     }
@@ -487,6 +482,34 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
         params.value(QStringLiteral("isolateNetwork")).toBool(request.isolateNetwork);
     request.forwardSshAgent =
         params.value(QStringLiteral("forwardSshAgent")).toBool(request.forwardSshAgent);
+
+    const QJsonValue mountsValue = params.value(QStringLiteral("mounts"));
+    if (!mountsValue.isUndefined() && !mountsValue.isNull()) {
+        if (!mountsValue.isArray()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("mounts deve ser um array de objetos."));
+            }
+            return {};
+        }
+        const QJsonArray mounts = mountsValue.toArray();
+        for (const QJsonValue &value : mounts) {
+            if (!value.isObject()) {
+                if (error) {
+                    *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                         QStringLiteral("Cada mount deve ser um objeto."));
+                }
+                return {};
+            }
+            const QJsonObject object = value.toObject();
+            MachineMount mount;
+            mount.source = object.value(QStringLiteral("source")).toString().trimmed();
+            mount.target = object.value(QStringLiteral("target")).toString().trimmed();
+            mount.readOnly = object.value(QStringLiteral("readOnly")).toBool(false);
+            mount.tag = object.value(QStringLiteral("tag")).toString().trimmed();
+            request.mounts.append(mount);
+        }
+    }
 
     if (!m_machines.validate(request, error)) {
         return {};

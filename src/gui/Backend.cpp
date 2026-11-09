@@ -2655,6 +2655,41 @@ void Backend::createMachine(const QVariantMap &spec)
     params.insert(QStringLiteral("forwardSshAgent"),
                   spec.value(QStringLiteral("forwardSshAgent")).toBool());
 
+    QJsonArray mounts;
+    const QString mountsText = spec.value(QStringLiteral("mountsText")).toString();
+    const QStringList mountLines = mountsText.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &rawLine : mountLines) {
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) {
+            continue;
+        }
+        const QStringList parts = line.split(QLatin1Char(':'));
+        if (parts.size() < 2 || parts.size() > 3) {
+            fail(QStringLiteral("Mount inválido: use origem:destino[:ro]."));
+            return;
+        }
+        const QString source = parts.at(0).trimmed();
+        const QString target = parts.at(1).trimmed();
+        const QString mode = parts.size() == 3 ? parts.at(2).trimmed() : QString();
+        if (source.isEmpty() || target.isEmpty() || !source.startsWith(QLatin1Char('/'))
+            || !target.startsWith(QLatin1Char('/'))) {
+            fail(QStringLiteral("Mount inválido: origem e destino precisam ser absolutos."));
+            return;
+        }
+        if (!mode.isEmpty() && mode != QStringLiteral("ro")) {
+            fail(QStringLiteral("Mount inválido: o modo deve ser 'ro'."));
+            return;
+        }
+        QJsonObject mount;
+        mount.insert(QStringLiteral("source"), source);
+        mount.insert(QStringLiteral("target"), target);
+        mount.insert(QStringLiteral("readOnly"), mode == QStringLiteral("ro"));
+        mounts.append(mount);
+    }
+    if (!mounts.isEmpty()) {
+        params.insert(QStringLiteral("mounts"), mounts);
+    }
+
     m_machineCreateActive = true;
     m_machineCreateJobId.clear();
     m_machineCreateStage = QStringLiteral("validating");

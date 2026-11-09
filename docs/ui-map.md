@@ -136,7 +136,7 @@ Abas por tipo (estado do M4 após o redesenho do detalhe):
 | **Terminal** | ✅ aba interna do detalhe | ✅ aba interna do detalhe | — | — | `TerminalView`/QTermWidget em placeholder do QML; **Nova sessão em janela** via `ExternalTerminal` |
 | **Inspect** | ✅ overlay | — | — | — | JSON completo via `containers.inspect` |
 
-Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info, Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash), start/stop/restart, expandir o detalhe em overlay, abrir SSH na aba Terminal desse detalhe e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
+Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info (incluindo os mounts virtiofs source → target), Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash e mounts `origem:destino[:ro]`), start/stop/restart, expandir o detalhe em overlay, abrir SSH na aba Terminal desse detalhe e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 
@@ -175,7 +175,8 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - Auto-scroll pausa ao subir; badge "novas linhas".
 - Machines (M4): `console.log` one-shot com as últimas 200 linhas, seleção de texto, botão
   Copiar e indicador "Atualizado em" (horário da captura); follow/console serial ficam para
-  a T4-15.
+  a T4-15. A aba **Info** lista os mounts virtiofs (`source → target`, com marca de somente
+  leitura), se houver.
 
 ### 5.4 Terminal
 
@@ -274,7 +275,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 |---|---|---|
 | Criar container | imagem, nome, comando, portas, env, volumes, workdir, user, flags, recursos, expor na LAN | imagem existente/pull; nome único; portas válidas; helper para LAN |
 | Criar rede | nome, driver, subnet4, gateway, IPv6, labels | CIDR válido; sem sobreposição |
-| Criar máquina | distro/versão, nome, CPU/mem/disco, user, user-data, isolado, SSH agent | recursos mínimos; nome único; YAML válido. M4 não expõe senha nem mounts (T4-04/T4-07) |
+| Criar máquina | distro/versão, nome, CPU/mem/disco, user, user-data, mounts (`origem:destino[:ro]`, até 8), isolado, SSH agent | recursos mínimos; nome único; YAML válido; mounts absolutos/existentes e tags seguras |
 | Clonar máquina | origem, novo nome | nome único |
 | Importar máquina | arquivo, nome | checksum/manifest |
 | Renomear | novo nome | RFC 1123 |

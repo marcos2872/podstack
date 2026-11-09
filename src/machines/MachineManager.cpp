@@ -29,6 +29,7 @@ namespace {
 constexpr qint64 kMinimumMemoryBytes = 1024LL * 1024LL * 1024LL;
 constexpr qint64 kMinimumDiskBytes = 1024LL * 1024LL * 1024LL;
 constexpr int kMaximumCpus = 256;
+constexpr int kMaximumMounts = 8;
 constexpr int kPortAttempts = 20;
 constexpr int kQemuImgStartTimeoutMs = 5000;
 constexpr int kQemuImgTimeoutMs = 60000;
@@ -265,7 +266,7 @@ bool MachineManager::validate(const CreateMachineRequest &request, Error *error)
     if (request.distro.trimmed().isEmpty()) {
         return fails(error, invalidParams(QStringLiteral("Informe a distro da machine.")));
     }
-    return true;
+    return normalizeMounts(request.mounts, nullptr, error);
 }
 
 QString MachineManager::machineDirFor(const QString &id) const
@@ -342,6 +343,190 @@ int MachineManager::findFreePort(const QVector<MachineMeta> &existing, Error *er
                   .arg(m_options.sshPortStart + kPortAttempts - 1),
               QStringLiteral("Libere uma porta ou ajuste machine.sshPortStart.")));
     return 0;
+}
+
+QString MachineManager::virtiofsSocketPath(const QString &machineId, const QString &tag) const
+{
+    static const QRegularExpression tagPattern(QStringLiteral("^[a-z0-9-]{1,32}$"));
+    if (!tagPattern.match(tag).hasMatch()) {
+        return {};
+    }
+    const QString directory = machineDirFor(machineId);
+    if (directory.isEmpty()) {
+        return {};
+    }
+    return directory + QStringLiteral("/virtiofs-") + tag + QStringLiteral(".sock");
+}
+
+bool MachineManager::normalizeMounts(const QVector<MachineMount> &mounts,
+                                     QVector<MachineMount> *normalized, Error *error) const
+{
+    if (normalized) {
+        normalized->clear();
+    }
+    if (mounts.size() > kMaximumMounts) {
+        return fails(error,
+                     invalidParams(QStringLiteral("Número de mounts acima do limite (8)."),
+                                   QString::number(mounts.size())));
+    }
+
+    static const QRegularExpression tagPattern(QStringLiteral("^[a-z0-9-]{1,32}$"));
+    QSet<QString> tags;
+    for (const MachineMount &mount : mounts) {
+        const QString tag = mount.tag.trimmed();
+        if (tag.isEmpty()) {
+            continue;
+        }
+        if (!tagPattern.match(tag).hasMatch()) {
+            return fails(error,
+                         invalidParams(QStringLiteral("Tag de mount inválida."), tag,
+                                       QStringLiteral("Use 1..32 caracteres [a-z0-9-].")));
+        }
+        if (tags.contains(tag)) {
+            return fails(error,
+                         invalidParams(QStringLiteral("Tag de mount duplicada."), tag,
+                                       QStringLiteral("Cada mount precisa de uma tag única.")));
+        }
+        tags.insert(tag);
+    }
+
+    int nextDefault = 0;
+    const auto nextDefaultTag = [&tags, &nextDefault]() {
+        QString tag;
+        do {
+            tag = QStringLiteral("host%1").arg(nextDefault++);
+        } while (tags.contains(tag));
+        tags.insert(tag);
+        return tag;
+    };
+
+    QVector<MachineMount> result;
+    result.reserve(mounts.size());
+    for (const MachineMount &input : mounts) {
+        const QString source = input.source.trimmed();
+        if (source.isEmpty() || !QDir::isAbsolutePath(source)) {
+            return fails(error,
+                         invalidParams(
+                             QStringLiteral("O diretório compartilhado (source) do mount deve "
+                                            "ser absoluto."),
+                             source));
+        }
+        const QFileInfo sourceInfo(source);
+        if (!sourceInfo.exists() || !sourceInfo.isDir()) {
+            return fails(error,
+                         invalidParams(
+                             QStringLiteral("O diretório compartilhado do mount não existe."),
+                             source,
+                             QStringLiteral("Crie o diretório no host antes de montar.")));
+        }
+        const QString canonicalSource = sourceInfo.canonicalFilePath();
+        if (canonicalSource.isEmpty()) {
+            return fails(error,
+                         invalidParams(
+                             QStringLiteral("Não foi possível resolver o diretório do mount."),
+                             source));
+        }
+
+        const QString rawTarget = input.target.trimmed();
+        if (rawTarget.isEmpty() || !QDir::isAbsolutePath(rawTarget)) {
+            return fails(error,
+                         invalidParams(
+                             QStringLiteral("O destino (target) do mount deve ser absoluto."),
+                             rawTarget));
+        }
+        if (rawTarget.split(QLatin1Char('/')).contains(QStringLiteral(".."))) {
+            return fails(error,
+                         invalidParams(
+                             QStringLiteral("O destino do mount não pode conter '..'."),
+                             rawTarget));
+        }
+        const QString target = QDir::cleanPath(rawTarget);
+
+        MachineMount mount;
+        mount.id = newUuidV7();
+        mount.source = canonicalSource;
+        mount.target = target;
+        mount.readOnly = input.readOnly;
+        mount.tag = input.tag.trimmed().isEmpty() ? nextDefaultTag() : input.tag.trimmed();
+        result.append(mount);
+    }
+
+    if (normalized) {
+        *normalized = result;
+    }
+    return true;
+}
+
+bool MachineManager::startVirtiofs(const MachineMeta &meta, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    std::lock_guard<std::recursive_mutex> lock(m_virtiofsMutex);
+    stopVirtiofs(meta.id);
+    if (meta.mounts.isEmpty()) {
+        return true;
+    }
+
+    for (const MachineMount &mount : meta.mounts) {
+        if (m_virtiofs[meta.id].find(mount.tag) != m_virtiofs[meta.id].end()) {
+            stopVirtiofs(meta.id);
+            return fails(error,
+                         invalidParams(QStringLiteral("Tag de mount duplicada."), mount.tag));
+        }
+        const QString socketPath = virtiofsSocketPath(meta.id, mount.tag);
+        if (socketPath.isEmpty()) {
+            stopVirtiofs(meta.id);
+            return fails(error,
+                         invalidParams(QStringLiteral("Tag de mount inválida."), mount.tag));
+        }
+
+        auto process = std::make_unique<VirtiofsdProcess>();
+        Error startError;
+        if (!process->start(m_options.virtiofsdBinary, mount.source, socketPath, mount.tag,
+                            mount.readOnly, &startError)) {
+            qCWarning(lcCore) << "Falha ao iniciar o virtiofsd do mount" << mount.source
+                              << "da machine" << meta.name << ":" << startError.code
+                              << startError.detail;
+            stopVirtiofs(meta.id);
+            if (error) {
+                *error = startError;
+                if (error->detail.isEmpty()) {
+                    error->detail = QStringLiteral("mount %1 (%2)").arg(mount.tag, mount.source);
+                }
+            }
+            return false;
+        }
+        m_virtiofs[meta.id].emplace(mount.tag, std::move(process));
+    }
+    return true;
+}
+
+bool MachineManager::stopVirtiofs(const QString &machineId, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    std::lock_guard<std::recursive_mutex> lock(m_virtiofsMutex);
+    const auto it = m_virtiofs.find(machineId);
+    if (it == m_virtiofs.end()) {
+        return true;
+    }
+
+    bool ok = true;
+    for (auto processIt = it->second.begin(); processIt != it->second.end(); ++processIt) {
+        Error stopError;
+        if (!processIt->second->stop(&stopError)) {
+            ok = false;
+            qCWarning(lcCore) << "Falha ao encerrar o virtiofsd da machine" << machineId
+                              << "tag" << processIt->first << ":" << stopError.code;
+            if (error && error->isEmpty()) {
+                *error = stopError;
+            }
+        }
+    }
+    m_virtiofs.erase(it);
+    return ok;
 }
 
 MachineMeta MachineManager::load(const QString &idOrName, Error *error)
@@ -493,6 +678,35 @@ void MachineManager::reconcile(Error *error)
                                      .arg(it.key())
                                      .arg(it.value())
                                      .arg(terminateError.code);
+        }
+    }
+
+    // Só processos iniciados por este MachineManager. Um virtiofsd de outra
+    // instalação (ou adotado após reinício) não é tocado.
+    std::lock_guard<std::recursive_mutex> virtiofsLock(m_virtiofsMutex);
+    const QStringList managedMachines = [this] {
+        QStringList ids;
+        ids.reserve(static_cast<int>(m_virtiofs.size()));
+        for (const auto &entry : m_virtiofs) {
+            ids.append(entry.first);
+        }
+        return ids;
+    }();
+    for (const QString &machineId : managedMachines) {
+        Error lookupError;
+        const MachineMeta meta = m_store.get(machineId, &lookupError);
+        const bool active = meta.id == machineId
+                            && (meta.state == QStringLiteral("running")
+                                || meta.state == QStringLiteral("starting"));
+        if (active) {
+            continue;
+        }
+        Error stopError;
+        if (stopVirtiofs(machineId, &stopError)) {
+            qCInfo(lcCore) << "virtiofsd remanescente encerrado para a machine" << machineId;
+        } else {
+            qCWarning(lcCore) << "Falha ao encerrar virtiofsd remanescente da machine"
+                              << machineId << stopError.code;
         }
     }
 }
@@ -814,6 +1028,13 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
     spec.consoleLogPath = directory + QStringLiteral("/console.log");
     spec.pidFile = directory + QStringLiteral("/qemu.pid");
 
+    for (const MachineMount &mount : meta.mounts) {
+        const QString socketPath = virtiofsSocketPath(meta.id, mount.tag);
+        if (!socketPath.isEmpty()) {
+            spec.mounts.append(QemuMount{mount.tag, socketPath, mount.readOnly});
+        }
+    }
+
     if (!forStart) {
         return spec;
     }
@@ -848,6 +1069,11 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     }
 
     if (!validate(request, error)) {
+        return {};
+    }
+
+    QVector<MachineMount> mounts;
+    if (!normalizeMounts(request.mounts, &mounts, error)) {
         return {};
     }
 
@@ -1020,6 +1246,7 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         MachinePort{newUuidV7(), sshPort, 22, QStringLiteral("tcp"), false,
                     QStringLiteral("ssh")},
     };
+    meta.mounts = mounts;
 
     if (!persist(meta, error)) {
         m_store.remove(meta.id, nullptr);
@@ -1055,8 +1282,21 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         return meta;
     }
 
+    Error virtiofsError;
+    if (!startVirtiofs(meta, &virtiofsError)) {
+        meta.state = QStringLiteral("error");
+        meta.error = errorText(virtiofsError);
+        persist(meta, nullptr);
+        cleanupRuntimeFiles(directory, meta);
+        if (error) {
+            *error = virtiofsError;
+        }
+        return meta;
+    }
+
     Error startError;
     if (!m_runtime->start(spec, &startError)) {
+        stopVirtiofs(meta.id);
         meta.state = QStringLiteral("error");
         meta.error = errorText(startError);
         persist(meta, nullptr);
@@ -1072,6 +1312,7 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     meta.lastBootAt = nowIso();
     if (!persist(meta, error)) {
         m_runtime->stop(spec, true, nullptr);
+        stopVirtiofs(meta.id);
         return meta;
     }
 
@@ -1144,8 +1385,20 @@ MachineMeta MachineManager::start(const QString &idOrName, Error *error)
         return meta;
     }
 
+    Error virtiofsError;
+    if (!startVirtiofs(meta, &virtiofsError)) {
+        meta.state = QStringLiteral("error");
+        meta.error = errorText(virtiofsError);
+        persist(meta, nullptr);
+        if (error) {
+            *error = virtiofsError;
+        }
+        return meta;
+    }
+
     Error startError;
     if (!m_runtime->start(spec, &startError)) {
+        stopVirtiofs(meta.id);
         meta.state = QStringLiteral("error");
         meta.error = errorText(startError);
         persist(meta, nullptr);
@@ -1160,6 +1413,7 @@ MachineMeta MachineManager::start(const QString &idOrName, Error *error)
     meta.lastBootAt = nowIso();
     if (!persist(meta, error)) {
         m_runtime->stop(spec, true, nullptr);
+        stopVirtiofs(meta.id);
         return meta;
     }
     return meta;
@@ -1188,6 +1442,10 @@ MachineMeta MachineManager::stop(const QString &idOrName, bool force, Error *err
 
     if (meta.state == QStringLiteral("stopped")
         && !m_runtime->isRunning(spec, nullptr)) {
+        stopVirtiofs(meta.id);
+        for (const MachineMount &mount : meta.mounts) {
+            QFile::remove(virtiofsSocketPath(meta.id, mount.tag));
+        }
         return meta;
     }
 
@@ -1203,6 +1461,21 @@ MachineMeta MachineManager::stop(const QString &idOrName, bool force, Error *err
         persist(meta, nullptr);
         if (error) {
             *error = stopError;
+        }
+        return meta;
+    }
+
+    Error virtiofsError;
+    stopVirtiofs(meta.id, &virtiofsError);
+    for (const MachineMount &mount : meta.mounts) {
+        QFile::remove(virtiofsSocketPath(meta.id, mount.tag));
+    }
+    if (!virtiofsError.isEmpty()) {
+        meta.state = QStringLiteral("error");
+        meta.error = errorText(virtiofsError);
+        persist(meta, nullptr);
+        if (error) {
+            *error = virtiofsError;
         }
         return meta;
     }
@@ -1246,6 +1519,15 @@ bool MachineManager::remove(const QString &idOrName, bool force, Error *error)
             *error = stopError;
         }
         return false;
+    }
+
+    if (!stopError.isEmpty()) {
+        // Remove forçado: mesmo com o QEMU resistindo, não deixe o virtiofsd
+        // (e o socket) para trás ao apagar o diretório da machine.
+        stopVirtiofs(meta.id);
+        for (const MachineMount &mount : meta.mounts) {
+            QFile::remove(virtiofsSocketPath(meta.id, mount.tag));
+        }
     }
 
     meta = load(meta.id, error);

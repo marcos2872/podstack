@@ -9,12 +9,15 @@
 #include "machines/MachineStore.h"
 #include "machines/QemuRuntime.h"
 #include "machines/SshConfig.h"
+#include "machines/VirtiofsdProcess.h"
 
 #include <QString>
 #include <QVector>
 
 #include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
 
 namespace PodStack {
 
@@ -31,6 +34,7 @@ struct CreateMachineRequest {
     qint64 diskBytes = 21474836480LL;
     bool isolateNetwork = false;
     bool forwardSshAgent = false;
+    QVector<MachineMount> mounts;
 };
 
 /// Destino de SSH de uma machine pronta para uso pelo CLI/GUI.
@@ -50,6 +54,7 @@ public:
         QString imageCacheDir;  // vazio = Paths::cloudImagesDir()
         QString qemuImgBinary;  // vazio = QStandardPaths
         QString sshKeygenBinary; // vazio = QStandardPaths
+        QString virtiofsdBinary; // vazio = PODSTACK_VIRTIOFSD_BINARY/QStandardPaths
         QString sshConfigPath;   // vazio = PODSTACK_SSH_CONFIG ou ~/.ssh/config
         QString ovmfCodePath;   // vazio = autodetectar
         QString ovmfVarsPath;
@@ -86,6 +91,11 @@ private:
     bool nameExists(const QVector<MachineMeta> &existing, const QString &name) const;
     int findFreePort(const QVector<MachineMeta> &existing, Error *error);
     QString machineDirFor(const QString &id) const;
+    QString virtiofsSocketPath(const QString &machineId, const QString &tag) const;
+    bool normalizeMounts(const QVector<MachineMount> &mounts,
+                         QVector<MachineMount> *normalized, Error *error) const;
+    bool startVirtiofs(const MachineMeta &meta, Error *error);
+    bool stopVirtiofs(const QString &machineId, Error *error = nullptr);
     QemuSpec specFor(const MachineMeta &meta, bool forStart, Error *error);
     bool resolveFirmware(const QString &arch, const QString &machineDir, QString *codePath,
                          QString *varsPath, Error *error);
@@ -104,6 +114,8 @@ private:
     MachineStore m_store;
     CloudImageCache m_cache;
     SshConfig m_sshConfig;
+    std::recursive_mutex m_virtiofsMutex;
+    std::map<QString, std::map<QString, std::unique_ptr<VirtiofsdProcess>>> m_virtiofs;
 };
 
 } // namespace PodStack

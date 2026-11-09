@@ -236,7 +236,13 @@ qemu-system-x86_64 \
   -display none -serial file:console.log
 ```
 
-- virtiofs (se mounts): `virtiofsd --socket-path=... --shared-dir=...` + `-device vhost-user-fs-pci,chardev=vfs0,tag=host`.
+- virtiofs (se mounts): um `virtiofsd` por mount com
+  `--shared-dir <source> --socket-path <machineDir>/virtiofs-<tag>.sock --tag <tag>
+  --cache=auto --xattr` (+ `--readonly`), usando `--sandbox=chroot` como root e
+  `--sandbox=namespace` no rootless; socket absoluto dentro do diretório da machine.
+  QEMU recebe `-chardev socket,id=vfs<N>,path=...` + `-device
+  vhost-user-fs-pci,chardev=vfs<N>,tag=<tag>`. Limite de 8 mounts e tags
+  `[a-z0-9-]{1,32}` únicas (default `host<N>`).
 - Controle por QMP: `system_powerdown`, `quit`, `query-status`, `human-monitor-command`.
 
 ### 7.2 Estado e metadados

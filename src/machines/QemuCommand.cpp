@@ -3,6 +3,8 @@
 #include "machines/QemuCommand.h"
 
 #include <QDir>
+#include <QRegularExpression>
+#include <QSet>
 
 namespace PodStack {
 
@@ -10,6 +12,7 @@ namespace {
 
 constexpr qint64 kMinimumMemoryBytes = 1024LL * 1024LL * 1024LL;
 constexpr qint64 kBytesPerMiB = 1024LL * 1024LL;
+constexpr int kMaximumMounts = 8;
 
 bool invalid(Error *error, const QString &message, const QString &detail = {})
 {
@@ -119,6 +122,30 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
         }
     }
 
+    if (spec.mounts.size() > kMaximumMounts) {
+        invalid(error, QStringLiteral("Número de mounts acima do limite (8)."),
+                QString::number(spec.mounts.size()));
+        return {};
+    }
+    static const QRegularExpression mountTagPattern(QStringLiteral("^[a-z0-9-]{1,32}$"));
+    QSet<QString> mountTags;
+    for (const QemuMount &mount : spec.mounts) {
+        if (!mountTagPattern.match(mount.tag).hasMatch()) {
+            invalid(error, QStringLiteral("Tag de mount inválida."), mount.tag);
+            return {};
+        }
+        if (mountTags.contains(mount.tag)) {
+            invalid(error, QStringLiteral("Tag de mount duplicada."), mount.tag);
+            return {};
+        }
+        mountTags.insert(mount.tag);
+        if (!absolutePath(mount.socketPath)) {
+            invalid(error, QStringLiteral("O socket do mount deve ser absoluto."),
+                    mount.socketPath);
+            return {};
+        }
+    }
+
     QStringList args;
     args << QStringLiteral("-M")
          << (spec.arch == QStringLiteral("amd64") ? QStringLiteral("q35")
@@ -144,6 +171,15 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
     }
     args << QStringLiteral("-netdev") << netdev;
     args << QStringLiteral("-device") << QStringLiteral("virtio-net-pci,netdev=net0");
+
+    int mountIndex = 0;
+    for (const QemuMount &mount : spec.mounts) {
+        const QString id = QStringLiteral("vfs%1").arg(mountIndex++);
+        args << QStringLiteral("-chardev")
+             << QStringLiteral("socket,id=%1,path=%2").arg(id, mount.socketPath);
+        args << QStringLiteral("-device")
+             << QStringLiteral("vhost-user-fs-pci,chardev=%1,tag=%2").arg(id, mount.tag);
+    }
 
     args << QStringLiteral("-chardev")
          << QStringLiteral("socket,id=qmp,path=%1,server=on,wait=off").arg(spec.qmpSocketPath);

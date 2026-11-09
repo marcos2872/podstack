@@ -144,6 +144,7 @@ ColumnLayout {
             user: machineUser.text,
             password: machinePassword.text,
             userData: machineUserData.text,
+            mountsText: machineMounts.text,
             isolateNetwork: isolateNetworkBox.checked,
             forwardSshAgent: forwardSshAgentBox.checked
         })
@@ -173,6 +174,7 @@ ColumnLayout {
                 machineUser.text = ""
                 machinePassword.text = ""
                 machineUserData.text = ""
+                machineMounts.text = ""
                 isolateNetworkBox.checked = false
                 forwardSshAgentBox.checked = false
                 distroSelect.currentIndex = 0
@@ -356,6 +358,36 @@ ColumnLayout {
                     radius: Theme.radiusSm
                     border.width: 1
                     border.color: machineUserData.activeFocus ? Theme.indigo500 : Theme.border
+                }
+            }
+
+            Text {
+                text: qsTr("Mounts do host (origem:destino[:ro], um por linha)")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
+
+            TextArea {
+                id: machineMounts
+                Layout.fillWidth: true
+                Layout.preferredHeight: 64
+                enabled: !backend.machineCreateActive
+                placeholderText: "/home/voce/projetos:/mnt/podstack/projetos\n/dados:/dados:ro"
+                color: Theme.textPrimary
+                placeholderTextColor: Theme.textTertiary
+                font.family: Theme.monoFamily
+                font.pixelSize: Theme.fontMeta
+                wrapMode: TextArea.WrapAnywhere
+                selectByMouse: true
+                selectionColor: Theme.accentSoft
+                selectedTextColor: Theme.textPrimary
+
+                background: Rectangle {
+                    color: Theme.bgSurface2
+                    radius: Theme.radiusSm
+                    border.width: 1
+                    border.color: machineMounts.activeFocus ? Theme.indigo500 : Theme.border
                 }
             }
 

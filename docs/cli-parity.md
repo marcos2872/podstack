@@ -38,7 +38,7 @@
 
 | `orb` | `podstack` | Flags | Notas Linux | Status |
 |---|---|---|---|---|
-| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` | `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network` | QEMU/KVM + cloud-init; sem Rosetta. Senha via GUI/JSON-RPC (nunca argv); `--arch`, mounts, `--isolated` e `--forward-ssh-agent` entram nas T4-04/T4-07/T4-13 | ✅ T4-03 (SSH/chave na T4-04) |
+| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` | `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network` | QEMU/KVM + cloud-init; sem Rosetta. Senha via GUI/JSON-RPC (nunca argv); mounts via GUI/JSON-RPC na T4-07; flags de mounts, `--arch`, `--isolated` e `--forward-ssh-agent` no CLI ficam pendentes (T4-07/T4-13) | ✅ T4-03 (SSH/chave na T4-04; mounts na T4-07) |
 | `start [MACHINE...]` | `machine start <id\|nome>` | — | Uma machine por vez nesta etapa | ✅ T4-03 |
 | `stop [MACHINE...]` | `machine stop <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
 | `restart [MACHINE...]` | `machine restart <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |

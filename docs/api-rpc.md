@@ -264,9 +264,9 @@ Regras de normalização:
 
 ### 4.6 `machines.*`
 
-Implementados na T4-03 (M4) e T4-06: registry, listagem, inspeção, criação assíncrona,
-logs do console e ciclo de vida. A T4-04 adiciona `machines.ssh` (chave ed25519 e bloco
-gerenciado no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas
+Implementados na T4-03 (M4), T4-06 e T4-07: registry, listagem, inspeção, criação assíncrona,
+logs do console, ciclo de vida e mounts virtiofs. A T4-04 adiciona `machines.ssh` (chave ed25519
+e bloco gerenciado no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas
 seguintes.
 
 | Método | Params | Result |
@@ -274,7 +274,7 @@ seguintes.
 | `machines.distros` | `{}` | `{items: DistroImage[]}` |
 | `machines.list` | `{}` | `{items: Machine[]}` |
 | `machines.get` | `{id}` | `Machine` (aceita ID ou nome) |
-| `machines.create` | `{name, distro, version?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, isolateNetwork?, forwardSshAgent?}` | `{jobId, subscriptionId}` (`JobRef` + `Subscription`) |
+| `machines.create` | `{name, distro, version?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, isolateNetwork?, forwardSshAgent?, mounts?, isolated?}` | `{jobId, subscriptionId}` (`JobRef` + `Subscription`) |
 | `machines.cancel` | `{jobId}` | `{jobId, cancelled:true}` |
 | `machines.start` | `{id}` | `Machine` |
 | `machines.stop` | `{id, force?}` | `Machine` |
@@ -294,7 +294,7 @@ seguintes.
 | `machines.clone` | `{id, name}` | `JobRef` | T4-10 |
 | `machines.export` | `{id, path}` | `JobRef` | T4-09 |
 | `machines.import` | `{path, name}` | `JobRef` | T4-09 |
-| `machines.files.pull` / `push` | `{id, source, destination}` | `JobRef` | T4-07/T4-08 |
+| `machines.files.pull` / `push` | `{id, source, destination}` | `JobRef` | T4-08 |
 | `machines.ports.list` / `set` | `{id, ports?}` | `{items}` | T4-12 |
 | `machines.console` | `{id}` | `Subscription` (stream serial) | T4-15 |
 
@@ -327,8 +327,19 @@ Progresso e resultado chegam como notificações:
 `machines.cancel` apenas sinaliza o job; o cancelamento é observado no próximo checkpoint
 (download, disco, seed ou início) e o job termina com `machines.done`/`PODSTACK_CANCELLED`.
 A subscription é removida quando o job termina; cancelar um job inexistente retorna
-`PODSTACK_NOT_FOUND`. `mounts` e `isolated:true` ainda retornam `PODSTACK_UNSUPPORTED`
-(T4-07/T4-14); `isolateNetwork` e `forwardSshAgent` são persistidos no metadado.
+`PODSTACK_NOT_FOUND`. `isolated:true` ainda retorna `PODSTACK_UNSUPPORTED` (T4-14);
+`isolateNetwork` e `forwardSshAgent` são persistidos no metadado.
+
+**Mounts virtiofs (T4-07).** `mounts` é um array de até **8** objetos
+`{source, target, readOnly?, tag?}`. `source` precisa ser um diretório absoluto existente no
+host e é canonicalizado no metadado; `target` precisa ser absoluto e não pode conter `..`;
+`readOnly` default `false`; `tag` default `host<N>` e deve ser única e casar com
+`[a-z0-9-]{1,32}`. A validação é síncrona: qualquer mount inválido retorna
+`PODSTACK_INVALID_PARAMS` sem iniciar o job. O daemon inicia um `virtiofsd` por mount antes do
+QEMU (`virtiofs-<tag>.sock` dentro do diretório da machine) e encerra os processos no
+stop/remove; falha em um mount desfaz os anteriores e o job termina em erro. Sem o binário
+`virtiofsd` (e sem `PODSTACK_VIRTIOFSD_BINARY`), o job falha com `PODSTACK_UNSUPPORTED` e
+remediação.
 
 **Logs do console.** `machines.logs` resolve `id` ou nome e lê apenas
 `machines/<id>/console.log`, sem expor o caminho na resposta. O arquivo precisa ser regular

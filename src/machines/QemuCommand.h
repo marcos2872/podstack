@@ -6,8 +6,16 @@
 
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 namespace PodStack {
+
+/// Um shared dir exposto à máquina por virtiofs.
+struct QemuMount {
+    QString tag;
+    QString socketPath;
+    bool readOnly = false;
+};
 
 /// Parâmetros imutáveis de uma máquina QEMU/KVM.
 struct QemuSpec {
@@ -26,6 +34,7 @@ struct QemuSpec {
     bool isolateNetwork = false;
     QString ovmfCodePath;
     QString ovmfVarsPath;
+    QVector<QemuMount> mounts;
 };
 
 class QemuCommand {
