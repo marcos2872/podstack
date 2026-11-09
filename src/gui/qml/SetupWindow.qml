@@ -22,6 +22,7 @@ Item {
     readonly property bool podmanReady: podmanCheck.status === "ok"
     readonly property bool dockerPresent: (dockerCheck.detail || "").indexOf("coexistindo") >= 0
     readonly property bool kvmReady: kvmCheck.status === "ok"
+    readonly property bool caddyInstalled: (caddyCheck.detail || "").indexOf("Caddy instalado") >= 0
     readonly property bool validated: backend.setupMandatoryOk
     readonly property bool jobPanelVisible: !jobPanelDismissed
                                             && (jobActive
@@ -659,7 +660,9 @@ Item {
 
                             FormCheck {
                                 text: qsTr("Caddy — HTTPS para *.localhost")
-                                checked: setupWindow.installCaddy
+                                      + (setupWindow.caddyInstalled ? qsTr(" (instalado)") : "")
+                                checked: setupWindow.installCaddy || setupWindow.caddyInstalled
+                                enabled: !setupWindow.caddyInstalled && !setupWindow.jobActive
                                 onToggled: setupWindow.installCaddy = checked
                             }
 
@@ -681,6 +684,7 @@ Item {
                             }
 
                             ActionButton {
+                                visible: !setupWindow.caddyInstalled
                                 text: qsTr("Instalar componentes")
                                 iconName: "download"
                                 enabled: !setupWindow.jobActive && setupWindow.installCaddy
@@ -711,7 +715,8 @@ Item {
 
                         StepTitle {
                             title: qsTr("Validação")
-                            subtitle: qsTr("Checklist final: itens obrigatórios e avisos. Você pode abrir o app mesmo com avisos.")
+                            subtitle: qsTr("Checklist final: itens obrigatórios e avisos. "
+                                           + "Avisos não bloqueiam; os obrigatórios precisam estar OK.")
                         }
 
                         Rectangle {
