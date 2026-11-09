@@ -27,7 +27,10 @@ void TerminalTest::constructsWindow()
     PodStack::TerminalWindow window(QStringLiteral("abc123"), QStringLiteral("/bin/sh"),
                                     {QStringLiteral("-c"), QStringLiteral("true")});
     QVERIFY(window.windowTitle().contains(QStringLiteral("abc123")));
-    QVERIFY(window.findChild<QTermWidget *>() != nullptr);
+    auto *terminal = window.findChild<QTermWidget *>();
+    QVERIFY(terminal != nullptr);
+    // Backspace precisa mandar \x7f (^?), não \b (^H).
+    QCOMPARE(terminal->keyBindings(), QStringLiteral("linux"));
 }
 
 void TerminalTest::mainWindowTerminalDock()

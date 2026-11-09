@@ -2,6 +2,7 @@
 #include "gui/TerminalWindow.h"
 
 #include <QFontDatabase>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QVBoxLayout>
 
@@ -16,6 +17,21 @@ QTermWidget *createTerminalWidget(const QString &program, const QStringList &arg
     terminal->setColorScheme(QStringLiteral("DarkPastels"));
     terminal->setTerminalSizeHint(true);
     terminal->setScrollBarPosition(QTermWidgetInterface::ScrollBarRight);
+
+    // O keytab "default" manda Backspace como ^H (\b), que aparece literal em
+    // shells cujo erase é ^? (readline/podman/ssh). O keytab "linux" manda \x7f.
+    terminal->setKeyBindings(QStringLiteral("linux"));
+
+    QStringList environment;
+    for (const QString &entry : QProcessEnvironment::systemEnvironment().toStringList()) {
+        if (!entry.startsWith(QStringLiteral("TERM="))
+            && !entry.startsWith(QStringLiteral("COLORTERM="))) {
+            environment.append(entry);
+        }
+    }
+    environment.append(QStringLiteral("TERM=xterm-256color"));
+    environment.append(QStringLiteral("COLORTERM=truecolor"));
+    terminal->setEnvironment(environment);
 
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     font.setPointSize(11);
