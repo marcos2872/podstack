@@ -202,7 +202,23 @@ sequenceDiagram
   D-->>UI: notification machine.state
 ```
 
-### 3.5 Requisição de domínio
+### 3.5 Controle por QMP
+
+O `QmpClient` (`src/machines/QmpClient.{h,cpp}`) fala QMP sobre socket Unix em
+**NDJSON**: uma mensagem JSON compacta por linha, com limite de 1 MiB por linha.
+Ao conectar, lê a saudação `{"QMP": {...}}` e envia `qmp_capabilities`; as
+respostas são casadas pelo `id` incremental. Eventos assíncronos
+(`{"event": ...}`) que chegam antes da resposta são ignorados. Erros QMP
+(`{"error": {"class", "desc"}}`) viram `PODSTACK_INTERNAL` com o detalhe;
+timeout vira `PODSTACK_TIMEOUT` e socket fechado/erro vira `PODSTACK_IO_ERROR`.
+Os timeouts padrão são 5 s para conexão e 2 s por comando. No `quit`, o QEMU
+responde com o evento `SHUTDOWN` e pode fechar o socket; o cliente trata o
+fechamento após o envio como sucesso, desde que nenhum erro tenha sido
+recebido. A montagem da linha de comando fica em `QemuCommand`
+(`src/machines/QemuCommand.{h,cpp}`), que valida arquitetura, CPUs, memória,
+caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
+
+### 3.6 Requisição de domínio
 
 ```mermaid
 sequenceDiagram
@@ -221,7 +237,7 @@ sequenceDiagram
   C-->>B: response
 ```
 
-### 3.6 Habilitar Kubernetes
+### 3.7 Habilitar Kubernetes
 
 ```mermaid
 sequenceDiagram

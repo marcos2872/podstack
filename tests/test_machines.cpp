@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "MockHttpServer.h"
+#include "MockQmpServer.h"
 
 #include "core/Paths.h"
 #include "machines/CloudImageCache.h"
 #include "machines/CloudInit.h"
 #include "machines/DistroRegistry.h"
+#include "machines/QemuCommand.h"
+#include "machines/QmpClient.h"
 
 #include <QCryptographicHash>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -23,6 +27,9 @@ using PodStack::CloudInit;
 using PodStack::CloudInitOptions;
 using PodStack::DistroImage;
 using PodStack::DistroRegistry;
+using PodStack::QemuCommand;
+using PodStack::QemuSpec;
+using PodStack::QmpClient;
 
 namespace {
 
@@ -147,6 +154,33 @@ bool ownerOnly(const QFileDevice::Permissions &permissions, bool directory)
     return false;
 }
 
+QemuSpec qemuSpec(const QString &root)
+{
+    QemuSpec spec;
+    spec.machineId = QStringLiteral("0190f0f0-0000-7000-8000-000000000001");
+    spec.name = QStringLiteral("podstack-test");
+    spec.arch = QStringLiteral("amd64");
+    spec.cpus = 2;
+    spec.memoryBytes = 4294967296LL;
+    spec.diskPath = root + QStringLiteral("/qemu/disk.qcow2");
+    spec.seedPath = root + QStringLiteral("/qemu/seed.iso");
+    spec.qmpSocketPath = root + QStringLiteral("/qemu/qmp.sock");
+    spec.consoleLogPath = root + QStringLiteral("/qemu/console.log");
+    spec.pidFile = root + QStringLiteral("/qemu/qemu.pid");
+    spec.sshPort = 32222;
+    spec.kvm = true;
+    return spec;
+}
+
+QString valueAfter(const QStringList &args, const QString &flag)
+{
+    const int index = args.indexOf(flag);
+    if (index < 0 || index + 1 >= args.size()) {
+        return {};
+    }
+    return args.at(index + 1);
+}
+
 } // namespace
 
 class MachinesTest : public QObject {
@@ -169,6 +203,21 @@ private slots:
     void seedPasswordHashed();
     void seedVerbatimUserData();
     void seedEscapesYaml();
+    void qemuBinary();
+    void qemuCommandKvm();
+    void qemuCommandTcg();
+    void qemuCommandArm64();
+    void qemuCommandUefi();
+    void qemuCommandIsolated();
+    void qemuCommandInvalid();
+    void qmpHandshake();
+    void qmpQueryStatus();
+    void qmpPowerdown();
+    void qmpErrorResponse();
+    void qmpInterleavedEvent();
+    void qmpTimeout();
+    void qmpQuit();
+    void qmpConnectMissing();
 
 private:
     QString cacheDirFor(const QString &name) const;
@@ -646,6 +695,350 @@ void MachinesTest::seedEscapesYaml()
     QVERIFY2(userData.contains(
                  QByteArrayLiteral("      - 'ssh-ed25519 AAA''BBB comment'\n")),
              userData.constData());
+}
+
+void MachinesTest::qemuBinary()
+{
+    PodStack::Error error;
+
+    QCOMPARE(QemuCommand::binary(QStringLiteral("amd64"), &error),
+             QStringLiteral("qemu-system-x86_64"));
+    QVERIFY(error.isEmpty());
+
+    QCOMPARE(QemuCommand::binary(QStringLiteral("arm64"), &error),
+             QStringLiteral("qemu-system-aarch64"));
+    QVERIFY(error.isEmpty());
+
+    QVERIFY(QemuCommand::binary(QStringLiteral("riscv64"), &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(QemuCommand::binary(QString(), &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void MachinesTest::qemuCommandKvm()
+{
+    const QemuSpec spec = qemuSpec(m_root);
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QCOMPARE(valueAfter(args, QStringLiteral("-M")), QStringLiteral("q35"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-accel")), QStringLiteral("kvm"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-cpu")), QStringLiteral("host"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-smp")), QStringLiteral("2"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-m")), QStringLiteral("4096"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-name")),
+             QStringLiteral("podstack:%1").arg(spec.machineId));
+    QCOMPARE(valueAfter(args, QStringLiteral("-uuid")), spec.machineId);
+
+    QCOMPARE(args.count(QStringLiteral("-drive")), 2);
+    QVERIFY(args.contains(QStringLiteral("file=%1,if=virtio,format=qcow2,cache=writeback,"
+                                         "discard=unmap")
+                              .arg(spec.diskPath)));
+    QVERIFY(args.contains(
+        QStringLiteral("file=%1,format=raw,if=virtio,readonly=on").arg(spec.seedPath)));
+
+    QCOMPARE(valueAfter(args, QStringLiteral("-netdev")),
+             QStringLiteral("user,id=net0,hostfwd=tcp:127.0.0.1:32222-:22"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-device")),
+             QStringLiteral("virtio-net-pci,netdev=net0"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-chardev")),
+             QStringLiteral("socket,id=qmp,path=%1,server=on,wait=off")
+                 .arg(spec.qmpSocketPath));
+    QCOMPARE(valueAfter(args, QStringLiteral("-mon")),
+             QStringLiteral("chardev=qmp,mode=control"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-monitor")), QStringLiteral("none"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-display")), QStringLiteral("none"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-serial")),
+             QStringLiteral("file:%1").arg(spec.consoleLogPath));
+    QVERIFY(args.contains(QStringLiteral("-daemonize")));
+    QCOMPARE(valueAfter(args, QStringLiteral("-pidfile")), spec.pidFile);
+}
+
+void MachinesTest::qemuCommandTcg()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.kvm = false;
+
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QCOMPARE(valueAfter(args, QStringLiteral("-accel")), QStringLiteral("tcg"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-cpu")), QStringLiteral("max"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-M")), QStringLiteral("q35"));
+}
+
+void MachinesTest::qemuCommandArm64()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.arch = QStringLiteral("arm64");
+
+    PodStack::Error error;
+    QCOMPARE(QemuCommand::binary(spec.arch, &error),
+             QStringLiteral("qemu-system-aarch64"));
+    QVERIFY(error.isEmpty());
+
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(valueAfter(args, QStringLiteral("-M")), QStringLiteral("virt"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-cpu")), QStringLiteral("host"));
+}
+
+void MachinesTest::qemuCommandUefi()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.ovmfCodePath = m_root + QStringLiteral("/qemu/OVMF_CODE.fd");
+    spec.ovmfVarsPath = m_root + QStringLiteral("/qemu/OVMF_VARS.fd");
+
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(args.count(QStringLiteral("-drive")), 4);
+    QVERIFY(args.contains(QStringLiteral("if=pflash,format=raw,readonly=on,file=%1")
+                              .arg(spec.ovmfCodePath)));
+    QVERIFY(args.contains(
+        QStringLiteral("if=pflash,format=raw,file=%1").arg(spec.ovmfVarsPath)));
+
+    QemuSpec onlyCode = qemuSpec(m_root);
+    onlyCode.ovmfCodePath = m_root + QStringLiteral("/qemu/OVMF_CODE.fd");
+    QVERIFY(QemuCommand::arguments(onlyCode, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QemuSpec onlyVars = qemuSpec(m_root);
+    onlyVars.ovmfVarsPath = m_root + QStringLiteral("/qemu/OVMF_VARS.fd");
+    QVERIFY(QemuCommand::arguments(onlyVars, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void MachinesTest::qemuCommandIsolated()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.isolateNetwork = true;
+
+    PodStack::Error error;
+    QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(valueAfter(args, QStringLiteral("-netdev")),
+             QStringLiteral("user,id=net0,hostfwd=tcp:127.0.0.1:32222-:22,restrict=on"));
+
+    spec.isolateNetwork = false;
+    args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(valueAfter(args, QStringLiteral("-netdev")),
+             QStringLiteral("user,id=net0,hostfwd=tcp:127.0.0.1:32222-:22"));
+}
+
+void MachinesTest::qemuCommandInvalid()
+{
+    const auto rejects = [](const QemuSpec &candidate) {
+        PodStack::Error error;
+        return QemuCommand::arguments(candidate, &error).isEmpty()
+               && error.code == QStringLiteral("PODSTACK_INVALID_PARAMS");
+    };
+
+    QemuSpec spec = qemuSpec(m_root);
+    spec.machineId.clear();
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.name.clear();
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.arch = QStringLiteral("x86_64");
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.arch.clear();
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.cpus = 0;
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.cpus = 257;
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.memoryBytes = 1024LL * 1024LL * 1024LL - 1;
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.diskPath = QStringLiteral("disk.qcow2");
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.diskPath.clear();
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.seedPath = QStringLiteral("seed.iso");
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.qmpSocketPath.clear();
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.consoleLogPath = QStringLiteral("console.log");
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.pidFile.clear();
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.sshPort = 0;
+    QVERIFY(rejects(spec));
+
+    spec = qemuSpec(m_root);
+    spec.cpus = 256;
+    spec.memoryBytes = 1024LL * 1024LL * 1024LL;
+    PodStack::Error error;
+    const QStringList boundary = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(valueAfter(boundary, QStringLiteral("-smp")), QStringLiteral("256"));
+    QCOMPARE(valueAfter(boundary, QStringLiteral("-m")), QStringLiteral("1024"));
+}
+
+void MachinesTest::qmpHandshake()
+{
+    MockQmpServer server;
+    QVERIFY(server.isListening());
+
+    QmpClient client(server.socketPath());
+    PodStack::Error error;
+    QVERIFY2(client.connect(2000, &error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+    QVERIFY(client.isConnected());
+    QCOMPARE(server.commandCount(QStringLiteral("qmp_capabilities")), 1);
+    QCOMPARE(server.connectionCount(), 1);
+
+    client.disconnect();
+    QVERIFY(!client.isConnected());
+}
+
+void MachinesTest::qmpQueryStatus()
+{
+    MockQmpServer server;
+    server.setStatus(QStringLiteral("running"));
+    QVERIFY(server.isListening());
+
+    QmpClient client(server.socketPath());
+    PodStack::Error error;
+    QVERIFY2(client.connect(2000, &error), qPrintable(error.message));
+
+    QString status;
+    QVERIFY2(client.queryStatus(&status, &error), qPrintable(error.message));
+    QCOMPARE(status, QStringLiteral("running"));
+
+    server.setStatus(QStringLiteral("paused"));
+    QVERIFY2(client.queryStatus(&status, &error), qPrintable(error.message));
+    QCOMPARE(status, QStringLiteral("paused"));
+}
+
+void MachinesTest::qmpPowerdown()
+{
+    MockQmpServer server;
+    QVERIFY(server.isListening());
+
+    QmpClient client(server.socketPath());
+    PodStack::Error error;
+    QVERIFY2(client.connect(2000, &error), qPrintable(error.message));
+
+    QVERIFY2(client.systemPowerdown(&error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+    QCOMPARE(server.commandCount(QStringLiteral("system_powerdown")), 1);
+}
+
+void MachinesTest::qmpErrorResponse()
+{
+    MockQmpServer server;
+    server.setFailCommand(QStringLiteral("query-status"));
+    QVERIFY(server.isListening());
+
+    QmpClient client(server.socketPath());
+    PodStack::Error error;
+    QVERIFY2(client.connect(2000, &error), qPrintable(error.message));
+
+    QString status;
+    QVERIFY(!client.queryStatus(&status, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INTERNAL"));
+    QVERIFY2(error.detail.contains(QStringLiteral("GenericError")),
+             qPrintable(error.detail));
+    QVERIFY2(error.detail.contains(QStringLiteral("falha simulada")),
+             qPrintable(error.detail));
+    QVERIFY2(error.message.contains(QStringLiteral("query-status")),
+             qPrintable(error.message));
+
+    // A conexão continua utilizável após um erro QMP.
+    QVERIFY2(client.systemPowerdown(&error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+}
+
+void MachinesTest::qmpInterleavedEvent()
+{
+    MockQmpServer server;
+    server.setInterleavedEvent(QStringLiteral("query-status"));
+    QVERIFY(server.isListening());
+
+    QmpClient client(server.socketPath());
+    PodStack::Error error;
+    QVERIFY2(client.connect(2000, &error), qPrintable(error.message));
+
+    QString status;
+    QVERIFY2(client.queryStatus(&status, &error), qPrintable(error.message));
+    QCOMPARE(status, QStringLiteral("running"));
+    QCOMPARE(server.commandCount(QStringLiteral("query-status")), 1);
+}
+
+void MachinesTest::qmpTimeout()
+{
+    MockQmpServer server;
+    server.setSilentCommand(QStringLiteral("query-status"));
+    QVERIFY(server.isListening());
+
+    QmpClient client(server.socketPath());
+    PodStack::Error error;
+    QVERIFY2(client.connect(2000, &error), qPrintable(error.message));
+    client.setCommandTimeout(100);
+
+    QElapsedTimer timer;
+    timer.start();
+    QString status;
+    QVERIFY(!client.queryStatus(&status, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_TIMEOUT"));
+    QVERIFY(timer.elapsed() < 1500);
+}
+
+void MachinesTest::qmpQuit()
+{
+    MockQmpServer server;
+    QVERIFY(server.isListening());
+
+    QmpClient client(server.socketPath());
+    PodStack::Error error;
+    QVERIFY2(client.connect(2000, &error), qPrintable(error.message));
+
+    QVERIFY2(client.quit(&error), qPrintable(error.message));
+    QVERIFY(error.isEmpty());
+    QVERIFY(!client.isConnected());
+    QCOMPARE(server.commandCount(QStringLiteral("quit")), 1);
+}
+
+void MachinesTest::qmpConnectMissing()
+{
+    const QString path = m_root + QStringLiteral("/qemu/missing.sock");
+    QFile::remove(path);
+
+    QmpClient client(path);
+    PodStack::Error error;
+    QVERIFY(!client.connect(200, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(!client.isConnected());
 }
 
 QTEST_GUILESS_MAIN(MachinesTest)
