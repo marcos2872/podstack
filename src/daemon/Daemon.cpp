@@ -8,6 +8,7 @@
 #include "daemon/ManifestBuilder.h"
 #include "daemon/StatsCollector.h"
 #include "machines/DistroRegistry.h"
+#include "machines/MachineFiles.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -335,6 +336,15 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("machines.logs")) {
         return machineLogs(params, error);
+    }
+    if (method == QStringLiteral("machines.files.list")) {
+        return machineFilesList(params, error);
+    }
+    if (method == QStringLiteral("machines.files.download")) {
+        return machineFilesDownload(params, error);
+    }
+    if (method == QStringLiteral("machines.files.upload")) {
+        return machineFilesUpload(params, error);
     }
     if (method == QStringLiteral("machines.ssh")) {
         return machineSsh(params, error);
@@ -791,6 +801,94 @@ QJsonObject Daemon::machineSsh(const QJsonObject &params, Error *error)
     result.insert(QStringLiteral("port"), info.port);
     result.insert(QStringLiteral("user"), info.user);
     result.insert(QStringLiteral("identityFile"), info.identityFile);
+    return result;
+}
+
+QJsonObject Daemon::machineFilesList(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+
+    const QString path = params.value(QStringLiteral("path")).toString(QStringLiteral("/"));
+    QJsonArray items;
+    if (!MachineFiles::list(info, path, &items, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("path"), path);
+    result.insert(QStringLiteral("items"), items);
+    return result;
+}
+
+QJsonObject Daemon::machineFilesDownload(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+
+    const QString path = params.value(QStringLiteral("path")).toString();
+    const QString destination = params.value(QStringLiteral("destination")).toString();
+    if (!MachineFiles::download(info, path, destination, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("path"), path);
+    result.insert(QStringLiteral("destination"), destination);
+    return result;
+}
+
+QJsonObject Daemon::machineFilesUpload(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+
+    const QString path = params.value(QStringLiteral("path")).toString();
+    const QString sourcePath = params.value(QStringLiteral("sourcePath")).toString();
+    if (!MachineFiles::upload(info, sourcePath, path, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("path"), path);
+    result.insert(QStringLiteral("sourcePath"), sourcePath);
+    result.insert(QStringLiteral("ok"), true);
     return result;
 }
 

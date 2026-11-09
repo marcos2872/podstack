@@ -456,8 +456,10 @@ Host <name>.podstack <name>
 - Ciclo de vida: o virtiofsd sobe antes do QEMU; `stop`/`remove` encerram os
   processos (SIGTERM, espera e SIGKILL) e removem os sockets. Falha em qualquer
   mount para os já iniciados, limpa os sockets e marca a machine como `error`.
-- pull/push via `scp`/`rsync` com progresso (T4-08).
-- File manager lista ambos os lados (T4-08).
+- pull/push via `scp` com SSH/SCP one-shot (T4-08); a operação é síncrona e não tem barra
+  de progresso nesta versão.
+- File manager lista o lado remoto via SSH e baixa/envia com `scp -r` (T4-08); o lado local
+  é o filesystem do host (`~/Downloads` para downloads na GUI).
 
 ### 7.5 Export/import
 

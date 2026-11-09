@@ -168,6 +168,8 @@ Backend::Backend(QObject *parent)
             &Backend::onMachineInfoFinished);
     connect(&m_machineLogsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineLogsFinished);
+    connect(&m_machineFilesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineFilesFinished);
     connect(&m_machineSshWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             [this] {
                 const QJsonObject result = m_machineSshWatcher.result();
@@ -2536,6 +2538,176 @@ void Backend::onMachineLogsFinished()
         const int tail = m_pendingMachineLogsTail;
         m_pendingMachineLogsId.clear();
         loadMachineLogs(next, tail);
+    }
+}
+
+void Backend::refreshMachineFiles(const QString &id, const QString &path)
+{
+    if (id.isEmpty()) {
+        m_machineFilesError = QStringLiteral("Machine inválida.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    const QString target = path.isEmpty() ? QStringLiteral("/") : path;
+    m_machineFilesPath = target;
+    if (!m_machineFilesWatcher.isRunning()) {
+        m_machineFiles.clear();
+    }
+    startMachineFilesRequest(QStringLiteral("list"), id,
+                             QStringLiteral("machines.files.list"),
+                             QJsonObject{{QStringLiteral("id"), id},
+                                         {QStringLiteral("path"), target}},
+                             30000);
+}
+
+void Backend::downloadMachineFile(const QString &id, const QString &path,
+                                  const QString &fileName)
+{
+    if (id.isEmpty() || path.isEmpty()) {
+        m_machineFilesError = QStringLiteral("Informe a machine e o arquivo remoto.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    QString name = fileName;
+    if (name.isEmpty()) {
+        name = QFileInfo(path).fileName();
+    }
+    if (name.isEmpty() || name == QStringLiteral(".") || name == QStringLiteral("..")
+        || name.contains(QLatin1Char('/')) || name.contains(QLatin1Char('\\'))) {
+        m_machineFilesError = QStringLiteral("Nome de arquivo remoto inválido.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    QString directory = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (directory.isEmpty()) {
+        directory = QDir::homePath();
+    }
+    if (!QDir().mkpath(directory)) {
+        m_machineFilesError = QStringLiteral("Não foi possível criar a pasta de downloads.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    const QString destination = directory + QLatin1Char('/') + name;
+    startMachineFilesRequest(QStringLiteral("download"), id,
+                             QStringLiteral("machines.files.download"),
+                             QJsonObject{{QStringLiteral("id"), id},
+                                         {QStringLiteral("path"), path},
+                                         {QStringLiteral("destination"), destination}},
+                             600000);
+}
+
+void Backend::uploadMachineFile(const QString &id, const QString &remoteDir,
+                                const QString &localPath)
+{
+    if (id.isEmpty() || remoteDir.isEmpty() || localPath.isEmpty()) {
+        m_machineFilesError = QStringLiteral("Informe a machine, o destino e o arquivo local.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    const QFileInfo source(localPath);
+    const QString name = source.fileName();
+    if (name.isEmpty()) {
+        m_machineFilesError = QStringLiteral("Arquivo local inválido.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    const QString base = remoteDir.endsWith(QLatin1Char('/')) ? remoteDir
+                                                              : remoteDir + QLatin1Char('/');
+    startMachineFilesRequest(QStringLiteral("upload"), id,
+                             QStringLiteral("machines.files.upload"),
+                             QJsonObject{{QStringLiteral("id"), id},
+                                         {QStringLiteral("path"), base + name},
+                                         {QStringLiteral("sourcePath"), localPath}},
+                             600000);
+}
+
+void Backend::startMachineFilesRequest(const QString &operation, const QString &id,
+                                       const QString &method, const QJsonObject &params,
+                                       int timeoutMs)
+{
+    if (m_machineFilesWatcher.isRunning()) {
+        m_machineFilesError =
+            QStringLiteral("Aguarde a operação de arquivos atual terminar.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    m_machineFilesMachineId = id;
+    m_machineFilesOperation = operation;
+    m_machineFilesBusy = true;
+    m_machineFilesError.clear();
+    emit machineFilesChanged();
+
+    m_machineFilesWatcher.setFuture(QtConcurrent::run([method, params, timeoutMs] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(method, params, &error, timeoutMs);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineFilesFinished()
+{
+    const QJsonObject result = m_machineFilesWatcher.result();
+    const QString operation = m_machineFilesOperation;
+    m_machineFilesOperation.clear();
+    m_machineFilesBusy = false;
+
+    if (result.value(QStringLiteral("error")).isObject()) {
+        m_machineFilesError =
+            result.value(QStringLiteral("error")).toObject().value(QStringLiteral("message"))
+                .toString();
+        if (m_machineFilesError.isEmpty()) {
+            m_machineFilesError = QStringLiteral("A operação de arquivos da machine falhou.");
+        }
+        if (operation == QStringLiteral("list")) {
+            m_machineFiles.clear();
+        }
+        emit machineFilesChanged();
+        return;
+    }
+
+    m_machineFilesError.clear();
+    if (operation == QStringLiteral("list")) {
+        m_machineFilesPath = result.value(QStringLiteral("path"))
+                                 .toString(m_machineFilesPath);
+        m_machineFiles.clear();
+        const QJsonArray entries = result.value(QStringLiteral("items")).toArray();
+        for (const QJsonValue &value : entries) {
+            const QJsonObject entry = value.toObject();
+            QVariantMap item;
+            item.insert(QStringLiteral("name"),
+                        entry.value(QStringLiteral("name")).toString());
+            item.insert(QStringLiteral("path"),
+                        entry.value(QStringLiteral("path")).toString());
+            item.insert(QStringLiteral("directory"),
+                        entry.value(QStringLiteral("directory")).toBool());
+            item.insert(QStringLiteral("size"),
+                        entry.value(QStringLiteral("size")).toDouble());
+            item.insert(QStringLiteral("modified"),
+                        entry.value(QStringLiteral("modified")).toString());
+            m_machineFiles.append(item);
+        }
+        emit machineFilesChanged();
+        return;
+    }
+
+    emit machineFilesChanged();
+    if (operation == QStringLiteral("upload") && !m_machineFilesMachineId.isEmpty()) {
+        const QString machineId = m_machineFilesMachineId;
+        const QString path = m_machineFilesPath;
+        QTimer::singleShot(0, this, [this, machineId, path] {
+            refreshMachineFiles(machineId, path);
+        });
     }
 }
 

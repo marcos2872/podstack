@@ -98,6 +98,9 @@ private:
     QJsonObject machineStats(const QJsonObject &params, Error *error);
     QJsonObject subscribeMachineStats(const QJsonObject &params, const Notify &notify,
                                       Error *error);
+    QJsonObject machineFilesList(const QJsonObject &params, Error *error);
+    QJsonObject machineFilesDownload(const QJsonObject &params, Error *error);
+    QJsonObject machineFilesUpload(const QJsonObject &params, Error *error);
     QJsonObject setupStatus();
     QJsonObject setupCheck(const QJsonObject &params);
     QJsonObject setupValidate();

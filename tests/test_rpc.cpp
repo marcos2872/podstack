@@ -35,6 +35,7 @@ private slots:
     void machineLogs();
     void machineSsh();
     void machineStats();
+    void machineFiles();
     void composeAndBuilds();
     void multiPlatformBuild();
     void setupFlow();
@@ -51,6 +52,8 @@ private:
     QString m_fakeProvider;
     QString m_fakePodman;
     QString m_fakeSsh;
+    QString m_fakeScp;
+    QString m_downloadDir;
 };
 
 namespace {
@@ -99,6 +102,13 @@ void writeFakeSsh(const QString &path)
     const QString script = QStringLiteral(
         "#!/bin/sh\n"
         "echo \"$@\" >> \"%1\"\n"
+        "case \"$*\" in\n"
+        "  *\"ls -la --time-style=long-iso\"*)\n"
+        "    echo \"total 8\"\n"
+        "    echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
+        "    echo \"-rw-r--r-- 1 podstack podstack 42 2026-11-09 10:05 rpc.txt\"\n"
+        "    exit 0;;\n"
+        "esac\n"
         "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
         "echo \"__PODSTACK_MEM__\"\n"
         "echo \"MemTotal:        2097152 kB\"\n"
@@ -111,6 +121,27 @@ void writeFakeSsh(const QString &path)
         "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
         "echo \"/dev/vda1    10000000000  2500000000  7500000000      25% /\"\n")
                                .arg(path + QStringLiteral(".args.log"));
+    file.write(script.toUtf8());
+    file.close();
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                        | QFileDevice::ExeOwner);
+}
+
+void writeFakeScp(const QString &path, const QString &downloadDir)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    const QString script = QStringLiteral(
+        "#!/bin/sh\n"
+        "echo \"$@\" >> \"%1\"\n"
+        "for last in \"$@\"; do :; done\n"
+        "case \"$last\" in\n"
+        "  \"%2\"/*) : > \"$last\";;\n"
+        "esac\n"
+        "exit 0\n")
+                               .arg(path + QStringLiteral(".args.log"), downloadDir);
     file.write(script.toUtf8());
     file.close();
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
@@ -139,6 +170,10 @@ void RpcTest::initTestCase()
     writeFakePodman(m_fakePodman, m_testDataDir + QStringLiteral("/podman-args.log"));
     m_fakeSsh = m_testDataDir + QStringLiteral("/ssh-fake.sh");
     writeFakeSsh(m_fakeSsh);
+    m_downloadDir = m_testDataDir + QStringLiteral("/downloads");
+    QVERIFY(QDir().mkpath(m_downloadDir));
+    m_fakeScp = m_testDataDir + QStringLiteral("/scp-fake.sh");
+    writeFakeScp(m_fakeScp, m_downloadDir);
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-rpc-%1.sock")
@@ -154,6 +189,7 @@ void RpcTest::initTestCase()
     environment.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
     environment.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
     environment.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeSsh);
+    environment.insert(QStringLiteral("PODSTACK_SCP_BINARY"), m_fakeScp);
     // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
     environment.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
                        QStringLiteral("unix:path=/tmp/podstack-rpc-no-system-bus.sock"));
@@ -1297,6 +1333,136 @@ void RpcTest::machineSsh()
 
     QVERIFY(store.remove(meta.id));
     QFile::remove(meta.sshKeyPath);
+    QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+}
+
+void RpcTest::machineFiles()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    for (const QString &method :
+         {QStringLiteral("machines.files.list"),
+          QStringLiteral("machines.files.download"),
+          QStringLiteral("machines.files.upload")}) {
+        PodStack::Error missing;
+        client.call(method,
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")},
+                                {QStringLiteral("path"), QStringLiteral("/")},
+                                {QStringLiteral("destination"),
+                                 m_downloadDir + QStringLiteral("/missing.txt")},
+                                {QStringLiteral("sourcePath"),
+                                 m_testDataDir + QStringLiteral("/missing.txt")}},
+                    &missing);
+        QCOMPARE(missing.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    }
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-files-1");
+    meta.name = QStringLiteral("files-demo");
+    meta.distro = QStringLiteral("fedora");
+    meta.distroVersion = QStringLiteral("44");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/files_ed25519");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+    QVERIFY(QDir().mkpath(QFileInfo(meta.sshKeyPath).absolutePath()));
+    QFile key(meta.sshKeyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    PodStack::Error invalidPath;
+    client.call(QStringLiteral("machines.files.list"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("path"), QStringLiteral("/tmp/bad\npath")}},
+                &invalidPath);
+    QCOMPARE(invalidPath.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QJsonObject listing =
+        client.call(QStringLiteral("machines.files.list"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("files-demo")},
+                                {QStringLiteral("path"), QStringLiteral("/home/podstack")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(listing.value(QStringLiteral("path")).toString(),
+             QStringLiteral("/home/podstack"));
+    const QJsonArray items = listing.value(QStringLiteral("items")).toArray();
+    QCOMPARE(items.size(), 2);
+    bool sawDirectory = false;
+    bool sawFile = false;
+    for (const QJsonValue &value : items) {
+        const QJsonObject item = value.toObject();
+        QVERIFY(!item.value(QStringLiteral("path")).toString().contains(m_testDataDir));
+        if (item.value(QStringLiteral("name")).toString() == QStringLiteral("docs")) {
+            sawDirectory = item.value(QStringLiteral("directory")).toBool();
+            QCOMPARE(item.value(QStringLiteral("path")).toString(),
+                     QStringLiteral("/home/podstack/docs"));
+        }
+        if (item.value(QStringLiteral("name")).toString() == QStringLiteral("rpc.txt")) {
+            sawFile = !item.value(QStringLiteral("directory")).toBool();
+            QCOMPARE(item.value(QStringLiteral("size")).toInteger(), 42LL);
+        }
+    }
+    QVERIFY(sawDirectory);
+    QVERIFY(sawFile);
+
+    const QJsonObject download =
+        client.call(QStringLiteral("machines.files.download"),
+                    QJsonObject{{QStringLiteral("id"), meta.id},
+                                {QStringLiteral("path"),
+                                 QStringLiteral("/home/podstack/rpc.txt")},
+                                {QStringLiteral("destination"),
+                                 m_downloadDir + QStringLiteral("/rpc.txt")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(download.value(QStringLiteral("path")).toString(),
+             QStringLiteral("/home/podstack/rpc.txt"));
+    QCOMPARE(download.value(QStringLiteral("destination")).toString(),
+             m_downloadDir + QStringLiteral("/rpc.txt"));
+    QVERIFY(QFileInfo::exists(m_downloadDir + QStringLiteral("/rpc.txt")));
+
+    const QString sourcePath = m_testDataDir + QStringLiteral("/rpc-upload.txt");
+    QFile source(sourcePath);
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    source.write("rpc upload");
+    source.close();
+
+    const QJsonObject upload =
+        client.call(QStringLiteral("machines.files.upload"),
+                    QJsonObject{{QStringLiteral("id"), meta.id},
+                                {QStringLiteral("path"),
+                                 QStringLiteral("/tmp/rpc-upload.txt")},
+                                {QStringLiteral("sourcePath"), sourcePath}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(upload.value(QStringLiteral("path")).toString(),
+             QStringLiteral("/tmp/rpc-upload.txt"));
+    QCOMPARE(upload.value(QStringLiteral("sourcePath")).toString(), sourcePath);
+    QCOMPARE(upload.value(QStringLiteral("ok")).toBool(), true);
+
+    PodStack::Error invalidSource;
+    client.call(QStringLiteral("machines.files.upload"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("path"), QStringLiteral("/tmp/x")},
+                            {QStringLiteral("sourcePath"),
+                             m_testDataDir + QStringLiteral("/does-not-exist")}},
+                &invalidSource);
+    QCOMPARE(invalidSource.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(store.remove(meta.id));
+    QFile::remove(meta.sshKeyPath);
+    QFile::remove(sourcePath);
+    QFile::remove(m_downloadDir + QStringLiteral("/rpc.txt"));
     QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
 }
 

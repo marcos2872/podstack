@@ -35,6 +35,7 @@ private slots:
     void machineDistros();
     void machineCommands();
     void machineSsh();
+    void machineFiles();
     void topCommand();
     void systemDf();
     void composeAndBuild();
@@ -53,6 +54,8 @@ private:
     QString m_testDataDir;
     QString m_fakeProvider;
     QString m_fakePodman;
+    QString m_fakeFilesSsh;
+    QString m_fakeFilesScp;
 };
 
 QString CliTest::cliPath() const
@@ -72,6 +75,8 @@ QProcessEnvironment CliTest::environment(const QString &controlSocket) const
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
     env.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
+    env.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeFilesSsh);
+    env.insert(QStringLiteral("PODSTACK_SCP_BINARY"), m_fakeFilesScp);
     env.insert(QStringLiteral("PODSTACK_SSH_CONFIG"),
                m_testDataDir + QStringLiteral("/ssh/config"));
     env.insert(QStringLiteral("XDG_DATA_HOME"), m_testDataDir + QStringLiteral("/data"));
@@ -139,6 +144,39 @@ void CliTest::initTestCase()
     podman.close();
     QVERIFY(podman.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                   | QFileDevice::ExeOwner));
+
+    m_fakeFilesSsh = m_testDataDir + QStringLiteral("/ssh-files-fake.sh");
+    QFile sshFiles(m_fakeFilesSsh);
+    QVERIFY(sshFiles.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    sshFiles.write("#!/bin/sh\n"
+                   "case \"$*\" in\n"
+                   "  *\"ls -la --time-style=long-iso\"*)\n"
+                   "    echo \"total 4\"\n"
+                   "    echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
+                   "    echo \"-rw-r--r-- 1 podstack podstack 12 2026-11-09 10:05 cli.txt\"\n"
+                   "    exit 0;;\n"
+                   "esac\n"
+                   "exit 0\n");
+    sshFiles.close();
+    QVERIFY(sshFiles.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                    | QFileDevice::ExeOwner));
+
+    const QString downloadDir = m_testDataDir + QStringLiteral("/downloads");
+    QVERIFY(QDir().mkpath(downloadDir));
+    m_fakeFilesScp = m_testDataDir + QStringLiteral("/scp-files-fake.sh");
+    QFile scpFiles(m_fakeFilesScp);
+    QVERIFY(scpFiles.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    scpFiles.write(QStringLiteral("#!/bin/sh\n"
+                                  "for last in \"$@\"; do :; done\n"
+                                  "case \"$last\" in\n"
+                                  "  \"%1\"/*) : > \"$last\";;\n"
+                                  "esac\n"
+                                  "exit 0\n")
+                       .arg(downloadDir)
+                       .toUtf8());
+    scpFiles.close();
+    QVERIFY(scpFiles.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                    | QFileDevice::ExeOwner));
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-cli-%1.sock")
@@ -713,6 +751,119 @@ void CliTest::machineSsh()
 
     QVERIFY(store.remove(meta.id));
     QFile::remove(meta.sshKeyPath);
+    QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+}
+
+void CliTest::machineFiles()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("machine"), QStringLiteral("files")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("files"), QStringLiteral("ls")},
+                 env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("files"), QStringLiteral("ls"),
+                  QStringLiteral("missing")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("pull")}, env);
+    QCOMPARE(result.code, 2);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("pull"),
+                  QStringLiteral("missing"), QStringLiteral("/remote"),
+                  QStringLiteral("/tmp/podstack-cli-missing")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("--help")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("files ls")));
+    QVERIFY(result.out.contains(QStringLiteral("pull <id|nome>")));
+    QVERIFY(result.out.contains(QStringLiteral("push <id|nome>")));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("cli-machine-files");
+    meta.name = QStringLiteral("cli-files");
+    meta.distro = QStringLiteral("fedora");
+    meta.distroVersion = QStringLiteral("44");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/cli_files_ed25519");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+    QVERIFY(QDir().mkpath(QFileInfo(meta.sshKeyPath).absolutePath()));
+    QFile key(meta.sshKeyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("files"), QStringLiteral("ls"),
+                  QStringLiteral("cli-files"), QStringLiteral("--json")},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QCOMPARE(document.object().value(QStringLiteral("path")).toString(),
+             QStringLiteral("/"));
+    QCOMPARE(document.object().value(QStringLiteral("items")).toArray().size(), 2);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("files"), QStringLiteral("ls"),
+                  QStringLiteral("cli-machine-files"), QStringLiteral("--path"),
+                  QStringLiteral("/tmp")},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QVERIFY(result.out.contains(QStringLiteral("caminho: /tmp")));
+    QVERIFY(result.out.contains(QStringLiteral("docs")));
+    QVERIFY(result.out.contains(QStringLiteral("cli.txt")));
+
+    const QString downloaded = m_testDataDir + QStringLiteral("/downloads/cli.txt");
+    result = run({QStringLiteral("machine"), QStringLiteral("pull"),
+                  QStringLiteral("cli-files"), QStringLiteral("/home/podstack/cli.txt"),
+                  downloaded},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QVERIFY(result.out.contains(QStringLiteral("baixado")));
+    QVERIFY(QFileInfo::exists(downloaded));
+
+    const QString uploadSource = m_testDataDir + QStringLiteral("/cli-upload.txt");
+    QFile upload(uploadSource);
+    QVERIFY(upload.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    upload.write("cli upload");
+    upload.close();
+
+    result = run({QStringLiteral("machine"), QStringLiteral("push"),
+                  QStringLiteral("cli-files"), uploadSource,
+                  QStringLiteral("/tmp/cli-upload.txt")},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QVERIFY(result.out.contains(QStringLiteral("enviado")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("push"),
+                  QStringLiteral("cli-files"), uploadSource},
+                 env);
+    QCOMPARE(result.code, 2);
+
+    QVERIFY(store.remove(meta.id));
+    QFile::remove(meta.sshKeyPath);
+    QFile::remove(downloaded);
+    QFile::remove(uploadSource);
     QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
 }
 

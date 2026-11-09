@@ -47,9 +47,10 @@
 | `info M` | `machine info M` | `--json` | Aceita ID ou nome | ✅ T4-03 |
 | `logs [M]` | `machine logs <id\|nome>` | `--tail N` | Console/boot one-shot (sem follow) | ✅ T4-06 |
 | `ssh` | `machine ssh` / `ssh M` | `-- cmd...` | Chave + bloco gerenciado em `~/.ssh/config`; `--` anexa comando | ✅ T4-04 |
+| — | `machine files ls <id\|nome>` | `--path`, `--json` | Lista arquivos via SSH; `.`/`..` omitidos, caminho remoto escapado | ✅ T4-08 |
 | `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | | ⬜ |
-| `pull [-m M] SRC [DST]` | `machine pull` | `-m` | Host→guest? Ver §3 | ⬜ T4-08 |
-| `push [-m M] SRC [DST]` | `machine push` | `-m` | Guest→host? Ver §3 | ⬜ T4-08 |
+| `pull [-m M] SRC [DST]` | `machine pull <id\|nome> <remoto> <local>` | — | Guest → host via `scp -r`; o local precisa existir como diretório ou arquivo | ✅ T4-08 |
+| `push [-m M] SRC [DST]` | `machine push <id\|nome> <local> <remoto>` | — | Host → guest via `scp -r` | ✅ T4-08 |
 | `export M FILE.tar.zst` | `machine export M FILE` | — | Pausa a máquina | ⬜ T4-09 |
 | `import FILE [-n NAME]` | `machine import FILE` | `--name` | Valida manifest/checksum | ⬜ T4-09 |
 | `clone SRC DST` | `machine clone SRC DST` | — | CoW quando possível | ⬜ T4-10 |
@@ -59,11 +60,12 @@
 | `serial list` | `device serial list` | `--format` | | ⬜ T4-15 |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
 
-> No M4 (T4-03/T4-04) o CLI cobre `distros`, `list`, `info`, `create`, `start`, `stop`,
-> `restart`, `delete` e `ssh` (alias `machine ssh`). A criação aceita `--cpus`, `--memory`
-> (bytes ou K/M/G/T), `--disk`, `--user`, `--user-data ARQUIVO` e `--isolate-network`; a
-> senha continua **fora** de argv (visível em `ps`/histórico) e o acesso padrão é por chave
-> ed25519 gerada pelo daemon.
+> No M4 (T4-03/T4-04/T4-06/T4-08) o CLI cobre `distros`, `list`, `info`, `create`, `start`,
+> `stop`, `restart`, `delete`, `logs`, `ssh` (alias `machine ssh`), `files ls`, `pull` e
+> `push`. A criação aceita `--cpus`, `--memory` (bytes ou K/M/G/T), `--disk`, `--user`,
+> `--user-data ARQUIVO` e `--isolate-network`; a senha continua **fora** de argv (visível em
+> `ps`/histórico) e o acesso padrão é por chave ed25519 gerada pelo daemon. `files`, `pull`
+> e `push` usam SSH/SCP reais (o daemon nunca abre shell local).
 
 ### 2.2 Serviços e sistema
 
@@ -221,11 +223,13 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 
 No OrbStack, `orb pull` copia **de Linux para macOS** e `orb push` **de macOS para Linux**. No PodStack, para evitar ambiguidade:
 
-- `podstack machine pull <machine>:<src> <host-dst>` — guest → host.
-- `podstack machine push <host-src> <machine>:<dst>` — host → guest.
+- `podstack machine pull <id|nome> <remoto> <local>` — guest → host.
+- `podstack machine push <id|nome> <local> <remoto>` — host → guest.
 - Aliases `podstack pull`/`push` mantêm a semântica original quando `-m` é usado.
+- `podstack machine files ls <id|nome> [--path P] [--json]` lista o diretório remoto
+  (default `/`) sem transferir arquivos.
 
-Ajuda exibe exemplos; nunca infere direção silenciosamente.
+A direção é explícita na posição dos argumentos; o CLI nunca a infere silenciosamente.
 
 ---
 
@@ -305,8 +309,10 @@ podstack machine run -m dev -- uname -a
 podstack ssh dev -- htop
 
 # arquivos
-podstack machine push ./app.tar dev:/home/marcos/
-podstack machine pull dev:/var/log/app.log ./app.log
+podstack machine files ls dev
+podstack machine files ls dev --path /var/log --json
+podstack machine push dev ./app.tar /home/marcos/
+podstack machine pull dev /var/log/app.log ./app.log
 
 # backup
 podstack machine export dev dev-backup.tar.zst

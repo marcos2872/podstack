@@ -4,30 +4,35 @@ import QtQuick.Layouts
 import PodStack
 
 // Detalhe de uma machine: Info, Logs, Stats e ações de ciclo de vida.
-// No card lateral (showTerminalTab=false) as abas são Info/Logs/Stats; no
-// overlay de detalhe (showTerminalTab=true) a aba Terminal é adicionada e o
-// C++ sobrepõe a sessão SSH sobre `terminalPlaceholder`.
+// No card lateral (showTerminalTab/showFilesTab=false) as abas são
+// Info/Logs/Stats; no overlay de detalhe ambos são ligados e as abas Terminal
+// e Files são adicionadas. O C++ sobrepõe a sessão SSH sobre
+// `terminalPlaceholder`.
 Rectangle {
     id: root
 
     property var machine: ({})
     property string tab: "info"
     property bool showTerminalTab: false
+    property bool showFilesTab: false
     property string terminalError: ""
 
     readonly property int terminalTabIndex: 3
-    readonly property var tabs: root.showTerminalTab
-        ? [
-            { key: "info", label: qsTr("Info") },
-            { key: "logs", label: qsTr("Logs") },
-            { key: "stats", label: qsTr("Stats") },
-            { key: "terminal", label: qsTr("Terminal") }
-        ]
-        : [
+    readonly property int filesTabIndex: 4
+    readonly property var tabs: {
+        const items = [
             { key: "info", label: qsTr("Info") },
             { key: "logs", label: qsTr("Logs") },
             { key: "stats", label: qsTr("Stats") }
         ]
+        if (root.showTerminalTab) {
+            items.push({ key: "terminal", label: qsTr("Terminal") })
+        }
+        if (root.showFilesTab) {
+            items.push({ key: "files", label: qsTr("Files") })
+        }
+        return items
+    }
 
     signal deleteRequested(string id)
     signal closeRequested()
@@ -80,11 +85,17 @@ Rectangle {
         if (root.tab === "stats" && nextTab !== "stats") {
             backend.stopMachineStats()
         }
+        const previousTab = root.tab
         root.tab = nextTab
         if (nextTab === "logs") {
             backend.loadMachineLogs(root.machineId, 200)
         } else if (nextTab === "stats" && root.machineId.length > 0) {
             backend.startMachineStats(root.machineId)
+        } else if (nextTab === "files" && previousTab !== "files"
+                   && root.machineId.length > 0) {
+            if (!backend.machineFilesBusy) {
+                backend.refreshMachineFiles(root.machineId, "/")
+            }
         }
     }
 
@@ -126,12 +137,21 @@ Rectangle {
         root.syncTerminalArea()
     }
 
+    onShowFilesTabChanged: {
+        if (!root.showFilesTab && root.tab === "files") {
+            root.selectTab("info")
+        }
+    }
+
     onMachineIdChanged: {
         if (root.tab === "stats") {
             backend.stopMachineStats()
             if (root.machineId.length > 0) {
                 backend.startMachineStats(root.machineId)
             }
+        }
+        if (root.machineId.length === 0 && root.tab !== "info") {
+            root.tab = "info"
         }
         root.syncTerminalArea()
     }
@@ -466,7 +486,8 @@ Rectangle {
             Layout.fillHeight: true
             currentIndex: root.tab === "logs" ? 1
                           : root.tab === "stats" ? 2
-                          : root.tab === "terminal" ? 3 : 0
+                          : root.tab === "terminal" ? 3
+                          : root.tab === "files" ? 4 : 0
 
             Flickable {
                 id: infoFlick
@@ -871,6 +892,11 @@ Rectangle {
                         }
                     }
                 }
+            }
+
+            // Files — file manager da machine via SSH/SCP (somente no overlay).
+            MachineFilesView {
+                machineId: root.machineId
             }
         }
     }

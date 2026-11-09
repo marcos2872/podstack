@@ -17,6 +17,7 @@
 #include <QProcessEnvironment>
 #include <QScopeGuard>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QStringList>
 #include <QTest>
 #include <QVariantList>
@@ -40,6 +41,7 @@ private slots:
     void backendCatalog();
     void backendMachines();
     void backendMachineStats();
+    void backendMachineFiles();
     void backendTerminal();
     void backendM3();
     void backendErrors();
@@ -60,6 +62,7 @@ private:
     QString m_fakeProvider;
     QString m_fakePodman;
     QString m_fakeSsh;
+    QString m_fakeScp;
 };
 
 QProcessEnvironment GuiTest::daemonEnvironment() const
@@ -70,6 +73,7 @@ QProcessEnvironment GuiTest::daemonEnvironment() const
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
     env.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
     env.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeSsh);
+    env.insert(QStringLiteral("PODSTACK_SCP_BINARY"), m_fakeScp);
     // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
     env.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
                QStringLiteral("unix:path=/tmp/podstack-gui-no-system-bus.sock"));
@@ -129,6 +133,13 @@ void GuiTest::initTestCase()
     const QString fakeSsh =
         QStringLiteral("#!/bin/sh\n"
                        "echo \"$@\" >> \"%1\"\n"
+                       "case \"$*\" in\n"
+                       "  *\"ls -la --time-style=long-iso\"*)\n"
+                       "    echo \"total 4\"\n"
+                       "    echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
+                       "    echo \"-rw-r--r-- 1 podstack podstack 12 2026-11-09 10:05 gui.txt\"\n"
+                       "    exit 0;;\n"
+                       "esac\n"
                        "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
                        "echo \"__PODSTACK_MEM__\"\n"
                        "echo \"MemTotal:        2097152 kB\"\n"
@@ -144,6 +155,28 @@ void GuiTest::initTestCase()
     ssh.write(fakeSsh.toUtf8());
     ssh.close();
     QVERIFY(ssh.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                               | QFileDevice::ExeOwner));
+
+    const QString downloadDir = m_testDataDir + QStringLiteral("/Downloads");
+    QVERIFY(QDir().mkpath(downloadDir));
+    QFile userDirs(m_testDataDir + QStringLiteral("/config/user-dirs.dirs"));
+    QVERIFY(userDirs.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    userDirs.write(QStringLiteral("XDG_DOWNLOAD_DIR=\"%1\"\n").arg(downloadDir).toUtf8());
+    userDirs.close();
+
+    m_fakeScp = m_testDataDir + QStringLiteral("/scp-fake.sh");
+    QFile scp(m_fakeScp);
+    QVERIFY(scp.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    scp.write(QStringLiteral("#!/bin/sh\n"
+                             "for last in \"$@\"; do :; done\n"
+                             "case \"$last\" in\n"
+                             "  \"%1\"/*) : > \"$last\";;\n"
+                             "esac\n"
+                             "exit 0\n")
+                  .arg(downloadDir)
+                  .toUtf8());
+    scp.close();
+    QVERIFY(scp.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                | QFileDevice::ExeOwner));
 
     m_controlSocket = QDir::tempPath()
@@ -789,6 +822,110 @@ void GuiTest::backendMachineStats()
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();
+}
+
+void GuiTest::backendMachineFiles()
+{
+    PodStack::Backend backend;
+    QSignalSpy filesSpy(&backend, &PodStack::Backend::machineFilesChanged);
+
+    backend.refreshMachineFiles(QString(), QStringLiteral("/"));
+    QVERIFY(!backend.machineFilesError().isEmpty());
+    QVERIFY(!backend.machineFilesBusy());
+
+    backend.refreshMachineFiles(QStringLiteral("missing-machine"), QStringLiteral("/"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY(backend.machineFilesError().contains(QStringLiteral("não encontrada")));
+
+    backend.downloadMachineFile(QStringLiteral("missing-machine"),
+                                QStringLiteral("/tmp/report.txt"),
+                                QStringLiteral("report.txt"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY(backend.machineFilesError().contains(QStringLiteral("não encontrada")));
+
+    const QString uploadSource = m_testDataDir + QStringLiteral("/gui-upload.txt");
+    QFile upload(uploadSource);
+    QVERIFY(upload.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    upload.write("gui upload");
+    upload.close();
+
+    backend.uploadMachineFile(QStringLiteral("missing-machine"), QStringLiteral("/tmp"),
+                              uploadSource);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY(backend.machineFilesError().contains(QStringLiteral("não encontrada")));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("gui-machine-files");
+    meta.name = QStringLiteral("gui-files");
+    meta.distro = QStringLiteral("fedora");
+    meta.distroVersion = QStringLiteral("44");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
+    QFile keyFile(meta.sshKeyPath);
+    QVERIFY(keyFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    keyFile.write("test-key\n");
+    keyFile.close();
+    QVERIFY(keyFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    backend.refreshMachineFiles(meta.id, QStringLiteral("/home"));
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineFiles().size(), 2, 5000);
+    QVERIFY(!backend.machineFilesBusy());
+    QVERIFY2(backend.machineFilesError().isEmpty(),
+             qPrintable(backend.machineFilesError()));
+    QCOMPARE(backend.machineFilesPath(), QStringLiteral("/home"));
+    QVERIFY(filesSpy.count() > 0);
+
+    QStringList names;
+    for (const QVariant &value : backend.machineFiles()) {
+        const QVariantMap item = value.toMap();
+        names.append(item.value(QStringLiteral("name")).toString());
+        QVERIFY(item.contains(QStringLiteral("path")));
+        QVERIFY(item.contains(QStringLiteral("directory")));
+        QVERIFY(item.contains(QStringLiteral("size")));
+        QVERIFY(item.contains(QStringLiteral("modified")));
+    }
+    QVERIFY(names.contains(QStringLiteral("docs")));
+    QVERIFY(names.contains(QStringLiteral("gui.txt")));
+
+    backend.downloadMachineFile(meta.id, QStringLiteral("/home/podstack/gui.txt"),
+                                QStringLiteral("gui.txt"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY2(backend.machineFilesError().isEmpty(),
+             qPrintable(backend.machineFilesError()));
+    const QString downloadDir =
+        QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    QVERIFY2(downloadDir.startsWith(m_testDataDir), qPrintable(downloadDir));
+    const QString downloaded = downloadDir + QStringLiteral("/gui.txt");
+    QVERIFY(QFileInfo::exists(downloaded));
+
+    backend.downloadMachineFile(meta.id, QStringLiteral("/home/podstack/gui.txt"),
+                                QStringLiteral("../escape.txt"));
+    QVERIFY(backend.machineFilesError().contains(QStringLiteral("inválido")));
+    QVERIFY(!backend.machineFilesBusy());
+
+    backend.uploadMachineFile(meta.id, QStringLiteral("/home/podstack"), uploadSource);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY2(backend.machineFilesError().isEmpty(),
+             qPrintable(backend.machineFilesError()));
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
+    QFile::remove(uploadSource);
+    QFile::remove(downloaded);
 }
 
 void GuiTest::backendTerminal()

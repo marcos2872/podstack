@@ -87,6 +87,10 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList machineNetTxHistory READ machineNetTxHistory
                NOTIFY machineStatsChanged)
     Q_PROPERTY(QString machineStatsError READ machineStatsError NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineFiles READ machineFiles NOTIFY machineFilesChanged)
+    Q_PROPERTY(QString machineFilesPath READ machineFilesPath NOTIFY machineFilesChanged)
+    Q_PROPERTY(bool machineFilesBusy READ machineFilesBusy NOTIFY machineFilesChanged)
+    Q_PROPERTY(QString machineFilesError READ machineFilesError NOTIFY machineFilesChanged)
     Q_PROPERTY(bool machineCreateActive READ machineCreateActive NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateJobId READ machineCreateJobId NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateStage READ machineCreateStage NOTIFY machineCreateStateChanged)
@@ -176,6 +180,10 @@ public:
     QVariantList machineNetRxHistory() const { return m_machineNetRxHistory; }
     QVariantList machineNetTxHistory() const { return m_machineNetTxHistory; }
     QString machineStatsError() const { return m_machineStatsError; }
+    QVariantList machineFiles() const { return m_machineFiles; }
+    QString machineFilesPath() const { return m_machineFilesPath; }
+    bool machineFilesBusy() const { return m_machineFilesBusy; }
+    QString machineFilesError() const { return m_machineFilesError; }
     bool machineCreateActive() const { return m_machineCreateActive; }
     QString machineCreateJobId() const { return m_machineCreateJobId; }
     QString machineCreateStage() const { return m_machineCreateStage; }
@@ -246,6 +254,11 @@ public:
     Q_INVOKABLE void loadMachineLogs(const QString &id, int tail = 200);
     Q_INVOKABLE void startMachineStats(const QString &id);
     Q_INVOKABLE void stopMachineStats();
+    Q_INVOKABLE void refreshMachineFiles(const QString &id, const QString &path);
+    Q_INVOKABLE void downloadMachineFile(const QString &id, const QString &path,
+                                         const QString &fileName);
+    Q_INVOKABLE void uploadMachineFile(const QString &id, const QString &remoteDir,
+                                       const QString &localPath);
     Q_INVOKABLE void copyMachineLogs();
     Q_INVOKABLE void openMachineSsh(const QString &id);
     Q_INVOKABLE void machineLifecycle(const QString &action, const QString &id,
@@ -327,6 +340,7 @@ signals:
     void machineInfoChanged();
     void machineLogsChanged();
     void machineStatsChanged();
+    void machineFilesChanged();
     void machineCreateStateChanged();
     void eventsChanged();
     void containerEvent(const QVariantMap &event);
@@ -347,6 +361,10 @@ private:
     void onMachineDistrosFinished();
     void onMachineInfoFinished();
     void onMachineLogsFinished();
+    void onMachineFilesFinished();
+    void startMachineFilesRequest(const QString &operation, const QString &id,
+                                  const QString &method, const QJsonObject &params,
+                                  int timeoutMs);
     void applySetupStatus(const QJsonObject &status);
     void applySetupJob(const QJsonObject &job);
     void runSetupRequest(const QString &method, const QJsonObject &params);
@@ -373,6 +391,7 @@ private:
     QFutureWatcher<QJsonObject> m_machineDistrosWatcher;
     QFutureWatcher<QJsonObject> m_machineInfoWatcher;
     QFutureWatcher<QJsonObject> m_machineLogsWatcher;
+    QFutureWatcher<QJsonObject> m_machineFilesWatcher;
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
     QString m_setupPendingMethod;
     QString m_catalogSection;
@@ -454,6 +473,12 @@ private:
     QVariantList m_machineNetRxHistory;
     QVariantList m_machineNetTxHistory;
     QString m_machineStatsError;
+    QVariantList m_machineFiles;
+    QString m_machineFilesPath = QStringLiteral("/");
+    bool m_machineFilesBusy = false;
+    QString m_machineFilesError;
+    QString m_machineFilesMachineId;
+    QString m_machineFilesOperation;
     QString m_pendingMachineInfoId;
     QString m_pendingMachineLogsId;
     int m_pendingMachineLogsTail = 200;

@@ -551,6 +551,8 @@ void TerminalTest::machineDetailDialogQml()
     QObject *root = quick->rootObject();
     QVERIFY(root != nullptr);
     QVERIFY(root->property("showTerminalTab").toBool());
+    QVERIFY(root->property("showFilesTab").toBool());
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(4), QStringLiteral("files"));
 
     const QString keyPath = m_runtime.filePath(QStringLiteral("machine_qml_key"));
     QFile key(keyPath);

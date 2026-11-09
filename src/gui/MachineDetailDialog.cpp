@@ -127,6 +127,7 @@ void MachineDetailDialog::connectQmlSignals()
     }
     m_qmlSignalsConnected = true;
     root->setProperty("showTerminalTab", true);
+    root->setProperty("showFilesTab", true);
     connect(root, SIGNAL(closeRequested()), this, SLOT(handleCloseRequested()));
     // O QML declara `rect`, que o Qt registra como QRectF no metaobjeto.
     connect(root, SIGNAL(terminalAreaChanged(QRectF,bool)), this,
@@ -164,6 +165,8 @@ QString MachineDetailDialog::tabName(int tab)
         return QStringLiteral("stats");
     case 3:
         return QStringLiteral("terminal");
+    case 4:
+        return QStringLiteral("files");
     default:
         return QStringLiteral("info");
     }
@@ -217,9 +220,14 @@ void MachineDetailDialog::openMachine(const QVariantMap &machine, int tab)
     applyMachineToQml();
     resetTerminalSession();
 
+    if (m_backend && tab == 4) {
+        m_backend->refreshMachineFiles(id, QStringLiteral("/"));
+    }
+
     if (m_quickWidget && m_quickWidget->rootObject()) {
         QObject *root = m_quickWidget->rootObject();
         root->setProperty("showTerminalTab", true);
+        root->setProperty("showFilesTab", true);
         QMetaObject::invokeMethod(root, "selectTab", Q_ARG(QVariant, tabName(tab)));
         // A aba inicial pode não mudar; reaplica a área para o terminal
         // acompanhar o placeholder depois de abrir.

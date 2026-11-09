@@ -76,6 +76,7 @@ add_library(podstack_machines STATIC
     src/machines/VirtiofsdProcess.cpp
     src/machines/MachineManager.cpp
     src/machines/MachineStats.cpp
+    src/machines/MachineFiles.cpp
 )
 target_include_directories(podstack_machines PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_machines PUBLIC
@@ -208,6 +209,7 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/PodsView.qml
         src/gui/qml/MachinesPage.qml
         src/gui/qml/MachineInspector.qml
+        src/gui/qml/MachineFilesView.qml
         src/gui/qml/ComposeView.qml
         src/gui/qml/BuildsView.qml
         src/gui/qml/Toast.qml

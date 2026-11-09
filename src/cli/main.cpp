@@ -5,7 +5,9 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -70,7 +72,7 @@ void printUsage()
           << "        [--platform p1,p2]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
-          << "  machine <list|info|logs|create|start|stop|restart|delete|distros|ssh>\n"
+          << "  machine <list|info|logs|create|start|stop|restart|delete|distros|ssh|files|pull|push>\n"
           << "                          Gerencia machines QEMU/KVM\n"
           << "  ssh <id|nome> [-- cmd...]\n"
           << "                          Abre SSH na machine com a chave gerenciada\n"
@@ -1366,6 +1368,12 @@ void printMachineUsage(QTextStream &stream)
            << "                          Remove uma machine e seus dados\n"
            << "  ssh <id|nome> [-- cmd...]\n"
            << "                          Abre SSH com a chave gerenciada\n"
+           << "  files ls <id|nome> [--path P] [--json]\n"
+           << "                          Lista arquivos da machine via SSH\n"
+           << "  pull <id|nome> <remoto> <local>\n"
+           << "                          Baixa um arquivo/diretório da machine (scp)\n"
+           << "  push <id|nome> <local> <remoto>\n"
+           << "                          Envia um arquivo/diretório para a machine (scp)\n"
            << "  distros [--json]         Lista imagens cloud e cache local\n";
     stream.flush();
 }
@@ -1949,6 +1957,168 @@ int machineSshCommand(const QStringList &args)
     return kExitError;
 }
 
+int machineFilesCommand(const QStringList &args)
+{
+    if (args.size() < 2 || args.at(1) == QStringLiteral("--help")
+        || args.at(1) == QStringLiteral("-h") || args.at(1) == QStringLiteral("help")) {
+        printMachineUsage(args.size() < 2 ? err() : out());
+        return args.size() < 2 ? kExitUsage : kExitOk;
+    }
+
+    const QString subcommand = args.at(1);
+    if (subcommand != QStringLiteral("ls") && subcommand != QStringLiteral("list")) {
+        err() << "subcomando desconhecido: machine files " << subcommand << '\n';
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QString id;
+    QString path = QStringLiteral("/");
+    bool json = false;
+    for (int i = 2; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--path")) {
+            if (i + 1 >= args.size()) {
+                err() << "faltou o valor de --path\n";
+                return kExitUsage;
+            }
+            path = args.at(++i);
+        } else if (arg == QStringLiteral("--help") || arg == QStringLiteral("-h")) {
+            printMachineUsage(out());
+            return kExitOk;
+        } else if (arg.startsWith(QLatin1Char('-'))) {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        } else if (id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "argumento inesperado: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.files.list"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("path"), path}},
+                    &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QString resolvedPath = result.value(QStringLiteral("path")).toString(path);
+    out() << "caminho: " << resolvedPath << '\n';
+    out() << QStringLiteral("%1 %2 %3 %4\n")
+                 .arg(QStringLiteral("TIPO").leftJustified(8),
+                      QStringLiteral("TAMANHO").leftJustified(10),
+                      QStringLiteral("MODIFICADO").leftJustified(17),
+                      QStringLiteral("NOME"));
+    const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+    for (const QJsonValue &value : items) {
+        const QJsonObject item = value.toObject();
+        const bool directory = item.value(QStringLiteral("directory")).toBool();
+        out() << QStringLiteral("%1 %2 %3 %4\n")
+                     .arg((directory ? QStringLiteral("dir") : QStringLiteral("arquivo"))
+                              .leftJustified(8),
+                          (directory ? QStringLiteral("-")
+                                     : humanBytes(item.value(QStringLiteral("size"))
+                                                      .toInteger()))
+                              .leftJustified(10),
+                          item.value(QStringLiteral("modified"))
+                              .toString()
+                              .leftJustified(17),
+                          item.value(QStringLiteral("name")).toString());
+    }
+    out().flush();
+    return kExitOk;
+}
+
+int machineTransferCommand(const QString &direction, const QStringList &args)
+{
+    QStringList positional;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--help") || arg == QStringLiteral("-h")) {
+            printMachineUsage(out());
+            return kExitOk;
+        } else if (arg.startsWith(QLatin1Char('-'))) {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        } else {
+            positional.append(arg);
+        }
+    }
+    if (positional.size() != 3) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    const QString id = positional.at(0);
+    const bool pull = direction == QStringLiteral("pull");
+    const QString remote = pull ? positional.at(1) : positional.at(2);
+    QString local = QDir::cleanPath(QFileInfo(positional.at(pull ? 2 : 1)).absoluteFilePath());
+    if (pull && QFileInfo(local).isDir()) {
+        const QString name = QFileInfo(remote).fileName();
+        if (!name.isEmpty()) {
+            local += QLatin1Char('/') + name;
+        }
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    QJsonObject result;
+    if (pull) {
+        result = client.call(QStringLiteral("machines.files.download"),
+                             QJsonObject{{QStringLiteral("id"), id},
+                                         {QStringLiteral("path"), remote},
+                                         {QStringLiteral("destination"), local}},
+                             &error, 600000);
+    } else {
+        result = client.call(QStringLiteral("machines.files.upload"),
+                             QJsonObject{{QStringLiteral("id"), id},
+                                         {QStringLiteral("path"), remote},
+                                         {QStringLiteral("sourcePath"), local}},
+                             &error, 600000);
+    }
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    if (pull) {
+        out() << "baixado " << result.value(QStringLiteral("path")).toString(remote)
+              << " -> "
+              << result.value(QStringLiteral("destination")).toString(local) << '\n';
+    } else {
+        out() << "enviado " << result.value(QStringLiteral("sourcePath")).toString(local)
+              << " -> " << result.value(QStringLiteral("path")).toString(remote) << '\n';
+    }
+    out().flush();
+    return kExitOk;
+}
+
 void printTopSample(const QJsonObject &sample)
 {
     const QJsonObject host = sample.value(QStringLiteral("host")).toObject();
@@ -2278,6 +2448,12 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("ssh")) {
         return machineSshCommand(args.mid(1));
+    }
+    if (subcommand == QStringLiteral("files")) {
+        return machineFilesCommand(args);
+    }
+    if (subcommand == QStringLiteral("pull") || subcommand == QStringLiteral("push")) {
+        return machineTransferCommand(subcommand, args);
     }
     if (subcommand == QStringLiteral("distros")) {
         bool json = false;

@@ -264,10 +264,10 @@ Regras de normalização:
 
 ### 4.6 `machines.*`
 
-Implementados na T4-03 (M4), T4-06 e T4-07: registry, listagem, inspeção, criação assíncrona,
-logs do console, ciclo de vida e mounts virtiofs. A T4-04 adiciona `machines.ssh` (chave ed25519
-e bloco gerenciado no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas
-seguintes.
+Implementados na T4-03 (M4), T4-06, T4-07 e T4-08: registry, listagem, inspeção, criação
+assíncrona, logs do console, ciclo de vida, mounts virtiofs e arquivos. A T4-04 adiciona
+`machines.ssh` (chave ed25519 e bloco gerenciado no `~/.ssh/config`). Os demais métodos
+continuam planejados para as tarefas seguintes.
 
 | Método | Params | Result |
 |---|---|---|
@@ -282,6 +282,9 @@ seguintes.
 | `machines.delete` | `{id, force?}` | `{deleted:true}` |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile}` |
+| `machines.files.list` | `{id, path?}` | `{path, items: MachineFile[]}` |
+| `machines.files.download` | `{id, path, destination}` | `{path, destination}` |
+| `machines.files.upload` | `{id, path, sourcePath}` | `{path, sourcePath, ok:true}` |
 | `machines.stats` | `{id}` | `MachineStats` (one-shot via SSH) |
 | `machines.stats.subscribe` | `{id, intervalSeconds?}` | `{subscriptionId, id}` |
 | `machines.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
@@ -294,7 +297,6 @@ seguintes.
 | `machines.clone` | `{id, name}` | `JobRef` | T4-10 |
 | `machines.export` | `{id, path}` | `JobRef` | T4-09 |
 | `machines.import` | `{path, name}` | `JobRef` | T4-09 |
-| `machines.files.pull` / `push` | `{id, source, destination}` | `JobRef` | T4-08 |
 | `machines.ports.list` / `set` | `{id, ports?}` | `{items}` | T4-12 |
 | `machines.console` | `{id}` | `Subscription` (stream serial) | T4-15 |
 
@@ -354,6 +356,30 @@ neste método (console serial é a T4-15).
 conteúdo da chave. `PODSTACK_SSH_CONFIG` sobrescreve o caminho do config em dev/teste.
 Erros: `PODSTACK_NOT_FOUND` (machine inexistente), `PODSTACK_IO_ERROR` (chave/config
 inacessível) e `PODSTACK_PERMISSION_DENIED` (permissões não corrigíveis).
+
+**Arquivos (T4-08).** O file manager da machine usa SSH/SCP (não depende de mounts
+virtiofs) e resolve `id` ou nome antes de qualquer transferência. `machines.files.list`
+executa `ssh -i <chave> -p <porta> ... "ls -la --time-style=long-iso -- '<path>'"`, com o
+caminho remoto escapado para o shell (`'` → `'\''`) e sem shell local; `.`/`..` e a linha
+`total` são ignorados, symlinks usam o nome do link e o resultado é ordenado pelo `ls`.
+`path` default é `/`. `machines.files.download` e `machines.files.upload` usam `scp -r`
+com `-P <porta>`, `-i <chave>`, `IdentitiesOnly=yes`, `StrictHostKeyChecking=accept-new`,
+`BatchMode=yes` e `ConnectTimeout=5`; a origem/destino local precisa ser absoluto, sem
+`..` e sem caracteres de controle, e o destino não pode ser um diretório. As operações são
+síncronas (sem job/progresso nesta versão) e não aceitam caminhos internos da instalação.
+`PODSTACK_SSH_BINARY`/`PODSTACK_SCP_BINARY` sobrescrevem os binários em dev/teste.
+
+```ts
+interface MachineFile {
+  name: string; path: string; directory: boolean;
+  size: number; modified: string; // "YYYY-MM-DD HH:MM" (ls long-iso)
+}
+```
+
+Erros de arquivos: `PODSTACK_INVALID_PARAMS` (path/destino/origem inválidos),
+`PODSTACK_IO_ERROR` (origem local ausente, SSH/SCP falhou ou saída grande demais),
+`PODSTACK_TIMEOUT` (listagem 15 s, transferência 10 min) e `PODSTACK_UNSUPPORTED`
+(`ssh`/`scp` ausente).
 
 **Métricas.** `machines.stats` coleta CPU, memória, rede e disco **de dentro da machine** por
 um SSH one-shot (sem `qemu-guest-agent`). O comando remoto é fixo e não recebe entrada do

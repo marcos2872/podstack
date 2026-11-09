@@ -10,6 +10,7 @@
 #include "machines/CloudImageCache.h"
 #include "machines/CloudInit.h"
 #include "machines/DistroRegistry.h"
+#include "machines/MachineFiles.h"
 #include "machines/MachineManager.h"
 #include "machines/MachineMeta.h"
 #include "machines/MachineStats.h"
@@ -52,6 +53,7 @@ using PodStack::CloudInitOptions;
 using PodStack::CreateMachineRequest;
 using PodStack::DistroImage;
 using PodStack::DistroRegistry;
+using PodStack::MachineFiles;
 using PodStack::MachineManager;
 using PodStack::MachineMeta;
 using PodStack::MachineMetaFile;
@@ -681,6 +683,8 @@ private slots:
     void sshConfigPreserves();
     void machineManagerSsh();
     void machineStats();
+    void machineFiles();
+    void machineFilesIntegration();
     void qemuRuntimeIntegration();
     void virtiofsdIntegration();
 
@@ -3332,6 +3336,283 @@ void MachinesTest::machineStats()
     QVERIFY(collector.sample(meta, info, &error).isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
     qunsetenv("PODSTACK_SSH_BINARY");
+}
+
+void MachinesTest::machineFiles()
+{
+    const QString root = m_root + QStringLiteral("/machine-files");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString keyPath = root + QStringLiteral("/id_ed25519");
+    QFile key(keyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    const QString sshLog = root + QStringLiteral("/ssh-args.log");
+    const QString failFlag = root + QStringLiteral("/fail");
+    const QString fakeSsh = root + QStringLiteral("/ssh-fake.sh");
+    QFile sshScript(fakeSsh);
+    QVERIFY(sshScript.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    sshScript.write(
+        QStringLiteral(
+            "#!/bin/sh\n"
+            "for arg in \"$@\"; do printf '%s\\n' \"$arg\" >> \"%1\"; done\n"
+            "if [ -f \"%2\" ]; then\n"
+            "  echo \"ssh: connect to host 127.0.0.1 port 32222: Connection refused\" >&2\n"
+            "  exit 255\n"
+            "fi\n"
+            "echo \"total 8\"\n"
+            "echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
+            "echo \"-rw-r--r--. 1 podstack podstack 1234 2026-11-09 10:05 report.txt\"\n"
+            "echo \"lrwxrwxrwx 1 podstack podstack 10 2026-11-09 10:06 latest -> report.txt\"\n"
+            "echo \"-rw-r--r-- 1 podstack podstack 5 2026-11-09 10:07 it's ok.txt\"\n"
+            "echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 .\"\n"
+            "echo \"drwxr-xr-x 3 podstack podstack 4096 2026-11-09 09:00 ..\"\n"
+            "exit 0\n")
+            .arg(sshLog, failFlag)
+            .toUtf8());
+    sshScript.close();
+    QVERIFY(sshScript.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                     | QFileDevice::ExeOwner));
+
+    const QString downloads = root + QStringLiteral("/downloads");
+    QVERIFY(QDir().mkpath(downloads));
+    const QString scpLog = root + QStringLiteral("/scp-args.log");
+    const QString fakeScp = root + QStringLiteral("/scp-fake.sh");
+    QFile scpScript(fakeScp);
+    QVERIFY(scpScript.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    scpScript.write(
+        QStringLiteral(
+            "#!/bin/sh\n"
+            "for arg in \"$@\"; do printf '%s\\n' \"$arg\" >> \"%1\"; done\n"
+            "if [ -f \"%2\" ]; then\n"
+            "  echo \"scp: fake failure\" >&2\n"
+            "  exit 1\n"
+            "fi\n"
+            "for last in \"$@\"; do :; done\n"
+            "case \"$last\" in\n"
+            "  \"%3\"/*) : > \"$last\";;\n"
+            "esac\n"
+            "exit 0\n")
+            .arg(scpLog, failFlag, downloads)
+            .toUtf8());
+    scpScript.close();
+    QVERIFY(scpScript.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                     | QFileDevice::ExeOwner));
+
+    qputenv("PODSTACK_SSH_BINARY", fakeSsh.toUtf8());
+    qputenv("PODSTACK_SCP_BINARY", fakeScp.toUtf8());
+
+    SshInfo info;
+    info.host = QStringLiteral("127.0.0.1");
+    info.port = 32222;
+    info.user = QStringLiteral("podstack");
+    info.identityFile = keyPath;
+
+    PodStack::Error error;
+    QJsonArray items;
+    QVERIFY2(MachineFiles::list(info, QStringLiteral("/home/podstack"), &items, &error),
+             qPrintable(error.message));
+    QCOMPARE(items.size(), 4);
+
+    const auto findItem = [](const QJsonArray &array, const QString &name) {
+        for (const QJsonValue &value : array) {
+            if (value.toObject().value(QStringLiteral("name")).toString() == name) {
+                return value.toObject();
+            }
+        }
+        return QJsonObject();
+    };
+
+    const QJsonObject docs = findItem(items, QStringLiteral("docs"));
+    QVERIFY(!docs.isEmpty());
+    QCOMPARE(docs.value(QStringLiteral("directory")).toBool(), true);
+    QCOMPARE(docs.value(QStringLiteral("path")).toString(),
+             QStringLiteral("/home/podstack/docs"));
+
+    const QJsonObject report = findItem(items, QStringLiteral("report.txt"));
+    QVERIFY(!report.isEmpty());
+    QCOMPARE(report.value(QStringLiteral("directory")).toBool(), false);
+    QCOMPARE(report.value(QStringLiteral("size")).toInteger(), 1234LL);
+    QCOMPARE(report.value(QStringLiteral("path")).toString(),
+             QStringLiteral("/home/podstack/report.txt"));
+    QCOMPARE(report.value(QStringLiteral("modified")).toString(),
+             QStringLiteral("2026-11-09 10:05"));
+
+    const QJsonObject latest = findItem(items, QStringLiteral("latest"));
+    QVERIFY(!latest.isEmpty());
+    QCOMPARE(latest.value(QStringLiteral("directory")).toBool(), false);
+    QVERIFY(!findItem(items, QStringLiteral(".")).contains(QStringLiteral("name")));
+    QVERIFY(!findItem(items, QStringLiteral("..")).contains(QStringLiteral("name")));
+    QVERIFY(!findItem(items, QStringLiteral("it's ok.txt")).isEmpty());
+
+    const auto readArguments = [](const QString &path) {
+        QStringList values;
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly)) {
+            values = QString::fromUtf8(file.readAll())
+                         .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        }
+        return values;
+    };
+
+    const QStringList sshArguments = readArguments(sshLog);
+    QVERIFY(sshArguments.contains(QStringLiteral("-i")));
+    QVERIFY(sshArguments.contains(keyPath));
+    QVERIFY(sshArguments.contains(QStringLiteral("-p")));
+    QVERIFY(sshArguments.contains(QStringLiteral("32222")));
+    QVERIFY(sshArguments.contains(QStringLiteral("IdentitiesOnly=yes")));
+    QVERIFY(sshArguments.contains(QStringLiteral("StrictHostKeyChecking=accept-new")));
+    QVERIFY(sshArguments.contains(QStringLiteral("BatchMode=yes")));
+    QVERIFY(sshArguments.contains(QStringLiteral("ConnectTimeout=5")));
+    QVERIFY(sshArguments.contains(QStringLiteral("podstack@127.0.0.1")));
+    QVERIFY(sshArguments.contains(
+        QStringLiteral("ls -la --time-style=long-iso -- '/home/podstack'")));
+
+    QFile::remove(sshLog);
+    error = {};
+    QVERIFY2(MachineFiles::list(info, QStringLiteral("/tmp/it's"), &items, &error),
+             qPrintable(error.message));
+    QVERIFY(readArguments(sshLog).contains(
+        QStringLiteral("ls -la --time-style=long-iso -- '/tmp/it'\\''s'")));
+
+    for (const QString &invalidPath :
+         {QString(), QStringLiteral("/tmp/bad\npath"), QStringLiteral("/tmp/bad\tpath")}) {
+        error = {};
+        QVERIFY(!MachineFiles::list(info, invalidPath, &items, &error));
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    }
+
+    SshInfo invalidSsh = info;
+    invalidSsh.port = 0;
+    error = {};
+    QVERIFY(!MachineFiles::list(invalidSsh, QStringLiteral("/"), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QFile fail(failFlag);
+    QVERIFY(fail.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    fail.close();
+    error = {};
+    QVERIFY(!MachineFiles::list(info, QStringLiteral("/"), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(!error.detail.isEmpty());
+    QFile::remove(failFlag);
+
+    qputenv("PODSTACK_SSH_BINARY", "/nonexistent/podstack-ssh");
+    error = {};
+    QVERIFY(!MachineFiles::list(info, QStringLiteral("/"), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    qputenv("PODSTACK_SSH_BINARY", fakeSsh.toUtf8());
+
+    QFile::remove(scpLog);
+    const QString destination = downloads + QStringLiteral("/report.txt");
+    error = {};
+    QVERIFY2(MachineFiles::download(info, QStringLiteral("/home/podstack/report.txt"),
+                                    destination, &error),
+             qPrintable(error.message));
+    QVERIFY(QFileInfo::exists(destination));
+    const QStringList downloadArguments = readArguments(scpLog);
+    QVERIFY(downloadArguments.contains(QStringLiteral("-r")));
+    QVERIFY(downloadArguments.contains(QStringLiteral("-P")));
+    QVERIFY(downloadArguments.contains(QStringLiteral("32222")));
+    QVERIFY(downloadArguments.contains(QStringLiteral("IdentitiesOnly=yes")));
+    QVERIFY(downloadArguments.contains(QStringLiteral("ConnectTimeout=5")));
+    QVERIFY(downloadArguments.contains(
+        QStringLiteral("podstack@127.0.0.1:/home/podstack/report.txt")));
+    QVERIFY(downloadArguments.contains(destination));
+
+    QVERIFY(QDir().mkpath(downloads + QStringLiteral("/dir")));
+    for (const QString &invalidDestination :
+         {downloads + QStringLiteral("/sub/../report.txt"),
+          QStringLiteral("report.txt"), downloads + QStringLiteral("/dir"),
+          downloads + QStringLiteral("/"), QString()}) {
+        error = {};
+        QVERIFY(!MachineFiles::download(info, QStringLiteral("/remote.txt"),
+                                        invalidDestination, &error));
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    }
+
+    QFile uploadSource(root + QStringLiteral("/upload.txt"));
+    QVERIFY(uploadSource.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    uploadSource.write("upload payload");
+    uploadSource.close();
+
+    QFile::remove(scpLog);
+    error = {};
+    QVERIFY2(MachineFiles::upload(info, uploadSource.fileName(),
+                                  QStringLiteral("/tmp/upload name.txt"), &error),
+             qPrintable(error.message));
+    const QStringList uploadArguments = readArguments(scpLog);
+    QVERIFY(uploadArguments.contains(uploadSource.fileName()));
+    QVERIFY(uploadArguments.contains(
+        QStringLiteral("podstack@127.0.0.1:/tmp/upload name.txt")));
+
+    error = {};
+    QVERIFY(!MachineFiles::upload(info, root + QStringLiteral("/missing.txt"),
+                                  QStringLiteral("/tmp/dest"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    for (const QString &invalidSource :
+         {QString(), QStringLiteral("relative.txt"),
+          root + QStringLiteral("/sub/../upload.txt")}) {
+        error = {};
+        QVERIFY(!MachineFiles::upload(info, invalidSource, QStringLiteral("/tmp/dest"),
+                                      &error));
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    }
+
+    error = {};
+    QVERIFY(!MachineFiles::upload(info, uploadSource.fileName(),
+                                  QStringLiteral("/tmp/bad\npath"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(fail.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    fail.close();
+    error = {};
+    QVERIFY(!MachineFiles::download(info, QStringLiteral("/remote.txt"),
+                                    downloads + QStringLiteral("/fail.txt"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(!error.detail.isEmpty());
+    QFile::remove(failFlag);
+
+    qputenv("PODSTACK_SCP_BINARY", "/nonexistent/podstack-scp");
+    error = {};
+    QVERIFY(!MachineFiles::download(info, QStringLiteral("/remote.txt"),
+                                    downloads + QStringLiteral("/x.txt"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    qunsetenv("PODSTACK_SCP_BINARY");
+    qunsetenv("PODSTACK_SSH_BINARY");
+
+    QDir(root).removeRecursively();
+}
+
+void MachinesTest::machineFilesIntegration()
+{
+    if (!qEnvironmentVariableIsSet("PODSTACK_MACHINE_FILES_INTEGRATION")) {
+        QSKIP("defina PODSTACK_MACHINE_FILES_INTEGRATION=1 para usar SSH real");
+    }
+    const QString host = qEnvironmentVariable("PODSTACK_MACHINE_FILES_HOST").trimmed();
+    const QString user = qEnvironmentVariable("PODSTACK_MACHINE_FILES_USER").trimmed();
+    const QString key = qEnvironmentVariable("PODSTACK_MACHINE_FILES_KEY").trimmed();
+    const int port = qEnvironmentVariableIntValue("PODSTACK_MACHINE_FILES_PORT");
+    if (host.isEmpty() || user.isEmpty() || key.isEmpty() || port <= 0) {
+        QSKIP("defina PODSTACK_MACHINE_FILES_HOST/USER/KEY/PORT para o SSH real");
+    }
+
+    SshInfo info;
+    info.host = host;
+    info.port = port;
+    info.user = user;
+    info.identityFile = key;
+
+    PodStack::Error error;
+    QJsonArray items;
+    const QString path = qEnvironmentVariable("PODSTACK_MACHINE_FILES_PATH",
+                                              QStringLiteral("/"));
+    QVERIFY2(MachineFiles::list(info, path, &items, &error), qPrintable(error.message));
 }
 
 void MachinesTest::qemuRuntimeIntegration()
