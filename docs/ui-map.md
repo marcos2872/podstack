@@ -274,6 +274,9 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   nativa e fecha o overlay após remover. **Renomear** abre um diálogo só com o novo nome
   (`machines.rename`) e **Clonar** pede o nome da cópia e acompanha o job de clone com o
   mesmo bloco de progresso/erro do export/import (`archiveStageLabel` + `machineCreate*`).
+  **Recursos** abre o diálogo “Editar recursos” (`machines.update`): CPUs, memória e disco
+  em GiB preenchidos da machine, com aviso de que o disco só cresce e que CPU/memória
+  exigem restart; erro permanece inline e o diálogo fecha só no sucesso.
 
 ---
 
@@ -288,6 +291,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 | Exportar máquina | arquivo `.tar.zst`, substituir | caminho absoluto; padrão em `~/Downloads/<nome>.tar.zst` |
 | Importar máquina | arquivo `.tar.zst`, nome, substituir | checksum/manifesto; nome RFC 1123 |
 | Renomear | novo nome | nome único; RFC 1123 |
+| Editar recursos | CPUs, memória (GiB), disco (GiB) | 1..256 CPUs; memória/disco ≥ 1 GiB; disco só cresce |
 | Confirmar remoção | lista + impacto | requer confirmação ou `force` |
 | Reset Docker/K8s | escopo + aviso | digitar nome/`--yes` |
 | Instalar helper/CLI | explicação + polkit | consentimento |

@@ -479,8 +479,13 @@ Host <name>.podstack <name>
 
 ### 7.6 Limites e recursos
 
-- `--cpus` (1..n), `--memory` (≥ 1 GiB), `--disk` (≥ 1 GiB, resize online quando suportado).
-- Alterações exigem restart da máquina (exceto disco, se suportado).
+- `--cpus` (1..256), `--memory` (≥ 1 GiB), `--disk` (≥ 1 GiB).
+- `machine update`/`machines.update` alteram recursos de uma máquina existente:
+  CPUs e memória valem no próximo boot; se a máquina estiver rodando, ela é parada
+  e reiniciada ao final (inclusive quando a atualização falha). O disco só cresce:
+  o qcow2 é redimensionado offline com `qemu-img resize` e não há shrink.
+- Crescer o disco não expande a partição/filesystem do guest; `growpart`/`resize2fs`
+  (ou equivalente) continuam manuais dentro da máquina.
 - Mostrar uso real (QMP/cgroup do processo QEMU) no Activity Monitor.
 
 ### 7.7 Isolamento

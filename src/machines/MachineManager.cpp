@@ -888,6 +888,51 @@ bool MachineManager::createDisk(const QString &diskPath, const QString &backingP
     return true;
 }
 
+bool MachineManager::resizeDisk(const QString &diskPath, qint64 bytes, Error *error)
+{
+    if (diskPath.isEmpty() || bytes <= 0) {
+        return fails(error, invalidParams(QStringLiteral("Destino de resize inválido."),
+                                          diskPath));
+    }
+
+    const QString binary = qemuImgBinary(error);
+    if (binary.isEmpty()) {
+        return false;
+    }
+
+    const QStringList arguments{
+        QStringLiteral("resize"),
+        diskPath,
+        QString::number(bytes),
+    };
+
+    QProcess process;
+    process.setProcessChannelMode(QProcess::SeparateChannels);
+    process.start(binary, arguments);
+    if (!process.waitForStarted(kQemuImgStartTimeoutMs)) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível executar o qemu-img."),
+                                 process.errorString()));
+    }
+    if (!process.waitForFinished(kQemuImgTimeoutMs)) {
+        process.kill();
+        process.waitForFinished(1000);
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_TIMEOUT"),
+                                 QStringLiteral("O qemu-img excedeu o tempo limite ao "
+                                                "redimensionar o disco."),
+                                 diskPath));
+    }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O qemu-img falhou ao redimensionar o disco."),
+                                 processDetail(process.readAllStandardError())));
+    }
+    return true;
+}
+
 bool MachineManager::flattenDisk(const QString &diskPath, const QString &targetPath,
                                  const std::function<bool()> &cancelled, Error *error,
                                  const QString &operation)
@@ -1650,6 +1695,165 @@ MachineMeta MachineManager::restart(const QString &idOrName, Error *error)
         return stopped;
     }
     return start(current.id, error);
+}
+
+MachineMeta MachineManager::update(const QString &idOrName,
+                                   const UpdateMachineRequest &request, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    MachineMeta meta = load(idOrName, error);
+    if (meta.id.isEmpty()) {
+        return {};
+    }
+    if (!request.cpus && !request.memoryBytes && !request.diskBytes) {
+        fails(error, invalidParams(QStringLiteral("Informe ao menos um recurso para atualizar "
+                                                  "(CPUs, memória ou disco).")));
+        return meta;
+    }
+    if (meta.state == QStringLiteral("provisioning")
+        || meta.state == QStringLiteral("deleting")
+        || meta.state == QStringLiteral("deleted")) {
+        fails(error,
+              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                          QStringLiteral("A machine está em transição; tente novamente."),
+                          meta.id));
+        return meta;
+    }
+
+    std::shared_ptr<std::recursive_mutex> lockHolder;
+    std::unique_lock<std::recursive_mutex> machineGuard;
+    if (!tryLockMachine(meta.id, &lockHolder, &machineGuard)) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em outra operação."), meta.id,
+                                 QStringLiteral("Aguarde a operação atual terminar.")));
+        return meta;
+    }
+
+    if (request.cpus && (*request.cpus < 1 || *request.cpus > kMaximumCpus)) {
+        fails(error,
+              invalidParams(QStringLiteral("Número de CPUs fora do intervalo 1..256."),
+                            QString::number(*request.cpus)));
+        return meta;
+    }
+    if (request.memoryBytes && *request.memoryBytes < kMinimumMemoryBytes) {
+        fails(error,
+              invalidParams(QStringLiteral("Memória insuficiente (mínimo 1 GiB)."),
+                            QString::number(*request.memoryBytes)));
+        return meta;
+    }
+    if (request.diskBytes && *request.diskBytes < kMinimumDiskBytes) {
+        fails(error,
+              invalidParams(QStringLiteral("Disco insuficiente (mínimo 1 GiB)."),
+                            QString::number(*request.diskBytes)));
+        return meta;
+    }
+    if (request.diskBytes && *request.diskBytes < meta.diskBytes) {
+        fails(error,
+              invalidParams(
+                  QStringLiteral("Não é possível encolher o disco da machine."),
+                  QStringLiteral("%1 < %2 bytes").arg(*request.diskBytes).arg(meta.diskBytes),
+                  QStringLiteral("Recrie a machine com um disco menor se precisar reduzir.")));
+        return meta;
+    }
+
+    const bool changes =
+        (request.cpus && *request.cpus != meta.cpus)
+        || (request.memoryBytes && *request.memoryBytes != meta.memoryBytes)
+        || (request.diskBytes && *request.diskBytes > meta.diskBytes);
+    if (!changes) {
+        return meta;
+    }
+
+    const QemuSpec spec = specFor(meta, false, error);
+    if (spec.machineId.isEmpty()) {
+        return meta;
+    }
+    const bool wasRunning = meta.state == QStringLiteral("running")
+                            || meta.state == QStringLiteral("starting")
+                            || m_runtime->isRunning(spec, nullptr);
+
+    if (wasRunning) {
+        Error stopError;
+        meta = stop(meta.id, false, &stopError);
+        if (!stopError.isEmpty()) {
+            if (error) {
+                *error = stopError;
+            }
+            return meta;
+        }
+    }
+
+    const QString machineId = meta.id;
+    Error updateError;
+    bool metadataChanged = false;
+    bool resized = false;
+
+    if (request.cpus) {
+        meta.cpus = *request.cpus;
+        metadataChanged = true;
+    }
+    if (request.memoryBytes) {
+        meta.memoryBytes = *request.memoryBytes;
+        metadataChanged = true;
+    }
+    if (request.diskBytes && *request.diskBytes > meta.diskBytes) {
+        // O resize é offline: o qcow2 só é tocado depois de parar a machine.
+        if (!resizeDisk(meta.diskPath, *request.diskBytes, &updateError)) {
+            qCWarning(lcCore) << "Falha ao redimensionar o disco da machine" << meta.name
+                              << updateError.code;
+        } else {
+            meta.diskBytes = *request.diskBytes;
+            metadataChanged = true;
+            resized = true;
+        }
+    }
+
+    if (updateError.isEmpty() && metadataChanged) {
+        Error persistError;
+        if (!persist(meta, &persistError)) {
+            updateError = persistError;
+            if (resized) {
+                updateError = Error::make(
+                    QStringLiteral("PODSTACK_IO_ERROR"),
+                    QStringLiteral("O disco cresceu, mas não foi possível salvar os metadados "
+                                   "da machine."),
+                    errorText(persistError),
+                    QStringLiteral("O novo tamanho já está aplicado no disco da machine; "
+                                   "repita a atualização para persistir os metadados."));
+            }
+        }
+    }
+
+    MachineMeta result = meta;
+    if (wasRunning) {
+        Error restartError;
+        const MachineMeta restarted = start(machineId, &restartError);
+        if (!restarted.id.isEmpty()) {
+            result = restarted;
+        }
+        if (!restartError.isEmpty()) {
+            if (updateError.isEmpty()) {
+                updateError = Error::make(
+                    QStringLiteral("PODSTACK_CONFLICT"),
+                    QStringLiteral("Os recursos foram atualizados, mas a machine não "
+                                   "reiniciou."),
+                    errorText(restartError),
+                    QStringLiteral("Inicie a machine manualmente; os metadados já foram "
+                                   "salvos."));
+            } else {
+                qCWarning(lcCore) << "Falha ao reiniciar a machine" << machineId
+                                  << "após a atualização de recursos:" << restartError.code;
+            }
+        }
+    }
+
+    if (!updateError.isEmpty() && error) {
+        *error = updateError;
+    }
+    return result;
 }
 
 bool MachineManager::remove(const QString &idOrName, bool force, Error *error)

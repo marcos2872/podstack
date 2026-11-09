@@ -336,6 +336,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.rename")) {
         return machineRename(params, error);
     }
+    if (method == QStringLiteral("machines.update")) {
+        return machineUpdate(params, error);
+    }
     if (method == QStringLiteral("machines.clone")) {
         return machineClone(params, notify, error);
     }
@@ -794,6 +797,34 @@ QJsonObject Daemon::machineRename(const QJsonObject &params, Error *error)
     }
 
     const MachineMeta machine = m_machines.rename(id, name, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineUpdate(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    UpdateMachineRequest request;
+    const QJsonValue cpusValue = params.value(QStringLiteral("cpus"));
+    if (!cpusValue.isUndefined() && !cpusValue.isNull()) {
+        request.cpus = cpusValue.toInt();
+    }
+    const QJsonValue memoryValue = params.value(QStringLiteral("memoryBytes"));
+    if (!memoryValue.isUndefined() && !memoryValue.isNull()) {
+        request.memoryBytes = memoryValue.toInteger();
+    }
+    const QJsonValue diskValue = params.value(QStringLiteral("diskBytes"));
+    if (!diskValue.isUndefined() && !diskValue.isNull()) {
+        request.diskBytes = diskValue.toInteger();
+    }
+
+    const MachineMeta machine = m_machines.update(id, request, error);
     if (machine.id.isEmpty() || (error && !error->isEmpty())) {
         return {};
     }

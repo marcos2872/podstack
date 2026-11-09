@@ -19,6 +19,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 namespace PodStack {
 
@@ -44,6 +45,13 @@ struct SshInfo {
     int port = 0;
     QString user;
     QString identityFile;
+};
+
+/// Recursos editáveis de uma machine já criada (campos ausentes não mudam).
+struct UpdateMachineRequest {
+    std::optional<int> cpus;
+    std::optional<qint64> memoryBytes;
+    std::optional<qint64> diskBytes;
 };
 
 /// Orquestra provisionamento e ciclo de vida das machines QEMU/KVM.
@@ -83,6 +91,9 @@ public:
     MachineMeta start(const QString &idOrName, Error *error = nullptr);
     MachineMeta stop(const QString &idOrName, bool force, Error *error = nullptr);
     MachineMeta restart(const QString &idOrName, Error *error = nullptr);
+    /// Aplica CPUs/memória/disco; para a machine se preciso e reinicia ao final.
+    MachineMeta update(const QString &idOrName, const UpdateMachineRequest &request,
+                       Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
     bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
     /// Renomeia a machine, atualiza o bloco SSH e a máquina default do Config.
@@ -127,6 +138,7 @@ private:
     bool flattenDisk(const QString &diskPath, const QString &targetPath,
                      const std::function<bool()> &cancelled, Error *error,
                      const QString &operation = QStringLiteral("Exportação"));
+    bool resizeDisk(const QString &diskPath, qint64 bytes, Error *error);
     QString qemuImgBinary(Error *error) const;
     bool ensureSshKey(const QString &directory, const QString &name, QString *privatePath,
                       QString *publicKey, Error *error);

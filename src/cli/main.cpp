@@ -1370,6 +1370,8 @@ void printMachineUsage(QTextStream &stream)
            << "                          Renomeia uma machine (atualiza o SSH)\n"
            << "  clone <id|nome> <novo> [--json]\n"
            << "                          Cria uma cópia independente da machine\n"
+           << "  update <id|nome> [--cpus N] [--memory 4G] [--disk 40G] [--json]\n"
+           << "                          Atualiza recursos (para/reinicia se preciso)\n"
            << "  default [<id|nome>] [--json]\n"
            << "                          Mostra ou define a machine default\n"
            << "  ssh [id|nome] [-- cmd...]\n"
@@ -2160,6 +2162,91 @@ int machineCloneCommand(const QStringList &args)
     return kExitOk;
 }
 
+int machineUpdateCommand(const QStringList &args)
+{
+    QString id;
+    int cpus = 0;
+    qint64 memoryBytes = 0;
+    qint64 diskBytes = 0;
+    bool hasCpus = false;
+    bool hasMemory = false;
+    bool hasDisk = false;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--cpus") && i + 1 < args.size()) {
+            bool ok = false;
+            cpus = args.at(++i).toInt(&ok);
+            if (!ok) {
+                err() << "--cpus exige um número inteiro\n";
+                return kExitUsage;
+            }
+            hasCpus = true;
+        } else if (arg == QStringLiteral("--memory") && i + 1 < args.size()) {
+            if (!parseSize(args.at(++i), &memoryBytes)) {
+                err() << "--memory inválido; use bytes ou sufixo K/M/G/T (ex.: 4G)\n";
+                return kExitUsage;
+            }
+            hasMemory = true;
+        } else if (arg == QStringLiteral("--disk") && i + 1 < args.size()) {
+            if (!parseSize(args.at(++i), &diskBytes)) {
+                err() << "--disk inválido; use bytes ou sufixo K/M/G/T (ex.: 40G)\n";
+                return kExitUsage;
+            }
+            hasDisk = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+
+    if (id.isEmpty() || (!hasCpus && !hasMemory && !hasDisk)) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    if (hasCpus) {
+        params.insert(QStringLiteral("cpus"), cpus);
+    }
+    if (hasMemory) {
+        params.insert(QStringLiteral("memoryBytes"), memoryBytes);
+    }
+    if (hasDisk) {
+        params.insert(QStringLiteral("diskBytes"), diskBytes);
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.update"), params, &error, 180000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QString name = result.value(QStringLiteral("name")).toString();
+    const QString display = name.isEmpty() ? result.value(QStringLiteral("id")).toString()
+                                           : name;
+    out() << "machine " << display << " atualizada: "
+          << result.value(QStringLiteral("cpus")).toInt() << " CPUs, "
+          << formatSize(result.value(QStringLiteral("memoryBytes")).toInteger()) << " RAM, "
+          << formatSize(result.value(QStringLiteral("diskBytes")).toInteger()) << " disco ("
+          << result.value(QStringLiteral("state")).toString() << ")\n";
+    out().flush();
+    return kExitOk;
+}
+
 int machineDefaultCommand(const QStringList &args)
 {
     QString name;
@@ -2797,6 +2884,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("clone")) {
         return machineCloneCommand(args);
+    }
+    if (subcommand == QStringLiteral("update")) {
+        return machineUpdateCommand(args);
     }
     if (subcommand == QStringLiteral("default")) {
         return machineDefaultCommand(args);

@@ -38,6 +38,7 @@ Rectangle {
     signal exportRequested(string id)
     signal renameRequested(string id)
     signal cloneRequested(string id)
+    signal resourcesRequested(string id)
     signal closeRequested()
     signal expandRequested(string id, int tab)
     signal terminalAreaChanged(rect area, bool visible)
@@ -477,6 +478,16 @@ Rectangle {
                          && root.machineState !== "deleting"
                          && backend.machineCreateActive === false
                 onClicked: root.cloneRequested(root.machineId)
+            }
+
+            ActionButton {
+                text: qsTr("Recursos")
+                size: "sm"
+                enabled: root.machineId.length > 0
+                         && root.machineState !== "provisioning"
+                         && root.machineState !== "deleting"
+                         && backend.actionActive === false
+                onClicked: root.resourcesRequested(root.machineId)
             }
 
             ActionButton {

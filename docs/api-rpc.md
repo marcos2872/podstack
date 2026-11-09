@@ -264,10 +264,11 @@ Regras de normalização:
 
 ### 4.6 `machines.*`
 
-Implementados na T4-03 (M4), T4-06, T4-07, T4-08 e T4-10: registry, listagem, inspeção,
-criação assíncrona, logs do console, ciclo de vida, mounts virtiofs, arquivos, clone/rename e
-a machine default do CLI. A T4-04 adiciona `machines.ssh` (chave ed25519 e bloco gerenciado
-no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas seguintes.
+Implementados na T4-03 (M4), T4-06, T4-07, T4-08, T4-10 e T4-11: registry, listagem,
+inspeção, criação assíncrona, logs do console, ciclo de vida, mounts virtiofs, arquivos,
+clone/rename, limites de CPU/memória/disco e a machine default do CLI. A T4-04 adiciona
+`machines.ssh` (chave ed25519 e bloco gerenciado no `~/.ssh/config`). Os demais métodos
+continuam planejados para as tarefas seguintes.
 
 | Método | Params | Result |
 |---|---|---|
@@ -284,6 +285,7 @@ no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas seg
 | `machines.import` | `{path, name?, force?}` | `JobRef` + `Subscription` |
 | `machines.rename` | `{id, name}` | `Machine` |
 | `machines.clone` | `{id, name}` | `JobRef` + `Subscription` |
+| `machines.update` | `{id, cpus?, memoryBytes?, diskBytes?}` | `Machine` |
 | `machines.default` | `{name?}` | `{name}` (sem `name` = get; com `name` = set) |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile}` |
@@ -381,6 +383,15 @@ Cancelamento usa `machines.cancel` e termina em `PODSTACK_CANCELLED`, apagando d
 store e bloco SSH parciais. `machines.default {name?}` lê ou grava a chave
 `machines.default` do Config (aceita ID ou nome e persiste o nome canônico); machine
 inexistente retorna `PODSTACK_NOT_FOUND`. Remover a machine default limpa a chave.
+
+**Limites de CPU/memória/disco (T4-11).** `machines.update {id, cpus?, memoryBytes?,
+diskBytes?}` aceita ao menos um campo e é síncrono. CPUs precisam ficar em 1..256 e
+memória/disco em ≥ 1 GiB (`PODSTACK_INVALID_PARAMS`); o disco nunca encolhe — um valor
+menor que `diskBytes` atual é recusado. A máquina é parada se estiver `running`/`starting`
+(e reiniciada ao final, mesmo quando a atualização falha), o `resize` do qcow2 é feito
+offline com `qemu-img resize` e só então os metadados são persistidos; se a persistência
+falhar depois do resize, o erro informa que o disco já cresceu. Growpart/filesystem dentro
+do guest é manual. Progresso não é emitido (operação síncrona).
 
 **Logs do console.** `machines.logs` resolve `id` ou nome e lê apenas
 `machines/<id>/console.log`, sem expor o caminho na resposta. O arquivo precisa ser regular

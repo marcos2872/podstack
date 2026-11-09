@@ -63,6 +63,7 @@ using PodStack::MachineMetaFile;
 using PodStack::MachineMount;
 using PodStack::MachinePort;
 using PodStack::MachineStatsCollector;
+using PodStack::UpdateMachineRequest;
 using PodStack::MachineStore;
 using PodStack::QemuCommand;
 using PodStack::QemuMount;
@@ -771,6 +772,7 @@ private slots:
     void machineManagerMounts();
     void machineManagerValidation();
     void machineManagerLifecycle();
+    void machineManagerUpdate();
     void machineManagerRename();
     void machineManagerClone();
     void machineDefaultConfig();
@@ -2728,6 +2730,152 @@ void MachinesTest::machineManagerLifecycle()
 
     QVERIFY(!manager.remove(meta.id, false, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+}
+
+void MachinesTest::machineManagerUpdate()
+{
+    const QString root = m_root + QStringLiteral("/manager-update");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+    const QString qemuImgLog = root + QStringLiteral("/qemu-img.log");
+    qputenv("PODSTACK_QEMU_IMG_LOG", qemuImgLog.toUtf8());
+
+    const QByteArray payload(2048, 'u');
+    m_server.setResponse(QStringLiteral("/manager-update.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-update.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    const QString machinesRoot = options.machinesRoot;
+    MachineManager manager(std::move(options));
+
+    constexpr qint64 kGiB = 1024LL * 1024LL * 1024LL;
+    CreateMachineRequest request;
+    request.name = QStringLiteral("update-limits");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.cpus = 2;
+    request.memoryBytes = 4LL * kGiB;
+    request.diskBytes = 1LL * kGiB;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.state, QStringLiteral("running"));
+
+    const QString metaPath = machinesRoot + QLatin1Char('/') + created.id
+                             + QStringLiteral("/meta.json");
+
+    UpdateMachineRequest resources;
+    resources.cpus = 4;
+    resources.memoryBytes = 8LL * kGiB;
+    const int stopsBeforeResources = fake->stopCount;
+    const int startsBeforeResources = fake->startCount;
+    MachineMeta updated = manager.update(created.id, resources, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(updated.state, QStringLiteral("running"));
+    QCOMPARE(updated.cpus, 4);
+    QCOMPARE(updated.memoryBytes, 8LL * kGiB);
+    QCOMPARE(fake->stopCount, stopsBeforeResources + 1);
+    QCOMPARE(fake->startCount, startsBeforeResources + 1);
+    QCOMPARE(manager.get(created.id, &error).cpus, 4);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    PodStack::Error metaError;
+    const MachineMeta stored = MachineMetaFile::read(metaPath, &metaError);
+    QVERIFY2(metaError.isEmpty(), qPrintable(metaError.message));
+    QCOMPARE(stored.cpus, 4);
+    QCOMPARE(stored.memoryBytes, 8LL * kGiB);
+    QCOMPARE(stored.diskBytes, 1LL * kGiB);
+
+    UpdateMachineRequest grow;
+    grow.diskBytes = 2LL * kGiB;
+    const int stopsBeforeGrow = fake->stopCount;
+    const int startsBeforeGrow = fake->startCount;
+    updated = manager.update(created.id, grow, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QCOMPARE(updated.state, QStringLiteral("running"));
+    QCOMPARE(updated.diskBytes, 2LL * kGiB);
+    QCOMPARE(fake->stopCount, stopsBeforeGrow + 1);
+    QCOMPARE(fake->startCount, startsBeforeGrow + 1);
+    QCOMPARE(manager.get(created.id, &error).diskBytes, 2LL * kGiB);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(MachineMetaFile::read(metaPath, &metaError).diskBytes, 2LL * kGiB);
+    QVERIFY2(metaError.isEmpty(), qPrintable(metaError.message));
+
+    QFile logFile(qemuImgLog);
+    QVERIFY(logFile.open(QIODevice::ReadOnly));
+    const QStringList resizeArgs = QString::fromUtf8(logFile.readAll())
+                                       .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    logFile.close();
+    QCOMPARE(resizeArgs.size(), 3);
+    QCOMPARE(resizeArgs.value(0), QStringLiteral("resize"));
+    QCOMPARE(resizeArgs.value(1), created.diskPath);
+    QCOMPARE(resizeArgs.value(2), QString::number(2LL * kGiB));
+
+    UpdateMachineRequest shrink;
+    shrink.diskBytes = 1LL * kGiB;
+    const int stopsBeforeShrink = fake->stopCount;
+    const int startsBeforeShrink = fake->startCount;
+    const MachineMeta rejected = manager.update(created.id, shrink, &error);
+    Q_UNUSED(rejected);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QCOMPARE(fake->stopCount, stopsBeforeShrink);
+    QCOMPARE(fake->startCount, startsBeforeShrink);
+    QCOMPARE(manager.get(created.id, &error).state, QStringLiteral("running"));
+    QCOMPARE(manager.get(created.id, &error).diskBytes, 2LL * kGiB);
+
+    const int stopsBeforeStop = fake->stopCount;
+    const MachineMeta stopped = manager.stop(created.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stopped.state, QStringLiteral("stopped"));
+    QCOMPARE(fake->stopCount, stopsBeforeStop + 1);
+
+    UpdateMachineRequest offLine;
+    offLine.memoryBytes = 2LL * kGiB;
+    const int stopsBeforeOffline = fake->stopCount;
+    const int startsBeforeOffline = fake->startCount;
+    updated = manager.update(created.id, offLine, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(updated.state, QStringLiteral("stopped"));
+    QCOMPARE(updated.memoryBytes, 2LL * kGiB);
+    QCOMPARE(fake->stopCount, stopsBeforeOffline);
+    QCOMPARE(fake->startCount, startsBeforeOffline);
+    QCOMPARE(manager.get(created.id, &error).state, QStringLiteral("stopped"));
+    QCOMPARE(manager.get(created.id, &error).memoryBytes, 2LL * kGiB);
+
+    UpdateMachineRequest invalidCpus;
+    invalidCpus.cpus = 0;
+    const MachineMeta invalid = manager.update(created.id, invalidCpus, &error);
+    Q_UNUSED(invalid);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QCOMPARE(manager.get(created.id, &error).cpus, 4);
+
+    UpdateMachineRequest empty;
+    (void)manager.update(created.id, empty, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY2(manager.remove(created.id, true, &error), qPrintable(error.message));
+    qunsetenv("PODSTACK_QEMU_IMG_LOG");
 }
 
 void MachinesTest::machineManagerRename()

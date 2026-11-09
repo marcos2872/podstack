@@ -2805,6 +2805,56 @@ void Backend::cloneMachine(const QString &id, const QString &name)
     m_machineCreateStream.startMachineClone(params);
 }
 
+void Backend::updateMachine(const QVariantMap &spec)
+{
+    const QString id = spec.value(QStringLiteral("id")).toString().trimmed();
+    const bool hasCpus = spec.contains(QStringLiteral("cpus"));
+    const bool hasMemory = spec.contains(QStringLiteral("memoryGiB"));
+    const bool hasDisk = spec.contains(QStringLiteral("diskGiB"));
+    if (id.isEmpty() || (!hasCpus && !hasMemory && !hasDisk)) {
+        m_lastError = QStringLiteral("Informe a machine e ao menos um recurso.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    constexpr qint64 kGiB = 1024LL * 1024LL * 1024LL;
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    if (hasCpus) {
+        const int cpus = spec.value(QStringLiteral("cpus")).toInt();
+        if (cpus < 1 || cpus > 256) {
+            m_lastError = QStringLiteral("Número de CPUs fora do intervalo 1..256.");
+            emit lastErrorChanged();
+            emit actionFinished(false, m_lastError);
+            return;
+        }
+        params.insert(QStringLiteral("cpus"), cpus);
+    }
+    if (hasMemory) {
+        const int memoryGiB = spec.value(QStringLiteral("memoryGiB")).toInt();
+        if (memoryGiB < 1) {
+            m_lastError = QStringLiteral("Memória insuficiente (mínimo 1 GiB).");
+            emit lastErrorChanged();
+            emit actionFinished(false, m_lastError);
+            return;
+        }
+        params.insert(QStringLiteral("memoryBytes"), static_cast<qint64>(memoryGiB) * kGiB);
+    }
+    if (hasDisk) {
+        const int diskGiB = spec.value(QStringLiteral("diskGiB")).toInt();
+        if (diskGiB < 1) {
+            m_lastError = QStringLiteral("Disco insuficiente (mínimo 1 GiB).");
+            emit lastErrorChanged();
+            emit actionFinished(false, m_lastError);
+            return;
+        }
+        params.insert(QStringLiteral("diskBytes"), static_cast<qint64>(diskGiB) * kGiB);
+    }
+
+    runAction(QStringLiteral("machines.update"), params, 180000);
+}
+
 void Backend::createMachine(const QVariantMap &spec)
 {
     const auto fail = [this](const QString &message) {

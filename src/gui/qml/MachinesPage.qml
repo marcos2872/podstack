@@ -11,6 +11,11 @@ ColumnLayout {
     property string pendingExportId: ""
     property string pendingRenameId: ""
     property string pendingCloneId: ""
+    property string pendingResourcesId: ""
+    property bool resourcesActionPending: false
+    property int resourcesOriginalCpus: 0
+    property int resourcesOriginalMemoryGiB: 0
+    property int resourcesOriginalDiskGiB: 0
 
     signal machineExpandRequested(string id, int tab)
 
@@ -311,6 +316,31 @@ ColumnLayout {
                 backend.resetMachineCreateState()
                 cloneDialog.open()
             }
+            onResourcesRequested: function(id) {
+                machinesPage.pendingResourcesId = id
+                machinesPage.resourcesActionPending = false
+                let machine = machinesPage.selectedMachine
+                for (let i = 0; i < backend.machines.length; ++i) {
+                    if (String(backend.machines[i].id) === id) {
+                        machine = backend.machines[i]
+                        break
+                    }
+                }
+                const gib = 1073741824
+                machinesPage.resourcesOriginalCpus = Number(machine.cpus || 0)
+                machinesPage.resourcesOriginalMemoryGiB = Math.max(1, Math.round(
+                    Number(machine.memoryBytes || 0) / gib))
+                machinesPage.resourcesOriginalDiskGiB = Math.max(1, Math.round(
+                    Number(machine.diskBytes || 0) / gib))
+                resourcesCpus.text = String(machinesPage.resourcesOriginalCpus
+                                            || 2)
+                resourcesMemory.text = String(
+                    machinesPage.resourcesOriginalMemoryGiB)
+                resourcesDisk.text = String(
+                    machinesPage.resourcesOriginalDiskGiB)
+                resourcesError.text = ""
+                resourcesDialog.open()
+            }
         }
     }
 
@@ -333,6 +363,18 @@ ColumnLayout {
                 importDialog.close()
             } else if (backend.machineJobKind === "clone") {
                 cloneDialog.close()
+            }
+        }
+
+        function onActionFinished(ok, message) {
+            if (!machinesPage.resourcesActionPending || !resourcesDialog.opened) {
+                return
+            }
+            machinesPage.resourcesActionPending = false
+            if (ok) {
+                resourcesDialog.close()
+            } else {
+                resourcesError.text = message.length > 0 ? message : backend.lastError
             }
         }
     }
@@ -981,6 +1023,124 @@ ColumnLayout {
                          && backend.machineCreateStage !== "done"
                 onClicked: backend.cloneMachine(machinesPage.pendingCloneId,
                                                 cloneName.text.trim())
+            }
+        }
+    }
+
+    AppDialog {
+        id: resourcesDialog
+        title: qsTr("Editar recursos")
+        modal: true
+        width: 460
+        anchors.centerIn: parent
+        closePolicy: machinesPage.resourcesActionPending ? Popup.NoAutoClose
+                                                         : Popup.CloseOnEscape
+                                                           | Popup.CloseOnPressOutside
+        onClosed: {
+            machinesPage.pendingResourcesId = ""
+            machinesPage.resourcesActionPending = false
+        }
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 9
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: 12
+                rowSpacing: 7
+
+                Text { text: qsTr("CPUs"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                FormField {
+                    id: resourcesCpus
+                    Layout.fillWidth: true
+                    enabled: !machinesPage.resourcesActionPending
+                    validator: IntValidator { bottom: 1; top: 256 }
+                }
+
+                Text { text: qsTr("Memória (GiB)"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                FormField {
+                    id: resourcesMemory
+                    Layout.fillWidth: true
+                    enabled: !machinesPage.resourcesActionPending
+                    validator: IntValidator { bottom: 1; top: 1024 }
+                }
+
+                Text { text: qsTr("Disco (GiB)"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                FormField {
+                    id: resourcesDisk
+                    Layout.fillWidth: true
+                    enabled: !machinesPage.resourcesActionPending
+                    validator: IntValidator { bottom: 1; top: 4096 }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("O disco só pode crescer; alterações de CPU/memória exigem reiniciar a machine.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                id: resourcesError
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: ""
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: qsTr("Cancelar")
+                variant: "secondary"
+                enabled: !machinesPage.resourcesActionPending
+                onClicked: resourcesDialog.close()
+            }
+            ActionButton {
+                text: qsTr("Aplicar")
+                variant: "primary"
+                enabled: !machinesPage.resourcesActionPending
+                         && machinesPage.pendingResourcesId.length > 0
+                onClicked: {
+                    const cpus = parseInt(resourcesCpus.text)
+                    const memoryGiB = parseInt(resourcesMemory.text)
+                    const diskGiB = parseInt(resourcesDisk.text)
+                    if (isNaN(cpus) || isNaN(memoryGiB) || isNaN(diskGiB)) {
+                        resourcesError.text = qsTr("Preencha CPUs, memória e disco.")
+                        return
+                    }
+                    const spec = { "id": machinesPage.pendingResourcesId }
+                    if (cpus !== machinesPage.resourcesOriginalCpus) {
+                        spec.cpus = cpus
+                    }
+                    if (memoryGiB !== machinesPage.resourcesOriginalMemoryGiB) {
+                        spec.memoryGiB = memoryGiB
+                    }
+                    if (diskGiB !== machinesPage.resourcesOriginalDiskGiB) {
+                        spec.diskGiB = diskGiB
+                    }
+                    if (Object.keys(spec).length === 1) {
+                        resourcesError.text = qsTr("Nenhuma alteração para aplicar.")
+                        return
+                    }
+                    resourcesError.text = ""
+                    machinesPage.resourcesActionPending = true
+                    backend.updateMachine(spec)
+                }
             }
         }
     }

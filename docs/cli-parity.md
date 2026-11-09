@@ -56,13 +56,15 @@
 | `clone SRC DST` | `machine clone SRC DST` | `--json` | qemu-img convert (disco independente), chave/seed copiados | ✅ T4-10 |
 | `rename M NEW` | `machine rename M NEW` | `--json` | Atualiza o bloco SSH e a default | ✅ T4-10 |
 | `default [M]` | `machine default [M]` | `--json` | Get/set; `machine ssh` sem id usa a default | ✅ T4-10 |
+| — | `machine update <id\|nome>` | `--cpus`, `--memory`, `--disk`, `--json` | Ao menos um recurso; para/reinicia se rodando; disco só cresce (`qemu-img resize` offline) | ✅ T4-11 |
 | — | `machine distros` | `--json` | Lista imagens cloud pinadas (ubuntu/debian/fedora), checksum e cache local; não baixa | ✅ T4-01 |
 | `serial list` | `device serial list` | `--format` | | ⬜ T4-15 |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
 
-> No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10) o CLI cobre `distros`, `list`, `info`,
+> No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11) o CLI cobre `distros`, `list`, `info`,
 > `create`, `start`, `stop`, `restart`, `delete`, `logs`, `ssh` (alias `machine ssh`),
-> `export`/`import`, `rename`, `clone`, `default`, `files ls`, `pull` e `push`. A criação
+> `export`/`import`, `rename`, `clone`, `default`, `update`, `files ls`, `pull` e `push`.
+> A criação
 > aceita `--cpus`, `--memory` (bytes ou K/M/G/T), `--disk`, `--user`,
 > `--user-data ARQUIVO` e `--isolate-network`; a senha continua **fora** de argv (visível em
 > `ps`/histórico) e o acesso padrão é por chave ed25519 gerada pelo daemon. `files`, `pull`
