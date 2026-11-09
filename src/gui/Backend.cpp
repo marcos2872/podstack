@@ -2353,6 +2353,7 @@ void Backend::startAction(const PendingAction &action)
 {
     m_actionActive = true;
     m_activeActionMethod = action.method;
+    m_activeActionParams = action.params;
     emit actionStateChanged();
 
     if (action.method == QStringLiteral("__batch__")) {
@@ -2411,7 +2412,14 @@ void Backend::onActionFinished()
 
     if (m_activeActionMethod.startsWith(QStringLiteral("machines."))) {
         refreshMachines();
+        const QString machineId = m_activeActionParams.value(QStringLiteral("id")).toString();
+        if (!machineId.isEmpty()
+            && m_activeActionMethod != QStringLiteral("machines.delete")) {
+            // Revalida o estado/portas depois de start/stop/restart.
+            loadMachineInfo(machineId);
+        }
     }
+    m_activeActionParams = {};
 
     if (!m_actionQueue.isEmpty()) {
         const PendingAction next = m_actionQueue.takeFirst();

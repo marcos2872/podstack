@@ -25,15 +25,30 @@ ColumnLayout {
             return ({})
         }
         const info = backend.machineInfo
-        if (info && String(info.id || "") === selectedMachineId) {
-            return info
-        }
+        let listItem = null
         for (let i = 0; i < backend.machines.length; ++i) {
             if (String(backend.machines[i].id) === selectedMachineId) {
-                return backend.machines[i]
+                listItem = backend.machines[i]
+                break
             }
         }
-        return ({})
+        if (info && String(info.id || "") === selectedMachineId) {
+            if (!listItem) {
+                return info
+            }
+            // A lista é atualizada logo após start/stop; ela manda no estado
+            // para os botões do inspetor não ficarem presos no estado antigo.
+            const merged = {}
+            for (const key in info) {
+                merged[key] = info[key]
+            }
+            merged.state = listItem.state
+            merged.error = listItem.error
+            merged.lastBootAt = listItem.lastBootAt
+            merged.updatedAt = listItem.updatedAt
+            return merged
+        }
+        return listItem || ({})
     }
 
     readonly property var distroLabels: {

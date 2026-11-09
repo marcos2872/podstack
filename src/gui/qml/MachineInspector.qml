@@ -49,6 +49,13 @@ Rectangle {
         return state.length > 0 ? state : qsTr("desconhecida")
     }
 
+    function scrollLogsToEnd() {
+        const flick = machineLogScroll.contentItem
+        if (flick) {
+            flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        }
+    }
+
     function stateTone(state) {
         if (state === "running") {
             return "success"
@@ -382,36 +389,39 @@ Rectangle {
                     color: Theme.border
                 }
 
-                ListView {
-                    id: machineLogView
-
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    clip: true
-                    model: backend.machineLogLines
-                    ScrollBar.vertical: ScrollBar {}
-                    onCountChanged: if (count > 0) Qt.callLater(positionViewAtEnd)
 
-                    delegate: TextEdit {
-                        width: ListView.view.width
-                        text: modelData
-                        color: Theme.textSecondary
-                        font.family: Theme.monoFamily
-                        font.pixelSize: Theme.fontMeta
-                        textFormat: TextEdit.PlainText
-                        wrapMode: TextEdit.WrapAnywhere
-                        readOnly: true
-                        selectByMouse: true
-                        selectionColor: Theme.accentSoft
-                        selectedTextColor: Theme.textPrimary
-                        padding: 8
+                    ScrollView {
+                        id: machineLogScroll
+                        anchors.fill: parent
+                        clip: true
+                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                        TextArea {
+                            id: machineLogArea
+                            width: machineLogScroll.availableWidth
+                            text: backend.machineLogLines.join("\n")
+                            color: Theme.textSecondary
+                            font.family: Theme.monoFamily
+                            font.pixelSize: Theme.fontMeta
+                            textFormat: TextEdit.PlainText
+                            wrapMode: TextEdit.WrapAnywhere
+                            readOnly: true
+                            selectByMouse: true
+                            selectionColor: Theme.accentSoft
+                            selectedTextColor: Theme.textPrimary
+                            padding: 8
+                            onTextChanged: Qt.callLater(root.scrollLogsToEnd)
+                        }
                     }
 
                     Text {
                         anchors.centerIn: parent
                         width: parent.width - 40
                         horizontalAlignment: Text.AlignHCenter
-                        visible: machineLogView.count === 0
+                        visible: backend.machineLogLines.length === 0
                         text: qsTr("Sem linhas de console.\nA machine ainda não inicializou ou o log está vazio.")
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
@@ -427,7 +437,7 @@ Rectangle {
         target: backend
 
         function onMachineLogsChanged() {
-            Qt.callLater(machineLogView.positionViewAtEnd)
+            Qt.callLater(root.scrollLogsToEnd)
         }
     }
 }

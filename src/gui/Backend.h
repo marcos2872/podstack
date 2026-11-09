@@ -363,6 +363,7 @@ private:
     int m_machineCreateProgress = 0;
     QString m_machineCreateError;
     QString m_activeActionMethod;
+    QJsonObject m_activeActionParams;
     QString m_eventMessage;
     QString m_eventKind;
     QSet<QString> m_recentEvents;
