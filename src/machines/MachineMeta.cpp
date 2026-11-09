@@ -96,6 +96,16 @@ bool ensureParentDirectory(const QString &parent, Error *error)
 
 } // namespace
 
+QJsonObject MachineSnapshot::toJson() const
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("id"), id);
+    object.insert(QStringLiteral("name"), name);
+    object.insert(QStringLiteral("sizeBytes"), sizeBytes);
+    object.insert(QStringLiteral("date"), date);
+    return object;
+}
+
 QJsonObject MachineMeta::toJson() const
 {
     QJsonObject object;

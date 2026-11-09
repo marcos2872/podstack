@@ -61,6 +61,10 @@
 | — | `machine port ls <id\|nome>` | `--json` | Lista host/guest/protocolo/bind/rótulo; a SSH aparece mas é gerenciada | ✅ T4-12 |
 | — | `machine port add <id\|nome>` | `--host N`, `--guest N`, `--udp`, `--lan`, `--label L`, `--json` | Envia a lista completa não-SSH; para/reinicia se rodando | ✅ T4-12 |
 | — | `machine port rm <id\|nome> <portId\|hostPort>` | `--json` | Remove por ID ou hostPort; recusa a porta SSH e hostPort ambíguo | ✅ T4-12 |
+| — | `machine snapshot ls <id\|nome>` | `--json` | Lista snapshots internos do qcow2 (nome/data/tamanho); funciona com a machine parada ou rodando | ✅ T4-16 |
+| — | `machine snapshot create <id\|nome> <nome>` | `--json` | Cria snapshot offline; para/reinicia a machine se rodando; nome único `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` | ✅ T4-16 |
+| — | `machine snapshot restore <id\|nome> <nome>` | `--json` | Restaura o disco (substitui o estado atual); imprime aviso e para/reinicia se rodando | ✅ T4-16 |
+| — | `machine snapshot rm <id\|nome> <nome>` | `--json` | Remove o snapshot; para/reinicia se rodando | ✅ T4-16 |
 | — | `machine distros` | `--json` | Lista imagens cloud pinadas (ubuntu/debian/fedora), checksum e cache local; não baixa | ✅ T4-01 |
 | `serial list` | — | — | Não implementado; o troubleshooting serial é feito por `machine console` | ⬜ fora do v1 |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
@@ -314,6 +318,12 @@ podstack machine port add dev --host 8080 --guest 80 --label web
 podstack machine port add dev --host 5353 --guest 53 --udp --lan
 podstack machine port ls dev
 podstack machine port rm dev 8080
+
+# snapshots do disco
+podstack machine snapshot ls dev
+podstack machine snapshot create dev antes-upgrade
+podstack machine snapshot restore dev antes-upgrade
+podstack machine snapshot rm dev antes-upgrade
 
 # listar e inspecionar
 podstack machine list

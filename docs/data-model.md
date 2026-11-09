@@ -121,9 +121,20 @@ Não persistido. Cache em memória reconstruído por eventos.
 `machine_ports`: `id`, `machineId`, `hostPort`, `guestPort`, `protocol`, `exposeLan`, `label`.
 `machine_mounts`: `id`, `machineId`, `source`, `target`, `readOnly`, `tag` (virtiofs).
 
-### 2.8 Snapshot (P2)
+### 2.8 Snapshot (efêmero, derivado do qcow2)
 
-`id`, `machineId`, `name`, `path`, `sizeBytes`, `createdAt`.
+Não há tabela SQLite nem arquivo de metadados: cada snapshot é interno ao disco qcow2 da
+machine. A listagem usa `qemu-img info --output=json` e expõe:
+
+| Campo | Tipo |
+|---|---|
+| `id` | string (id interno do qcow2) |
+| `name` | string (único na machine) |
+| `sizeBytes` | int (`vm-state-size`; 0 em snapshot offline) |
+| `date` | timestamp RFC 3339 UTC com ms (`date-sec`/`date-nsec`) |
+
+Remover a machine apaga o disco e, junto, todos os snapshots. Export/clone convertem o disco
+para um qcow2 autocontido e não preservam snapshots internos.
 
 ### 2.9 ComposeProject (efêmero, derivado)
 

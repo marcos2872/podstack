@@ -259,6 +259,12 @@ encerra a janela da instância já em execução.
   SHA-256 do manifesto antes de mover o diretório temporário (0700, arquivos 0600)
   para `machines/<id>`. Mounts do host não são exportados.
 - Import de volume: validar manifest/checksum; extrair em dir temporário e mover.
+- Snapshots de machine: nomes validados por `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` e passados
+  ao `qemu-img` como argumento (sem shell); o snapshot é interno ao qcow2 e não cria arquivo
+  novo. **Restaurar substitui o disco atual** e **remover** apaga o snapshot: ambos são
+  destrutivos, exigem confirmação explícita na GUI e a CLI imprime aviso no restore. O daemon
+  para a machine antes da operação e a reinicia ao final (inclusive em falha), sempre sob o
+  lock da machine e sem expor o caminho do disco nas respostas/erros.
 - `O_NOFOLLOW`/`openat2(RESOLVE_BENEATH)` quando disponível.
 
 ---

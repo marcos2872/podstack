@@ -170,6 +170,8 @@ Backend::Backend(QObject *parent)
             &Backend::onMachineLogsFinished);
     connect(&m_machineFilesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineFilesFinished);
+    connect(&m_machineSnapshotsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineSnapshotsFinished);
     connect(&m_machineSshWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             [this] {
                 const QJsonObject result = m_machineSshWatcher.result();
@@ -2977,6 +2979,129 @@ void Backend::setMachinePorts(const QString &id, const QVariantList &ports)
               180000);
 }
 
+void Backend::createMachineSnapshot(const QString &id, const QString &name)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (id.isEmpty()) {
+        fail(QStringLiteral("Machine inválida."));
+        return;
+    }
+    if (name.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe o nome do snapshot."));
+        return;
+    }
+    runAction(QStringLiteral("machines.snapshots.create"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("name"), name.trimmed()}},
+              180000);
+}
+
+void Backend::restoreMachineSnapshot(const QString &id, const QString &name)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (id.isEmpty()) {
+        fail(QStringLiteral("Machine inválida."));
+        return;
+    }
+    if (name.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe o nome do snapshot."));
+        return;
+    }
+    runAction(QStringLiteral("machines.snapshots.restore"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("name"), name.trimmed()}},
+              180000);
+}
+
+void Backend::removeMachineSnapshot(const QString &id, const QString &name)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (id.isEmpty()) {
+        fail(QStringLiteral("Machine inválida."));
+        return;
+    }
+    if (name.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe o nome do snapshot."));
+        return;
+    }
+    runAction(QStringLiteral("machines.snapshots.remove"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("name"), name.trimmed()}},
+              180000);
+}
+
+void Backend::refreshMachineSnapshots(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_machineSnapshotsError = QStringLiteral("Machine inválida.");
+        emit machineSnapshotsChanged();
+        return;
+    }
+
+    if (m_machineSnapshotsWatcher.isRunning()) {
+        m_pendingMachineSnapshotsId = id;
+        return;
+    }
+
+    m_machineSnapshotsError.clear();
+    m_machineSnapshotsWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.snapshots.list"),
+                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineSnapshotsFinished()
+{
+    const QJsonObject result = m_machineSnapshotsWatcher.result();
+    if (result.value(QStringLiteral("error")).isObject()) {
+        m_machineSnapshotsError =
+            result.value(QStringLiteral("error")).toObject().value(QStringLiteral("message"))
+                .toString();
+        if (m_machineSnapshotsError.isEmpty()) {
+            m_machineSnapshotsError =
+                QStringLiteral("Não foi possível listar os snapshots da machine.");
+        }
+    } else {
+        m_machineSnapshotsError.clear();
+        QVariantList items;
+        const QJsonArray array = result.value(QStringLiteral("items")).toArray();
+        items.reserve(array.size());
+        for (const QJsonValue &value : array) {
+            items.append(value.toObject().toVariantMap());
+        }
+        m_machineSnapshots = items;
+    }
+    emit machineSnapshotsChanged();
+
+    if (!m_pendingMachineSnapshotsId.isEmpty()) {
+        const QString next = m_pendingMachineSnapshotsId;
+        m_pendingMachineSnapshotsId.clear();
+        refreshMachineSnapshots(next);
+    }
+}
+
 void Backend::createMachine(const QVariantMap &spec)
 {
     const auto fail = [this](const QString &message) {
@@ -3303,6 +3428,11 @@ void Backend::onActionFinished()
             && m_activeActionMethod != QStringLiteral("machines.delete")) {
             // Revalida o estado/portas depois de start/stop/restart.
             loadMachineInfo(machineId);
+        }
+        if (!machineId.isEmpty()
+            && m_activeActionMethod.startsWith(QStringLiteral("machines.snapshots."))) {
+            // Criação/restauração/remoção alteram o disco: relê os snapshots.
+            refreshMachineSnapshots(machineId);
         }
     }
     m_activeActionParams = {};

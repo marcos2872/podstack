@@ -27,6 +27,16 @@ struct MachineMount {
     QString tag;
 };
 
+/// Snapshot interno do qcow2 (não há tabela SQLite; metadados vêm do qemu-img).
+struct MachineSnapshot {
+    QString id;
+    QString name;
+    qint64 sizeBytes = 0; // vm-state-size; 0 em snapshot tirado com a machine parada
+    QString date;         // RFC 3339 UTC com milissegundos
+
+    QJsonObject toJson() const;
+};
+
 /// Metadados persistidos de uma machine. Timestamps em RFC 3339 UTC com milissegundos.
 struct MachineMeta {
     QString id;

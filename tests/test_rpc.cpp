@@ -36,6 +36,7 @@ private slots:
     void machineConsole();
     void machineSsh();
     void machinePorts();
+    void machineSnapshots();
     void machineStats();
     void machineFiles();
     void composeAndBuilds();
@@ -1849,6 +1850,67 @@ void RpcTest::machinePorts()
     QVERIFY(store.remove(meta.id));
     QDir(m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id)
         .removeRecursively();
+}
+
+void RpcTest::machineSnapshots()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.snapshots.list"), {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    client.call(QStringLiteral("machines.snapshots.list"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    client.call(QStringLiteral("machines.snapshots.create"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")},
+                            {QStringLiteral("name"), QStringLiteral("snap")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-snapshots-1");
+    meta.name = QStringLiteral("snapshots-rpc");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    PodStack::Error invalidName;
+    client.call(QStringLiteral("machines.snapshots.create"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("name"), QStringLiteral("bad name")}},
+                &invalidName);
+    QCOMPARE(invalidName.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error missingName;
+    client.call(QStringLiteral("machines.snapshots.create"),
+                QJsonObject{{QStringLiteral("id"), meta.id}}, &missingName);
+    QCOMPARE(missingName.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error missingSnapshotName;
+    client.call(QStringLiteral("machines.snapshots.remove"),
+                QJsonObject{{QStringLiteral("id"), meta.id}}, &missingSnapshotName);
+    QCOMPARE(missingSnapshotName.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    // A machine existe no índice, mas não tem disco: a listagem falha em I/O.
+    PodStack::Error missingDisk;
+    const QJsonObject listed =
+        client.call(QStringLiteral("machines.snapshots.list"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &missingDisk);
+    QCOMPARE(missingDisk.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(listed.isEmpty());
+
+    QVERIFY(store.remove(meta.id));
 }
 
 void RpcTest::machineStats()

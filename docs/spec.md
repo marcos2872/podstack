@@ -510,6 +510,8 @@ Host <name>.podstack <name>
 - Progresso (`machines.delta`/`machines.done`) e cancelamento por checkpoints;
   em falha/cancelamento, remover `.part`/diretório temporário e restaurar o
   estado anterior da máquina exportada.
+- Snapshots internos do qcow2 não são preservados: o `qemu-img convert` produz um disco
+  autocontido sem os snapshots, e o import/export `.tar.zst` também não os leva (§7.8).
 
 ### 7.6 Limites e recursos
 
@@ -536,6 +538,24 @@ Host <name>.podstack <name>
   campo `isolated` no manifesto `podstack.machine/1` (opcional, default `false`) e o
   import força `isolateNetwork=true`, `forwardSshAgent=false` e mounts vazio.
 - Aviso: não é fronteira de segurança contra malware (kernel do guest é separado; QEMU é o limite).
+
+### 7.8 Snapshots
+
+- Snapshots são **internos do qcow2** e não têm tabela no SQLite; nome, data e tamanho vêm do
+  `qemu-img info --output=json`. Não há snapshot de memória/VM state: o disco é sempre
+  fotografado com a máquina parada.
+- Listar (`machine snapshot ls`/`machines.snapshots.list`) funciona com a máquina parada ou
+  rodando; criar/restaurar/remover param a máquina quando ela está rodando e a reiniciam ao
+  final, inclusive quando a operação falha.
+- Nome do snapshot: `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, único na máquina; duplicado retorna
+  `PODSTACK_CONFLICT`, inválido `PODSTACK_INVALID_PARAMS` e inexistente `PODSTACK_NOT_FOUND`.
+- Restaurar **substitui o estado atual do disco** com o conteúdo do snapshot; alterações
+  posteriores são descartadas. A GUI pede confirmação explícita e a CLI imprime um aviso
+  antes de executar (o comando `restore` já é a confirmação; não existe `--force`).
+- Remover apaga o snapshot do qcow2; a operação é destrutiva e a GUI confirma.
+- Limitações: `qemu-img convert` (export e clone) não preserva snapshots internos, e o
+  export/import `.tar.zst` também não os leva. O snapshot referencia o disco overlay (com
+  backing da imagem cloud); manter o backing disponível é responsabilidade do cache de imagens.
 
 ---
 

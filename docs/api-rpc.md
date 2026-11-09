@@ -289,6 +289,10 @@ seguintes.
 | `machines.update` | `{id, cpus?, memoryBytes?, diskBytes?, forwardSshAgent?}` | `Machine` |
 | `machines.ports.list` | `{id}` | `{items: MachinePort[]}` |
 | `machines.ports.set` | `{id, ports}` | `Machine` |
+| `machines.snapshots.list` | `{id}` | `{items: MachineSnapshot[]}` |
+| `machines.snapshots.create` | `{id, name}` | `MachineSnapshot` |
+| `machines.snapshots.restore` | `{id, name}` | `Machine` |
+| `machines.snapshots.remove` | `{id, name}` | `{removed:true}` |
 | `machines.default` | `{name?}` | `{name}` (sem `name` = get; com `name` = set) |
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 | `machines.console.read` | `{id, tailBytes?}` | `{id, data}` (one-shot, UTF-8 aproximado) |
@@ -302,7 +306,7 @@ seguintes.
 | `machines.stats.subscribe` | `{id, intervalSeconds?}` | `{subscriptionId, id}` |
 | `machines.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 
-Snapshots de disco (`machines.snapshot*`) ainda não existem (T4-16). O console serial usa
+Snapshots de disco internos usam `machines.snapshots.*` (T4-16); o console serial usa
 `machines.console.read`/`machines.console` (abaixo), não VNC.
 
 ```ts
@@ -319,6 +323,7 @@ interface Machine {
 }
 interface MachinePort { id: string; hostPort: number; guestPort: number; protocol: string; exposeLan: boolean; label: string }
 interface MachineMount { id: string; source: string; target: string; readOnly: boolean; tag: string }
+interface MachineSnapshot { id: string; name: string; sizeBytes: number; date: string }
 ```
 
 **Criação assíncrona.** `machines.create` valida os parâmetros de forma síncrona (nome RFC
@@ -378,7 +383,8 @@ existente é removida e substituída). Mounts do host não são exportados. Prog
 aceita o `jobId` dos dois jobs. Export/import são serializados entre si e uma
 segunda operação na mesma machine (start/stop/restart/delete/export) retorna
 `PODSTACK_CONFLICT` enquanto o job estiver em andamento. O arquivo final fica
-`0600` (contém a chave privada SSH da machine).
+`0600` (contém a chave privada SSH da machine). O `qemu-img convert` achata o disco e
+**não** preserva snapshots internos do qcow2; o import também não os recria (§T4-16).
 
 **Clone/rename/default (T4-10).** `machines.rename {id, name}` valida o nome RFC 1123 e
 recusa machines em `provisioning`/`deleting` ou com o nome já usado por outra machine
@@ -394,6 +400,7 @@ Cancelamento usa `machines.cancel` e termina em `PODSTACK_CANCELLED`, apagando d
 store e bloco SSH parciais. `machines.default {name?}` lê ou grava a chave
 `machines.default` do Config (aceita ID ou nome e persiste o nome canônico); machine
 inexistente retorna `PODSTACK_NOT_FOUND`. Remover a machine default limpa a chave.
+O `qemu-img convert` do clone também não preserva snapshots internos do disco de origem.
 
 **Limites de CPU/memória/disco (T4-11).** `machines.update {id, cpus?, memoryBytes?,
 diskBytes?}` aceita ao menos um campo e é síncrono. CPUs precisam ficar em 1..256 e
@@ -432,6 +439,23 @@ antigos sem `ports` continuam válidos: o daemon sintetiza a porta SSH a partir 
 A validação ocorre antes de parar a machine; o `meta.json`+SQLite é persistido após o stop e
 antes do restart. Erro de restart devolve `PODSTACK_CONFLICT` informando que as portas já
 foram salvas.
+
+**Snapshots de disco (T4-16).** `machines.snapshots.list {id}` devolve
+`{items: MachineSnapshot[]}`, onde `MachineSnapshot` é `{id, name, sizeBytes, date}`:
+`sizeBytes` é o `vm-state-size` do qemu-img (0 quando o snapshot foi tirado com a machine
+parada) e `date` é RFC 3339 UTC com milissegundos (`date-sec`/`date-nsec`). A listagem
+executa `qemu-img info --output=json` no qcow2 e é somente leitura: funciona com a machine
+parada ou rodando. `machines.snapshots.create {id, name}` exige nome único que case com
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` (`PODSTACK_INVALID_PARAMS`) e nome já existente retorna
+`PODSTACK_CONFLICT`; a machine é parada antes e reiniciada depois (inclusive em falha), pois
+o snapshot interno é sempre offline. `machines.snapshots.restore {id, name}` devolve o
+`Machine` atualizado e **substitui o estado atual do disco** (as alterações desde o snapshot
+são descartadas); snapshot inexistente retorna `PODSTACK_NOT_FOUND`.
+`machines.snapshots.remove {id, name}` remove o snapshot e devolve `{removed:true}`. Todas
+são síncronas e usam o lock da machine (`PODSTACK_CONFLICT` se houver outra operação em
+andamento). Os snapshots são internos do qcow2 (sem tabela SQLite) e **não** são preservados
+pelo `qemu-img convert` usado em `machines.export`/`machines.clone`; export/import também não
+os levam.
 
 **Logs do console.** `machines.logs` resolve `id` ou nome e lê apenas
 `machines/<id>/console.log`, sem expor o caminho na resposta. O arquivo precisa ser regular

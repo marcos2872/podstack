@@ -94,6 +94,10 @@ class Backend : public QObject {
     Q_PROPERTY(QString machineFilesPath READ machineFilesPath NOTIFY machineFilesChanged)
     Q_PROPERTY(bool machineFilesBusy READ machineFilesBusy NOTIFY machineFilesChanged)
     Q_PROPERTY(QString machineFilesError READ machineFilesError NOTIFY machineFilesChanged)
+    Q_PROPERTY(QVariantList machineSnapshots READ machineSnapshots
+               NOTIFY machineSnapshotsChanged)
+    Q_PROPERTY(QString machineSnapshotsError READ machineSnapshotsError
+               NOTIFY machineSnapshotsChanged)
     Q_PROPERTY(bool machineCreateActive READ machineCreateActive NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineJobKind READ machineJobKind NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateJobId READ machineCreateJobId NOTIFY machineCreateStateChanged)
@@ -191,6 +195,8 @@ public:
     QString machineFilesPath() const { return m_machineFilesPath; }
     bool machineFilesBusy() const { return m_machineFilesBusy; }
     QString machineFilesError() const { return m_machineFilesError; }
+    QVariantList machineSnapshots() const { return m_machineSnapshots; }
+    QString machineSnapshotsError() const { return m_machineSnapshotsError; }
     bool machineCreateActive() const { return m_machineCreateActive; }
     QString machineJobKind() const { return m_machineJobKind; }
     QString machineCreateJobId() const { return m_machineCreateJobId; }
@@ -265,6 +271,10 @@ public:
     Q_INVOKABLE void followMachineConsole(const QString &id, int tailBytes = 64 * 1024);
     Q_INVOKABLE void stopMachineConsole();
     Q_INVOKABLE void refreshMachineFiles(const QString &id, const QString &path);
+    Q_INVOKABLE void refreshMachineSnapshots(const QString &id);
+    Q_INVOKABLE void createMachineSnapshot(const QString &id, const QString &name);
+    Q_INVOKABLE void restoreMachineSnapshot(const QString &id, const QString &name);
+    Q_INVOKABLE void removeMachineSnapshot(const QString &id, const QString &name);
     Q_INVOKABLE void downloadMachineFile(const QString &id, const QString &path,
                                          const QString &fileName);
     Q_INVOKABLE void uploadMachineFile(const QString &id, const QString &remoteDir,
@@ -361,6 +371,7 @@ signals:
     void machineStatsChanged();
     void machineConsoleChanged();
     void machineFilesChanged();
+    void machineSnapshotsChanged();
     void machineCreateStateChanged();
     void eventsChanged();
     void containerEvent(const QVariantMap &event);
@@ -382,6 +393,7 @@ private:
     void onMachineInfoFinished();
     void onMachineLogsFinished();
     void onMachineFilesFinished();
+    void onMachineSnapshotsFinished();
     void startMachineFilesRequest(const QString &operation, const QString &id,
                                   const QString &method, const QJsonObject &params,
                                   int timeoutMs);
@@ -412,6 +424,7 @@ private:
     QFutureWatcher<QJsonObject> m_machineInfoWatcher;
     QFutureWatcher<QJsonObject> m_machineLogsWatcher;
     QFutureWatcher<QJsonObject> m_machineFilesWatcher;
+    QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
     QString m_setupPendingMethod;
     QString m_catalogSection;
@@ -501,6 +514,9 @@ private:
     QString m_machineFilesPath = QStringLiteral("/");
     bool m_machineFilesBusy = false;
     QString m_machineFilesError;
+    QVariantList m_machineSnapshots;
+    QString m_machineSnapshotsError;
+    QString m_pendingMachineSnapshotsId;
     QString m_machineFilesMachineId;
     QString m_machineFilesOperation;
     QString m_pendingMachineInfoId;

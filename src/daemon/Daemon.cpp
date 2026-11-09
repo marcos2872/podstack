@@ -501,6 +501,18 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.ports.set")) {
         return machinePortsSet(params, error);
     }
+    if (method == QStringLiteral("machines.snapshots.list")) {
+        return machineSnapshotsList(params, error);
+    }
+    if (method == QStringLiteral("machines.snapshots.create")) {
+        return machineSnapshotCreate(params, error);
+    }
+    if (method == QStringLiteral("machines.snapshots.restore")) {
+        return machineSnapshotRestore(params, error);
+    }
+    if (method == QStringLiteral("machines.snapshots.remove")) {
+        return machineSnapshotRemove(params, error);
+    }
     if (method == QStringLiteral("machines.clone")) {
         return machineClone(params, notify, error);
     }
@@ -1107,6 +1119,93 @@ QJsonObject Daemon::machinePortsSet(const QJsonObject &params, Error *error)
         return {};
     }
     return machine.toJson();
+}
+
+QJsonObject Daemon::machineSnapshotsList(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QVector<MachineSnapshot> snapshots = m_machines.snapshots(id, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    QJsonArray items;
+    for (const MachineSnapshot &snapshot : snapshots) {
+        items.append(snapshot.toJson());
+    }
+    return QJsonObject{{QStringLiteral("items"), items}};
+}
+
+QJsonObject Daemon::machineSnapshotCreate(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o nome do snapshot."));
+        }
+        return {};
+    }
+
+    const MachineSnapshot snapshot = m_machines.createSnapshot(id, name, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    return snapshot.toJson();
+}
+
+QJsonObject Daemon::machineSnapshotRestore(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o nome do snapshot."));
+        }
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.restoreSnapshot(id, name, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineSnapshotRemove(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o nome do snapshot."));
+        }
+        return {};
+    }
+
+    if (!m_machines.removeSnapshot(id, name, error)) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("removed"), true}};
 }
 
 QJsonObject Daemon::machineClone(const QJsonObject &params, const Notify &notify,

@@ -11,8 +11,10 @@
 #include "machines/SshConfig.h"
 #include "machines/VirtiofsdProcess.h"
 
+#include <QByteArray>
 #include <QHash>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 #include <functional>
@@ -125,6 +127,19 @@ public:
                                   &progress,
                               const std::function<bool()> &cancelled,
                               Error *error = nullptr);
+    /// Lista os snapshots internos do qcow2. Funciona com a machine parada ou rodando
+    /// (o `qemu-img info` é somente leitura); snapshot é sempre offline.
+    QVector<MachineSnapshot> snapshots(const QString &idOrName, Error *error = nullptr);
+    /// Cria um snapshot interno. Para a machine se estiver rodando e reinicia ao final,
+    /// inclusive em falha. Nome único `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`.
+    MachineSnapshot createSnapshot(const QString &idOrName, const QString &name,
+                                   Error *error = nullptr);
+    /// Restaura um snapshot (substitui o estado atual do disco). Para/reinicia a machine
+    /// se estava rodando e devolve o `MachineMeta` resultante.
+    MachineMeta restoreSnapshot(const QString &idOrName, const QString &name,
+                                Error *error = nullptr);
+    /// Remove um snapshot interno. Para/reinicia a machine se estava rodando.
+    bool removeSnapshot(const QString &idOrName, const QString &name, Error *error = nullptr);
 
 private:
     MachineMeta load(const QString &idOrName, Error *error);
@@ -150,6 +165,10 @@ private:
                      const QString &operation = QStringLiteral("Exportação"));
     bool resizeDisk(const QString &diskPath, qint64 bytes, Error *error);
     QString qemuImgBinary(Error *error) const;
+    bool qemuImgSnapshot(const QStringList &args, QByteArray *output, Error *error);
+    QVector<MachineSnapshot> parseSnapshots(const MachineMeta &meta, Error *error);
+    MachineSnapshot findSnapshot(const QVector<MachineSnapshot> &items, const QString &name,
+                                 Error *error);
     bool ensureSshKey(const QString &directory, const QString &name, QString *privatePath,
                       QString *publicKey, Error *error);
     bool persist(MachineMeta &meta, Error *error);

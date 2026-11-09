@@ -72,7 +72,7 @@ void printUsage()
           << "        [--platform p1,p2]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
-          << "  machine <list|info|logs|console|create|start|stop|restart|delete|rename|clone|default|distros|ssh|files|pull|push|port|update>\n"
+          << "  machine <list|info|logs|console|create|start|stop|restart|delete|rename|clone|default|distros|ssh|files|pull|push|port|snapshot|update>\n"
           << "                          Gerencia machines QEMU/KVM\n"
           << "  ssh [id|nome] [-- cmd...]\n"
           << "                          Abre SSH (sem id usa a machine default)\n"
@@ -1383,6 +1383,14 @@ void printMachineUsage(QTextStream &stream)
            << "                          Adiciona uma porta (reinicia se rodando)\n"
            << "  port rm <id|nome> <portId|hostPort> [--json]\n"
            << "                          Remove uma porta (a SSH é gerenciada)\n"
+           << "  snapshot ls <id|nome> [--json]\n"
+           << "                          Lista os snapshots internos do disco\n"
+           << "  snapshot create <id|nome> <nome> [--json]\n"
+           << "                          Cria um snapshot (para/reinicia se rodando)\n"
+           << "  snapshot restore <id|nome> <nome> [--json]\n"
+           << "                          Restaura o disco (substitui o estado atual)\n"
+           << "  snapshot rm <id|nome> <nome> [--json]\n"
+           << "                          Remove um snapshot do disco\n"
            << "  default [<id|nome>] [--json]\n"
            << "                          Mostra ou define a machine default\n"
            << "  ssh [id|nome] [-- cmd...]\n"
@@ -2706,6 +2714,227 @@ int machinePortCommand(const QStringList &args)
     return kExitUsage;
 }
 
+int machineSnapshotListCommand(const QStringList &args)
+{
+    QString id;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.snapshots.list"),
+                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+    out() << QStringLiteral("%1  %2  %3\n")
+                 .arg(QStringLiteral("NOME").leftJustified(24),
+                      QStringLiteral("DATA").leftJustified(24), QStringLiteral("TAMANHO"));
+    for (const QJsonValue &value : items) {
+        const QJsonObject item = value.toObject();
+        const qint64 sizeBytes =
+            static_cast<qint64>(item.value(QStringLiteral("sizeBytes")).toDouble());
+        out() << QStringLiteral("%1  %2  %3\n")
+                     .arg(item.value(QStringLiteral("name")).toString().leftJustified(24),
+                          item.value(QStringLiteral("date")).toString().leftJustified(24),
+                          sizeBytes > 0 ? humanBytes(sizeBytes) : QStringLiteral("-"));
+    }
+    if (items.isEmpty()) {
+        out() << "  (nenhum snapshot)\n";
+    }
+    out().flush();
+    return kExitOk;
+}
+
+int machineSnapshotCreateCommand(const QStringList &args)
+{
+    QString id;
+    QString snapshotName;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && snapshotName.isEmpty()) {
+            snapshotName = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() || snapshotName.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.snapshots.create"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("name"), snapshotName}},
+                    &error, 180000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    out() << "snapshot " << result.value(QStringLiteral("name")).toString()
+          << " criado na machine " << id << '\n';
+    out().flush();
+    return kExitOk;
+}
+
+int machineSnapshotRestoreCommand(const QStringList &args)
+{
+    QString id;
+    QString snapshotName;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && snapshotName.isEmpty()) {
+            snapshotName = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() || snapshotName.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    err() << "aviso: restaurar o snapshot " << snapshotName << " substitui o disco atual da "
+          << "machine " << id << "; alterações não salvas serão perdidas.\n";
+    err().flush();
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.snapshots.restore"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("name"), snapshotName}},
+                    &error, 180000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    out() << "snapshot " << snapshotName << " restaurado na machine "
+          << result.value(QStringLiteral("name")).toString() << " ("
+          << result.value(QStringLiteral("state")).toString() << ")\n";
+    out().flush();
+    return kExitOk;
+}
+
+int machineSnapshotRemoveCommand(const QStringList &args)
+{
+    QString id;
+    QString snapshotName;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && snapshotName.isEmpty()) {
+            snapshotName = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() || snapshotName.isEmpty()) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.snapshots.remove"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("name"), snapshotName}},
+                    &error, 180000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    out() << "snapshot " << snapshotName << " removido da machine " << id << '\n';
+    out().flush();
+    return kExitOk;
+}
+
+int machineSnapshotCommand(const QStringList &args)
+{
+    if (args.isEmpty() || args.first() == QStringLiteral("--help")
+        || args.first() == QStringLiteral("-h") || args.first() == QStringLiteral("help")) {
+        printMachineUsage(args.isEmpty() ? err() : out());
+        return args.isEmpty() ? kExitUsage : kExitOk;
+    }
+    const QString action = args.first();
+    if (action == QStringLiteral("ls") || action == QStringLiteral("list")) {
+        return machineSnapshotListCommand(args);
+    }
+    if (action == QStringLiteral("create")) {
+        return machineSnapshotCreateCommand(args);
+    }
+    if (action == QStringLiteral("restore")) {
+        return machineSnapshotRestoreCommand(args);
+    }
+    if (action == QStringLiteral("rm") || action == QStringLiteral("remove")) {
+        return machineSnapshotRemoveCommand(args);
+    }
+    printMachineUsage(err());
+    return kExitUsage;
+}
+
 int machineDefaultCommand(const QStringList &args)
 {
     QString name;
@@ -3351,6 +3580,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("port") || subcommand == QStringLiteral("ports")) {
         return machinePortCommand(args.mid(1));
+    }
+    if (subcommand == QStringLiteral("snapshot") || subcommand == QStringLiteral("snapshots")) {
+        return machineSnapshotCommand(args.mid(1));
     }
     if (subcommand == QStringLiteral("default")) {
         return machineDefaultCommand(args);

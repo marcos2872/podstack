@@ -19,6 +19,10 @@ ColumnLayout {
     property int resourcesOriginalCpus: 0
     property int resourcesOriginalMemoryGiB: 0
     property int resourcesOriginalDiskGiB: 0
+    property string pendingSnapshotsId: ""
+    property bool snapshotActionPending: false
+    property string pendingSnapshotAction: ""
+    property string pendingSnapshotName: ""
 
     signal machineExpandRequested(string id, int tab)
 
@@ -190,6 +194,52 @@ ColumnLayout {
             }
         }
         portsDraft = next
+    }
+
+    function snapshotSize(value) {
+        const number = Number(value || 0)
+        if (number <= 0) {
+            return "-"
+        }
+        const units = ["KiB", "MiB", "GiB", "TiB"]
+        let scaled = number / 1024
+        let index = 0
+        while (scaled >= 1024 && index < units.length - 1) {
+            scaled /= 1024
+            ++index
+        }
+        return scaled.toFixed(1) + " " + units[index]
+    }
+
+    function requestSnapshotAction(action, name) {
+        pendingSnapshotAction = action
+        pendingSnapshotName = name
+        snapshotsError.text = ""
+    }
+
+    function confirmSnapshotAction() {
+        if (pendingSnapshotsId.length === 0 || pendingSnapshotName.length === 0) {
+            return
+        }
+        snapshotActionPending = true
+        snapshotsError.text = ""
+        if (pendingSnapshotAction === "restore") {
+            backend.restoreMachineSnapshot(pendingSnapshotsId, pendingSnapshotName)
+        } else if (pendingSnapshotAction === "remove") {
+            backend.removeMachineSnapshot(pendingSnapshotsId, pendingSnapshotName)
+        }
+    }
+
+    function createSnapshot() {
+        const name = snapshotsName.text.trim()
+        if (name.length === 0) {
+            snapshotsError.text = qsTr("Informe o nome do snapshot.")
+            return
+        }
+        snapshotActionPending = true
+        pendingSnapshotAction = "create"
+        snapshotsError.text = ""
+        backend.createMachineSnapshot(pendingSnapshotsId, name)
     }
 
     function stageLabel(stage) {
@@ -406,6 +456,16 @@ ColumnLayout {
             onPortsRequested: function(id) {
                 machinesPage.openPortsDialog(id)
             }
+            onSnapshotsRequested: function(id) {
+                machinesPage.pendingSnapshotsId = id
+                machinesPage.snapshotActionPending = false
+                machinesPage.pendingSnapshotAction = ""
+                machinesPage.pendingSnapshotName = ""
+                snapshotsName.text = ""
+                snapshotsError.text = ""
+                backend.refreshMachineSnapshots(id)
+                snapshotsDialog.open()
+            }
             onResourcesRequested: function(id) {
                 machinesPage.pendingResourcesId = id
                 machinesPage.resourcesActionPending = false
@@ -457,6 +517,21 @@ ColumnLayout {
         }
 
         function onActionFinished(ok, message) {
+            if (machinesPage.snapshotActionPending && snapshotsDialog.opened) {
+                const action = machinesPage.pendingSnapshotAction
+                machinesPage.snapshotActionPending = false
+                if (ok) {
+                    machinesPage.pendingSnapshotAction = ""
+                    machinesPage.pendingSnapshotName = ""
+                    snapshotsError.text = ""
+                    if (action === "create") {
+                        snapshotsName.text = ""
+                    }
+                } else {
+                    snapshotsError.text = message.length > 0 ? message : backend.lastError
+                }
+                return
+            }
             if (machinesPage.portsActionPending && portsDialog.opened) {
                 machinesPage.portsActionPending = false
                 if (ok) {
@@ -1472,6 +1547,232 @@ ColumnLayout {
                     machinesPage.resourcesActionPending = true
                     backend.updateMachine(spec)
                 }
+            }
+        }
+    }
+
+    AppDialog {
+        id: snapshotsDialog
+        title: qsTr("Snapshots do disco")
+        modal: true
+        width: 620
+        anchors.centerIn: parent
+        closePolicy: machinesPage.snapshotActionPending ? Popup.NoAutoClose
+                                                        : Popup.CloseOnEscape
+                                                          | Popup.CloseOnPressOutside
+        onClosed: {
+            machinesPage.pendingSnapshotsId = ""
+            machinesPage.snapshotActionPending = false
+            machinesPage.pendingSnapshotAction = ""
+            machinesPage.pendingSnapshotName = ""
+            snapshotsError.text = ""
+        }
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 9
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Snapshots são internos do qcow2. Restaurar substitui o disco atual; exportar ou clonar a machine não os preserva.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(220, Math.max(44,
+                    backend.machineSnapshots.length * 34 + 8))
+                visible: backend.machineSnapshots.length > 0
+                radius: Theme.radiusSm
+                color: Theme.bgSurface2
+                border.width: 1
+                border.color: Theme.border
+
+                ListView {
+                    id: snapshotsList
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    clip: true
+                    model: backend.machineSnapshots
+                    spacing: 2
+
+                    delegate: RowLayout {
+                        required property var modelData
+
+                        width: snapshotsList.width
+                        spacing: 8
+
+                        Text {
+                            Layout.preferredWidth: 140
+                            text: modelData.name
+                            color: Theme.textPrimary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMeta
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.date ? String(modelData.date) : "-"
+                            color: Theme.textTertiary
+                            font.family: Theme.monoFamily
+                            font.pixelSize: Theme.fontMicro
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.preferredWidth: 70
+                            text: machinesPage.snapshotSize(modelData.sizeBytes)
+                            color: Theme.textSecondary
+                            font.family: Theme.monoFamily
+                            font.pixelSize: Theme.fontMicro
+                            horizontalAlignment: Text.AlignRight
+                        }
+
+                        ActionButton {
+                            text: qsTr("Restaurar")
+                            size: "sm"
+                            variant: "ghost"
+                            enabled: !machinesPage.snapshotActionPending
+                                     && !backend.actionActive
+                            onClicked: machinesPage.requestSnapshotAction("restore",
+                                                                          String(modelData.name))
+                        }
+
+                        ActionButton {
+                            text: qsTr("Remover")
+                            size: "sm"
+                            variant: "danger"
+                            enabled: !machinesPage.snapshotActionPending
+                                     && !backend.actionActive
+                            onClicked: machinesPage.requestSnapshotAction("remove",
+                                                                          String(modelData.name))
+                        }
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: backend.machineSnapshots.length === 0
+                text: qsTr("Nenhum snapshot criado.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: backend.machineSnapshotsError
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: confirmRow.implicitHeight + 16
+                visible: machinesPage.pendingSnapshotAction.length > 0
+                radius: Theme.radiusSm
+                color: machinesPage.pendingSnapshotAction === "remove"
+                       ? Theme.dangerSoft : Theme.warningSoft
+                border.width: 1
+                border.color: machinesPage.pendingSnapshotAction === "remove"
+                              ? Theme.danger : Theme.warning
+
+                RowLayout {
+                    id: confirmRow
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 8
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: machinesPage.pendingSnapshotAction === "remove"
+                              ? qsTr("Remover o snapshot %1? Esta ação não pode ser desfeita.")
+                                    .arg(machinesPage.pendingSnapshotName)
+                              : qsTr("Restaurar o snapshot %1? O disco atual será substituído e as alterações não salvas serão perdidas.")
+                                    .arg(machinesPage.pendingSnapshotName)
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMeta
+                        wrapMode: Text.WordWrap
+                    }
+
+                    ActionButton {
+                        text: qsTr("Cancelar")
+                        size: "sm"
+                        variant: "secondary"
+                        enabled: !machinesPage.snapshotActionPending
+                        onClicked: {
+                            machinesPage.pendingSnapshotAction = ""
+                            machinesPage.pendingSnapshotName = ""
+                        }
+                    }
+
+                    ActionButton {
+                        text: machinesPage.pendingSnapshotAction === "remove"
+                              ? qsTr("Remover") : qsTr("Restaurar")
+                        size: "sm"
+                        variant: machinesPage.pendingSnapshotAction === "remove"
+                                 ? "danger" : "primary"
+                        enabled: !machinesPage.snapshotActionPending
+                        onClicked: machinesPage.confirmSnapshotAction()
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                FormField {
+                    id: snapshotsName
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("[A-Za-z0-9._-], até 64 caracteres")
+                    enabled: !machinesPage.snapshotActionPending
+                }
+
+                ActionButton {
+                    text: qsTr("Criar")
+                    size: "sm"
+                    variant: "primary"
+                    enabled: !machinesPage.snapshotActionPending
+                             && !backend.actionActive
+                             && machinesPage.pendingSnapshotsId.length > 0
+                    onClicked: machinesPage.createSnapshot()
+                }
+            }
+
+            Text {
+                id: snapshotsError
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: ""
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            ActionButton {
+                text: qsTr("Fechar")
+                variant: "secondary"
+                enabled: !machinesPage.snapshotActionPending
+                onClicked: snapshotsDialog.close()
             }
         }
     }

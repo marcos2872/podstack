@@ -40,6 +40,7 @@ private slots:
     void machineCreateForwardAgent();
     void machineSsh();
     void machinePorts();
+    void machineSnapshots();
     void machineFiles();
     void topCommand();
     void systemDf();
@@ -1116,6 +1117,62 @@ void CliTest::machinePorts()
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();
+}
+
+void CliTest::machineSnapshots()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("machine"), QStringLiteral("--help")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("snapshot ls <id|nome>")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("snapshot")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("snapshot"), QStringLiteral("ls")},
+                 env);
+    QCOMPARE(result.code, 2);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("snapshot"), QStringLiteral("ls"),
+                  QStringLiteral("missing")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("snapshot"),
+                  QStringLiteral("create"), QStringLiteral("missing")},
+                 env);
+    QCOMPARE(result.code, 2);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("snapshot"),
+                  QStringLiteral("create"), QStringLiteral("missing"),
+                  QStringLiteral("snap")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("snapshot"),
+                  QStringLiteral("create"), QStringLiteral("missing"),
+                  QStringLiteral("bad name")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("snapshot inválido")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("snapshot"),
+                  QStringLiteral("restore"), QStringLiteral("missing"),
+                  QStringLiteral("snap")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("aviso:")));
+    QVERIFY(result.err.contains(QStringLiteral("substitui o disco atual")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("snapshot"),
+                  QStringLiteral("rm"), QStringLiteral("missing"), QStringLiteral("snap")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
 }
 
 void CliTest::machineFiles()

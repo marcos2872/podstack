@@ -40,6 +40,7 @@ Rectangle {
     signal cloneRequested(string id)
     signal resourcesRequested(string id)
     signal portsRequested(string id)
+    signal snapshotsRequested(string id)
     signal closeRequested()
     signal expandRequested(string id, int tab)
     signal terminalAreaChanged(rect area, bool visible)
@@ -508,6 +509,20 @@ Rectangle {
                          && backend.actionActive === false
                 onClicked: root.portsRequested(root.machineId)
                 Accessible.name: qsTr("Gerenciar portas encaminhadas da machine")
+            }
+
+            ActionButton {
+                text: qsTr("Snapshots")
+                size: "sm"
+                // O diálogo vive na MachinesPage; no overlay (detalhe) as demais
+                // ações do inspetor também não têm handler.
+                visible: !root.showTerminalTab
+                enabled: root.machineId.length > 0
+                         && root.machineState !== "provisioning"
+                         && root.machineState !== "deleting"
+                         && backend.actionActive === false
+                onClicked: root.snapshotsRequested(root.machineId)
+                Accessible.name: qsTr("Gerenciar snapshots do disco da machine")
             }
 
             ActionButton {

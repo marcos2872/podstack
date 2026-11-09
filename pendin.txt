@@ -1,17 +1,20 @@
 PENDÊNCIAS — PodStack
 Atualizado: 2026-11-09
-Parada solicitada: após a T4-15 (concluída), antes da T4-16.
+Parada solicitada: após a T4-16 (concluída). M4 completo no código; falta a validação em VM real.
 
 SITUAÇÃO ATUAL
 - Branch feat/m4-machines; PR #11 aberta (feat/m4-machines -> main).
-- Últimos commits: 53a33b8 (T4-10 clone/rename/default), b982643 (T4-09 export/import),
-  0031fcb (pendências pós-T4-08), 2a48e9e (T4-08 arquivos SSH/SCP) + os commits da
-  T4-11, T4-12, T4-13 e T4-14.
-- T4-05, T4-07, T4-08, T4-09, T4-10, T4-11, T4-12, T4-13, T4-14 e T4-15 concluídas.
-  T4-15 nesta sessão (console serial read/follow no RPC, CLI e GUI; sem VNC).
+- Últimos commits: 2d1e928 (T4-15 console serial), 53a33b8 (T4-10 clone/rename/default),
+  b982643 (T4-09 export/import), 0031fcb (pendências pós-T4-08),
+  2a48e9e (T4-08 arquivos SSH/SCP) + os commits da T4-11, T4-12, T4-13, T4-14,
+  T4-15 e T4-16.
+- T4-05, T4-07, T4-08, T4-09, T4-10, T4-11, T4-12, T4-13, T4-14, T4-15 e T4-16 concluídas.
+  T4-16 nesta sessão (snapshots internos do qcow2 no RPC, CLI e GUI).
 
-PRÓXIMAS TAREFAS DO M4 (em ordem)
-- T4-16 (P2) — snapshots de disco (criar/restaurar).
+PRÓXIMAS TAREFAS
+- M4 concluído: validar os critérios de saída em VM real (abaixo) e então iniciar o M5
+  (Kubernetes/k3s em VM dedicada). Qualidade/cobertura (gate de 80%) segue como trilha
+  paralela antes do release.
 
 MELHORIAS CONHECIDAS DA T4-08 (não bloqueiam o commit)
 - Transferências são síncronas, sem barra de progresso (listar tem timeout de 15 s,
@@ -82,6 +85,20 @@ MELHORIAS CONHECIDAS DA T4-14 (não bloqueiam o commit)
   (`isolateNetwork`/`forwardSshAgent` do manifesto) e não infere isolamento.
 - O modo cobre rede user-mode (`restrict=on`) e mounts/agent, mas não adiciona cgroups,
   seccomp, limites de I/O ou proteção contra falhas do QEMU/kernel do host.
+
+MELHORIAS CONHECIDAS DA T4-16 (não bloqueiam o commit)
+- Snapshots internos não entram em export/clone (`qemu-img convert`) nem no `.tar.zst`; para
+  backup com snapshots seria preciso copiar o qcow2 inteiro (não achatado).
+- O snapshot referencia o backing file da imagem cloud; se o cache de imagens for limpo, o
+  disco overlay fica inválido (o PodStack não impede a limpeza).
+- `machines.snapshots.*` é síncrono e reinicia a machine quando running, sem barra de
+  progresso; criar snapshot de disco grande pode levar segundos com o daemon no RPC.
+- O qemu-img relista os snapshots após criar; em versões que não os listem, o retorno usa
+  nome + data atual como fallback (sem `id`/tamanho).
+- O tamanho exibido é `vm-state-size` (0 em snapshots offline), não o espaço em disco ocupado
+  pelo snapshot; para uso/consumo real seria preciso `qemu-img info`/`du` do qcow2.
+- Restaurar/remover não fazem backup automático do estado atual; a confirmação é a única
+  barreira (GUI) e o aviso na CLI é informativo.
 
 CRITÉRIOS DE SAÍDA DO M4 A VALIDAR
 - Ubuntu, Debian e Fedora criadas e acessíveis por SSH em VM real.

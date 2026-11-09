@@ -38,6 +38,7 @@
 #include <QStandardPaths>
 #include <QTcpServer>
 #include <QTest>
+#include <QTimeZone>
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -62,6 +63,7 @@ using PodStack::MachineMeta;
 using PodStack::MachineMetaFile;
 using PodStack::MachineMount;
 using PodStack::MachinePort;
+using PodStack::MachineSnapshot;
 using PodStack::MachineStatsCollector;
 using PodStack::UpdateMachineRequest;
 using PodStack::MachineStore;
@@ -309,8 +311,19 @@ QString createQemuImgScript(const QString &root)
         "#!/bin/sh\n"
         "log=\"${PODSTACK_QEMU_IMG_LOG:-}\"\n"
         "if [ -n \"$log\" ]; then\n"
-        "  : > \"$log\"\n"
+        "  if [ \"${PODSTACK_QEMU_IMG_LOG_APPEND:-}\" = '1' ]; then :; else : > \"$log\"; fi\n"
         "  for arg in \"$@\"; do printf '%s\\n' \"$arg\" >> \"$log\"; done\n"
+        "fi\n"
+        "if [ \"$1\" = 'info' ]; then\n"
+        "  if [ -n \"${PODSTACK_QEMU_IMG_INFO_JSON:-}\" ]; then\n"
+        "    printf '%s' \"$PODSTACK_QEMU_IMG_INFO_JSON\"\n"
+        "  else\n"
+        "    printf '%s' '{\"snapshots\":[]}'\n"
+        "  fi\n"
+        "  exit 0\n"
+        "fi\n"
+        "if [ \"$1\" = 'snapshot' ]; then\n"
+        "  exit 0\n"
         "fi\n"
         "disk=''\n"
         "if [ \"$1\" = 'convert' ]; then eval \"disk=\\${$#}\"; else eval \"disk=\\${$(( $# - 1 ))}\"; fi\n"
@@ -786,6 +799,7 @@ private slots:
     void machineManagerCancelled();
     void machineManagerPort();
     void machineManagerPorts();
+    void machineManagerSnapshots();
     void qemuRuntimeFallback();
     void machineManagerReconcile();
     void machineManagerStartFallback();
@@ -3139,6 +3153,171 @@ void MachinesTest::machineManagerUpdate()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
     QVERIFY2(manager.remove(created.id, true, &error), qPrintable(error.message));
+    qunsetenv("PODSTACK_QEMU_IMG_LOG");
+}
+
+void MachinesTest::machineManagerSnapshots()
+{
+    const QString root = m_root + QStringLiteral("/manager-snapshots");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+    const QString qemuImgLog = root + QStringLiteral("/qemu-img.log");
+    qputenv("PODSTACK_QEMU_IMG_LOG", qemuImgLog.toUtf8());
+    qputenv("PODSTACK_QEMU_IMG_LOG_APPEND", "1");
+
+    const QByteArray payload(2048, 's');
+    m_server.setResponse(QStringLiteral("/manager-snapshots.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-snapshots.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro =
+        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+
+    MachineManager manager(std::move(options));
+
+    constexpr qint64 kGiB = 1024LL * 1024LL * 1024LL;
+    CreateMachineRequest request;
+    request.name = QStringLiteral("snapshots");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.cpus = 2;
+    request.memoryBytes = 4LL * kGiB;
+    request.diskBytes = 1LL * kGiB;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.state, QStringLiteral("running"));
+
+    const QByteArray info = QByteArrayLiteral(
+        "{\"snapshots\":["
+        "{\"id\":\"1\",\"name\":\"clean\",\"vm-state-size\":1048576,"
+        "\"date-sec\":1700000000,\"date-nsec\":123000000},"
+        "{\"id\":\"2\",\"name\":\"before-upgrade\",\"vm-state-size\":0,"
+        "\"date-sec\":1700000100,\"date-nsec\":0}]}");
+    qputenv("PODSTACK_QEMU_IMG_INFO_JSON", info);
+
+    const auto logText = [&qemuImgLog] {
+        QFile file(qemuImgLog);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return QString();
+        }
+        return QString::fromUtf8(file.readAll());
+    };
+
+    const QVector<MachineSnapshot> listed = manager.snapshots(created.name, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(listed.size(), 2);
+    QCOMPARE(listed.at(0).id, QStringLiteral("1"));
+    QCOMPARE(listed.at(0).name, QStringLiteral("clean"));
+    QCOMPARE(listed.at(0).sizeBytes, 1048576LL);
+    QCOMPARE(listed.at(0).date,
+             QDateTime::fromSecsSinceEpoch(1700000000, QTimeZone::UTC)
+                 .addMSecs(123)
+                 .toString(Qt::ISODateWithMs));
+    QCOMPARE(listed.at(1).name, QStringLiteral("before-upgrade"));
+    QCOMPARE(listed.at(1).sizeBytes, 0LL);
+    QVERIFY(logText().contains(QStringLiteral("info\n--output=json\n") + created.diskPath));
+
+    // Running: cria parando e reiniciando.
+    int stopsBefore = fake->stopCount;
+    int startsBefore = fake->startCount;
+    const MachineSnapshot createdSnapshot =
+        manager.createSnapshot(created.id, QStringLiteral("snap-new"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(createdSnapshot.name, QStringLiteral("snap-new"));
+    QCOMPARE(fake->stopCount, stopsBefore + 1);
+    QCOMPARE(fake->startCount, startsBefore + 1);
+    QCOMPARE(manager.get(created.id, &error).state, QStringLiteral("running"));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(logText().contains(QStringLiteral("snapshot\n-c\nsnap-new\n") + created.diskPath));
+
+    // Restaura parando e reiniciando.
+    stopsBefore = fake->stopCount;
+    startsBefore = fake->startCount;
+    const MachineMeta restored =
+        manager.restoreSnapshot(created.name, QStringLiteral("clean"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(restored.state, QStringLiteral("running"));
+    QCOMPARE(fake->stopCount, stopsBefore + 1);
+    QCOMPARE(fake->startCount, startsBefore + 1);
+    QVERIFY(logText().contains(QStringLiteral("snapshot\n-a\nclean\n") + created.diskPath));
+
+    // Remove parando e reiniciando.
+    stopsBefore = fake->stopCount;
+    startsBefore = fake->startCount;
+    QVERIFY2(manager.removeSnapshot(created.id, QStringLiteral("clean"), &error),
+             qPrintable(error.message));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(fake->stopCount, stopsBefore + 1);
+    QCOMPARE(fake->startCount, startsBefore + 1);
+    QVERIFY(logText().contains(QStringLiteral("snapshot\n-d\nclean\n") + created.diskPath));
+
+    // Parada permanece parada em create/restore/remove.
+    QVERIFY2(manager.stop(created.id, false, &error).state == QStringLiteral("stopped"),
+             qPrintable(error.message));
+    stopsBefore = fake->stopCount;
+    startsBefore = fake->startCount;
+    const MachineSnapshot offline =
+        manager.createSnapshot(created.id, QStringLiteral("offline"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(offline.name, QStringLiteral("offline"));
+    QCOMPARE(fake->stopCount, stopsBefore);
+    QCOMPARE(fake->startCount, startsBefore);
+
+    const MachineMeta offlineRestored =
+        manager.restoreSnapshot(created.id, QStringLiteral("clean"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(offlineRestored.state, QStringLiteral("stopped"));
+    QVERIFY2(manager.removeSnapshot(created.id, QStringLiteral("clean"), &error),
+             qPrintable(error.message));
+    QCOMPARE(fake->stopCount, stopsBefore);
+    QCOMPARE(fake->startCount, startsBefore);
+    QVERIFY(logText().contains(QStringLiteral("snapshot\n-c\noffline\n") + created.diskPath));
+    QVERIFY(logText().contains(QStringLiteral("snapshot\n-a\nclean\n") + created.diskPath));
+    QVERIFY(logText().contains(QStringLiteral("snapshot\n-d\nclean\n") + created.diskPath));
+
+    // Nome inválido, duplicado e inexistente.
+    QVector<MachineSnapshot> rejected = manager.snapshots(created.id, &error);
+    QCOMPARE(rejected.size(), 2);
+    manager.createSnapshot(created.id, QStringLiteral("bad name"), &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    manager.createSnapshot(created.id, QStringLiteral("clean"), &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    manager.restoreSnapshot(created.id, QStringLiteral("missing"), &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    QVERIFY(!manager.removeSnapshot(created.id, QStringLiteral("missing"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    QCOMPARE(fake->stopCount, stopsBefore);
+    QCOMPARE(fake->startCount, startsBefore);
+
+    // Disco ausente.
+    QVERIFY(QFile::remove(created.diskPath));
+    rejected = manager.snapshots(created.id, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(rejected.isEmpty());
+
+    QVERIFY2(manager.remove(created.id, true, &error), qPrintable(error.message));
+    qunsetenv("PODSTACK_QEMU_IMG_INFO_JSON");
+    qunsetenv("PODSTACK_QEMU_IMG_LOG_APPEND");
     qunsetenv("PODSTACK_QEMU_IMG_LOG");
 }
 
