@@ -2,11 +2,13 @@
 #include "core/Paths.h"
 #include "daemon/DbusUtils.h"
 #include "daemon/SetupManager.h"
+#include "helper/Polkit.h"
 
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusMessage>
+#include <QDBusMetaType>
 #include <QDir>
 #include <QJsonArray>
 #include <QScopeGuard>
@@ -41,6 +43,7 @@ private slots:
     void rejectsInvalidActions();
     void jobLookupsAreSafe();
     void demarshalsHelperReply();
+    void polkitRequestSignature();
 };
 
 void SetupTest::initTestCase()
@@ -163,6 +166,17 @@ void SetupTest::demarshalsHelperReply()
     QCOMPARE(map.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(map.value(QStringLiteral("message")).toString(),
              QStringLiteral("Autorização negada."));
+}
+
+void SetupTest::polkitRequestSignature()
+{
+    const QDBusMessage request = PodStack::checkAuthorizationRequest(
+        QStringLiteral("dev.podstack.helper.install-packages"),
+        QCoreApplication::applicationPid());
+    QCOMPARE(request.member(), QStringLiteral("CheckAuthorization"));
+    QCOMPARE(request.arguments().size(), 5);
+    QCOMPARE(QDBusMetaType::typeToSignature(request.arguments().at(2).metaType()),
+             QStringLiteral("a{ss}"));
 }
 
 } // namespace

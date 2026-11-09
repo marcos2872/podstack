@@ -5,7 +5,9 @@
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QDBusMetaType>
 #include <QFile>
+#include <QMap>
 #include <QVariantMap>
 
 namespace PodStack {
@@ -14,6 +16,8 @@ namespace {
 constexpr auto kPolkitService = "org.freedesktop.PolicyKit1";
 constexpr auto kPolkitPath = "/org/freedesktop/PolicyKit1/Authority";
 constexpr auto kPolkitInterface = "org.freedesktop.PolicyKit1.Authority";
+
+using StringMap = QMap<QString, QString>;
 
 } // namespace
 
@@ -41,8 +45,11 @@ qulonglong processStartTime(uint pid)
     return ok ? value : 0;
 }
 
-bool checkAuthorization(const QString &actionId, uint pid, QString *error)
+QDBusMessage checkAuthorizationRequest(const QString &actionId, uint pid)
 {
+    static const QMetaType registered = qDBusRegisterMetaType<StringMap>();
+    Q_UNUSED(registered)
+
     QDBusArgument subject;
     subject.beginStructure();
     subject << QStringLiteral("unix-process");
@@ -57,14 +64,21 @@ bool checkAuthorization(const QString &actionId, uint pid, QString *error)
     subject << subjectDetails;
     subject.endStructure();
 
-    QVariantMap details;
+    // O polkit exige a{ss} em `details` (não a{sv}).
+    StringMap details;
     details.insert(QStringLiteral("action"), actionId);
 
     QDBusMessage request = QDBusMessage::createMethodCall(
         QString::fromLatin1(kPolkitService), QString::fromLatin1(kPolkitPath),
         QString::fromLatin1(kPolkitInterface), QStringLiteral("CheckAuthorization"));
-    request << QVariant::fromValue(subject) << actionId << details << uint(1) << QString();
+    request << QVariant::fromValue(subject) << actionId << QVariant::fromValue(details)
+            << uint(1) << QString();
+    return request;
+}
 
+bool checkAuthorization(const QString &actionId, uint pid, QString *error)
+{
+    const QDBusMessage request = checkAuthorizationRequest(actionId, pid);
     const QDBusMessage reply =
         QDBusConnection::systemBus().call(request, QDBus::Block, 30000);
     if (reply.type() == QDBusMessage::ErrorMessage) {
@@ -84,7 +98,7 @@ bool checkAuthorization(const QString &actionId, uint pid, QString *error)
     const QDBusArgument result = reply.arguments().constFirst().value<QDBusArgument>();
     bool authorized = false;
     bool challenge = false;
-    QVariantMap resultDetails;
+    StringMap resultDetails;
     result.beginStructure();
     result >> authorized >> challenge >> resultDetails;
     result.endStructure();

@@ -2,9 +2,14 @@
 
 #pragma once
 
+#include <QDBusMessage>
 #include <QString>
 
 namespace PodStack {
+
+/// Monta a chamada `CheckAuthorization` com a assinatura exigida pelo polkit:
+/// `((sa{sv})sa{ss}us)`. Exposto para teste de contrato.
+QDBusMessage checkAuthorizationRequest(const QString &actionId, uint pid);
 
 /// Autoriza uma ação polkit para o processo `pid` que chamou o helper.
 /// Retorna false e preenche `error` quando o polkit recusa ou está indisponível.
