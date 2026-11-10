@@ -15,6 +15,7 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonArray>
@@ -2304,6 +2305,24 @@ void Backend::openPath(const QString &path)
         return;
     }
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+}
+
+QString Backend::choosePath(const QString &mode, const QString &title,
+                            const QString &filter, const QString &initialPath)
+{
+    const QString resolvedTitle =
+        title.isEmpty() ? QStringLiteral("Selecionar arquivo") : title;
+    const QString resolvedFilter =
+        filter.isEmpty() ? QStringLiteral("Todos os arquivos (*)") : filter;
+    if (mode == QStringLiteral("save")) {
+        return QFileDialog::getSaveFileName(nullptr, resolvedTitle, initialPath,
+                                            resolvedFilter);
+    }
+    if (mode == QStringLiteral("directory")) {
+        return QFileDialog::getExistingDirectory(nullptr, resolvedTitle, initialPath);
+    }
+    return QFileDialog::getOpenFileName(nullptr, resolvedTitle, initialPath,
+                                        resolvedFilter);
 }
 
 void Backend::refreshBuilds()

@@ -258,6 +258,9 @@ public:
     Q_INVOKABLE void subscribeComposeLogs(const QString &project, const QString &service);
     Q_INVOKABLE void unsubscribeComposeLogs();
     Q_INVOKABLE void openPath(const QString &path);
+    Q_INVOKABLE QString choosePath(const QString &mode, const QString &title,
+                                   const QString &filter = QString(),
+                                   const QString &initialPath = QString());
     Q_INVOKABLE void refreshBuilds();
     Q_INVOKABLE void startBuild(const QVariantMap &spec);
     Q_INVOKABLE void cancelBuild();

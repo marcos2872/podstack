@@ -212,9 +212,11 @@ ColumnLayout {
                 rowSpacing: 6
 
                 Text { text: qsTr("Contexto"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
-                FormField {
+                PathField {
                     id: buildContext
                     Layout.fillWidth: true
+                    title: qsTr("Contexto do build")
+                    mode: "directory"
                     placeholderText: "/home/usuario/projeto"
                 }
 

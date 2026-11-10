@@ -240,9 +240,11 @@ ColumnLayout {
                 font.pixelSize: 11
                 font.bold: true
             }
-            FormField {
+            PathField {
                 id: importPath
                 Layout.fillWidth: true
+                title: qsTr("Importar imagem")
+                filter: qsTr("Imagens (*.tar *.tar.gz *.tar.zst);;Todos os arquivos (*)")
                 placeholderText: "/caminho/imagem.tar"
             }
         }

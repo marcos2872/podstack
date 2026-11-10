@@ -320,7 +320,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 | Instalar helper/CLI | explicação + polkit | consentimento |
 | Migração | origem, itens, prévia | espaço/rollback |
 
-Todos com: foco inicial no campo primário, `Esc` cancela, `Enter` confirma quando válido, erros inline.
+Todos com: foco inicial no campo primário, `Esc` cancela, `Enter` confirma quando válido, erros inline. Campos de caminho usam `PathField` com botão **Procurar…** que abre o `QFileDialog` nativo (abrir, salvar ou escolher diretório).
 
 ---
 

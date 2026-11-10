@@ -44,10 +44,11 @@ ColumnLayout {
         }
     }
 
-    FormField {
+    PathField {
         id: uploadPath
         Layout.fillWidth: true
-        Layout.preferredHeight: 30
+        title: qsTr("Enviar arquivo para o container")
+        filter: qsTr("Todos os arquivos (*)")
         placeholderText: qsTr("Arquivo local para enviar ao container…")
     }
 

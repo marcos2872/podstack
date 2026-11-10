@@ -856,9 +856,12 @@ ColumnLayout {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMeta
             }
-            FormField {
+            PathField {
                 id: exportPath
                 Layout.fillWidth: true
+                title: qsTr("Exportar machine")
+                mode: "save"
+                filter: qsTr("Machine PodStack (*.tar.zst);;Todos os arquivos (*)")
                 placeholderText: qsTr("/home/voce/Downloads/machine.tar.zst")
                 enabled: !backend.machineCreateActive
             }
@@ -962,9 +965,11 @@ ColumnLayout {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMeta
             }
-            FormField {
+            PathField {
                 id: importPath
                 Layout.fillWidth: true
+                title: qsTr("Importar machine")
+                filter: qsTr("Machine PodStack (*.tar.zst);;Todos os arquivos (*)")
                 placeholderText: qsTr("/home/voce/Downloads/machine.tar.zst")
                 enabled: !backend.machineCreateActive
             }

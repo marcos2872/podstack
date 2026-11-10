@@ -237,9 +237,11 @@ ColumnLayout {
                 font.pixelSize: 11
                 font.bold: true
             }
-            FormField {
+            PathField {
                 id: importHostSource
                 Layout.fillWidth: true
+                title: qsTr("Diretório de origem")
+                mode: "directory"
                 placeholderText: "/home/usuario/dados"
             }
             Label {

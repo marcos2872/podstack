@@ -103,10 +103,11 @@ ColumnLayout {
         Layout.rightMargin: 14
         spacing: 6
 
-        FormField {
+        PathField {
             id: uploadPath
             Layout.fillWidth: true
-            Layout.preferredHeight: 30
+            title: qsTr("Enviar arquivo para a machine")
+            filter: qsTr("Todos os arquivos (*)")
             placeholderText: qsTr("Arquivo local para enviar à machine…")
         }
 
