@@ -708,6 +708,7 @@ Rectangle {
 
     AppDialog {
         id: settingsDialog
+        objectName: "settingsDialog"
         title: qsTr("Configurações")
         modal: true
         width: Math.min(880, window.width - 48)
@@ -722,9 +723,10 @@ Rectangle {
             rebuildSettingsRows()
         }
 
-        ListModel {
-            id: settingsRows
-        }
+        // Array JS em vez de ListModel: os roles defaultValue/currentValue
+        // misturam string, número e bool, e o ListModel fixa o tipo no
+        // primeiro append (String -> Bool falhava ao trocar de categoria).
+        property var settingsRows: []
 
         readonly property var categories: [
             qsTr("Geral"), qsTr("Engine"), qsTr("Docker"), qsTr("Rede"),
@@ -733,10 +735,7 @@ Rectangle {
         ]
 
         function rebuildSettingsRows() {
-            if (typeof settingsRows === "undefined" || settingsRows === null) {
-                return
-            }
-            settingsRows.clear()
+            const rows = []
             const schema = backend.settingsSchema
             const category = categoryBox.currentText
             for (let index = 0; index < schema.length; ++index) {
@@ -745,7 +744,7 @@ Rectangle {
                     continue
                 }
                 const value = backend.settingsValues[definition.key]
-                settingsRows.append({
+                rows.push({
                     settingKey: definition.key,
                     settingType: definition.type,
                     defaultValue: definition["default"],
@@ -759,6 +758,7 @@ Rectangle {
                     currentValue: value === undefined ? null : value
                 })
             }
+            settingsDialog.settingsRows = rows
         }
 
         contentItem: ColumnLayout {
@@ -786,7 +786,7 @@ Rectangle {
                 Item { Layout.fillWidth: true }
 
                 Text {
-                    text: qsTr("%1 chaves").arg(settingsRows.count)
+                    text: qsTr("%1 chaves").arg(settingsDialog.settingsRows.length)
                     color: Theme.textTertiary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -813,21 +813,21 @@ Rectangle {
                     spacing: Theme.spacingSm
 
                     Repeater {
-                        model: settingsRows
+                        model: settingsDialog.settingsRows
 
                         delegate: SettingsRow {
                             width: settingsColumn.width
-                            settingKey: model.settingKey
-                            settingType: model.settingType
-                            settingDefault: model.defaultValue
-                            enumValues: model.enumValues
-                            minValue: model.minValue
-                            maxValue: model.maxValue
-                            restartRequired: model.restartRequired
-                            secret: model.secret
-                            nullable: model.nullable
-                            description: model.description
-                            currentValue: model.currentValue
+                            settingKey: modelData.settingKey
+                            settingType: modelData.settingType
+                            settingDefault: modelData.defaultValue
+                            enumValues: modelData.enumValues
+                            minValue: modelData.minValue
+                            maxValue: modelData.maxValue
+                            restartRequired: modelData.restartRequired
+                            secret: modelData.secret
+                            nullable: modelData.nullable
+                            description: modelData.description
+                            currentValue: modelData.currentValue
                             settingsBackend: backend
 
                             onSaveRequested: function(key, value) {
@@ -840,7 +840,7 @@ Rectangle {
                     }
 
                     Text {
-                        visible: settingsRows.count === 0
+                        visible: settingsDialog.settingsRows.length === 0
                         width: parent.width
                         text: qsTr("Carregando schema de configurações…")
                         color: Theme.textTertiary
