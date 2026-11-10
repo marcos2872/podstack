@@ -4142,7 +4142,7 @@ void printConfigUsage(QTextStream &stream)
            << "  add <chave> <valor>     Adiciona item a uma lista\n"
            << "  remove <chave> <valor>  Remove item de uma lista\n"
            << "  reset [chave] [--yes]   Restaura uma chave ou todas\n"
-           << "  schema [--json]         Mostra o schema (82 chaves)\n";
+           << "  schema [--json]         Mostra o schema (83 chaves)\n";
     stream.flush();
 }
 

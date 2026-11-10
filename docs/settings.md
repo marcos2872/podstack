@@ -2,7 +2,7 @@
 
 > Fonte única de configuração no daemon; GUI e CLI leem/escrevem as mesmas chaves via RPC
 > (`settings.*`). Arquivo: `~/.config/podstack/config.json` (0600), escrita atômica, schema
-> versionado. O schema central com as 82 chaves, defaults, enums e faixas vive em
+> versionado. O schema central com as 83 chaves, defaults, enums e faixas vive em
 > `src/core/Settings.cpp`; `Config::defaults()` é gerado a partir dele.
 
 ---
@@ -31,6 +31,7 @@ log (o arquivo original não é apagado; um save posterior o substitui).
 | `app.showInTray` | bool | `true` | não | Mostra o ícone na bandeja; `false` faz fechar encerrar a GUI |
 | `app.notifications` | bool | `true` | não | Notifica falha/OOM/unhealthy de containers |
 | `app.theme` | enum `system\|dark\|light` | `system` | não | Tema da UI |
+| `app.fontScale` | int (80–150) | `100` | não | Escala da fonte da UI (%) |
 | `app.language` | string | `pt-BR` | não | Idioma (`pt-BR`, `en-US`) |
 | `app.confirmDestructive` | bool | `true` | não | Confirmação para ações destrutivas |
 | `app.showOnboarding` | bool | `true` | não | Exibe onboarding se incompleto |

@@ -7,6 +7,8 @@ QtObject {
     id: root
 
     property bool dark: true
+    // Multiplicador global de tipografia; aplicado em runtime por Main.qml.
+    property real fontScale: 1.0
 
     // Superfícies
     readonly property color bgBase: dark ? "#080a0f" : "#f5f6fa"
@@ -53,13 +55,13 @@ QtObject {
     // Tipografia
     readonly property string fontFamily: "Inter"
     readonly property string monoFamily: "JetBrains Mono"
-    readonly property real fontMicro: 10.5
-    readonly property real fontMeta: 11
-    readonly property real fontBody: 12
-    readonly property real fontUi: 13
-    readonly property real fontTitle: 15
-    readonly property real fontHeading: 19
-    readonly property real fontDisplay: 23
+    readonly property real fontMicro: 10.5 * root.fontScale
+    readonly property real fontMeta: 11 * root.fontScale
+    readonly property real fontBody: 12 * root.fontScale
+    readonly property real fontUi: 13 * root.fontScale
+    readonly property real fontTitle: 15 * root.fontScale
+    readonly property real fontHeading: 19 * root.fontScale
+    readonly property real fontDisplay: 23 * root.fontScale
 
     // Raios
     readonly property int radiusXs: 6

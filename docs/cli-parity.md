@@ -197,7 +197,7 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 | `config remove K V` | `config remove K V` | — | ✅ T7-01 |
 | `config reset` | `config reset [K]` | `--all`, `--yes` | ✅ T7-01; sem `--yes` exige TTY; reset total preserva `setup.*` |
 | `config docker` | `config engine` | — | não implementado no v1 (edite `docker.daemonJsonPath` via `config set`) |
-| — | `config schema` | `--json` | ✅ T7-01; 82 chaves com tipo/default/enum/faixa/restart |
+| — | `config schema` | `--json` | ✅ T7-01; 83 chaves com tipo/default/enum/faixa/restart |
 | `login` / `logout` | `login` / `logout` | `--domain`, `--force` | Opcional (P2) |
 
 ### 2.5 Kubernetes

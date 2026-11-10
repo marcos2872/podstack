@@ -8,7 +8,7 @@
 
 namespace PodStack {
 
-/// Configuração do daemon/CLI. O schema completo (82 chaves) vive em
+/// Configuração do daemon/CLI. O schema completo (83 chaves) vive em
 /// `core/Settings.h` e gera os defaults usados aqui.
 class Config {
 public:

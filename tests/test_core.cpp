@@ -197,7 +197,7 @@ void CoreTest::configInvalidFallsBack()
 void CoreTest::configSchemaCoversDocumentedKeys()
 {
     const QVector<PodStack::SettingDef> &definitions = PodStack::Settings::definitions();
-    QCOMPARE(definitions.size(), 82);
+    QCOMPARE(definitions.size(), 83);
 
     QSet<QString> keys;
     for (const PodStack::SettingDef &definition : definitions) {
@@ -242,7 +242,7 @@ void CoreTest::configSchemaCoversDocumentedKeys()
     QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 1);
 
     const QJsonObject schema = PodStack::Config::schema();
-    QCOMPARE(schema.value(QStringLiteral("schema")).toArray().size(), 82);
+    QCOMPARE(schema.value(QStringLiteral("schema")).toArray().size(), 83);
     const PodStack::SettingDef *proxy = PodStack::Settings::find(QStringLiteral("network.proxy"));
     QVERIFY(proxy != nullptr);
     QVERIFY(proxy->secret);
