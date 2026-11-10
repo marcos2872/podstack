@@ -1,6 +1,8 @@
+#include "core/Config.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
 #include "daemon/Daemon.h"
+#include "daemon/HttpProxy.h"
 #include "daemon/RpcServer.h"
 
 #include <QCommandLineOption>
@@ -9,6 +11,7 @@
 #include <QSocketNotifier>
 
 #include <csignal>
+#include <memory>
 #include <unistd.h>
 
 namespace {
@@ -73,6 +76,23 @@ int main(int argc, char *argv[])
         });
         std::signal(SIGINT, handleSignal);
         std::signal(SIGTERM, handleSignal);
+    }
+
+    std::unique_ptr<PodStack::HttpProxy> httpProxy;
+    const PodStack::Config config = PodStack::Config::load();
+    const int httpPort = config.get(QStringLiteral("network.httpPort")).toInt(8080);
+    if (config.get(QStringLiteral("network.bridge")).toBool(true) && httpPort >= 1 &&
+        httpPort <= 65535) {
+        httpProxy = std::make_unique<PodStack::HttpProxy>(
+            [&daemon](QVector<PodStack::ContainerInfo> *containers, PodStack::Error *proxyError) {
+                return daemon.listContainersForProxy(containers, proxyError);
+            });
+        PodStack::Error proxyError;
+        if (!httpProxy->listen(static_cast<quint16>(httpPort), &proxyError)) {
+            qCWarning(lcRpc) << "Proxy HTTP de *.localhost indisponível:" << proxyError.message
+                             << proxyError.detail;
+            httpProxy.reset();
+        }
     }
 
     qInfo("podstackd %s pronto", PODSTACK_VERSION);

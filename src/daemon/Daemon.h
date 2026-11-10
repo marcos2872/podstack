@@ -31,6 +31,9 @@ public:
     QJsonObject handle(const QString &method, const QJsonObject &params, const Notify &notify,
                        Error *error);
 
+    /// Containers usados pelo proxy de entrada `*.localhost`.
+    bool listContainersForProxy(QVector<ContainerInfo> *containers, Error *error);
+
 private:
     struct Subscription {
         std::atomic_bool cancel{false};
