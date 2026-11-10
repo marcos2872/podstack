@@ -75,8 +75,12 @@ void printUsage()
           << "        [--platform p1,p2]\n"
           << "                          Build de imagem\n"
           << "  builds [ls|rm]        Histórico de builds\n"
-          << "  machine <list|info|logs|console|create|start|stop|restart|delete|rename|clone|default|distros|ssh|files|pull|push|port|snapshot|update>\n"
+          << "  machine "
+             "<list|info|logs|console|create|start|stop|restart|delete|rename|clone|default|"
+             "distros|ssh|files|pull|push|port|snapshot|update>\n"
           << "                          Gerencia machines QEMU/KVM\n"
+          << "  kube <info|env> [--cluster NOME]\n"
+          << "                          Cluster Kubernetes e KUBECONFIG\n"
           << "  ssh [id|nome] [-- cmd...]\n"
           << "                          Abre SSH (sem id usa a machine default)\n"
           << "  top [--once] [--interval S] [--json] [--plain]\n"
@@ -2705,7 +2709,7 @@ int machinePortCommand(const QStringList &args)
         printMachineUsage(args.isEmpty() ? err() : out());
         return args.isEmpty() ? kExitUsage : kExitOk;
     }
-    const QString action = args.first();
+    const QString &action = args.first();
     if (action == QStringLiteral("ls") || action == QStringLiteral("list")) {
         return machinePortListCommand(args);
     }
@@ -2923,7 +2927,7 @@ int machineSnapshotCommand(const QStringList &args)
         printMachineUsage(args.isEmpty() ? err() : out());
         return args.isEmpty() ? kExitUsage : kExitOk;
     }
-    const QString action = args.first();
+    const QString &action = args.first();
     if (action == QStringLiteral("ls") || action == QStringLiteral("list")) {
         return machineSnapshotListCommand(args);
     }
@@ -3084,7 +3088,7 @@ int machineFilesCommand(const QStringList &args)
         return args.size() < 2 ? kExitUsage : kExitOk;
     }
 
-    const QString subcommand = args.at(1);
+    const QString &subcommand = args.at(1);
     if (subcommand != QStringLiteral("ls") && subcommand != QStringLiteral("list")) {
         err() << "subcomando desconhecido: machine files " << subcommand << '\n';
         printMachineUsage(err());
@@ -3389,7 +3393,7 @@ int commandSystem(const QStringList &args)
         err() << "Uso: podstack system df [--detailed] [--json]\n";
         return kExitUsage;
     }
-    const QString sub = args.first();
+    const QString &sub = args.first();
     if (sub == QStringLiteral("--help") || sub == QStringLiteral("-h")
         || sub == QStringLiteral("help")) {
         out() << "Uso: podstack system df [--detailed] [--json]\n";
@@ -3533,6 +3537,129 @@ int commandSystem(const QStringList &args)
     return kExitOk;
 }
 
+void printKubeUsage(QTextStream &stream)
+{
+    stream << "Uso: podstack kube <comando> [opções]\n\n"
+           << "Comandos:\n"
+           << "  info [--cluster NOME] [--json]  Estado do cluster\n"
+           << "  env [--cluster NOME]            Imprime export KUBECONFIG=...\n";
+    stream.flush();
+}
+
+int kubeStatus(const QString &cluster, QJsonObject *result, PodStack::Error *error)
+{
+    PodStack::RpcClient client;
+    *result = client.call(QStringLiteral("k8s.status"),
+                          QJsonObject{{QStringLiteral("cluster"), cluster}}, error);
+    return error->isEmpty() ? kExitOk : fail(*error);
+}
+
+int kubeInfoCommand(const QStringList &args)
+{
+    QString cluster = QStringLiteral("default");
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--cluster") && i + 1 < args.size()) {
+            cluster = args.at(++i);
+        } else if (arg.startsWith(QStringLiteral("--cluster="))) {
+            cluster = arg.mid(QStringLiteral("--cluster=").size());
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+
+    QJsonObject result;
+    PodStack::Error error;
+    const int code = kubeStatus(cluster, &result, &error);
+    if (code != kExitOk) {
+        return code;
+    }
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+
+    out() << "cluster: " << result.value(QStringLiteral("name")).toString() << '\n'
+          << "estado: " << result.value(QStringLiteral("state")).toString() << '\n';
+    const QString context = result.value(QStringLiteral("contextName")).toString();
+    if (!context.isEmpty()) {
+        out() << "contexto: " << context << '\n';
+    }
+    const int apiPort = result.value(QStringLiteral("apiPort")).toInt();
+    if (apiPort > 0) {
+        out() << "api: 127.0.0.1:" << apiPort << '\n';
+    }
+    const QString kubeconfig = result.value(QStringLiteral("kubeconfigPath")).toString();
+    if (!kubeconfig.isEmpty()) {
+        out() << "kubeconfig: " << kubeconfig << '\n';
+    }
+    out().flush();
+    return kExitOk;
+}
+
+int kubeEnvCommand(const QStringList &args)
+{
+    QString cluster = QStringLiteral("default");
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--cluster") && i + 1 < args.size()) {
+            cluster = args.at(++i);
+        } else if (arg.startsWith(QStringLiteral("--cluster="))) {
+            cluster = arg.mid(QStringLiteral("--cluster=").size());
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+
+    QJsonObject result;
+    PodStack::Error error;
+    const int code = kubeStatus(cluster, &result, &error);
+    if (code != kExitOk) {
+        return code;
+    }
+    const QString kubeconfig = result.value(QStringLiteral("kubeconfigPath")).toString();
+    if (kubeconfig.isEmpty()) {
+        const QString state = result.value(QStringLiteral("state")).toString();
+        return fail(PodStack::Error::make(
+            QStringLiteral("PODSTACK_NOT_FOUND"),
+            QStringLiteral("O cluster Kubernetes ainda não tem kubeconfig."),
+            QStringLiteral("estado: %1").arg(state),
+            QStringLiteral("Habilite o cluster (k8s.enable) antes de usar kube env.")));
+    }
+    out() << "export KUBECONFIG=" << kubeconfig << '\n';
+    out().flush();
+    return kExitOk;
+}
+
+int commandKube(const QStringList &args)
+{
+    if (args.isEmpty()) {
+        printKubeUsage(err());
+        return kExitUsage;
+    }
+    const QString &subcommand = args.first();
+    if (subcommand == QStringLiteral("--help") || subcommand == QStringLiteral("-h") ||
+        subcommand == QStringLiteral("help")) {
+        printKubeUsage(out());
+        return kExitOk;
+    }
+    if (subcommand == QStringLiteral("info")) {
+        return kubeInfoCommand(args);
+    }
+    if (subcommand == QStringLiteral("env")) {
+        return kubeEnvCommand(args);
+    }
+    err() << "comando kube desconhecido: " << subcommand << '\n';
+    printKubeUsage(err());
+    return kExitUsage;
+}
+
 int commandMachine(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -3540,7 +3667,7 @@ int commandMachine(const QStringList &args)
         return kExitUsage;
     }
 
-    const QString subcommand = args.first();
+    const QString &subcommand = args.first();
     if (subcommand == QStringLiteral("--help") || subcommand == QStringLiteral("-h")
         || subcommand == QStringLiteral("help")) {
         printMachineUsage(out());
@@ -4126,8 +4253,8 @@ int commandConfigSet(const QStringList &args)
         err() << "Uso: podstack config set <chave> <valor>\n";
         return kExitUsage;
     }
-    const QString key = args.at(0);
-    const QString raw = args.at(1);
+    const QString &key = args.at(0);
+    const QString &raw = args.at(1);
 
     QHash<QString, QJsonObject> schema;
     PodStack::Error error;
@@ -4174,7 +4301,7 @@ int commandConfigList(const QString &operation, const QStringList &args)
         err() << "Uso: podstack config " << operation << " <chave> <valor>\n";
         return kExitUsage;
     }
-    const QString key = args.at(0);
+    const QString &key = args.at(0);
     const QString entry = args.at(1).trimmed();
     if (entry.isEmpty()) {
         err() << "valor vazio não é permitido.\n";
@@ -4456,6 +4583,9 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("machine")) {
         return commandMachine(args);
+    }
+    if (command == QStringLiteral("kube")) {
+        return commandKube(args);
     }
     if (command == QStringLiteral("ssh")) {
         return machineSshCommand(args);

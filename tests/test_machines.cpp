@@ -573,6 +573,29 @@ public:
     QemuSpec lastSpec;
 };
 
+QStringList k8sKubeconfigLines()
+{
+    return {
+        QStringLiteral("apiVersion: v1"),
+        QStringLiteral("clusters:"),
+        QStringLiteral("- cluster:"),
+        QStringLiteral("    certificate-authority-data: Y2E="),
+        QStringLiteral("    server: https://127.0.0.1:6443"),
+        QStringLiteral("  name: default"),
+        QStringLiteral("contexts:"),
+        QStringLiteral("- context:"),
+        QStringLiteral("    cluster: default"),
+        QStringLiteral("    user: default"),
+        QStringLiteral("  name: default"),
+        QStringLiteral("current-context: default"),
+        QStringLiteral("kind: Config"),
+        QStringLiteral("users:"),
+        QStringLiteral("- name: default"),
+        QStringLiteral("  user:"),
+        QStringLiteral("    client-certificate-data: Y2VydA=="),
+    };
+}
+
 QString k8sFakeSsh(const QString &root, const QByteArray &body)
 {
     const QString path = root + QStringLiteral("/ssh-fake.sh");
@@ -888,6 +911,10 @@ private slots:
     void k8sBrokenStore();
     void k8sDefaultSshTimeout();
     void k8sCreateStartFailure();
+    void k8sEnableWritesKubeconfig();
+    void k8sKubeconfigFormatError();
+    void k8sKubeconfigReadFailure();
+    void k8sKubeconfigDirFailure();
     void machineManagerCreateErrors();
     void machineManagerPortsErrors();
     void machineManagerUpdateRemoveErrors();
@@ -2821,15 +2848,21 @@ void MachinesTest::k8sEnableProvisionsCluster()
     QStringList scripts;
     K8sManager::Options k8sOptions;
     k8sOptions.storePath = storePath;
-    k8sOptions.remoteExec = [&scripts](const SshInfo &, const QString &script,
-                                       const K8sManager::Line &, const K8sManager::Cancelled &, int,
-                                       PodStack::Error *execError) {
-        scripts.append(script);
-        if (execError) {
-            *execError = {};
-        }
-        return true;
-    };
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec =
+        [&scripts](const SshInfo &, const QString &script, const K8sManager::Line &onLine,
+                   const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+            scripts.append(script);
+            if (execError) {
+                *execError = {};
+            }
+            if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+                for (const QString &line : k8sKubeconfigLines()) {
+                    onLine(line);
+                }
+            }
+            return true;
+        };
     K8sManager k8s(&machines, k8sOptions);
 
     QStringList stages;
@@ -2899,15 +2932,21 @@ void MachinesTest::k8sEnableReusesCluster()
     int execCount = 0;
     K8sManager::Options k8sOptions;
     k8sOptions.storePath = storePath;
-    k8sOptions.remoteExec = [&execCount](const SshInfo &, const QString &, const K8sManager::Line &,
-                                         const K8sManager::Cancelled &, int,
-                                         PodStack::Error *execError) {
-        ++execCount;
-        if (execError) {
-            *execError = {};
-        }
-        return true;
-    };
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec =
+        [&execCount](const SshInfo &, const QString &script, const K8sManager::Line &onLine,
+                     const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+            ++execCount;
+            if (execError) {
+                *execError = {};
+            }
+            if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+                for (const QString &line : k8sKubeconfigLines()) {
+                    onLine(line);
+                }
+            }
+            return true;
+        };
     K8sManager k8s(&machines, k8sOptions);
 
     PodStack::Error error;
@@ -3002,10 +3041,17 @@ void MachinesTest::k8sEnableCancelled()
 
     K8sManager::Options k8sOptions;
     k8sOptions.storePath = storePath;
-    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
-                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script,
+                               const K8sManager::Line &onLine, const K8sManager::Cancelled &, int,
+                               PodStack::Error *execError) {
         if (execError) {
             *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+            for (const QString &line : k8sKubeconfigLines()) {
+                onLine(line);
+            }
         }
         return true;
     };
@@ -3047,10 +3093,17 @@ void MachinesTest::k8sStatusReconcilesStoppedMachine()
 
     K8sManager::Options k8sOptions;
     k8sOptions.storePath = storePath;
-    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
-                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script,
+                               const K8sManager::Line &onLine, const K8sManager::Cancelled &, int,
+                               PodStack::Error *execError) {
         if (execError) {
             *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+            for (const QString &line : k8sKubeconfigLines()) {
+                onLine(line);
+            }
         }
         return true;
     };
@@ -3214,10 +3267,17 @@ void MachinesTest::k8sEnableNameConflict()
 
     K8sManager::Options k8sOptions;
     k8sOptions.storePath = storePath;
-    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
-                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script,
+                               const K8sManager::Line &onLine, const K8sManager::Cancelled &, int,
+                               PodStack::Error *execError) {
         if (execError) {
             *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+            for (const QString &line : k8sKubeconfigLines()) {
+                onLine(line);
+            }
         }
         return true;
     };
@@ -3273,6 +3333,23 @@ void MachinesTest::k8sSshRunnerSuccess()
                   "    while [ $i -le 25 ]; do printf 'linha %s\\r\\n' \"$i\"; i=$((i+1)); done\n"
                   "    printf 'ultima-linha-sem-newline'\n"
                   "    exit 0;;\n"
+                  "  *\"sudo cat\"*)\n"
+                  "    cat <<'YAML'\n"
+                  "apiVersion: v1\n"
+                  "clusters:\n"
+                  "- cluster:\n"
+                  "    server: https://127.0.0.1:6443\n"
+                  "  name: default\n"
+                  "contexts:\n"
+                  "- context:\n"
+                  "    cluster: default\n"
+                  "    user: default\n"
+                  "  name: default\n"
+                  "current-context: default\n"
+                  "users:\n"
+                  "- name: default\n"
+                  "YAML\n"
+                  "    exit 0;;\n"
                   "  *\"get nodes\"*) echo 'node Ready'; exit 0;;\n"
                   "  *) echo \"inesperado: $last\" >&2; exit 1;;\n"
                   "esac\n"));
@@ -3282,6 +3359,7 @@ void MachinesTest::k8sSshRunnerSuccess()
 
     K8sManager::Options k8sOptions;
     k8sOptions.storePath = storePath;
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
     k8sOptions.sshBinary = ssh;
     K8sManager k8s(&machines, k8sOptions);
 
@@ -3693,10 +3771,17 @@ void MachinesTest::k8sEnableClearsMissingVmAndStartsStopped()
 
     K8sManager::Options k8sOptions;
     k8sOptions.storePath = storePath;
-    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
-                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script,
+                               const K8sManager::Line &onLine, const K8sManager::Cancelled &, int,
+                               PodStack::Error *execError) {
         if (execError) {
             *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+            for (const QString &line : k8sKubeconfigLines()) {
+                onLine(line);
+            }
         }
         return true;
     };
@@ -3872,8 +3957,213 @@ void MachinesTest::k8sCreateStartFailure()
 
     K8sManager::Options k8sOptions;
     k8sOptions.storePath = storePath;
-    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script,
+                               const K8sManager::Line &onLine, const K8sManager::Cancelled &, int,
+                               PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+            for (const QString &line : k8sKubeconfigLines()) {
+                onLine(line);
+            }
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void MachinesTest::k8sEnableWritesKubeconfig()
+{
+    const QString root = m_root + QStringLiteral("/k8s-kubeconfig");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'u');
+    m_server.setResponse(QStringLiteral("/k8s-kubeconfig.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-kubeconfig.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    const QStringList kubeconfigLines{
+        QStringLiteral("apiVersion: v1"),
+        QStringLiteral("clusters:"),
+        QStringLiteral("- cluster:"),
+        QStringLiteral("    certificate-authority-data: Y2E="),
+        QStringLiteral("    server: https://127.0.0.1:6443"),
+        QStringLiteral("  name: default"),
+        QStringLiteral("contexts:"),
+        QStringLiteral("- context:"),
+        QStringLiteral("    cluster: default"),
+        QStringLiteral("    user: default"),
+        QStringLiteral("  name: default"),
+        QStringLiteral("current-context: default"),
+        QStringLiteral("kind: Config"),
+        QStringLiteral("users:"),
+        QStringLiteral("- name: default"),
+        QStringLiteral("  user:"),
+        QStringLiteral("    client-certificate-data: Y2VydA=="),
+    };
+    int execCount = 0;
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.contextPrefix = QStringLiteral("podstack-");
+    const int requestedApiPort = freePortHint();
+    k8sOptions.apiPort = requestedApiPort;
+    k8sOptions.remoteExec = [&kubeconfigLines, &execCount](const SshInfo &, const QString &script,
+                                                           const K8sManager::Line &onLine,
+                                                           const K8sManager::Cancelled &, int,
+                                                           PodStack::Error *execError) {
+        ++execCount;
+        if (execError) {
+            *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat"))) {
+            for (const QString &line : kubeconfigLines) {
+                if (onLine) {
+                    onLine(line);
+                }
+            }
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cluster.state, QStringLiteral("ready"));
+    QCOMPARE(cluster.apiPort, requestedApiPort);
+    QCOMPARE(cluster.contextName, QStringLiteral("podstack-default"));
+    QVERIFY(cluster.kubeconfigPath.endsWith(QStringLiteral("/default.yaml")));
+
+    const QFileInfo kubeconfigInfo(cluster.kubeconfigPath);
+    QVERIFY(kubeconfigInfo.isFile());
+    QVERIFY(ownerOnly(kubeconfigInfo.permissions(), false));
+    QFile kubeconfig(cluster.kubeconfigPath);
+    QVERIFY(kubeconfig.open(QIODevice::ReadOnly));
+    const QString content = QString::fromUtf8(kubeconfig.readAll());
+    kubeconfig.close();
+    QVERIFY(content.contains(QStringLiteral("server: https://127.0.0.1:%1").arg(cluster.apiPort)));
+    QVERIFY(content.contains(QStringLiteral("current-context: podstack-default")));
+    QVERIFY(content.contains(QStringLiteral("name: podstack-default")));
+    QVERIFY(content.contains(QStringLiteral("cluster: podstack-default")));
+    QVERIFY(content.contains(QStringLiteral("user: podstack-default")));
+    QVERIFY2(!content.contains(QStringLiteral("name: default")), qPrintable(content));
+
+    const MachineMeta vm = machines.get(cluster.vmMachineId, &error);
+    bool hasApiPort = false;
+    for (const MachinePort &port : vm.ports) {
+        if (port.label == QStringLiteral("k8s-api")) {
+            hasApiPort = port.hostPort == cluster.apiPort && port.guestPort == 6443 &&
+                         port.protocol == QStringLiteral("tcp") && !port.exposeLan;
+        }
+    }
+    QVERIFY(hasApiPort);
+
+    K8sStore store(storePath);
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    const K8sCluster persisted = store.get(QStringLiteral("default"), &error);
+    QCOMPARE(persisted.apiPort, cluster.apiPort);
+    QCOMPARE(persisted.kubeconfigPath, cluster.kubeconfigPath);
+    QCOMPARE(persisted.contextName, cluster.contextName);
+
+    execCount = 0;
+    const K8sCluster again = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(again.apiPort, cluster.apiPort);
+    QCOMPARE(execCount, 0);
+}
+
+void MachinesTest::k8sKubeconfigFormatError()
+{
+    const QString root = m_root + QStringLiteral("/k8s-kubeconfig-error");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'v');
+    m_server.setResponse(QStringLiteral("/k8s-kubeconfig-error.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-kubeconfig-error.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script,
+                               const K8sManager::Line &onLine, const K8sManager::Cancelled &, int,
+                               PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+            onLine(QStringLiteral("nao-e-um-kubeconfig"));
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(error.message.contains(QStringLiteral("kubeconfig")));
+}
+
+void MachinesTest::k8sKubeconfigReadFailure()
+{
+    const QString root = m_root + QStringLiteral("/k8s-read-failure");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'r');
+    m_server.setResponse(QStringLiteral("/k8s-read-failure.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-read-failure.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = root + QStringLiteral("/podstack.db");
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script, const K8sManager::Line &,
                                const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (script.contains(QStringLiteral("sudo cat"))) {
+            if (execError) {
+                *execError = PodStack::Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                                   QStringLiteral("cat falhou"));
+            }
+            return false;
+        }
         if (execError) {
             *execError = {};
         }
@@ -3885,6 +4175,53 @@ void MachinesTest::k8sCreateStartFailure()
     const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
     QVERIFY(cluster.id.isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(error.message.contains(QStringLiteral("cat falhou")));
+}
+
+void MachinesTest::k8sKubeconfigDirFailure()
+{
+    const QString root = m_root + QStringLiteral("/k8s-dir-failure");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    const QString blocker = root + QStringLiteral("/kubeconfigs");
+    QVERIFY(writeTestFile(blocker, QByteArrayLiteral("x")));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 's');
+    m_server.setResponse(QStringLiteral("/k8s-dir-failure.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-dir-failure.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = root + QStringLiteral("/podstack.db");
+    k8sOptions.kubeconfigDir = blocker;
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script,
+                               const K8sManager::Line &onLine, const K8sManager::Cancelled &, int,
+                               PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+            for (const QString &line : k8sKubeconfigLines()) {
+                onLine(line);
+            }
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(error.message.contains(QStringLiteral("kubeconfigs")));
 }
 
 void MachinesTest::machineManagerCreateErrors()

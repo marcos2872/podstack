@@ -3,15 +3,25 @@
 #include "k8s/K8sManager.h"
 
 #include "core/Config.h"
+#include "core/Ids.h"
+#include "core/Paths.h"
 
 #include <QDateTime>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
+#include <QHostAddress>
 #include <QProcess>
+#include <QRegularExpression>
+#include <QSaveFile>
 #include <QScopeGuard>
 #include <QStandardPaths>
+#include <QTcpServer>
+
 #include <QThread>
 #include <QVector>
+#include <sys/stat.h>
 
 namespace PodStack {
 namespace {
@@ -93,6 +103,9 @@ RunResult runSsh(const QString &binary, const SshInfo &ssh, const QString &scrip
         QStringLiteral("IdentitiesOnly=yes"),
         QStringLiteral("-o"),
         QStringLiteral("StrictHostKeyChecking=accept-new"),
+        QStringLiteral("-o"),
+        QStringLiteral("UserKnownHostsFile=%1")
+            .arg(QFileInfo(ssh.identityFile).absolutePath() + QStringLiteral("/known_hosts")),
         QStringLiteral("-o"),
         QStringLiteral("BatchMode=yes"),
         QStringLiteral("-o"),
@@ -198,6 +211,236 @@ QString K8sManager::nowIso()
     return currentIso();
 }
 
+QString K8sManager::kubeconfigDirFor(const Options &options)
+{
+    QString directory = options.kubeconfigDir.trimmed();
+    if (directory.isEmpty()) {
+        const Config config = Config::load();
+        directory = config.get(QStringLiteral("kubernetes.kubeconfigPath")).toString().trimmed();
+    }
+    if (directory.isEmpty()) {
+        directory = Paths::dataDir() + QStringLiteral("/kubeconfigs");
+    }
+    if (directory == QStringLiteral("~")) {
+        directory = QDir::homePath();
+    } else if (directory.startsWith(QStringLiteral("~/"))) {
+        directory = QDir::homePath() + directory.mid(1);
+    }
+    return directory;
+}
+
+QString K8sManager::contextNameFor(const Options &options, const QString &clusterName)
+{
+    QString prefix = options.contextPrefix;
+    if (prefix.isEmpty()) {
+        const Config config = Config::load();
+        prefix = config.get(QStringLiteral("kubernetes.contextPrefix")).toString();
+    }
+    if (prefix.isEmpty()) {
+        prefix = QStringLiteral("podstack-");
+    }
+    return prefix + clusterName;
+}
+
+QString K8sManager::rewriteKubeconfig(const QString &raw, const QString &context, int apiPort,
+                                      Error *error)
+{
+    QStringList lines = raw.split(QLatin1Char('\n'));
+    bool serverReplaced = false;
+    bool contextReplaced = false;
+    for (QString &line : lines) {
+        const QString trimmed = line.trimmed();
+        const int indent = line.indexOf(trimmed);
+        const QString padding = indent > 0 ? line.left(indent) : QString();
+        if (trimmed.startsWith(QStringLiteral("server:"))) {
+            line = padding + QStringLiteral("server: https://127.0.0.1:%1").arg(apiPort);
+            serverReplaced = true;
+        } else if (trimmed.startsWith(QStringLiteral("current-context:"))) {
+            line = padding + QStringLiteral("current-context: ") + context;
+            contextReplaced = true;
+        } else if (trimmed == QStringLiteral("name: default")) {
+            line = padding + QStringLiteral("name: ") + context;
+        } else if (trimmed == QStringLiteral("- name: default")) {
+            line = padding + QStringLiteral("- name: ") + context;
+        } else if (trimmed == QStringLiteral("cluster: default")) {
+            line = padding + QStringLiteral("cluster: ") + context;
+        } else if (trimmed == QStringLiteral("user: default")) {
+            line = padding + QStringLiteral("user: ") + context;
+        }
+    }
+    if (!serverReplaced || !contextReplaced) {
+        setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+                 QStringLiteral("O kubeconfig gerado pelo k3s não tem o formato esperado."));
+        return {};
+    }
+    return lines.join(QLatin1Char('\n'));
+}
+
+int K8sManager::allocateApiPort(Error *error) const
+{
+    QList<int> candidates;
+    if (m_options.apiPort > 0) {
+        candidates.append(m_options.apiPort);
+    }
+    candidates.append(6443);
+    candidates.append(0);
+    for (int candidate : candidates) {
+        QTcpServer probe;
+        if (probe.listen(QHostAddress::LocalHost, candidate)) {
+            const int port = probe.serverPort();
+            probe.close();
+            if (port > 0) {
+                return port;
+            }
+        }
+    }
+    setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+             QStringLiteral("Não foi possível reservar uma porta para o API server."));
+    return 0;
+}
+
+bool K8sManager::ensureApiAccess(K8sCluster &cluster, MachineMeta &machine, const SshInfo &ssh,
+                                 const Cancelled &cancelled, Error *error)
+{
+    SshInfo currentSsh = ssh;
+    int apiPort = cluster.apiPort;
+    if (apiPort <= 0) {
+        apiPort = allocateApiPort(error);
+        if (apiPort <= 0) {
+            return false;
+        }
+    }
+
+    bool hasApiPort = false;
+    for (const MachinePort &port : machine.ports) {
+        if (port.label == QStringLiteral("k8s-api")) {
+            hasApiPort = port.hostPort == apiPort && port.guestPort == 6443 &&
+                         port.protocol == QStringLiteral("tcp");
+            break;
+        }
+    }
+    if (!hasApiPort) {
+        QVector<MachinePort> next;
+        next.reserve(machine.ports.size() + 1);
+        for (const MachinePort &port : machine.ports) {
+            if (port.label != QStringLiteral("k8s-api")) {
+                next.append(port);
+            }
+        }
+        MachinePort api;
+        api.id = newUuidV7();
+        api.hostPort = apiPort;
+        api.guestPort = 6443;
+        api.protocol = QStringLiteral("tcp");
+        api.exposeLan = false;
+        api.label = QStringLiteral("k8s-api");
+        next.append(api);
+
+        Error portError;
+        machine = m_machines->setPorts(machine.id, next, &portError);
+        if (!portError.isEmpty() || machine.id.isEmpty()) {
+            if (error) {
+                *error = portError.isEmpty()
+                             ? Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                           QStringLiteral("Não foi possível expor o API server."))
+                             : portError;
+            }
+            return false;
+        }
+
+        SshInfo refreshed;
+        if (!m_machines->sshInfo(machine.id, &refreshed, error)) {
+            return false;
+        }
+        if (!waitForSsh(refreshed, cancelled, error) ||
+            !waitForNodeReady(refreshed, cancelled, error)) {
+            return false;
+        }
+        currentSsh = refreshed;
+    }
+
+    QString raw;
+    const auto collect = [&raw](const QString &line) {
+        raw += line;
+        raw += QLatin1Char('\n');
+    };
+    Error readError;
+    const QString script = QStringLiteral("sudo cat /etc/rancher/k3s/k3s.yaml");
+    const bool read =
+        m_options.remoteExec
+            ? m_options.remoteExec(currentSsh, script, collect, cancelled, 30000, &readError)
+            : runSsh(resolveBinary(m_options.sshBinary), currentSsh, script, collect, cancelled,
+                     30000, &readError) == RunResult::Completed &&
+                  readError.isEmpty();
+    if (!read || !readError.isEmpty() || raw.trimmed().isEmpty()) {
+        if (error) {
+            *error = readError.isEmpty()
+                         ? Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                       QStringLiteral("Não foi possível ler o kubeconfig do k3s."))
+                         : readError;
+        }
+        return false;
+    }
+
+    const QString context = contextNameFor(m_options, cluster.name);
+    Error rewriteError;
+    const QString kubeconfig = rewriteKubeconfig(raw, context, apiPort, &rewriteError);
+    if (kubeconfig.isEmpty()) {
+        if (error) {
+            *error = rewriteError;
+        }
+        return false;
+    }
+
+    const QString directory = kubeconfigDirFor(m_options);
+    if (directory.isEmpty() || !QDir().mkpath(directory)) {
+        setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+                 QStringLiteral("Não foi possível criar o diretório de kubeconfigs."), directory);
+        return false;
+    }
+    QFile::setPermissions(directory,
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+
+    QString safeName = cluster.name;
+    safeName.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]")), QStringLiteral("_"));
+    if (safeName.isEmpty()) {
+        safeName = QStringLiteral("default");
+    }
+    const QString path = directory + QLatin1Char('/') + safeName + QStringLiteral(".yaml");
+    bool written = false;
+    QString writeError;
+    {
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            writeError = file.errorString();
+        } else {
+            const QByteArray payload = kubeconfig.toUtf8();
+            written = file.write(payload) == payload.size() &&
+                      file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner) &&
+                      file.commit();
+            if (!written) {
+                writeError = file.errorString();
+            }
+        }
+    }
+    if (!written) {
+        setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+                 QStringLiteral("Não foi possível gravar o kubeconfig."), writeError);
+        return false;
+    }
+    const QByteArray nativePath = QFile::encodeName(path);
+    if (::chmod(nativePath.constData(), S_IRUSR | S_IWUSR) != 0) {
+        setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+                 QStringLiteral("Não foi possível restringir o kubeconfig a 0600."), path);
+        return false;
+    }
+
+    cluster.apiPort = apiPort;
+    cluster.contextName = context;
+    cluster.kubeconfigPath = path;
+    return true;
+}
+
 void K8sManager::persistState(K8sCluster &cluster, const QString &state, const QString &errorText,
                               bool touchUpdatedAt)
 {
@@ -233,6 +476,11 @@ QString K8sManager::machineNameForNewCluster()
 
 K8sCluster K8sManager::status(Error *error)
 {
+    return status(m_options.clusterName, error);
+}
+
+K8sCluster K8sManager::status(const QString &clusterName, Error *error)
+{
     if (error) {
         *error = {};
     }
@@ -243,10 +491,10 @@ K8sCluster K8sManager::status(Error *error)
     }
 
     Error storeError;
-    K8sCluster cluster = m_store.get(m_options.clusterName, &storeError);
+    K8sCluster cluster = m_store.get(clusterName, &storeError);
     if (storeError.code == QStringLiteral("PODSTACK_NOT_FOUND")) {
         K8sCluster disabled;
-        disabled.name = m_options.clusterName;
+        disabled.name = clusterName;
         disabled.state = QStringLiteral("disabled");
         return disabled;
     }
@@ -528,6 +776,12 @@ K8sCluster K8sManager::enable(const EnableRequest &request, const Progress &prog
     Error readyError;
     if (!waitForNodeReady(ssh, cancelled, &readyError)) {
         return fail(readyError);
+    }
+
+    report(QStringLiteral("access"), 92);
+    Error accessError;
+    if (!ensureApiAccess(cluster, machine, ssh, cancelled, &accessError)) {
+        return fail(accessError);
     }
 
     persistState(cluster, QStringLiteral("ready"), {});

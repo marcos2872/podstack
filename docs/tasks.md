@@ -147,7 +147,7 @@
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
 | T5-01 | P1 | Provisionar VM k3s e instalar | T4-03 | ✅ `K8sManager`/`K8sStore` + RPC `k8s.status/enable/cancel`: cria/reutiliza uma machine dedicada `podstack-k8s` com SSH em loopback com CPUs/memória/disco de `kubernetes.*`, aguarda SSH + `cloud-init status --wait`, instala o k3s server sem Traefik via SSH com streaming/timeout/cancelamento e só marca `ready` quando `kubectl get nodes` reporta `Ready`; estado em `clusters` (`podstack.db`) e `kubernetes.enabled` persistido. Falha para a VM e mantém o disco para retry. Evidência: `cmake --build --preset dev` sem warnings; `ctest --preset dev` **14/14**; `test_machines` novos testes de provisionamento, reuso, conflito, store, status e runner SSH (sucesso/retry, falha, timeout, cancelamento); `test_rpc/k8sStatusAndValidation`; `clang-format`/`clang-tidy` limpos; cobertura local **19.167/23.918 (80,1%)** e CI **19.148/23.918 (80,1%)**. **E2E real (KVM/Fedora, 2026-11-10):** `k8s.enable` com 2 CPU/3 GiB/12 GiB concluiu em **90 s**; `sudo k3s kubectl get nodes` → `podstack-k8s Ready control-plane 9s v1.37.2+k3s1`; `cloud-init status: done`; `kubernetes.enabled=true` e `clusters.state=ready` |
-| T5-02 | P1 | kubeconfig isolado + contexto + `podstack kube env` | T5-01 | `kubectl get nodes` |
+| T5-02 | P1 | kubeconfig isolado + contexto + `podstack kube env` | T5-01 | ✅ O `k8s.enable` expõe o API server em `127.0.0.1:<porta>` via hostfwd da machine (porta 6443 ou livre), lê `/etc/rancher/k3s/k3s.yaml` por SSH, reescreve o server e os nomes para o contexto `podstack-<cluster>` e grava `<cluster>.yaml` em `kubernetes.kubeconfigPath` (dir `0700`, arquivo `0600`), sem tocar em `~/.kube/config`; `kubernetes.contextPrefix` é respeitado. RPC `k8s.status {cluster?}` devolve `apiPort/kubeconfigPath/contextName`; CLI `podstack kube info` e `podstack kube env [--cluster]` (`export KUBECONFIG=...`). O SSH do cluster usa `known_hosts` próprio em `machines/<id>/known_hosts` para recriações com a mesma porta. Evidência: `test_machines/k8sEnableWritesKubeconfig` (arquivo 0600, server/contexto reescritos, porta `k8s-api`), `k8sKubeconfigFormatError`, `test_cli/kubeCommands`; E2E real: `KUBECONFIG=... kubectl get nodes` → `podstack-k8s Ready control-plane v1.37.2+k3s1`, `podstack kube env` imprime o caminho e `kube info` mostra `ready`/`6443` |
 | T5-03 | P1 | Watch de Pods/Services + modelos | T5-01 | UI atualiza |
 | T5-04 | P1 | Logs por container do pod | T5-03 | Streaming |
 | T5-05 | P1 | Delete pod/service + port-forward | T5-03 | Ações funcionam |
@@ -155,7 +155,7 @@
 | T5-07 | P2 | Expor Services (NodePort/LB/API) + TLS SANs | T5-01 | Configurável |
 | T5-08 | P2 | Troca automática de contexto | T5-02 | Por projeto |
 
-**Status (2026-11-10): T5-01 implementada.** A VM do cluster é uma machine dedicada comum com SSH em loopback e a instalação usa o instalador oficial do k3s por SSH. Kubeconfig/contexto (`podstack kube env`), watch/listagem, logs, ações, ciclo de vida e exposição ficam nas T5-02..T5-08.
+**Status (2026-11-10): T5-01 e T5-02 implementadas.** A VM do cluster é uma machine dedicada comum com SSH em loopback, a instalação usa o instalador oficial do k3s por SSH e o kubeconfig isolado já sai pronto para `kubectl`. Watch/listagem, logs, ações, ciclo de vida e exposição ficam nas T5-03..T5-08.
 
 **Saída M5:** J3 completo.
 

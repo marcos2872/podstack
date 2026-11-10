@@ -34,6 +34,9 @@ public:
         QString version = QStringLiteral("24.04");
         QString sshBinary;     // vazio = PODSTACK_SSH_BINARY/QStandardPaths
         QString installScript; // vazio = instalador oficial do k3s
+        QString kubeconfigDir; // vazio = setting kubernetes.kubeconfigPath
+        QString contextPrefix; // vazio = setting kubernetes.contextPrefix
+        int apiPort = 0;       // 0 = escolhe 6443 ou uma porta livre
         int sshReadyTimeoutMs = 120000;
         int installTimeoutMs = 600000;
         int readyTimeoutMs = 130000;
@@ -51,6 +54,7 @@ public:
 
     /// Estado atual; reconcilia a machine da VM para refletir stopped/error.
     K8sCluster status(Error *error = nullptr);
+    K8sCluster status(const QString &clusterName, Error *error = nullptr);
 
     /// Provisiona a VM (se preciso), instala o k3s e aguarda o node Ready.
     /// Idempotente quando o cluster já está pronto.
@@ -61,9 +65,16 @@ private:
     QString machineNameForNewCluster();
     bool waitForSsh(const SshInfo &ssh, const Cancelled &cancelled, Error *error);
     bool waitForNodeReady(const SshInfo &ssh, const Cancelled &cancelled, Error *error);
+    bool ensureApiAccess(K8sCluster &cluster, MachineMeta &machine, const SshInfo &ssh,
+                         const Cancelled &cancelled, Error *error);
+    int allocateApiPort(Error *error) const;
     void persistState(K8sCluster &cluster, const QString &state, const QString &errorText,
                       bool touchUpdatedAt = true);
     static QString nowIso();
+    static QString kubeconfigDirFor(const Options &options);
+    static QString contextNameFor(const Options &options, const QString &clusterName);
+    static QString rewriteKubeconfig(const QString &raw, const QString &context, int apiPort,
+                                     Error *error);
 
     MachineManager *m_machines = nullptr;
     Options m_options;
