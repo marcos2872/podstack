@@ -1478,18 +1478,28 @@ void GuiTest::guiStartsAndQuits()
 
     QProcess gui;
     gui.setProcessEnvironment(environment);
-    gui.setProcessChannelMode(QProcess::ForwardedChannels);
+    gui.setProcessChannelMode(QProcess::SeparateChannels);
     gui.start(guiPath, {QStringLiteral("--hidden")});
     QVERIFY2(gui.waitForStarted(10000), qPrintable(gui.errorString()));
 
     const QString instanceSocket = runtimeDir + QStringLiteral("/podstack/gui.sock");
-    // O runner do CI é mais lento para carregar QML; 5 s era apertado demais.
-    for (int attempt = 0; attempt < 300 && !QFileInfo::exists(instanceSocket); ++attempt) {
+    // O runner do CI é lento para carregar QML; 60 s cobre o container frio.
+    for (int attempt = 0; attempt < 1200 && !QFileInfo::exists(instanceSocket); ++attempt) {
+        if (gui.state() == QProcess::NotRunning) {
+            break;
+        }
         QTest::qWait(50);
     }
-    QVERIFY2(
-        QFileInfo::exists(instanceSocket),
-        qPrintable(QStringLiteral("socket de instância não apareceu: %1").arg(instanceSocket)));
+    if (!QFileInfo::exists(instanceSocket)) {
+        const QByteArray out = gui.readAllStandardOutput();
+        const QByteArray err = gui.readAllStandardError();
+        QVERIFY2(false, qPrintable(QStringLiteral("socket de instância não apareceu: %1 (state=%2, "
+                                                  "exit=%3)\nstdout:\n%4\nstderr:\n%5")
+                                       .arg(instanceSocket)
+                                       .arg(int(gui.state()))
+                                       .arg(gui.exitCode())
+                                       .arg(QString::fromUtf8(out), QString::fromUtf8(err))));
+    }
 
     QProcess quit;
     quit.setProcessEnvironment(environment);

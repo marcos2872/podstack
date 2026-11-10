@@ -19,9 +19,13 @@
 #include <QLabel>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickWidget>
 #include <QRectF>
+#include <QScopedPointer>
 #include <QSignalSpy>
 #include <QTabWidget>
 #include <QTemporaryDir>
@@ -61,6 +65,7 @@ private slots:
     void externalTerminalDetection();
     void externalTerminalDesktopFallback();
     void externalTerminalBranches();
+    void selectionState();
     void containerDetailDialog();
     void containerDetailDialogQml();
     void machineDetailDialog();
@@ -384,6 +389,45 @@ void TerminalTest::externalTerminalBranches()
              QStringList({QStringLiteral("/bin/true"), QStringLiteral("arg")}));
 
     restore();
+}
+
+void TerminalTest::selectionState()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.loadFromModule(QStringLiteral("PodStack"), QStringLiteral("SelectionState"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> state(component.create());
+    QVERIFY(state);
+
+    const auto eval = [&](const QString &code) {
+        QQmlExpression expression(engine.rootContext(), state.data(), code);
+        const QVariant result = expression.evaluate();
+        if (expression.hasError()) {
+            qWarning().noquote() << expression.error().toString();
+        }
+        return result;
+    };
+
+    QCOMPARE(state->property("count").toInt(), 0);
+    eval(QStringLiteral("selectOnly('a', 0)"));
+    QCOMPARE(state->property("count").toInt(), 1);
+    QVERIFY(eval(QStringLiteral("has('a')")).toBool());
+
+    eval(QStringLiteral("toggle('b', 1)"));
+    QCOMPARE(state->property("count").toInt(), 2);
+
+    eval(QStringLiteral("selectRange(['a', 'b', 'c', 'd'], 3)"));
+    QCOMPARE(state->property("count").toInt(), 3);
+    QVERIFY(eval(QStringLiteral("has('b')")).toBool());
+    QVERIFY(eval(QStringLiteral("has('d')")).toBool());
+
+    eval(QStringLiteral("prune(['b', 'c'])"));
+    QCOMPARE(state->property("count").toInt(), 2);
+    QVERIFY(!eval(QStringLiteral("has('a')")).toBool());
+
+    eval(QStringLiteral("clear()"));
+    QCOMPARE(state->property("count").toInt(), 0);
 }
 
 void TerminalTest::containerDetailDialog()
@@ -745,6 +789,20 @@ void TerminalTest::mainWindowQml()
     QVERIFY(window.qmlLoaded());
     QVERIFY(window.centralWidget() != nullptr);
     QVERIFY(window.terminalDock() != nullptr);
+
+    // O dialogo de configuracoes usa roles heterogeneos (string/bool/numero);
+    // abrir e reconstruir as linhas precisa continuar funcionando.
+    auto *quick = qobject_cast<QQuickWidget *>(window.centralWidget());
+    QVERIFY(quick != nullptr);
+    QObject *rootObject = quick->rootObject();
+    QVERIFY(rootObject != nullptr);
+    QObject *settings = rootObject->findChild<QObject *>(QStringLiteral("settingsDialog"));
+    QVERIFY(settings != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(settings, "open"));
+    // Sem daemon no teste, o schema fica vazio; o importante é o dialog abrir
+    // sem ReferenceError e o array de linhas existir.
+    QVERIFY(settings->property("settingsRows").isValid());
+    QVERIFY(QMetaObject::invokeMethod(settings, "close"));
 }
 
 } // namespace
