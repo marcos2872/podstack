@@ -22,6 +22,10 @@ qt_add_executable(test_dns test_dns.cpp ../src/daemon/DnsServer.cpp)
 target_link_libraries(test_dns PRIVATE podstack_core Qt6::Network Qt6::Test)
 add_test(NAME dns COMMAND test_dns)
 
+qt_add_executable(test_caddy test_caddy.cpp ../src/daemon/CaddyProxy.cpp)
+target_link_libraries(test_caddy PRIVATE podstack_core Qt6::Network Qt6::Test)
+add_test(NAME caddy COMMAND test_caddy)
+
 qt_add_executable(test_rpc test_rpc.cpp MockPodmanServer.cpp
     ../src/daemon/ComposeManager.cpp)
 target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_k8s

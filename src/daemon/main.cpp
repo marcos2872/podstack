@@ -1,6 +1,7 @@
 #include "core/Config.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
+#include "daemon/CaddyProxy.h"
 #include "daemon/Daemon.h"
 #include "daemon/DnsServer.h"
 #include "daemon/HttpProxy.h"
@@ -93,6 +94,20 @@ int main(int argc, char *argv[])
             qCWarning(lcRpc) << "Proxy HTTP de *.localhost indisponível:" << proxyError.message
                              << proxyError.detail;
             httpProxy.reset();
+        }
+    }
+
+    std::unique_ptr<PodStack::CaddyProxy> caddyProxy;
+    const int httpsPort = config.get(QStringLiteral("network.httpsPort")).toInt(8443);
+    if (httpProxy && config.get(QStringLiteral("network.https")).toBool(false) && httpsPort >= 1 &&
+        httpsPort <= 65535) {
+        caddyProxy = std::make_unique<PodStack::CaddyProxy>();
+        PodStack::Error caddyError;
+        if (!caddyProxy->start(static_cast<quint16>(httpsPort), static_cast<quint16>(httpPort),
+                               &caddyError)) {
+            qCWarning(lcRpc) << "HTTPS de *.localhost/*.podstack.local indisponível:"
+                             << caddyError.message << caddyError.detail;
+            caddyProxy.reset();
         }
     }
 

@@ -664,11 +664,12 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 | `proxy.dns.install` | `{}` | `JobRef` |
 | `proxy.dns.remove` | `{}` | `JobRef` |
 
-> **T6-04/T6-05:** o helper já expõe `InstallDnsZone`/`RemoveDnsZone`
+> **T6-04/T6-05/T6-06:** o helper já expõe `InstallDnsZone`/`RemoveDnsZone`
 > (drop-in do resolved + reload) e `BindPorts`/`UnbindPorts` (socket activation
-> :80/:443 → proxy local); o daemon sobe o `DnsServer` em `127.0.0.1:5353`.
-> Os métodos `proxy.dns.*`/`proxy.status` e o toggle de settings ainda serão
-> fiados na etapa de setup (T7).
+> :80/:443 → proxy local); o daemon sobe o `DnsServer` em `127.0.0.1:5353` e o
+> Caddy (CA interna/HTTPS on-demand) quando `network.https=true`. Os métodos
+> `proxy.dns.*`/`proxy.ca.*`/`proxy.status` e os toggles de setup ainda serão
+> fiados em T6-07/T7.
 
 ### 4.10 `settings.*`
 
