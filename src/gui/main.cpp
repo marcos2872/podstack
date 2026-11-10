@@ -107,6 +107,8 @@ int main(int argc, char *argv[])
     // O QQuickWidget pode carregar de forma assíncrona (especialmente com QML
     // cache frio no CI); só falhe se o carregamento terminou em erro.
     if (window.qmlFailed()) {
+        qWarning("podstack-gui: falha ao carregar a UI: %s",
+                 qPrintable(window.qmlErrors().join(QStringLiteral(" | "))));
         return 1;
     }
 
