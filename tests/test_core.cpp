@@ -49,6 +49,7 @@ private slots:
     void setupPolicyMandatoryChecks();
     void pathOverrides();
     void buildStorePlatforms();
+    void buildStoreErrors();
     void manifestBuilderValidation();
     void rpcClientUnavailable();
     void loggingInit();
@@ -594,6 +595,46 @@ VALUES ('legacy-build', 'localhost/legacy:1', 'failed', '2026-11-08T10:00:00.000
     QCOMPARE(legacyStore.get(QStringLiteral("legacy-build"), &error).platforms,
              QStringList{QStringLiteral("linux/arm64")});
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
+}
+
+void CoreTest::buildStoreErrors()
+{
+    PodStack::Error error;
+    PodStack::BuildStore invalid(QStringLiteral("/dev/null/builds.db"));
+    QVERIFY(!invalid.open(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString corruptPath = directory.filePath(QStringLiteral("corrupt.db"));
+    QFile corrupt(corruptPath);
+    QVERIFY(corrupt.open(QIODevice::WriteOnly));
+    corrupt.write("not a sqlite database");
+    corrupt.close();
+    error = {};
+    PodStack::BuildStore corrupted(corruptPath);
+    QVERIFY(!corrupted.open(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    const QString dbPath = directory.filePath(QStringLiteral("builds.db"));
+    PodStack::BuildStore store(dbPath);
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    QVERIFY(store.list(10, 0, &error).isEmpty());
+
+    error = {};
+    QVERIFY(store.get(QStringLiteral("missing"), &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QVERIFY(store.remove(QStringLiteral("missing"), &error));
+    QVERIFY(store.finish(QStringLiteral("missing"), QStringLiteral("failed"), {}, 0, &error));
+
+    PodStack::BuildStepRecord step;
+    step.id = QStringLiteral("step-1");
+    step.buildId = QStringLiteral("missing-build");
+    step.name = QStringLiteral("RUN");
+    error = {};
+    QVERIFY(!store.addStep(step, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
 }
 
 void CoreTest::manifestBuilderValidation()

@@ -819,6 +819,7 @@ private slots:
     void machineManagerQemuImgFailures();
     void machineManagerSshKeyFailures();
     void machineManagerStateErrors();
+    void machineManagerRuntimeErrors();
     void machineManagerLifecycle();
     void machineManagerUpdate();
     void machineManagerRename();
@@ -3574,6 +3575,96 @@ void MachinesTest::machineManagerStateErrors()
     error = {};
     QVERIFY(manager.create(base, {}, {}, &error).id.isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+}
+
+void MachinesTest::machineManagerRuntimeErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-runtime-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'r');
+    m_server.setResponse(QStringLiteral("/manager-runtime-errors.qcow2"), 200, payload);
+    const DistroImage image =
+        testImage(QStringLiteral("/manager-runtime-errors.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    auto *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest base;
+    base.name = QStringLiteral("runtime-errors");
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.state, QStringLiteral("running"));
+
+    fake->failStop = true;
+    error = {};
+    const MachineMeta failedStop = manager.stop(created.id, false, &error);
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(failedStop.state, QStringLiteral("error"));
+
+    fake->failStop = false;
+    error = {};
+    QCOMPARE(manager.stop(created.id, false, &error).state, QStringLiteral("stopped"));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    fake->failStart = true;
+    error = {};
+    const MachineMeta failedStart = manager.start(created.id, &error);
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(failedStart.state, QStringLiteral("error"));
+
+    fake->failStart = false;
+    error = {};
+    QCOMPARE(manager.start(created.id, &error).state, QStringLiteral("running"));
+
+    fake->failStart = true;
+    error = {};
+    const MachineMeta failedRestart = manager.restart(created.id, &error);
+    QVERIFY(!error.isEmpty());
+    QVERIFY(failedRestart.state == QStringLiteral("error")
+            || failedRestart.state == QStringLiteral("stopping"));
+
+    fake->failStart = false;
+    error = {};
+    QVERIFY(manager.start(created.id, &error).id.isEmpty() == false);
+
+    UpdateMachineRequest update;
+    update.diskBytes = created.diskBytes * 2;
+    fake->failStart = true;
+    error = {};
+    manager.update(created.id, update, &error);
+    QVERIFY(!error.isEmpty());
+    fake->failStart = false;
 }
 
 void MachinesTest::machineManagerLifecycle()

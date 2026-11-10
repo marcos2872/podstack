@@ -56,6 +56,7 @@ private slots:
     void backendSettings();
     void backendProxy();
     void backendSetup();
+    void backendSetupJob();
     void backendTray();
     void backendActivityMonitor();
     void streamClientProtocol();
@@ -1231,7 +1232,10 @@ void GuiTest::backendInvalidArguments()
     backend.downloadFile(QString(), QString());
     backend.uploadFile(QString(), QString(), QString());
     backend.setSetting(QString(), {});
+    backend.setSetting(QStringLiteral("does.not.exist"), 1);
+    backend.setSetting(QStringLiteral("app.theme"), QStringLiteral("bogus"));
     backend.resetSetting(QString());
+    backend.resetSetting(QStringLiteral("does.not.exist"));
     backend.setupApply(QStringLiteral("bogus"));
 
     QTRY_VERIFY_WITH_TIMEOUT(!backend.lastError().isEmpty(), 5000);
@@ -1658,6 +1662,25 @@ void GuiTest::backendSetup()
     }
     QTRY_VERIFY_WITH_TIMEOUT(backend.setupCompleted(), 10000);
     QVERIFY(!backend.setupPending());
+}
+
+void GuiTest::backendSetupJob()
+{
+    PodStack::Backend backend;
+    QSignalSpy jobSpy(&backend, &PodStack::Backend::setupJobChanged);
+
+    backend.setupApply(QStringLiteral("bogus"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupJobActive(), 10000);
+    QVERIFY(!backend.setupError().isEmpty());
+
+    backend.setupApply(QStringLiteral("enable-socket"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupJobActive(), 20000);
+    QVERIFY(jobSpy.count() > 0);
+    QVERIFY(!backend.setupLog().isEmpty());
+
+    backend.setupCancel();
+    backend.setupComplete();
+    QVERIFY(!backend.setupError().isEmpty());
 }
 
 } // namespace
