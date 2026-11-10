@@ -517,9 +517,10 @@ void GuiTest::backendKubernetes()
     QSignalSpy spy(&backend, &PodStack::Backend::k8sChanged);
 
     backend.refreshK8s();
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sLoading(), 5000);
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
-    QVERIFY(!backend.k8sError().isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sState() == QStringLiteral("disabled"), 5000);
+    QVERIFY2(!backend.k8sEnabled(),
+             qPrintable(backend.k8sState() + QStringLiteral(" | ") + backend.k8sError()));
     QVERIFY(backend.k8sPods().isEmpty());
     QVERIFY(backend.k8sServices().isEmpty());
 

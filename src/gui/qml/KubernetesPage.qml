@@ -74,7 +74,7 @@ ColumnLayout {
         Layout.leftMargin: 22
         Layout.rightMargin: 22
         Layout.bottomMargin: 8
-        visible: backend.k8sError.length > 0
+        visible: backend.k8sEnabled && backend.k8sError.length > 0
         text: backend.k8sError
         color: Theme.danger
         font.family: Theme.fontFamily

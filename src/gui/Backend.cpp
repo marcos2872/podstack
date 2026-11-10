@@ -208,6 +208,8 @@ Backend::Backend(QObject *parent)
             &Backend::onMachineFilesFinished);
     connect(&m_machineSnapshotsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineSnapshotsFinished);
+    connect(&m_k8sStatusWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onK8sStatusFinished);
     connect(&m_k8sPodsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onK8sPodsFinished);
     connect(&m_k8sServicesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -737,6 +739,7 @@ Backend::Backend(QObject *parent)
     QTimer::singleShot(0, this, &Backend::refreshCatalog);
     QTimer::singleShot(0, this, &Backend::refreshMachines);
     QTimer::singleShot(0, this, &Backend::refreshSettings);
+    QTimer::singleShot(0, this, &Backend::refreshK8sStatus);
 }
 
 QString Backend::version() const
@@ -801,8 +804,28 @@ void Backend::refreshPods()
     refreshSection(QStringLiteral("pods"));
 }
 
+void Backend::refreshK8sStatus()
+{
+    if (m_k8sStatusWatcher.isRunning()) {
+        return;
+    }
+    m_k8sStatusWatcher.setFuture(QtConcurrent::run([] {
+        RpcClient client;
+        Error error;
+        QJsonObject result = client.call(QStringLiteral("k8s.status"), QJsonObject{}, &error);
+        if (!error.isEmpty()) {
+            result.insert(QStringLiteral("error"), error.toJson());
+        }
+        return result;
+    }));
+}
+
 void Backend::refreshK8s()
 {
+    if (!m_k8sEnabled) {
+        refreshK8sStatus();
+        return;
+    }
     if (m_k8sPodsWatcher.isRunning() || m_k8sServicesWatcher.isRunning()) {
         return;
     }
@@ -832,6 +855,10 @@ void Backend::refreshK8s()
 
 void Backend::startK8sWatch()
 {
+    if (!m_k8sEnabled) {
+        refreshK8sStatus();
+        return;
+    }
     if (!m_k8sTimer.isActive()) {
         m_k8sTimer.start();
     }
@@ -843,14 +870,37 @@ void Backend::stopK8sWatch()
     m_k8sTimer.stop();
 }
 
-void Backend::onK8sPodsFinished()
+void Backend::onK8sStatusFinished()
 {
-    const QJsonObject result = m_k8sPodsWatcher.result();
-    if (result.contains(QStringLiteral("error"))) {
+    const QJsonObject result = m_k8sStatusWatcher.result();
+    if (result.value(QStringLiteral("error")).isObject()) {
         m_k8sError = result.value(QStringLiteral("error"))
                          .toObject()
                          .value(QStringLiteral("message"))
                          .toString();
+    } else {
+        m_k8sState = result.value(QStringLiteral("state")).toString();
+        m_k8sEnabled = !m_k8sState.isEmpty() && m_k8sState != QStringLiteral("disabled");
+        m_k8sError.clear();
+    }
+    emit k8sChanged();
+    if (m_k8sEnabled && m_k8sTimer.isActive()) {
+        refreshK8s();
+    }
+}
+
+void Backend::onK8sPodsFinished()
+{
+    const QJsonObject result = m_k8sPodsWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_k8sError = errorObject.value(QStringLiteral("message")).toString();
+        if (errorObject.value(QStringLiteral("code")).toString() ==
+            QStringLiteral("PODSTACK_NOT_FOUND")) {
+            m_k8sState = QStringLiteral("disabled");
+            m_k8sEnabled = false;
+            m_k8sTimer.stop();
+        }
     } else {
         m_k8sPods = result.value(QStringLiteral("items")).toArray().toVariantList();
         if (!m_k8sServicesWatcher.isRunning()) {
@@ -865,10 +915,14 @@ void Backend::onK8sServicesFinished()
 {
     const QJsonObject result = m_k8sServicesWatcher.result();
     if (result.contains(QStringLiteral("error"))) {
-        m_k8sError = result.value(QStringLiteral("error"))
-                         .toObject()
-                         .value(QStringLiteral("message"))
-                         .toString();
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_k8sError = errorObject.value(QStringLiteral("message")).toString();
+        if (errorObject.value(QStringLiteral("code")).toString() ==
+            QStringLiteral("PODSTACK_NOT_FOUND")) {
+            m_k8sState = QStringLiteral("disabled");
+            m_k8sEnabled = false;
+            m_k8sTimer.stop();
+        }
     } else {
         m_k8sServices = result.value(QStringLiteral("items")).toArray().toVariantList();
         if (!m_k8sPodsWatcher.isRunning()) {

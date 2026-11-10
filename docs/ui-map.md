@@ -64,7 +64,7 @@
 | | Compose | projetos/ativos | up por diretório |
 | | Builds | ativos/histórico | novo build |
 | | Pods | running/total | criar pod |
-| **Kubernetes** | Kubernetes | pods + services | atualizar |
+| **Kubernetes** (só com cluster habilitado) | Kubernetes | pods + services | atualizar |
 | **Linux** | Machines | running/total | criar máquina |
 | | Devices | conectados | anexar/desanexar |
 | **General** | Activity Monitor | — | abrir |

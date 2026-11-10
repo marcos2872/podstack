@@ -61,6 +61,8 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList volumes READ volumes NOTIFY volumesChanged)
     Q_PROPERTY(QVariantList networks READ networks NOTIFY networksChanged)
     Q_PROPERTY(QVariantList pods READ pods NOTIFY podsChanged)
+    Q_PROPERTY(QString k8sState READ k8sState NOTIFY k8sChanged)
+    Q_PROPERTY(bool k8sEnabled READ k8sEnabled NOTIFY k8sChanged)
     Q_PROPERTY(QVariantList k8sPods READ k8sPods NOTIFY k8sChanged)
     Q_PROPERTY(QVariantList k8sServices READ k8sServices NOTIFY k8sChanged)
     Q_PROPERTY(QString k8sError READ k8sError NOTIFY k8sChanged)
@@ -174,6 +176,8 @@ public:
     QVariantList volumes() const { return m_volumes; }
     QVariantList networks() const { return m_networks; }
     QVariantList pods() const { return m_pods; }
+    QString k8sState() const { return m_k8sState; }
+    bool k8sEnabled() const { return m_k8sEnabled; }
     QVariantList k8sPods() const { return m_k8sPods; }
     QVariantList k8sServices() const { return m_k8sServices; }
     QString k8sError() const { return m_k8sError; }
@@ -244,6 +248,7 @@ public:
     Q_INVOKABLE void refreshNetworks();
     Q_INVOKABLE void refreshPods();
     Q_INVOKABLE void refreshK8s();
+    Q_INVOKABLE void refreshK8sStatus();
     Q_INVOKABLE void startK8sWatch();
     Q_INVOKABLE void stopK8sWatch();
     Q_INVOKABLE void pullImage(const QString &reference, const QString &platform = {});
@@ -439,6 +444,7 @@ private:
     void onMachineLogsFinished();
     void onMachineFilesFinished();
     void onMachineSnapshotsFinished();
+    void onK8sStatusFinished();
     void onK8sPodsFinished();
     void onK8sServicesFinished();
     void startMachineFilesRequest(const QString &operation, const QString &id,
@@ -475,6 +481,7 @@ private:
     QFutureWatcher<QJsonObject> m_machineFilesWatcher;
     QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
+    QFutureWatcher<QJsonObject> m_k8sStatusWatcher;
     QFutureWatcher<QJsonObject> m_k8sPodsWatcher;
     QFutureWatcher<QJsonObject> m_k8sServicesWatcher;
     QFutureWatcher<QJsonObject> m_settingsWatcher;
@@ -547,6 +554,8 @@ private:
     QVariantList m_volumes;
     QVariantList m_networks;
     QVariantList m_pods;
+    QString m_k8sState;
+    bool m_k8sEnabled = false;
     QVariantList m_k8sPods;
     QVariantList m_k8sServices;
     QString m_k8sError;
