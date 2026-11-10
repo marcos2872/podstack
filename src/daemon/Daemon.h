@@ -122,6 +122,7 @@ private:
     QJsonObject k8sCancel(const QJsonObject &params, Error *error);
     QJsonObject k8sPodsList(const QJsonObject &params, Error *error);
     QJsonObject k8sServicesList(const QJsonObject &params, Error *error);
+    QJsonObject subscribeK8sLogs(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject setupStatus();
     QJsonObject setupCheck(const QJsonObject &params);
     QJsonObject setupValidate();

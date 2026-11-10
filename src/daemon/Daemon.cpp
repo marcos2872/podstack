@@ -581,6 +581,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("k8s.services.list")) {
         return k8sServicesList(params, error);
     }
+    if (method == QStringLiteral("k8s.logs.subscribe")) {
+        return subscribeK8sLogs(params, notify, error);
+    }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
     }
@@ -614,17 +617,18 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("system.stats.subscribe")) {
         return subscribeSystemStats(params, notify, error);
     }
-    if (method == QStringLiteral("containers.logs.unsubscribe")
-        || method == QStringLiteral("containers.stats.unsubscribe")
-        || method == QStringLiteral("system.stats.unsubscribe")
-        || method == QStringLiteral("images.pull.unsubscribe")
-        || method == QStringLiteral("images.push.unsubscribe")
-        || method == QStringLiteral("compose.logs.unsubscribe")
-        || method == QStringLiteral("builds.unsubscribe")
-        || method == QStringLiteral("setup.unsubscribe")
-        || method == QStringLiteral("machines.stats.unsubscribe")
-        || method == QStringLiteral("machines.console.unsubscribe")
-        || method == QStringLiteral("events.unsubscribe")) {
+    if (method == QStringLiteral("containers.logs.unsubscribe") ||
+        method == QStringLiteral("containers.stats.unsubscribe") ||
+        method == QStringLiteral("system.stats.unsubscribe") ||
+        method == QStringLiteral("images.pull.unsubscribe") ||
+        method == QStringLiteral("images.push.unsubscribe") ||
+        method == QStringLiteral("compose.logs.unsubscribe") ||
+        method == QStringLiteral("builds.unsubscribe") ||
+        method == QStringLiteral("setup.unsubscribe") ||
+        method == QStringLiteral("machines.stats.unsubscribe") ||
+        method == QStringLiteral("machines.console.unsubscribe") ||
+        method == QStringLiteral("k8s.logs.unsubscribe") ||
+        method == QStringLiteral("events.unsubscribe")) {
         return unsubscribe(params);
     }
     if (method == QStringLiteral("events.subscribe")) {
@@ -4154,6 +4158,47 @@ QJsonObject Daemon::k8sServicesList(const QJsonObject &params, Error *error)
         return {};
     }
     return QJsonObject{{QStringLiteral("items"), items}};
+}
+
+QJsonObject Daemon::subscribeK8sLogs(const QJsonObject &params, const Notify &notify, Error *error)
+{
+    const QString ns = params.value(QStringLiteral("namespace")).toString().trimmed();
+    const QString pod = params.value(QStringLiteral("pod")).toString().trimmed();
+    const QString container = params.value(QStringLiteral("container")).toString().trimmed();
+    const int tail = params.value(QStringLiteral("tail")).toInt(500);
+    if (!K8sManager::validateLogsRequest(ns, pod, container, tail, error)) {
+        return {};
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    (void) QtConcurrent::run(
+        [this, ns, pod, container, tail, subscriptionId, subscription, notify] {
+            const auto onLine = [&notify, &ns, &pod, &container](const QString &line) {
+                QJsonObject payload;
+                payload.insert(QStringLiteral("namespace"), ns);
+                payload.insert(QStringLiteral("pod"), pod);
+                payload.insert(QStringLiteral("container"), container);
+                payload.insert(QStringLiteral("line"), line);
+                notify(QStringLiteral("k8s.logs.delta"), payload);
+            };
+            const auto cancelled = [subscription] { return subscription->cancel.load(); };
+
+            Error streamError;
+            m_k8s.streamLogs(ns, pod, container, tail, onLine, cancelled, &streamError);
+
+            QJsonObject payload;
+            payload.insert(QStringLiteral("namespace"), ns);
+            payload.insert(QStringLiteral("pod"), pod);
+            payload.insert(QStringLiteral("container"), container);
+            if (!streamError.isEmpty()) {
+                payload.insert(QStringLiteral("error"), streamError.toJson());
+            }
+            notify(QStringLiteral("k8s.logs.done"), payload);
+            removeSubscription(subscriptionId);
+        });
+
+    return QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}};
 }
 
 QJsonObject Daemon::setupStatus()

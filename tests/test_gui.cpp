@@ -1699,6 +1699,23 @@ void GuiTest::streamClientProtocol()
     socket->flush();
     QTRY_VERIFY_WITH_TIMEOUT(composeLogSpy.count() > 0, 5000);
 
+    QSignalSpy k8sLogSpy(&client, &PodStack::StreamClient::k8sLogLine);
+    QSignalSpy k8sLogDoneSpy(&client, &PodStack::StreamClient::k8sLogFinished);
+    client.subscribeK8sLogs(QStringLiteral("prod"), QStringLiteral("web"), QStringLiteral("web"));
+    socket = accept(QByteArrayLiteral("k8s.logs.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-10\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"k8s.logs.delta\",\"params\":{"
+        "\"namespace\":\"prod\",\"pod\":\"web\",\"container\":\"web\","
+        "\"line\":\"linha k8s\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"k8s.logs.done\",\"params\":{"
+        "\"namespace\":\"prod\",\"pod\":\"web\",\"container\":\"web\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(k8sLogSpy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(k8sLogDoneSpy.count() > 0, 5000);
+    QCOMPARE(k8sLogDoneSpy.last().at(0).toBool(), true);
+
     const QList<QPair<QString, QString>> machineJobs = {
         {QStringLiteral("machines.create"), QStringLiteral("create")},
         {QStringLiteral("machines.export"), QStringLiteral("export")},

@@ -1,6 +1,7 @@
 #include "MockPodmanServer.h"
 
 #include "core/RpcClient.h"
+#include "core/RpcStream.h"
 #include "daemon/ComposeManager.h"
 #include "k8s/K8sStore.h"
 #include "machines/MachineStore.h"
@@ -45,6 +46,7 @@ private slots:
     void machineInvalidOperations();
     void k8sStatusAndValidation();
     void k8sListsResources();
+    void k8sLogsStream();
     void composeProviderFallback();
     void composeAndBuilds();
     void multiPlatformBuild();
@@ -133,6 +135,10 @@ void writeFakeSsh(const QString &path)
             "\"creationTimestamp\":\"2026-11-10T10:00:00Z\"},\"spec\":{\"type\":\"ClusterIP\","
             "\"clusterIP\":\"10.43.0.10\",\"ports\":[{\"port\":80,\"protocol\":\"TCP\"}]},"
             "\"status\":{}}]}'\n"
+            "    exit 0;;\n"
+            "  *\"kubectl logs\"*)\n"
+            "    echo 'linha 1'\n"
+            "    echo 'linha 2'\n"
             "    exit 0;;\n"
             "esac\n"
             "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
@@ -2305,6 +2311,34 @@ void RpcTest::k8sListsResources()
     client.call(QStringLiteral("k8s.pods.list"), QJsonObject{{QStringLiteral("namespace"), 42}},
                 &error);
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void RpcTest::k8sLogsStream()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+    client.call(QStringLiteral("k8s.logs.subscribe"),
+                QJsonObject{{QStringLiteral("namespace"), QStringLiteral("bad namespace")},
+                            {QStringLiteral("pod"), QStringLiteral("web")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::RpcStream stream(m_controlSocket);
+    QStringList lines;
+    const QJsonObject params{{QStringLiteral("namespace"), QStringLiteral("prod")},
+                             {QStringLiteral("pod"), QStringLiteral("web")},
+                             {QStringLiteral("container"), QStringLiteral("web")},
+                             {QStringLiteral("tail"), 10}};
+    const bool ok = stream.run(
+        QStringLiteral("k8s.logs.subscribe"), params,
+        [&lines](const QString &method, const QJsonObject &event) {
+            if (method == QStringLiteral("k8s.logs.delta")) {
+                lines.append(event.value(QStringLiteral("line")).toString());
+            }
+        },
+        &error, 5000);
+    QVERIFY2(ok, qPrintable(error.message));
+    QCOMPARE(lines, QStringList({QStringLiteral("linha 1"), QStringLiteral("linha 2")}));
 }
 
 void RpcTest::composeProviderFallback()
