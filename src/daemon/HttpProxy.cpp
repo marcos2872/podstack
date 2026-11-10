@@ -5,6 +5,8 @@
 #include "core/Logging.h"
 
 #include <QAbstractSocket>
+#include <QDateTime>
+#include <QHash>
 #include <QHostAddress>
 #include <QRegularExpression>
 #include <QTcpServer>
@@ -12,8 +14,21 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <memory>
 
 namespace PodStack {
+
+struct PortCacheEntry {
+    QString digest;
+    QString host;
+    quint16 port = 0;
+    qint64 updatedAt = 0;
+};
+
+struct PortCache {
+    QHash<QString, PortCacheEntry> entries;
+};
+
 namespace {
 
 constexpr int kMaxHeaderBytes = 32 * 1024;
@@ -24,6 +39,67 @@ struct RequestHead {
     QByteArray version;
     QByteArray host;
     QList<QPair<QByteArray, QByteArray>> headers;
+};
+
+constexpr int kProbeTimeoutMs = 300;
+constexpr int kPortCacheLimit = 64;
+constexpr qint64 kPortCacheTtlMs = 10 * 60 * 1000;
+
+/// Portas de container que costumam servir HTTP; usadas como preferência no
+/// probe concorrente e documentadas na spec §11.4.
+const QVector<int> &commonHttpPorts()
+{
+    static const QVector<int> ports{80, 8080, 3000, 5000, 8000, 8081, 8888, 443, 8443};
+    return ports;
+}
+
+int portPriority(const PortMapping &mapping)
+{
+    const QVector<int> &common = commonHttpPorts();
+    for (int index = 0; index < common.size(); ++index) {
+        if (mapping.containerPort == common.at(index) || mapping.hostPort == common.at(index)) {
+            return index;
+        }
+    }
+    return common.size();
+}
+
+QVector<PortMapping> orderedCandidates(const ContainerInfo &container)
+{
+    QVector<PortMapping> candidates = HttpProxy::publishedTcpPorts(container);
+    std::stable_sort(candidates.begin(), candidates.end(),
+                     [](const PortMapping &a, const PortMapping &b) {
+                         const int priorityA = portPriority(a);
+                         const int priorityB = portPriority(b);
+                         if (priorityA != priorityB) {
+                             return priorityA < priorityB;
+                         }
+                         return a.containerPort < b.containerPort;
+                     });
+    return candidates;
+}
+
+/// Digest da configuração que influencia a detecção; o id do container é a
+/// chave do cache, então recriar o container troca a chave naturalmente.
+QString containerDigest(const ContainerInfo &container)
+{
+    return container.image + QLatin1Char('\n') + container.ports.join(QLatin1Char('\n'));
+}
+
+QByteArray probeRequest(const QString &name)
+{
+    return "HEAD / HTTP/1.1\r\nHost: " + name.toUtf8() +
+           ".localhost\r\nUser-Agent: PodStack-Server-Detection\r\nAccept: */*\r\n"
+           "Connection: close\r\n\r\n";
+}
+
+struct ProbeState {
+    QTcpSocket *socket = nullptr;
+    QTimer *timer = nullptr;
+    QByteArray response;
+    PortMapping candidate;
+    int priority = 0;
+    bool finished = false;
 };
 
 QByteArray reasonPhrase(int status)
@@ -235,11 +311,12 @@ QByteArray buildRequest(const RequestHead &request, const QString &clientAddress
 
 class ProxyConnection : public QObject {
 public:
-    ProxyConnection(QTcpSocket *client, HttpProxy::ContainerProvider provider, quint16 proxyPort,
-                    int connectTimeoutMs, int idleTimeoutMs, QObject *parent)
+    ProxyConnection(QTcpSocket *client, HttpProxy::ContainerProvider provider,
+                    std::shared_ptr<PortCache> portCache, quint16 proxyPort, int connectTimeoutMs,
+                    int idleTimeoutMs, QObject *parent)
         : QObject(parent), m_client(client), m_provider(std::move(provider)),
-          m_proxyPort(proxyPort), m_connectTimeoutMs(connectTimeoutMs),
-          m_idleTimeoutMs(idleTimeoutMs)
+          m_portCache(std::move(portCache)), m_proxyPort(proxyPort),
+          m_connectTimeoutMs(connectTimeoutMs), m_idleTimeoutMs(idleTimeoutMs)
     {
         m_client->setParent(this);
         m_connectTimer = new QTimer(this);
@@ -353,15 +430,145 @@ private:
             return;
         }
 
-        QString host;
-        quint16 port = 0;
-        if (!HttpProxy::publishedPort(*container, &host, &port)) {
+        if (HttpProxy::publishedTcpPorts(*container).isEmpty()) {
             sendIndex(404, QStringLiteral("Sem porta publicada"),
                       QStringLiteral("O container \"%1\" não publica portas TCP.").arg(name),
                       containers);
             return;
         }
-        connectBackend(host, port);
+        resolveContainerPort(*container, name);
+    }
+
+    void resolveContainerPort(const ContainerInfo &container, const QString &name)
+    {
+        const QString key = container.id.isEmpty() ? name : container.id;
+        const QString digest = containerDigest(container);
+
+        if (m_portCache) {
+            const auto cached = m_portCache->entries.constFind(key);
+            if (cached != m_portCache->entries.constEnd() && cached->digest == digest &&
+                cached->port != 0) {
+                connectBackend(cached->host, cached->port);
+                return;
+            }
+        }
+
+        const QVector<PortMapping> candidates = orderedCandidates(container);
+        if (candidates.isEmpty()) {
+            fail(502, QStringLiteral("Nenhuma porta disponível"),
+                 QStringLiteral("O container não tem porta TCP publicada."));
+            return;
+        }
+        if (candidates.size() == 1) {
+            const PortMapping &only = candidates.first();
+            rememberTarget(key, digest, only.hostIp, quint16(only.hostPort));
+            connectBackend(only.hostIp, quint16(only.hostPort));
+            return;
+        }
+        probePorts(key, digest, name, candidates);
+    }
+
+    void probePorts(const QString &key, const QString &digest, const QString &name,
+                    const QVector<PortMapping> &candidates)
+    {
+        m_probeKey = key;
+        m_probeDigest = digest;
+        m_probeName = name;
+        m_candidates = candidates;
+        m_pendingProbes = candidates.size();
+        m_bestHost.clear();
+        m_bestPort = 0;
+        m_bestPriority = candidates.size();
+
+        for (int index = 0; index < candidates.size(); ++index) {
+            auto state = std::make_shared<ProbeState>();
+            state->candidate = candidates.at(index);
+            state->priority = index;
+            state->socket = new QTcpSocket(this);
+            state->timer = new QTimer(state->socket);
+            state->timer->setSingleShot(true);
+
+            QTcpSocket *socket = state->socket;
+            connect(socket, &QTcpSocket::connected, this, [this, state] {
+                if (state->finished) {
+                    return;
+                }
+                state->socket->write(probeRequest(m_probeName));
+            });
+            connect(socket, &QTcpSocket::readyRead, this, [this, state] {
+                if (state->finished) {
+                    return;
+                }
+                state->response.append(state->socket->readAll());
+                if (state->response.startsWith("HTTP/")) {
+                    finishProbe(state, true);
+                }
+            });
+            connect(socket, &QTcpSocket::errorOccurred, this,
+                    [this, state](QAbstractSocket::SocketError) { finishProbe(state, false); });
+            connect(state->timer, &QTimer::timeout, this,
+                    [this, state] { finishProbe(state, false); });
+            state->timer->start(kProbeTimeoutMs);
+            socket->connectToHost(state->candidate.hostIp, quint16(state->candidate.hostPort));
+            m_probes.append(state);
+        }
+    }
+
+    void finishProbe(const std::shared_ptr<ProbeState> &state, bool success)
+    {
+        if (state->finished) {
+            return;
+        }
+        state->finished = true;
+        state->timer->stop();
+        state->socket->abort();
+        state->socket->deleteLater();
+
+        if (success && state->priority < m_bestPriority) {
+            m_bestPriority = state->priority;
+            m_bestHost = state->candidate.hostIp;
+            m_bestPort = quint16(state->candidate.hostPort);
+        }
+        if (--m_pendingProbes > 0) {
+            return;
+        }
+
+        if (m_bestPort == 0 && !m_candidates.isEmpty()) {
+            const PortMapping &fallback = m_candidates.first();
+            m_bestHost = fallback.hostIp;
+            m_bestPort = quint16(fallback.hostPort);
+        }
+        if (m_bestPort == 0) {
+            fail(502, QStringLiteral("Nenhuma porta disponível"),
+                 QStringLiteral("O container não tem porta TCP publicada."));
+            return;
+        }
+        rememberTarget(m_probeKey, m_probeDigest, m_bestHost, m_bestPort);
+        connectBackend(m_bestHost, m_bestPort);
+    }
+
+    void rememberTarget(const QString &key, const QString &digest, const QString &host,
+                        quint16 port)
+    {
+        if (!m_portCache) {
+            return;
+        }
+        PortCache &cache = *m_portCache;
+        if (cache.entries.size() > kPortCacheLimit) {
+            const qint64 cutoff = QDateTime::currentMSecsSinceEpoch() - kPortCacheTtlMs;
+            for (auto it = cache.entries.begin(); it != cache.entries.end();) {
+                if (it->updatedAt < cutoff) {
+                    it = cache.entries.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            if (cache.entries.size() > kPortCacheLimit) {
+                cache.entries.clear();
+            }
+        }
+        cache.entries.insert(
+            key, PortCacheEntry{digest, host, port, QDateTime::currentMSecsSinceEpoch()});
     }
 
     bool fetchContainers(QVector<ContainerInfo> *containers)
@@ -459,6 +666,7 @@ private:
     QTcpSocket *m_client = nullptr;
     QTcpSocket *m_backend = nullptr;
     HttpProxy::ContainerProvider m_provider;
+    std::shared_ptr<PortCache> m_portCache;
     quint16 m_proxyPort = 0;
     int m_connectTimeoutMs = 10000;
     int m_idleTimeoutMs = 60000;
@@ -467,6 +675,15 @@ private:
     QByteArray m_buffer;
     QByteArray m_pending;
     RequestHead m_request;
+    QString m_probeKey;
+    QString m_probeDigest;
+    QString m_probeName;
+    QString m_bestHost;
+    QVector<PortMapping> m_candidates;
+    QVector<std::shared_ptr<ProbeState>> m_probes;
+    quint16 m_bestPort = 0;
+    int m_bestPriority = 0;
+    int m_pendingProbes = 0;
     bool m_headParsed = false;
     bool m_headRequest = false;
     bool m_connected = false;
@@ -476,7 +693,7 @@ private:
 } // namespace
 
 HttpProxy::HttpProxy(ContainerProvider provider, QObject *parent)
-    : QObject(parent), m_provider(std::move(provider))
+    : QObject(parent), m_provider(std::move(provider)), m_portCache(std::make_shared<PortCache>())
 {
 }
 
@@ -546,8 +763,8 @@ void HttpProxy::accept(QTcpServer *server)
         if (!socket) {
             break;
         }
-        new ProxyConnection(socket, m_provider, server->serverPort(), m_connectTimeoutMs,
-                            m_idleTimeoutMs, this);
+        new ProxyConnection(socket, m_provider, m_portCache, server->serverPort(),
+                            m_connectTimeoutMs, m_idleTimeoutMs, this);
     }
 }
 
@@ -578,19 +795,23 @@ bool HttpProxy::isIndexHost(const QByteArray &hostHeader)
     return splitHost(hostHeader, &host) && host == QStringLiteral("localhost");
 }
 
-bool HttpProxy::publishedPort(const ContainerInfo &container, QString *host, quint16 *port)
+QVector<PortMapping> HttpProxy::publishedTcpPorts(const ContainerInfo &container)
 {
     static const QRegularExpression entry(
         QStringLiteral("^(?:(\\[[^\\]]+\\]|[^:]+):)?(\\d{1,5})->(\\d{1,5})/([A-Za-z]+)$"));
+    QVector<PortMapping> mappings;
     for (const QString &text : container.ports) {
         const QRegularExpressionMatch match = entry.match(text.trimmed());
         if (!match.hasMatch() ||
             match.captured(4).compare(QStringLiteral("tcp"), Qt::CaseInsensitive) != 0) {
             continue;
         }
-        bool ok = false;
-        const int hostPort = match.captured(2).toInt(&ok);
-        if (!ok || hostPort < 1 || hostPort > 65535) {
+        bool hostOk = false;
+        bool containerOk = false;
+        const int hostPort = match.captured(2).toInt(&hostOk);
+        const int containerPort = match.captured(3).toInt(&containerOk);
+        if (!hostOk || !containerOk || hostPort < 1 || hostPort > 65535 || containerPort < 1 ||
+            containerPort > 65535) {
             continue;
         }
 
@@ -602,15 +823,29 @@ bool HttpProxy::publishedPort(const ContainerInfo &container, QString *host, qui
             address = address.mid(1, address.size() - 2);
         }
 
-        if (host) {
-            *host = address;
-        }
-        if (port) {
-            *port = static_cast<quint16>(hostPort);
-        }
-        return true;
+        PortMapping mapping;
+        mapping.hostPort = hostPort;
+        mapping.containerPort = containerPort;
+        mapping.protocol = QStringLiteral("tcp");
+        mapping.hostIp = address;
+        mappings.append(mapping);
     }
-    return false;
+    return mappings;
+}
+
+bool HttpProxy::publishedPort(const ContainerInfo &container, QString *host, quint16 *port)
+{
+    const QVector<PortMapping> mappings = publishedTcpPorts(container);
+    if (mappings.isEmpty()) {
+        return false;
+    }
+    if (host) {
+        *host = mappings.first().hostIp;
+    }
+    if (port) {
+        *port = static_cast<quint16>(mappings.first().hostPort);
+    }
+    return true;
 }
 
 } // namespace PodStack

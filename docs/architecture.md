@@ -300,8 +300,11 @@ sequenceDiagram
 - Host/nome inválido, container inexistente ou sem porta TCP publicada → 404 HTML.
 - Adiciona `X-Forwarded-For/Proto/Host`; não reescreve `Location`.
 - `http://localhost:<porta>/` serve a página de índice (T6-02) e os 404 de
-  container desconhecido/sem porta reaproveitam a lista. Detecção/cache de porta
-  (T6-03) e HTTPS/Caddy (T6-06) seguem pendentes.
+  container desconhecido/sem porta reaproveitam a lista.
+- Com mais de uma porta publicada, um probe concorrente (`HEAD /`, 300 ms)
+  escolhe a porta HTTP e o resultado fica em cache por container/digest
+  (T6-03). HTTPS de backend (T6-06) e overrides por label (T6-08) seguem
+  pendentes.
 
 ### 3.7 Requisição de domínio
 

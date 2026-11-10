@@ -10,10 +10,13 @@
 #include <QVector>
 
 #include <functional>
+#include <memory>
 
 class QTcpServer;
 
 namespace PodStack {
+
+struct PortCache;
 
 /// Proxy HTTP de entrada para `*.localhost`.
 ///
@@ -47,6 +50,9 @@ public:
     /// `PodmanClient` produz (`[ip:]porta->porta/tcp`).
     static bool publishedPort(const ContainerInfo &container, QString *host, quint16 *port);
 
+    /// Todas as portas TCP publicadas do container, na ordem em que aparecem.
+    static QVector<PortMapping> publishedTcpPorts(const ContainerInfo &container);
+
     /// Ajusta os timeouts de conexão e de inatividade (milissegundos).
     void setTimeouts(int connectTimeoutMs, int idleTimeoutMs);
 
@@ -54,6 +60,7 @@ private:
     void accept(QTcpServer *server);
 
     ContainerProvider m_provider;
+    std::shared_ptr<PortCache> m_portCache;
     QTcpServer *m_v4 = nullptr;
     QTcpServer *m_v6 = nullptr;
     int m_connectTimeoutMs = 10000;
