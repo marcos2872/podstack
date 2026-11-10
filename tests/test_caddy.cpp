@@ -175,6 +175,12 @@ void CaddyTest::startFailsWhenProcessExits()
 void CaddyTest::startFailsWhenDirectoryIsFile()
 {
     QTemporaryDir temp;
+    QTemporaryDir bin;
+    QVERIFY(writeFakeCaddy(bin.path(), QByteArrayLiteral("exit 0")));
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", bin.path().toUtf8() + ':' + previousPath);
+    const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
     const QString path = temp.filePath(QStringLiteral("not-a-dir"));
     QFile file(path);
     QVERIFY(file.open(QIODevice::WriteOnly));
