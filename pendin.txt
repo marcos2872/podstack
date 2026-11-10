@@ -1,140 +1,50 @@
-PENDÊNCIAS — PodStack
-Atualizado: 2026-11-09
-Parada solicitada: após a T4-16 (concluída). M4 completo no código; falta a validação em VM real.
+PENDÊNCIAS — PodStack (pré-M5)
+Atualizado: 2026-11-10
+Branch: feat/m4-machines · PR #11 (feat/m4-machines → main)
 
-SITUAÇÃO ATUAL
-- Branch feat/m4-machines; PR #11 aberta (feat/m4-machines -> main).
-- Últimos commits: 2d1e928 (T4-15 console serial), 53a33b8 (T4-10 clone/rename/default),
-  b982643 (T4-09 export/import), 0031fcb (pendências pós-T4-08),
-  2a48e9e (T4-08 arquivos SSH/SCP) + os commits da T4-11, T4-12, T4-13, T4-14,
-  T4-15 e T4-16.
-- T4-05, T4-07, T4-08, T4-09, T4-10, T4-11, T4-12, T4-13, T4-14, T4-15 e T4-16 concluídas.
-  T4-16 nesta sessão (snapshots internos do qcow2 no RPC, CLI e GUI).
-- T7-01 concluída em 2026-11-09 (schema de 82 chaves, RPC `settings.*`, CLI `podstack config`,
-  GUI por categoria). T3-09 (Supabase) segue **adiada para depois**, por decisão do usuário.
+SITUAÇÃO
+- M4 concluído no código: T4-05..T4-16, incluindo SSH/arquivos, virtiofs, export/import,
+  clone/rename/default, recursos, portas, agent, isolado, console serial e snapshots.
+- T7-01 (settings) concluído: schema de 82 chaves, RPC settings.get/set/reset/schema,
+  CLI `podstack config ...` e GUI por categoria.
+- File dialog nativo (`PathField`/QFileDialog) para importar/exportar machines, imagens,
+  volumes, uploads de containers/machines, contexto de build e diretório do Compose.
+- Cobertura medida: 74,2% (19.682/26.532 linhas). O gate de 80% está temporariamente
+  informativo no CI; o relatório do gcovr continua bloqueante via `set -o pipefail`.
+- PR #11 está MERGEABLE; o último CI falhou só no teste flaky do virtiofsd (zumbi no
+  container), corrigido em `95fbfee`.
 
-PRÓXIMAS TAREFAS
-- M4 concluído: validar os critérios de saída em VM real (abaixo) e então iniciar o M5
-  (Kubernetes/k3s em VM dedicada). Qualidade/cobertura (gate de 80%) segue como trilha
-  paralela antes do release.
+BLOQUEADORES PARA MERGE
+1. Push dos commits locais e reexecutar o CI da PR #11:
+   `git push` e `gh run rerun <run-id>`; confirmar o job `ci` verde.
+2. Revisar o diff final da PR (já são ~20 commits) e mergear em `main`.
+3. Após o merge, atualizar AGENTS/docs/README se o merge mudar o hash/status.
 
-MELHORIAS CONHECIDAS DA T4-08 (não bloqueiam o commit)
-- Transferências são síncronas, sem barra de progresso (listar tem timeout de 15 s,
-  transferir 10 min); para arquivos grandes vale um job com progresso e cancelamento.
-- Sem file dialog nativo no QML: o upload usa campo de caminho local; avaliar
-  seletor de arquivos via C++ (QFileDialog) ou KDE portal.
-- Sem seleção múltipla, renomear, criar pasta, excluir nem editar permissões.
-- Download sempre para ~/Downloads/<nome>, sem escolha de destino nem tratamento
-  de arquivo existente.
-- CLI de mounts (virtiofs) ficou pendente: `machine create` só aceita mounts pela GUI/RPC.
-- Integração real de arquivos fica atrás de PODSTACK_MACHINE_FILES_INTEGRATION=1 (QSKIP no CI).
+ANTES DE INICIAR O M5 (após o merge)
+1. Validação manual do M4 em VM real:
+   - Ubuntu, Debian e Fedora criadas e acessíveis por SSH; criação + SSH ≤ 60 s com KVM.
+   - Sem QEMU/virtiofsd órfão após crash, stop e delete.
+   - Export/import restaura máquina funcional; virtiofs com permissões corretas no guest.
+   - Fluxo J2 completo: criar → SSH → arquivos → porta.
+   - polkit/helper, firewalld/ufw e acesso LAN de outro dispositivo.
+   - Instalação limpa: RPM, systemd, polkit, SELinux e onboarding de 7 etapas (T7-07/T7-14).
+2. Recuperar cobertura para ≥ 80% e tornar o gate bloqueante novamente:
+   - priorizar caminhos de erro de Daemon/CLI/Backend, helper/SetupManager e Virtiofsd;
+   - remover o `::warning::` e voltar `--fail-under-line 80`.
+3. Ferramentas de qualidade:
+   - instalar/rodar clang-format e clang-tidy no host e no CI;
+   - habilitar testes QML reais (hoje `QSKIP`, só smoke offscreen).
+4. Melhorias conhecidas selecionadas (não bloqueiam M4):
+   - arquivos: barra de progresso/cancelamento, escolha de destino no download, multi-seleção,
+     renomear/criar pasta/excluir e CLI de mounts virtiofs;
+   - export/import: progresso do `qemu-img convert`, segurança do `import --force` e limpeza
+     de `.part`/`.export-*`/`.import-*` no reconcile;
+   - console: decoder UTF-8 incremental e unsubscribe no disconnect;
+   - portas: ordenação estável (SSH no topo) e diagnóstico de conflito com processos do host;
+   - `isolated` alternável via update; snapshots com uso real de disco.
 
-MELHORIAS CONHECIDAS DA T4-09 (não bloqueiam o commit)
-- O progresso do `qemu-img convert` fica em 5% durante toda a conversão (sem parsear
-  a saída do qemu-img); vale um pulso por tempo ou `-p` com leitura de stderr.
-- `import --force` remove a machine existente antes de persistir a nova; falha de
-  I/O depois disso pode deixar o usuário sem a antiga e sem a nova (validar/escrever
-  em staging e mover para uma "lixeira" antes de apagar).
-- O pacote contém a chave privada SSH da machine; importar o mesmo arquivo duas vezes
-  duplica a identidade (documentado como credencial).
-- Restos de `.part`/`.export-*`/`.import-*` após crash do daemon não são varridos no reconcile.
-
-MELHORIAS CONHECIDAS DA T4-11 (não bloqueiam o commit)
-- `machines.update` é síncrono e sem progresso; um resize grande pode levar alguns segundos
-  com o daemon preso no RPC.
-- O resize só cresce o qcow2; a partição/filesystem do guest continua manual
-  (`growpart`/`resize2fs`).
-- Falha de persistência após o resize deixa o disco maior que o metadado; a mensagem orienta
-  repetir a atualização, mas não há reconciliação automática do tamanho.
-
-MELHORIAS CONHECIDAS DA T4-12 (não bloqueiam o commit)
-- `machines.ports.set` é síncrono e reinicia a machine quando running; sem progresso no CLI/GUI.
-- `exposeLan` bind em `0.0.0.0` não abre o firewall do host (firewalld/ufw) automaticamente;
-  o usuário precisa liberar a porta.
-- A porta SSH não pode ser exposta na LAN nem editada (gerenciada); não há ainda diagnóstico
-  de conflito com processos do host fora do PodStack (só entre machines).
-- A lista de portas é reordenada por `host_port` ao reler do SQLite; a GUI/CLI não dependem da
-  ordem, mas a SSH pode aparecer no meio da lista.
-
-MELHORIAS CONHECIDAS DA T4-13 (não bloqueiam o commit)
-- O toggle do agent é síncrono (persist + sync do `~/.ssh/config`) e sem indicador de
-  progresso; em erro, o checkbox volta ao valor anterior só depois do refresh.
-- `SshConfig::sync` mantém `ForwardAgent yes` quando `machine.forwardSshAgent` é true mesmo
-  que o chamador passe `false`; a atualização sempre passa o valor do metadado, mas a API
-  interna ainda aceita os dois argumentos.
-- O `-A` é aplicado apenas ao SSH aberto pelo PodStack (CLI/terminal embutido/externo); um
-  `ssh <nome>` executado fora do PodStack usa o bloco gerenciado (`ForwardAgent yes`), mas
-  não recebe a flag explicitamente.
-- Não há validação se o host tem `SSH_AUTH_SOCK` ativo; com o flag ligado e sem agent, o
-  guest simplesmente não vê chaves (o `ssh` continua funcionando).
-
-MELHORIAS CONHECIDAS DA T4-15 (não bloqueiam o commit)
-- O stream converte cada chunk com `QString::fromUtf8` (lossy): uma sequência multibyte
-  cortada na borda do tail/chunk vira `U+FFFD`; um decoder incremental resolveria.
-- Ctrl+C no `machine console` mata o processo sem enviar `machines.console.unsubscribe`;
-  como o RpcServer não cancela subscriptions no disconnect (padrão das demais streams), o
-  loop de polling continua até o daemon reiniciar. Vale um cleanup por conexão.
-- A rotação com substituição do arquivo por outro do mesmo tamanho ou maior não é detectada
-  (só shrink/desaparecimento); acompanhar inode resolveria.
-- Sem console bidirecional/teclado e sem VNC; o texto é somente leitura.
-
-MELHORIAS CONHECIDAS DA T4-14 (não bloqueiam o commit)
-- `isolated` só pode ser definido na criação; `machines.update` ainda não alterna o modo
-  (exigiria recriar/ajustar mounts e portas com segurança).
-- A CLI não expõe mounts, então `--isolated` é validado pelo daemon junto com
-  `--forward-ssh-agent`; combinações inválidas retornam `PODSTACK_INVALID_PARAMS`.
-- Importar arquivo antigo (sem o campo `isolated`) mantém o comportamento anterior
-  (`isolateNetwork`/`forwardSshAgent` do manifesto) e não infere isolamento.
-- O modo cobre rede user-mode (`restrict=on`) e mounts/agent, mas não adiciona cgroups,
-  seccomp, limites de I/O ou proteção contra falhas do QEMU/kernel do host.
-
-MELHORIAS CONHECIDAS DA T4-16 (não bloqueiam o commit)
-- Snapshots internos não entram em export/clone (`qemu-img convert`) nem no `.tar.zst`; para
-  backup com snapshots seria preciso copiar o qcow2 inteiro (não achatado).
-- O snapshot referencia o backing file da imagem cloud; se o cache de imagens for limpo, o
-  disco overlay fica inválido (o PodStack não impede a limpeza).
-- `machines.snapshots.*` é síncrono e reinicia a machine quando running, sem barra de
-  progresso; criar snapshot de disco grande pode levar segundos com o daemon no RPC.
-- O qemu-img relista os snapshots após criar; em versões que não os listem, o retorno usa
-  nome + data atual como fallback (sem `id`/tamanho).
-- O tamanho exibido é `vm-state-size` (0 em snapshots offline), não o espaço em disco ocupado
-  pelo snapshot; para uso/consumo real seria preciso `qemu-img info`/`du` do qcow2.
-- Restaurar/remover não fazem backup automático do estado atual; a confirmação é a única
-  barreira (GUI) e o aviso na CLI é informativo.
-
-CRITÉRIOS DE SAÍDA DO M4 A VALIDAR
-- Ubuntu, Debian e Fedora criadas e acessíveis por SSH em VM real.
-- Criação + SSH em <= 60 s com KVM.
-- Nenhum QEMU/virtiofsd órfão após crash, stop e delete.
-- Export/import restaura máquina funcional.
-- virtiofs com permissões corretas dentro do guest.
-- J2 completo (criar -> SSH -> arquivos -> porta).
-
-PENDÊNCIAS DE M2/M3/M7
-- T2-17 (P2) — seletor visual de plataforma no pull de imagens (o build multi-plataforma já existe).
-- T3-09 (P2) — integração com Supabase CLI (reconhecer stack e start/stop). **Adiada para depois,
-  por decisão do usuário em 2026-11-09; não faz parte da T7-01.**
-- T1-11 — validar e marcar a aba Arquivos do container como concluída (a tela existe no detalhe).
-- T7-01 (P0) — ✅ concluída em 2026-11-09: schema central de 82 chaves em `src/core/Settings.cpp`,
-  `settings.get/set/reset/schema` no daemon, CLI `podstack config show/get/set/add/remove/reset/schema`
-  e GUI de settings por categoria com validação; evidência em `docs/testing.md` e `docs/tasks.md`.
-  Riscos/limites: não há watcher de arquivo; chaves sem consumidor de runtime continuam apenas
-  persistidas; validação de conflito de porta fica para quando o recurso for aplicado.
-
-QUALIDADE E CI
-- Cobertura global em ~74,2% (medida antes das últimas tarefas); meta/gate de 80% não atingido.
-- O step "Cobertura (gate 80%)" do CI mascara o exit code do gcovr por causa de "gcovr ... | tee";
-  corrigir com set -o pipefail (ou capturar $?) e recuperar a cobertura com testes.
-- clang-format/clang-tidy não estão instalados no host e não rodam no CI.
-- Testes QML reais são QSKIP no binário de teste (só smoke offscreen).
-- Atualizar AGENTS.md / docs/README.md com o status do M4 após o merge.
-
-VALIDAÇÃO MANUAL PENDENTE
-- QEMU/KVM e SSH reais em VM (criação, métricas, terminal, arquivos, mounts virtiofs).
-- polkit/helper, firewalld/ufw e acesso LAN de outro dispositivo.
-- Instalação limpa: RPM, systemd, polkit, SELinux e onboarding de 7 etapas (T7-07/T7-14).
-- A machine "teste" teve o processo encerrado durante um teste antigo de reconcile; o estado em disco
-  ficou "running" obsoleto. O próximo start do daemon corrige via reconcile para "stopped".
-
-DEPOIS DO M4
-- M5 Kubernetes (k3s em VM), M6 domínios/HTTPS/proxy, M7 desktop/settings/updates, M8 extras.
+ADIADO / BACKLOG
+- T3-09 (Supabase CLI): **adiado para depois do M5**, por decisão do usuário.
+- T7-03 (submenu Machines na bandeja) e T7-05 (notificações de update/disco).
+- M5 Kubernetes/k3s em VM dedicada, M6 domínios/HTTPS/proxy, M7 desktop/settings/updates,
+  M8 extras — só depois do merge e da validação do M4.
