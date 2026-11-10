@@ -1,6 +1,5 @@
 #include "gui/Backend.h"
 
-#include "core/Config.h"
 #include "core/DiskUsage.h"
 #include "core/Error.h"
 #include "core/Proxy.h"
@@ -161,6 +160,10 @@ Backend::Backend(QObject *parent)
             &Backend::onCatalogFinished);
     connect(&m_setupWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onSetupFinished);
+    connect(&m_settingsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onSettingsFinished);
+    connect(&m_settingsActionWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onSettingsActionFinished);
     connect(&m_machinesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachinesFinished);
     connect(&m_machineDistrosWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -695,6 +698,7 @@ Backend::Backend(QObject *parent)
     QTimer::singleShot(0, this, &Backend::refresh);
     QTimer::singleShot(0, this, &Backend::refreshCatalog);
     QTimer::singleShot(0, this, &Backend::refreshMachines);
+    QTimer::singleShot(0, this, &Backend::refreshSettings);
 }
 
 QString Backend::version() const
@@ -1643,86 +1647,237 @@ void Backend::stopMachineConsole()
 
 QVariantMap Backend::settings() const
 {
-    const Config config = Config::load();
     QVariantMap values;
     values.insert(QStringLiteral("engineMode"),
-                  config.get(QStringLiteral("engine.mode")).toString());
+                  m_settingsValues.value(QStringLiteral("engine.mode"),
+                                         QStringLiteral("rootless")));
     values.insert(QStringLiteral("theme"),
-                  config.get(QStringLiteral("app.theme")).toString());
+                  m_settingsValues.value(QStringLiteral("app.theme"),
+                                         QStringLiteral("system")));
     values.insert(QStringLiteral("keepRunningInTray"),
-                  config.get(QStringLiteral("app.keepRunningInTray")).toBool(true));
+                  m_settingsValues.value(QStringLiteral("app.keepRunningInTray"), true));
     values.insert(QStringLiteral("showInTray"),
-                  config.get(QStringLiteral("app.showInTray")).toBool(true));
+                  m_settingsValues.value(QStringLiteral("app.showInTray"), true));
     values.insert(QStringLiteral("startAtLogin"),
-                  config.get(QStringLiteral("app.startAtLogin")).toBool(false));
+                  m_settingsValues.value(QStringLiteral("app.startAtLogin"), false));
     values.insert(QStringLiteral("notifications"),
-                  config.get(QStringLiteral("app.notifications")).toBool(true));
+                  m_settingsValues.value(QStringLiteral("app.notifications"), true));
     values.insert(QStringLiteral("proxy"),
-                  config.get(QStringLiteral("network.proxy")).toString(QStringLiteral("auto")));
+                  m_settingsValues.value(QStringLiteral("network.proxy"),
+                                         QStringLiteral("auto")));
     QStringList proxyExclude;
-    const QJsonArray excludeArray =
-        config.get(QStringLiteral("network.proxyExclude")).toArray();
-    for (const QJsonValue &value : excludeArray) {
-        const QString entry = value.toString();
-        if (!entry.isEmpty()) {
-            proxyExclude.append(entry);
+    const QVariantList excludeList =
+        m_settingsValues.value(QStringLiteral("network.proxyExclude")).toList();
+    for (const QVariant &entry : excludeList) {
+        const QString text = entry.toString();
+        if (!text.isEmpty()) {
+            proxyExclude.append(text);
         }
     }
     values.insert(QStringLiteral("proxyExclude"), proxyExclude);
     return values;
 }
 
+void Backend::refreshSettings()
+{
+    if (m_settingsWatcher.isRunning()) {
+        m_settingsRefreshAgain = true;
+        return;
+    }
+
+    m_settingsWatcher.setFuture(QtConcurrent::run([] {
+        RpcClient client;
+        Error error;
+        const QJsonObject values =
+            client.call(QStringLiteral("settings.get"), {}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        const QJsonObject schema =
+            client.call(QStringLiteral("settings.schema"), {}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        QJsonObject result;
+        result.insert(QStringLiteral("values"), values.value(QStringLiteral("values")));
+        result.insert(QStringLiteral("schema"), schema.value(QStringLiteral("schema")));
+        return result;
+    }));
+}
+
+void Backend::onSettingsFinished()
+{
+    const QJsonObject result = m_settingsWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_settingsError = errorObject.value(QStringLiteral("message")).toString();
+        if (m_settingsError.isEmpty()) {
+            m_settingsError = QStringLiteral("Falha ao carregar as configurações.");
+        }
+        emit settingsErrorChanged();
+    } else {
+        m_settingsValues = result.value(QStringLiteral("values")).toObject().toVariantMap();
+        m_settingsSchema = result.value(QStringLiteral("schema")).toArray().toVariantList();
+        const bool hadError = !m_settingsError.isEmpty();
+        m_settingsError.clear();
+        emit settingsSchemaChanged();
+        emit settingsValuesChanged();
+        emit settingsChanged();
+        if (hadError) {
+            emit settingsErrorChanged();
+        }
+    }
+
+    if (m_settingsRefreshAgain) {
+        m_settingsRefreshAgain = false;
+        refreshSettings();
+    }
+}
+
+void Backend::setSettingsError(const QString &error)
+{
+    m_settingsError = error;
+    m_lastError = error;
+    emit settingsErrorChanged();
+    emit lastErrorChanged();
+}
+
+void Backend::setSetting(const QString &key, const QVariant &value)
+{
+    const bool applyAutostart = key == QStringLiteral("app.startAtLogin");
+    setSettingInternal(key, value, applyAutostart);
+}
+
+void Backend::setSettingInternal(const QString &key, const QVariant &value,
+                                 bool applyAutostart)
+{
+    if (key.isEmpty()) {
+        setSettingsError(QStringLiteral("Chave de configuração inválida."));
+        emit actionFinished(false, m_settingsError);
+        return;
+    }
+
+    QJsonValue json = QJsonValue::fromVariant(value);
+    if (!value.isValid() || value.isNull()) {
+        json = QJsonValue(QJsonValue::Null);
+    }
+    const QJsonObject params{{QStringLiteral("key"), key},
+                             {QStringLiteral("value"), json}};
+    enqueueSettingsRequest(QStringLiteral("settings.set"), params, applyAutostart);
+}
+
+void Backend::resetSetting(const QString &key)
+{
+    QJsonObject params;
+    if (!key.isEmpty()) {
+        params.insert(QStringLiteral("key"), key);
+    }
+    const bool applyAutostart =
+        key.isEmpty() || key == QStringLiteral("app.startAtLogin");
+    enqueueSettingsRequest(QStringLiteral("settings.reset"), params, applyAutostart);
+}
+
+void Backend::enqueueSettingsRequest(const QString &method, const QJsonObject &params,
+                                     bool applyAutostart)
+{
+    SettingsRequest request;
+    request.method = method;
+    request.params = params;
+    request.applyAutostart = applyAutostart;
+    m_settingsQueue.enqueue(request);
+    startNextSettingsRequest();
+}
+
+void Backend::startNextSettingsRequest()
+{
+    if (m_settingsActionActive || m_settingsQueue.isEmpty()) {
+        return;
+    }
+
+    m_settingsCurrentRequest = m_settingsQueue.dequeue();
+    m_settingsActionActive = true;
+    const QString method = m_settingsCurrentRequest.method;
+    const QJsonObject params = m_settingsCurrentRequest.params;
+    m_settingsActionWatcher.setFuture(QtConcurrent::run([method, params] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(method, params, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onSettingsActionFinished()
+{
+    const QJsonObject result = m_settingsActionWatcher.result();
+    const SettingsRequest request = m_settingsCurrentRequest;
+    const QString key = request.params.value(QStringLiteral("key")).toString();
+    bool ok = true;
+    QString message;
+
+    if (result.contains(QStringLiteral("error"))) {
+        ok = false;
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        message = errorObject.value(QStringLiteral("message")).toString();
+        const QString remediation =
+            errorObject.value(QStringLiteral("remediation")).toString();
+        if (!remediation.isEmpty()) {
+            message += QLatin1Char(' ') + remediation;
+        }
+    } else {
+        if (result.contains(QStringLiteral("values"))) {
+            m_settingsValues =
+                result.value(QStringLiteral("values")).toObject().toVariantMap();
+            emit settingsValuesChanged();
+            emit settingsChanged();
+        }
+
+        if (request.applyAutostart) {
+            QString autostartError;
+            const bool enabled =
+                request.params.value(QStringLiteral("value")).toBool();
+            if (!Autostart::setEnabled(enabled, &autostartError)) {
+                ok = false;
+                message = autostartError;
+            }
+        }
+    }
+
+    if (ok) {
+        if (!m_settingsError.isEmpty()) {
+            m_settingsError.clear();
+            emit settingsErrorChanged();
+        }
+    } else {
+        setSettingsError(message);
+    }
+
+    emit settingFinished(key, ok, message);
+    emit actionFinished(ok, message);
+    m_settingsActionActive = false;
+    startNextSettingsRequest();
+}
+
 void Backend::saveEngineMode(const QString &mode)
 {
     if (mode != QStringLiteral("rootless") && mode != QStringLiteral("rootful")) {
-        m_lastError = QStringLiteral("Modo de engine inválido.");
-        emit lastErrorChanged();
+        setSettingsError(QStringLiteral("Modo de engine inválido."));
+        emit actionFinished(false, m_settingsError);
         return;
     }
 
-    Config config = Config::load();
-    config.set(QStringLiteral("engine.mode"), mode);
-
-    QString error;
-    if (!config.save(&error)) {
-        m_lastError = error;
-        emit lastErrorChanged();
-        return;
-    }
-
-    m_lastError.clear();
-    emit lastErrorChanged();
-    emit actionFinished(true, {});
+    setSettingInternal(QStringLiteral("engine.mode"), mode);
 }
 
 void Backend::saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
                                bool notifications)
 {
-    Config config = Config::load();
-    config.set(QStringLiteral("app.keepRunningInTray"), keepRunning);
-    config.set(QStringLiteral("app.showInTray"), showInTray);
-    config.set(QStringLiteral("app.startAtLogin"), startAtLogin);
-    config.set(QStringLiteral("app.notifications"), notifications);
-
-    QString error;
-    if (!config.save(&error)) {
-        m_lastError = error;
-        emit lastErrorChanged();
-        emit actionFinished(false, error);
-        return;
-    }
-
-    if (!Autostart::setEnabled(startAtLogin, &error)) {
-        m_lastError = error;
-        emit lastErrorChanged();
-        emit actionFinished(false, error);
-        return;
-    }
-
-    m_lastError.clear();
-    emit lastErrorChanged();
-    emit settingsChanged();
-    emit actionFinished(true, {});
+    setSettingInternal(QStringLiteral("app.keepRunningInTray"), keepRunning);
+    setSettingInternal(QStringLiteral("app.showInTray"), showInTray);
+    setSettingInternal(QStringLiteral("app.startAtLogin"), startAtLogin, true);
+    setSettingInternal(QStringLiteral("app.notifications"), notifications);
 }
 
 void Backend::saveProxySettings(const QString &proxy, const QString &excludeText)
@@ -1739,9 +1894,8 @@ void Backend::saveProxySettings(const QString &proxy, const QString &excludeText
 
     Error validation;
     if (!Proxy::validate(normalizedProxy, excludes, &validation)) {
-        m_lastError = validation.message;
-        emit lastErrorChanged();
-        emit actionFinished(false, m_lastError);
+        setSettingsError(validation.message);
+        emit actionFinished(false, m_settingsError);
         return;
     }
 
@@ -1750,45 +1904,20 @@ void Backend::saveProxySettings(const QString &proxy, const QString &excludeText
         excludeArray.append(entry);
     }
 
-    Config config = Config::load();
-    config.set(QStringLiteral("network.proxy"), normalizedProxy);
-    config.set(QStringLiteral("network.proxyExclude"), excludeArray);
-
-    QString error;
-    if (!config.save(&error)) {
-        m_lastError = error;
-        emit lastErrorChanged();
-        emit actionFinished(false, error);
-        return;
-    }
-
-    m_lastError.clear();
-    emit lastErrorChanged();
-    emit settingsChanged();
-    emit actionFinished(true, {});
+    setSettingInternal(QStringLiteral("network.proxy"), normalizedProxy);
+    setSettingInternal(QStringLiteral("network.proxyExclude"), excludeArray.toVariantList());
 }
 
 void Backend::saveTheme(const QString &theme)
 {
     if (theme != QStringLiteral("system") && theme != QStringLiteral("dark")
         && theme != QStringLiteral("light")) {
-        m_lastError = QStringLiteral("Tema inválido.");
-        emit lastErrorChanged();
+        setSettingsError(QStringLiteral("Tema inválido."));
+        emit actionFinished(false, m_settingsError);
         return;
     }
 
-    Config config = Config::load();
-    config.set(QStringLiteral("app.theme"), theme);
-    QString error;
-    if (!config.save(&error)) {
-        m_lastError = error;
-        emit lastErrorChanged();
-        return;
-    }
-
-    m_lastError.clear();
-    emit lastErrorChanged();
-    emit actionFinished(true, {});
+    setSettingInternal(QStringLiteral("app.theme"), theme);
 }
 
 void Backend::runSetupRequest(const QString &method, const QJsonObject &params)

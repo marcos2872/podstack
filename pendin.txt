@@ -10,6 +10,8 @@ SITUAÇÃO ATUAL
   T4-15 e T4-16.
 - T4-05, T4-07, T4-08, T4-09, T4-10, T4-11, T4-12, T4-13, T4-14, T4-15 e T4-16 concluídas.
   T4-16 nesta sessão (snapshots internos do qcow2 no RPC, CLI e GUI).
+- T7-01 concluída em 2026-11-09 (schema de 82 chaves, RPC `settings.*`, CLI `podstack config`,
+  GUI por categoria). T3-09 (Supabase) segue **adiada para depois**, por decisão do usuário.
 
 PRÓXIMAS TAREFAS
 - M4 concluído: validar os critérios de saída em VM real (abaixo) e então iniciar o M5
@@ -110,10 +112,14 @@ CRITÉRIOS DE SAÍDA DO M4 A VALIDAR
 
 PENDÊNCIAS DE M2/M3/M7
 - T2-17 (P2) — seletor visual de plataforma no pull de imagens (o build multi-plataforma já existe).
-- T3-09 (P2) — integração com Supabase CLI (reconhecer stack e start/stop).
+- T3-09 (P2) — integração com Supabase CLI (reconhecer stack e start/stop). **Adiada para depois,
+  por decisão do usuário em 2026-11-09; não faz parte da T7-01.**
 - T1-11 — validar e marcar a aba Arquivos do container como concluída (a tela existe no detalhe).
-- T7-01 (P0) — settings GUI + CLI completos: implementar settings.get/set e as chaves
-  documentadas que ainda faltam no Config (proxyExclude, machines.*, advanced.cloudImageCacheBytes etc.).
+- T7-01 (P0) — ✅ concluída em 2026-11-09: schema central de 82 chaves em `src/core/Settings.cpp`,
+  `settings.get/set/reset/schema` no daemon, CLI `podstack config show/get/set/add/remove/reset/schema`
+  e GUI de settings por categoria com validação; evidência em `docs/testing.md` e `docs/tasks.md`.
+  Riscos/limites: não há watcher de arquivo; chaves sem consumidor de runtime continuam apenas
+  persistidas; validação de conflito de porta fica para quando o recurso for aplicado.
 
 QUALIDADE E CI
 - Cobertura global em ~74,2% (medida antes das últimas tarefas); meta/gate de 80% não atingido.

@@ -617,12 +617,33 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 
 ### 4.10 `settings.*`
 
+Fonte única: o `podstackd` lê/valida/escreve `~/.config/podstack/config.json` (0600, escrita
+atômica). GUI e CLI usam estes métodos; ninguém escreve o arquivo diretamente. O schema tem 82
+chaves em `src/core/Settings.cpp` (a tabela de [`settings.md`](settings.md) é a referência).
+
+`values` é sempre um **mapa plano** `chave -> valor` (as chaves `a.b.c` viram `"a.b.c"`). O socket
+é local (`0600` + `SO_PEERCRED`); por isso `network.proxy` é devolvido **sem máscara** para
+permitir edição na GUI — o campo é marcado como `secret` apenas para mascarar a entrada e nunca é
+logado.
+
 | Método | Params | Result |
 |---|---|---|
-| `settings.get` | `{key?}` | `{values: object}` |
-| `settings.set` | `{key, value}` | `{values}` |
-| `settings.reset` | `{key?}` | `{values}` |
-| `settings.schema` | `{}` | `{schema:[{key,type,default,enum?,min?,max?,restartRequired,description}]}` |
+| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 82 chaves; com `key`, um único item |
+| `settings.set` | `{key, value}` | `{values, key, restartRequired}` — `value` é validado antes de salvar |
+| `settings.reset` | `{key?}` | `{values, restartRequired}` — sem `key`, restaura todos |
+| `settings.schema` | `{}` | `{schema:[{key,type,default,category,description,restartRequired,secret,nullable,enum?,min?,max?}]}` |
+
+Regras:
+
+- `settings.set` sem `key`/`value` → `PODSTACK_INVALID_PARAMS`; chave desconhecida, tipo errado,
+  enum inválido, fora da faixa, lista inválida ou proxy/CIDR inválido → `PODSTACK_VALIDATION`
+  (o `detail` é a chave). Falha de escrita → `PODSTACK_IO_ERROR`. Valores inválidos não são salvos.
+- `restartRequired` é `true` quando a chave alterada tem `restartRequired=true` no schema e o valor
+  realmente mudou (`engine.mode`, portas/rede, Kubernetes, etc.). Nada é reiniciado pelo RPC.
+- `settings.reset` sem `key` preserva `schemaVersion` e todo o bloco `setup.*` (onboarding,
+  `completedAt`, `components`, política do Docker). Reset por chave permite alterar qualquer chave,
+  inclusive `setup.*`.
+- `settings.get key`/`settings.reset key` com chave desconhecida → `PODSTACK_VALIDATION`.
 
 ### 4.11 `jobs.*` e `events.*`
 

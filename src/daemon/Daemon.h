@@ -124,6 +124,10 @@ private:
     QJsonObject setupCancel(const QJsonObject &params);
     QJsonObject setupComplete(const QJsonObject &params, Error *error);
     QJsonObject setupSubscribe(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject settingsGet(const QJsonObject &params, Error *error);
+    QJsonObject settingsSet(const QJsonObject &params, Error *error);
+    QJsonObject settingsReset(const QJsonObject &params, Error *error);
+    QJsonObject settingsSchema() const;
     QJsonObject subscribeLogs(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeStats(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeSystemStats(const QJsonObject &params, const Notify &notify,
@@ -150,6 +154,7 @@ private:
     QHash<QString, QString> m_buildSubscriptions;
     std::mutex m_machineJobsMutex;
     QHash<QString, QString> m_machineSubscriptions; // jobId -> subscriptionId
+    std::mutex m_settingsMutex;
     int m_nextSubscription = 1;
     int m_nextBuild = 1;
     int m_nextMachineJob = 1;

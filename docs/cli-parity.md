@@ -190,13 +190,14 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 
 | `orb` | `podstack` | Flags | Notas |
 |---|---|---|---|
-| `config show` | `config show` | `--format` | Lista chaves |
-| `config get K` | `config get K` | `--format` | |
-| `config set K V` | `config set K V` | — | Validação |
-| `config add K V` | `config add K V` | — | Listas (proxy exclude) |
-| `config remove K V` | `config remove K V` | — | |
-| `config reset` | `config reset` | `--yes` | |
-| `config docker` | `config engine` | — | Abre `daemon.json`/`containers.conf` |
+| `config show` | `config show` | `--json` | ✅ T7-01; lista chave=valor ou mapa JSON |
+| `config get K` | `config get K` | `--json` | ✅ T7-01 |
+| `config set K V` | `config set K V` | — | ✅ T7-01; valida tipo/enum/faixa no daemon |
+| `config add K V` | `config add K V` | — | ✅ T7-01; listas (`proxyExclude`, `tlsSan`, `setup.components`) |
+| `config remove K V` | `config remove K V` | — | ✅ T7-01 |
+| `config reset` | `config reset [K]` | `--all`, `--yes` | ✅ T7-01; sem `--yes` exige TTY; reset total preserva `setup.*` |
+| `config docker` | `config engine` | — | não implementado no v1 (edite `docker.daemonJsonPath` via `config set`) |
+| — | `config schema` | `--json` | ✅ T7-01; 82 chaves com tipo/default/enum/faixa/restart |
 | `login` / `logout` | `login` / `logout` | `--domain`, `--force` | Opcional (P2) |
 
 ### 2.5 Kubernetes

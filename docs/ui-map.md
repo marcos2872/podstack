@@ -136,7 +136,7 @@ Abas por tipo (estado do M4 após o redesenho do detalhe):
 | **Terminal** | ✅ aba interna do detalhe | ✅ aba interna do detalhe | — | — | `TerminalView`/QTermWidget em placeholder do QML; **Nova sessão em janela** via `ExternalTerminal` |
 | **Inspect** | ✅ overlay | — | — | — | JSON completo via `containers.inspect` |
 
-Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info (incluindo os mounts virtiofs source → target e o toggle **Encaminhar SSH agent** com aviso de segurança), Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash, mounts `origem:destino[:ro]` e o checkbox **Modo isolado**, que desabilita mounts/agent e força a rede restrita), importar/exportar `.tar.zst` (com progresso e cancelamento), start/stop/restart, expandir o detalhe em overlay, abrir SSH na aba Terminal desse detalhe (com `-A` quando o agent está encaminhado), gerenciar arquivos na aba Files (listar, baixar para `~/Downloads` e enviar), gerenciar snapshots do disco (criar/restaurar/remover com confirmação) e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
+Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings dirigido pelo schema (82 chaves, T7-01). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info (incluindo os mounts virtiofs source → target e o toggle **Encaminhar SSH agent** com aviso de segurança), Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash, mounts `origem:destino[:ro]` e o checkbox **Modo isolado**, que desabilita mounts/agent e força a rede restrita), importar/exportar `.tar.zst` (com progresso e cancelamento), start/stop/restart, expandir o detalhe em overlay, abrir SSH na aba Terminal desse detalhe (com `-A` quando o agent está encaminhado), gerenciar arquivos na aba Files (listar, baixar para `~/Downloads` e enviar), gerenciar snapshots do disco (criar/restaurar/remover com confirmação) e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 
@@ -326,22 +326,30 @@ Todos com: foco inicial no campo primário, `Esc` cancela, `Enter` confirma quan
 
 ## 7. Settings
 
-Janela separada (⌘, / `Ctrl+,`), sidebar de categorias:
+Diálogo modal (`AppDialog`, `Ctrl+,`) dirigido pelo schema do daemon (`settings.schema`), com
+`AppSelect` de categoria e uma lista rolável de linhas. Cada linha é gerada a partir de
+`SettingsRow.qml`: chave, descrição, valor padrão, `AppBadge` de **reinício**/segredo, controle
+adequado ao tipo (`FormCheck` para bool, `AppSelect` para enum, `FormField` para string/int/
+int64/lista; `echoMode: Password` em `network.proxy`), botões **Salvar** e **Restaurar** e erro
+inline. Nada é gravado direto no arquivo: `Backend::refreshSettings/setSetting/resetSetting` usam
+`settings.get/set/reset/schema` via `RpcClient` em worker thread.
 
 | Categoria | Conteúdo |
 |---|---|
-| **Geral** | iniciar no login, tema, idioma, tray, manter rodando |
-| **Engine** | rootless/rootful, socket, versão, reiniciar engine |
-| **Setup** | executar novamente, status do Podman/Docker, componentes |
-| **Docker** | expor portas na LAN, containerd image store, daemon.json |
-| **Rede** | HTTPS, proxy, exclusões, subnet, bridge, LAN |
-| **Máquinas** | portas na LAN, forward, limites default, SSH agent |
-| **Kubernetes** | habilitar, expor serviços, kubeconfig por domínio, SANs |
-| **Terminal/Logs** | fonte, tamanho, wrap, pretty JSON, busca |
-| **Updates** | modo, canal, check agora |
-| **Avançado** | SSH expose, diretórios, reset, diagnóstico, telemetria |
+| **Geral** | iniciar no login, tema, idioma, tray, manter rodando, confirmações, onboarding |
+| **Engine** | rootless/rootful, socket, auto-start, restart em mudança de config |
+| **Docker** | expor portas na LAN, containerd image store, containers.conf, rede default |
+| **Rede** | HTTPS, proxy + exclusões, subnet, bridge, IPv6, LAN, domínio, portas |
+| **Máquinas** | default, portas/forward, CPU/memória/disco, SSH agent, isolamento, SSH (porta, config, chave) |
+| **Kubernetes** | habilitar, expor serviços, kubeconfig por domínio, SANs, CPU/memória/disco, paths |
+| **Terminal/Logs** | fonte, tamanho, scrollback, wrap, busca, JSON, buffer |
+| **Updates** | modo, canal, último check, diagnóstico/report, telemetria |
+| **Avançado** | helper, DNS, CA, log level, retenção de jobs/builds, cache de imagens |
+| **Setup** | estado do onboarding, política do Docker, componentes, última validação |
 
-Cada setting: label, descrição curta, controle, badge "requer reinício" quando aplicável, link "saiba mais".
+O rodapé mantém **Executar configuração** (reabre o setup) e **Fechar**. Reset por chave usa o
+botão da linha; o reset total fica na CLI (`podstack config reset --all --yes`) e preserva
+`setup.*`. O visual usa `Theme.qml` (superfícies, tipografia e espaçamento padrão).
 
 ---
 

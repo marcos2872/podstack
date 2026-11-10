@@ -1,6 +1,9 @@
 # Settings — PodStack
 
-> Fonte única de configuração no daemon; GUI e CLI leem/escrevem as mesmas chaves. Arquivo: `~/.config/podstack/config.json` (0600), escrita atômica, schema versionado.
+> Fonte única de configuração no daemon; GUI e CLI leem/escrevem as mesmas chaves via RPC
+> (`settings.*`). Arquivo: `~/.config/podstack/config.json` (0600), escrita atômica, schema
+> versionado. O schema central com as 82 chaves, defaults, enums e faixas vive em
+> `src/core/Settings.cpp`; `Config::defaults()` é gerado a partir dele.
 
 ---
 
@@ -11,7 +14,8 @@
 3. `config.json` do usuário.
 4. Defaults compilados.
 
-Campos desconhecidos são preservados na escrita. Config inválida → backup + defaults + aviso (nunca crash).
+Campos desconhecidos são preservados na escrita. Config inválida → defaults em memória + aviso no
+log (o arquivo original não é apagado; um save posterior o substitui).
 
 ---
 
@@ -206,29 +210,38 @@ o conteúdo não é mesclado.
 
 | Chave | Regra | Erro |
 |---|---|---|
-| `engine.mode` | `rootless`/`rootful`; rootful exige acesso ao socket | `PODSTACK_PERMISSION` |
-| `network.subnet4` | CIDR RFC 1918, sem sobreposição | `PODSTACK_VALIDATION` |
+| `engine.mode` | `rootless`/`rootful`; `rootful` só conecta se houver acesso ao socket no próximo start | `PODSTACK_VALIDATION` |
+| `network.subnet4` | CIDR IPv4 RFC 1918 (`10/8`, `172.16/12`, `192.168/16`) | `PODSTACK_VALIDATION` |
 | `network.proxy` | URL válida (`http/https/socks5/socks5h`) ou `auto`/`none` | `PODSTACK_VALIDATION` |
-| `machines.*.Bytes` | ≥ 1 GiB; memória ≤ 80% da RAM | `PODSTACK_VALIDATION` |
-| `machines.cpus` | 1..nproc | `PODSTACK_VALIDATION` |
-| portas | 1..65535; sem conflito | `PODSTACK_CONFLICT` |
-| `terminal.fontSize` | 8..32 | `PODSTACK_VALIDATION` |
-| `updates.mode` | `off`/`check`/`auto` | `PODSTACK_VALIDATION` |
+| `network.proxyExclude` | host, domínio, `*.domínio` ou CIDR, sem duplicatas/espaços | `PODSTACK_VALIDATION` |
+| `machines.*.Bytes` | ≥ 1 GiB e ≤ 1 TiB | `PODSTACK_VALIDATION` |
+| `machines.cpus` | 1..1024 | `PODSTACK_VALIDATION` |
+| portas (`network.*Port`, `machines.sshPortStart`) | 1..65535 | `PODSTACK_VALIDATION` |
+| `terminal.fontSize`, `logs.fontSize` | 8..32 | `PODSTACK_VALIDATION` |
+| `terminal.scrollback` | 1000..100000 | `PODSTACK_VALIDATION` |
+| `updates.mode`, `updates.channel` | enum | `PODSTACK_VALIDATION` |
 | `advanced.logLevel` | enum | `PODSTACK_VALIDATION` |
 | `telemetry.*` | bool; categorias só têm efeito com `enabled=true` | `PODSTACK_VALIDATION` |
+| `updates.lastCheck`, `setup.completedAt`, `setup.lastValidation` | `null` ou ISO 8601 | `PODSTACK_VALIDATION` |
 
-- Erros retornam `{key, value, reason, remediation}`.
+- O schema é a autoridade: `podstack config schema --json` (ou `settings.schema`) devolve
+  `type`, `default`, `enum`, `min`, `max`, `restartRequired`, `secret` e `nullable`.
+- Erros retornam `{code, message, detail, remediation}` no RPC (`detail` = chave; o valor não é
+  ecoado para não vazar segredos). A CLI mostra mensagem, detalhe e ação.
 - Valor inválido **não é salvo**.
-- Alterações que exigem restart retornam `restartRequired: true` e são aplicadas no próximo start (ou com botão "Aplicar e reiniciar").
+- Alterações que exigem restart retornam `restartRequired: true` e são aplicadas no próximo start
+  (ou com botão "Aplicar e reiniciar", ainda não implementado).
 
 ---
 
 ## 5. Migração e reset
 
-- `schemaVersion` no topo; migrações idempotentes por versão.
-- Antes de migrar: `config.json.bak-<timestamp>`.
-- Reset por chave: `podstack config reset <key>`.
-- Reset total: `podstack config reset --all --yes` (mantém machines/dados; apenas config).
+- `schemaVersion` no topo; a versão atual é 1 e ainda não há migração automática. Quando houver,
+  o backup `config.json.bak-<timestamp>` será criado antes de migrar.
+- Reset por chave: `podstack config reset <key> --yes` (sem `--yes`, pede confirmação em TTY).
+- Reset total: `podstack config reset --all --yes` — restaura as chaves de configuração e
+  **preserva** `schemaVersion` e todo o bloco `setup.*` (`completed`, `completedAt`,
+  `dockerPolicy`, `components`, `lastValidation`). Machines e dados não são tocados.
 - Reset de dados: `podstack reset` (Docker + machines) é separado e exige confirmação.
 
 ---
@@ -237,59 +250,35 @@ o conteúdo não é mesclado.
 
 ```bash
 podstack config show
+podstack config show --json
 podstack config get network.proxy
+podstack config get app.theme --json
 podstack config set network.proxy socks5://127.0.0.1:1080
+podstack config set app.theme dark
 podstack config add network.proxyExclude .internal
-podstack config reset network.https
+podstack config remove network.proxyExclude .internal
+podstack config schema --json
+podstack config reset network.https --yes
 podstack config set machines.memoryBytes 8589934592
 podstack config set kubernetes.enabled true   # requer restart do cluster
 ```
 
+> `network.proxy` pode conter credenciais (userinfo). O valor real trafega no socket local
+> (`0600`/`SO_PEERCRED`) para permitir edição; a GUI usa `echoMode: Password` e o valor nunca é
+> logado. O arquivo continua `0600`.
+
 ---
 
-## 7. Arquivo completo (defaults)
+## 7. Defaults
 
-```json
-{
-  "schemaVersion": 1,
-  "app": {
-    "startAtLogin": false,
-    "waitForContainerStop": true,
-    "keepRunningInTray": true,
-    "theme": "system",
-    "language": "pt-BR",
-    "confirmDestructive": true,
-    "showOnboarding": true
-  },
-  "engine": { "mode": "rootless", "socketPath": null, "autoStart": true, "restartOnConfigChange": true },
-  "docker": { "exposePortsToLan": true, "enableContainerdImageStore": false, "defaultNetwork": "podman" },
-  "network": {
-    "https": false, "proxy": "auto", "proxyExclude": [], "subnet4": "192.168.127.0/24",
-    "bridge": true, "ipv6": false, "exposeLan": false, "domainsMode": "localhost",
-    "httpsPort": 8443, "httpPort": 8080
-  },
-  "machines": {
-    "default": null, "forwardPorts": true, "exposePortsToLan": false,
-    "cpus": 2, "memoryBytes": 4294967296, "diskBytes": 21474836480,
-    "sshPortStart": 32222, "forwardSshAgent": false, "isolated": false
-  },
-  "kubernetes": {
-    "enabled": false, "exposeServices": false, "kubeconfigUseDomain": true,
-    "tlsSan": [], "cpus": 2, "memoryBytes": 4294967296, "diskBytes": 21474836480,
-    "contextPrefix": "podstack-"
-  },
-  "ssh": { "exposePort": false, "forwardAgent": false, "manageConfig": true, "keyType": "ed25519" },
-  "terminal": { "fontFamily": "monospace", "fontSize": 12, "fontBold": true, "scrollback": 10000 },
-  "logs": { "fontSize": 12, "wrapLines": false, "searchMode": "filter", "prettyJson": true, "bufferLines": 10000 },
-  "updates": { "mode": "check", "channel": "stable", "lastCheck": null },
-  "diagnostics": { "includeLogs": true, "redact": true },
-  "telemetry": {
-    "enabled": false,
-    "crashReports": false,
-    "usage": false,
-    "performance": false,
-    "errors": false
-  },
-  "advanced": { "helper": { "enabled": false }, "dns": { "install": false }, "ca": { "install": false }, "logLevel": "info" }
-}
+Os defaults são gerados a partir do schema central (não há mais uma cópia manual neste
+documento). Para inspecionar o arquivo efetivo:
+
+```bash
+podstack config show --json
+podstack config schema --json
 ```
+
+O objeto persistido mantém `"schemaVersion": 1` no topo e os grupos da tabela da §2; chaves
+desconhecidas presentes no arquivo são preservadas na escrita. O reset total descarta chaves
+customizadas fora de `setup.*` (o bloco de setup é preservado integralmente).

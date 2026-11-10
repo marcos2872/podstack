@@ -225,6 +225,11 @@ plataforma continua no Libpod e não usa o override.
 | `test_gui` | `backendMachineStats` | `startMachineStats` popula `machineStats` e os quatro históricos via fake SSH do daemon; `stopMachineStats` encerra o stream e limpa o erro; erro de stream de machine não vaza para `lastError` (inspector de containers) |
 | `test_gui` | `backendMachineFiles` | `refreshMachineFiles` sem machine/id inexistente, download/upload inexistente → `machineFilesError` (sem tocar `lastError`); machine semeada + SSH falso popula `machineFiles`/`machineFilesPath`, download grava em `~/Downloads` isolado pelo `user-dirs.dirs` do teste, upload envia e atualiza a listagem, nome com `..` é rejeitado antes do RPC |
 
+| `test_core` | `configSchemaCoversDocumentedKeys`, `configValidation`, `configResetPreservesSetup` | schema com 82 chaves únicas (defaults iguais a `Config::get`, `network.proxy` secret, `engine.mode` restart), validação de tipo/enum/faixa/CIDR/proxy/lista/timestamp e reset por chave + reset total preservando `schemaVersion`/`setup.*` |
+| `test_rpc` | `settingsFlow` | `settings.schema` (82), `settings.get` (todas/uma), `settings.set` bool/string/lista, rejeição de chave/tipo/enum/faixa (`PODSTACK_VALIDATION`) e params ausentes (`PODSTACK_INVALID_PARAMS`), `restartRequired` em `engine.mode`, reset por chave e all preservando `setup.completed` |
+| `test_cli` | `configCommands` | `config show/get/set/add/remove/reset/schema`, `--json`, listas com vírgula, erro de faixa/enum, `--yes` obrigatório sem TTY e reset total |
+| `test_gui` | `backendTheme`, `backendSettings`, `backendProxy`, `backendTray` | `refreshSettings` popula schema/valores, `setSetting`/`resetSetting` via RPC, erro de validação em `settingsError`, tema/proxy/tray assíncronos e autostart aplicado após o RPC |
+
 O detalhe do container (`ContainerDetail.qml`) é validado por `qmllint`, pelo componente
 `ContainerDetailDialog` em `test_terminal` e pelo smoke `guiStartsAndQuits`; o detalhe da
 machine (`MachineInspector.qml` e `MachineFilesView.qml`) é validado por `qmllint` e pelo

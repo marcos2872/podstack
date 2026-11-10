@@ -41,6 +41,7 @@ add_library(podstack_core STATIC
     src/core/Ids.cpp
     src/core/Paths.cpp
     src/core/Config.cpp
+    src/core/Settings.cpp
     src/core/Logging.cpp
     src/core/Proxy.cpp
     src/core/RpcClient.cpp
@@ -198,6 +199,7 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/FormField.qml
         src/gui/qml/PathField.qml
         src/gui/qml/FormCheck.qml
+        src/gui/qml/SettingsRow.qml
         src/gui/qml/LogsView.qml
         src/gui/qml/StatsView.qml
         src/gui/qml/Inspector.qml

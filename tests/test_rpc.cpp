@@ -42,6 +42,7 @@ private slots:
     void composeAndBuilds();
     void multiPlatformBuild();
     void setupFlow();
+    void settingsFlow();
     void invalidRequests();
 
 private:
@@ -2540,6 +2541,180 @@ void RpcTest::setupFlow()
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(afterComplete.value(QStringLiteral("completed")).toBool(), true);
     QVERIFY(!afterComplete.value(QStringLiteral("completedAt")).isNull());
+}
+
+void RpcTest::settingsFlow()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject schema = client.call(QStringLiteral("settings.schema"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonArray definitions = schema.value(QStringLiteral("schema")).toArray();
+    QCOMPARE(definitions.size(), 82);
+    bool engineRestart = false;
+    bool proxySecret = false;
+    for (const QJsonValue &value : definitions) {
+        const QJsonObject definition = value.toObject();
+        if (definition.value(QStringLiteral("key")).toString()
+            == QStringLiteral("engine.mode")) {
+            engineRestart = definition.value(QStringLiteral("restartRequired")).toBool();
+        }
+        if (definition.value(QStringLiteral("key")).toString()
+            == QStringLiteral("network.proxy")) {
+            proxySecret = definition.value(QStringLiteral("secret")).toBool();
+        }
+    }
+    QVERIFY(engineRestart);
+    QVERIFY(proxySecret);
+
+    const QJsonObject all = client.call(QStringLiteral("settings.get"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonObject defaults = all.value(QStringLiteral("values")).toObject();
+    QCOMPARE(defaults.size(), 82);
+    QCOMPARE(defaults.value(QStringLiteral("engine.mode")).toString(),
+             QStringLiteral("rootless"));
+    QCOMPARE(defaults.value(QStringLiteral("app.theme")).toString(),
+             QStringLiteral("system"));
+    QCOMPARE(defaults.value(QStringLiteral("network.httpsPort")).toInt(), 8443);
+
+    const QJsonObject one =
+        client.call(QStringLiteral("settings.get"),
+                    QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(one.value(QStringLiteral("values")).toObject().size(), 1);
+
+    QVERIFY(client
+                .call(QStringLiteral("settings.get"),
+                      QJsonObject{{QStringLiteral("key"), QStringLiteral("does.not.exist")}},
+                      &error)
+                .isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("does.not.exist")},
+                                     {QStringLiteral("value"), true}},
+                         &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+    QCOMPARE(error.detail, QStringLiteral("does.not.exist"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")},
+                                     {QStringLiteral("value"), QStringLiteral("neon")}},
+                         &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"),
+                                      QStringLiteral("terminal.fontSize")},
+                                     {QStringLiteral("value"), 7}},
+                         &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("value"), true}}, &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")}},
+                         &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QJsonObject result =
+        client.call(QStringLiteral("settings.set"),
+                    QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")},
+                                {QStringLiteral("value"), QStringLiteral("dark")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("app.theme"))
+                 .toString(),
+             QStringLiteral("dark"));
+    QCOMPARE(result.value(QStringLiteral("restartRequired")).toBool(), false);
+
+    result = client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("app.notifications")},
+                                     {QStringLiteral("value"), false}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("app.notifications"))
+                 .toBool(),
+             false);
+
+    result = client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("network.httpPort")},
+                                     {QStringLiteral("value"), 9090}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("network.httpPort"))
+                 .toInt(),
+             9090);
+
+    result = client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("network.proxyExclude")},
+                    {QStringLiteral("value"),
+                     QJsonArray{QStringLiteral("localhost"), QStringLiteral(".internal")}}},
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("network.proxyExclude"))
+                 .toArray()
+                 .size(),
+             2);
+
+    result = client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("engine.mode")},
+                                     {QStringLiteral("value"), QStringLiteral("rootful")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("restartRequired")).toBool(), true);
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("engine.mode"))
+                 .toString(),
+             QStringLiteral("rootful"));
+
+    result = client.call(QStringLiteral("settings.reset"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("app.theme"))
+                 .toString(),
+             QStringLiteral("system"));
+    QCOMPARE(result.value(QStringLiteral("restartRequired")).toBool(), false);
+
+    result = client.call(QStringLiteral("settings.reset"),
+                         QJsonObject{{QStringLiteral("key"),
+                                      QStringLiteral("does.not.exist")}},
+                         &error);
+    QVERIFY(result.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    result = client.call(QStringLiteral("settings.reset"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonObject resetValues = result.value(QStringLiteral("values")).toObject();
+    QCOMPARE(resetValues.value(QStringLiteral("engine.mode")).toString(),
+             QStringLiteral("rootless"));
+    QCOMPARE(resetValues.value(QStringLiteral("network.proxyExclude")).toArray().size(), 0);
+    QCOMPARE(resetValues.value(QStringLiteral("network.httpPort")).toInt(), 8080);
+    QCOMPARE(resetValues.value(QStringLiteral("app.notifications")).toBool(), true);
+    QCOMPARE(result.value(QStringLiteral("restartRequired")).toBool(), true);
+    QCOMPARE(resetValues.value(QStringLiteral("setup.completed")).toBool(), true);
 }
 
 void RpcTest::invalidRequests()

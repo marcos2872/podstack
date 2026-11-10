@@ -185,7 +185,7 @@
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T7-01 | P0 | Settings GUI + CLI (schema, validação, sync) | T0-09 | Chaves equivalentes |
+| T7-01 | P0 | Settings GUI + CLI (schema, validação, sync) | T0-09 | Chaves equivalentes — ✅ implementado: schema central de 82 chaves (`src/core/Settings.cpp`), `settings.get/set/reset/schema` no daemon, CLI `podstack config` e GUI modal por categoria com validação; `test_core`/`test_rpc`/`test_cli`/`test_gui` verdes |
 | T7-02 | P0 | Tema claro/escuro + escala de fonte | T0-11 | Troca em runtime |
 | T7-03 | P1 | Bandeja SNI + menu de contexto | T0-11 | Noctalia/KDE — implementado (Abrir, Containers por projeto, Activity Monitor, Settings, Sair; fechar esconde; instância única); submenus Machines/K8s dependem de M4/M5 |
 | T7-04 | P1 | Activity Monitor (gráficos + `podstack top`) | T1-07 | Dados corretos — implementado (`system.stats.subscribe` + `ActivityMonitorWindow` + `podstack top [--once|--interval|--json|--plain]`); `test_cli::topCommand` |
@@ -199,6 +199,13 @@
 | T7-12 | P2 | Licença/conta (opcional) | T7-01 | Offline funciona |
 | T7-13 | P1 | Coexistência Docker/Podman e remoção opt-in com confirmação | T7-07 | Docker presente não bloqueia; remoção exige confirmação |
 | T7-14 | P0 | Helper allowlisted para setup (pacotes e remoção) | T7-07 | Sem shell/sudo na GUI; auditoria — implementado (`podstack-helper`, polkit, allowlist); falta validação em máquina limpa |
+
+**Evidência T7-01 (2026-11-09):** `cmake --build --preset dev` sem erros; `ctest --preset dev`
+com 14/14 testes verdes (core, podman, contract, rpc, cli, gui, terminal, tray, single_instance,
+autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Main.qml` e
+`SettingsRow.qml` sem avisos novos (restam apenas os `Unqualified access` já existentes e
+`Qt.styleHints.colorScheme`). Casos de settings: `test_core::config*`, `test_rpc::settingsFlow`,
+`test_cli::configCommands`, `test_gui::backendSettings/backendTheme/backendProxy/backendTray`.
 
 **Saída M7:** paridade de desktop; v1.0.
 

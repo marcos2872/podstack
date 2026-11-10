@@ -47,6 +47,7 @@ private slots:
     void backendM3();
     void backendErrors();
     void backendTheme();
+    void backendSettings();
     void backendProxy();
     void backendSetup();
     void backendTray();
@@ -1171,19 +1172,77 @@ void GuiTest::backendTheme()
     QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
 
     backend.saveTheme(QStringLiteral("light"));
-    QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
-             QStringLiteral("light"));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+                 QStringLiteral("light"));
 
     backend.saveTheme(QStringLiteral("system"));
-    QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
-             QStringLiteral("system"));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+                 QStringLiteral("system"));
 
     backend.saveTheme(QStringLiteral("bogus"));
     QVERIFY(!backend.lastError().isEmpty());
     QVERIFY(errorSpy.count() > 0);
     QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
              QStringLiteral("system"));
-    QVERIFY(actionSpy.count() >= 2);
+    QTRY_VERIFY(actionSpy.count() >= 2);
+}
+
+void GuiTest::backendSettings()
+{
+    PodStack::Backend backend;
+    QSignalSpy schemaSpy(&backend, &PodStack::Backend::settingsSchemaChanged);
+    QSignalSpy valuesSpy(&backend, &PodStack::Backend::settingsValuesChanged);
+    QSignalSpy finishedSpy(&backend, &PodStack::Backend::settingFinished);
+
+    backend.refreshSettings();
+    QTRY_COMPARE(backend.settingsSchema().size(), 82);
+    QVERIFY(schemaSpy.count() > 0);
+    QVERIFY(backend.settingsValues().contains(QStringLiteral("engine.mode")));
+    QVERIFY(valuesSpy.count() > 0);
+
+    backend.setSetting(QStringLiteral("app.theme"), QStringLiteral("light"));
+    QTRY_COMPARE(backend.settingsValues()
+                     .value(QStringLiteral("app.theme"))
+                     .toString(),
+                 QStringLiteral("light"));
+    QTRY_VERIFY(finishedSpy.count() > 0);
+    bool themeSaved = false;
+    for (const QList<QVariant> &entry : finishedSpy) {
+        if (entry.at(0).toString() == QStringLiteral("app.theme")) {
+            themeSaved = entry.at(1).toBool();
+        }
+    }
+    QVERIFY(themeSaved);
+
+    backend.setSetting(QStringLiteral("terminal.fontSize"), 99);
+    QTRY_VERIFY(!backend.settingsError().isEmpty());
+    QCOMPARE(backend.settingsValues()
+                 .value(QStringLiteral("terminal.fontSize"))
+                 .toInt(),
+             12);
+
+    backend.setSetting(QStringLiteral("engine.mode"), QStringLiteral("rootful"));
+    QTRY_COMPARE(backend.settingsValues()
+                     .value(QStringLiteral("engine.mode"))
+                     .toString(),
+                 QStringLiteral("rootful"));
+    QTRY_VERIFY(backend.settingsError().isEmpty());
+
+    backend.resetSetting(QStringLiteral("app.theme"));
+    QTRY_COMPARE(backend.settingsValues()
+                     .value(QStringLiteral("app.theme"))
+                     .toString(),
+                 QStringLiteral("system"));
+    backend.resetSetting(QStringLiteral("engine.mode"));
+    QTRY_COMPARE(backend.settingsValues()
+                     .value(QStringLiteral("engine.mode"))
+                     .toString(),
+                 QStringLiteral("rootless"));
+
+    backend.setSetting(QStringLiteral("app.startAtLogin"), true);
+    QTRY_VERIFY(QFile::exists(PodStack::Autostart::filePath()));
+    backend.setSetting(QStringLiteral("app.startAtLogin"), false);
+    QTRY_VERIFY(!QFile::exists(PodStack::Autostart::filePath()));
 }
 
 void GuiTest::backendTray()
@@ -1203,15 +1262,20 @@ void GuiTest::backendTray()
     QTRY_VERIFY_WITH_TIMEOUT(!backend.actionActive(), 5000);
 
     backend.saveTraySettings(false, false, true, false);
-    const QVariantMap settings = backend.settings();
-    QCOMPARE(settings.value(QStringLiteral("keepRunningInTray")).toBool(), false);
-    QCOMPARE(settings.value(QStringLiteral("showInTray")).toBool(), false);
-    QCOMPARE(settings.value(QStringLiteral("startAtLogin")).toBool(), true);
-    QCOMPARE(settings.value(QStringLiteral("notifications")).toBool(), false);
-    QVERIFY(QFile::exists(PodStack::Autostart::filePath()));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("keepRunningInTray")).toBool(),
+                 false);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("showInTray")).toBool(), false);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("startAtLogin")).toBool(), true);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("notifications")).toBool(), false);
+    QTRY_VERIFY(QFile::exists(PodStack::Autostart::filePath()));
 
     backend.saveTraySettings(true, true, false, true);
-    QVERIFY(!QFile::exists(PodStack::Autostart::filePath()));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("keepRunningInTray")).toBool(),
+                 true);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("showInTray")).toBool(), true);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("startAtLogin")).toBool(), false);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("notifications")).toBool(), true);
+    QTRY_VERIFY(!QFile::exists(PodStack::Autostart::filePath()));
 }
 
 void GuiTest::guiStartsAndQuits()
@@ -1291,11 +1355,11 @@ void GuiTest::backendProxy()
 
     backend.saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
                               QStringLiteral("localhost, .internal"));
-    QVariantMap settings = backend.settings();
-    QCOMPARE(settings.value(QStringLiteral("proxy")).toString(),
-             QStringLiteral("http://127.0.0.1:3128"));
-    QCOMPARE(settings.value(QStringLiteral("proxyExclude")).toStringList(),
-             QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
+                 QStringLiteral("http://127.0.0.1:3128"));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("proxyExclude")).toStringList(),
+                 QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
+    QTRY_VERIFY(actionSpy.count() >= 2);
     QCOMPARE(actionSpy.last().at(0).toBool(), true);
     QVERIFY(settingsSpy.count() > 0);
 
@@ -1305,10 +1369,9 @@ void GuiTest::backendProxy()
     QVERIFY(!backend.lastError().isEmpty());
     QVERIFY(errorSpy.count() > errorsBefore);
     QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    settings = backend.settings();
-    QCOMPARE(settings.value(QStringLiteral("proxy")).toString(),
+    QCOMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
              QStringLiteral("http://127.0.0.1:3128"));
-    QCOMPARE(settings.value(QStringLiteral("proxyExclude")).toStringList(),
+    QCOMPARE(backend.settings().value(QStringLiteral("proxyExclude")).toStringList(),
              QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
 
     backend.saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
@@ -1320,8 +1383,8 @@ void GuiTest::backendProxy()
 
     backend.saveProxySettings(QStringLiteral("auto"),
                               QStringLiteral("localhost, .internal"));
-    QCOMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
-             QStringLiteral("auto"));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
+                 QStringLiteral("auto"));
 }
 
 void GuiTest::backendSetup()

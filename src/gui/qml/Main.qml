@@ -42,7 +42,8 @@ Rectangle {
     }
 
     Component.onCompleted: {
-        applyTheme(backend.settings().theme || "system")
+        applyTheme(backend.settingsValues["app.theme"] || "system")
+        backend.refreshSettings()
         backend.setupRefresh()
     }
 
@@ -53,6 +54,10 @@ Rectangle {
             if (backend.setupError.length > 0 && !backend.setupCompleted) {
                 appWindow.reveal()
             }
+        }
+
+        function onSettingsValuesChanged() {
+            applyTheme(backend.settingsValues["app.theme"] || "system")
         }
     }
 
@@ -95,8 +100,7 @@ Rectangle {
     }
 
     readonly property string engineMode: {
-        const settings = backend.settings()
-        return settings.engineMode === "rootful" ? "rootful" : "rootless"
+        return backend.settingsValues["engine.mode"] === "rootful" ? "rootful" : "rootless"
     }
 
     function countFor(key) {
@@ -706,162 +710,151 @@ Rectangle {
         id: settingsDialog
         title: qsTr("Configurações")
         modal: true
-        width: 460
+        width: Math.min(880, window.width - 48)
+        height: Math.min(680, window.height - 48)
         anchors.centerIn: parent
-        header: null
         leftPadding: 18
         rightPadding: 18
-        topPadding: 16
-        bottomPadding: 14
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.width: 1
-            border.color: Theme.border
+        topPadding: 12
+        bottomPadding: 0
+        onOpened: {
+            backend.refreshSettings()
+            rebuildSettingsRows()
         }
+
+        ListModel {
+            id: settingsRows
+        }
+
+        readonly property var categories: [
+            qsTr("Geral"), qsTr("Engine"), qsTr("Docker"), qsTr("Rede"),
+            qsTr("Máquinas"), qsTr("Kubernetes"), qsTr("Terminal/Logs"),
+            qsTr("Updates"), qsTr("Avançado"), qsTr("Setup")
+        ]
+
+        function rebuildSettingsRows() {
+            if (typeof settingsRows === "undefined" || settingsRows === null) {
+                return
+            }
+            settingsRows.clear()
+            const schema = backend.settingsSchema
+            const category = categoryBox.currentText
+            for (let index = 0; index < schema.length; ++index) {
+                const definition = schema[index]
+                if (definition.category !== category) {
+                    continue
+                }
+                const value = backend.settingsValues[definition.key]
+                settingsRows.append({
+                    settingKey: definition.key,
+                    settingType: definition.type,
+                    defaultValue: definition["default"],
+                    enumValues: definition.enum || [],
+                    minValue: definition.min !== undefined ? definition.min : 0,
+                    maxValue: definition.max !== undefined ? definition.max : 0,
+                    restartRequired: definition.restartRequired === true,
+                    secret: definition.secret === true,
+                    nullable: definition.nullable === true,
+                    description: definition.description || "",
+                    currentValue: value === undefined ? null : value
+                })
+            }
+        }
+
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text {
-                Layout.bottomMargin: 4
-                text: qsTr("Configurações")
-                color: Theme.textPrimary
-                font.family: Theme.fontFamily
-                font.pixelSize: 17
-                font.weight: Font.DemiBold
-                font.letterSpacing: -0.3
-            }
-
-            Text {
-                text: qsTr("Modo do engine")
-                color: Theme.textSecondary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMeta
-                font.weight: Font.DemiBold
-            }
-
-            AppSelect {
-                id: engineModeBox
+            RowLayout {
                 Layout.fillWidth: true
-                model: ["rootless", "rootful"]
-                currentIndex: backend.settings().engineMode === "rootful" ? 1 : 0
-            }
+                spacing: 10
 
-            Text {
-                text: qsTr("Alterar o modo exige reiniciar o podstackd:\n"
-                           + "systemctl --user restart podstack.service")
-                color: Theme.textTertiary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMicro
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
+                Text {
+                    text: qsTr("Categoria")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                    font.weight: Font.DemiBold
+                }
+
+                AppSelect {
+                    id: categoryBox
+                    Layout.preferredWidth: 220
+                    model: settingsDialog.categories
+                    onCurrentTextChanged: settingsDialog.rebuildSettingsRows()
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Text {
+                    text: qsTr("%1 chaves").arg(settingsRows.count)
+                    color: Theme.textTertiary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                }
             }
 
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
                 color: Theme.border
-                Layout.topMargin: 2
-                Layout.bottomMargin: 2
             }
 
-            Text {
-                text: qsTr("Proxy")
-                color: Theme.textSecondary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMeta
-                font.weight: Font.DemiBold
-            }
-
-            AppSelect {
-                id: proxyModeBox
+            ScrollView {
+                id: settingsScroll
                 Layout.fillWidth: true
-                model: ["none", "auto", "custom"]
-                Component.onCompleted: {
-                    const current = backend.settings().proxy
-                    currentIndex = current === "none" ? 0 : current === "auto" ? 1 : 2
+                Layout.fillHeight: true
+                clip: true
+                contentWidth: availableWidth
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+                Column {
+                    id: settingsColumn
+                    width: settingsScroll.availableWidth
+                    spacing: Theme.spacingSm
+
+                    Repeater {
+                        model: settingsRows
+
+                        delegate: SettingsRow {
+                            width: settingsColumn.width
+                            settingKey: model.settingKey
+                            settingType: model.settingType
+                            settingDefault: model.defaultValue
+                            enumValues: model.enumValues
+                            minValue: model.minValue
+                            maxValue: model.maxValue
+                            restartRequired: model.restartRequired
+                            secret: model.secret
+                            nullable: model.nullable
+                            description: model.description
+                            currentValue: model.currentValue
+                            settingsBackend: backend
+
+                            onSaveRequested: function(key, value) {
+                                backend.setSetting(key, value)
+                            }
+                            onResetRequested: function(key) {
+                                backend.resetSetting(key)
+                            }
+                        }
+                    }
+
+                    Text {
+                        visible: settingsRows.count === 0
+                        width: parent.width
+                        text: qsTr("Carregando schema de configurações…")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        horizontalAlignment: Text.AlignHCenter
+                        topPadding: 20
+                    }
                 }
-                Accessible.name: qsTr("Modo do proxy")
-            }
-
-            FormField {
-                id: proxyUrlField
-                Layout.fillWidth: true
-                visible: proxyModeBox.currentIndex === 2
-                enabled: visible
-                placeholderText: qsTr("http://127.0.0.1:3128")
-                text: {
-                    const current = backend.settings().proxy
-                    return current === "none" || current === "auto" ? "" : current
-                }
-                Accessible.name: qsTr("URL do proxy")
-            }
-
-            FormField {
-                id: proxyExcludeField
-                Layout.fillWidth: true
-                enabled: proxyModeBox.currentIndex === 2
-                placeholderText: qsTr("localhost, .internal, 10.0.0.0/8")
-                text: backend.settings().proxyExclude.join(", ")
-                Accessible.name: qsTr("Exclusões do proxy")
             }
 
             Text {
-                text: qsTr("Exclusões separadas por vírgula (host, domínio, CIDR ou *.domínio). "
-                           + "Em auto, o NO_PROXY do ambiente é herdado.")
-                color: Theme.textTertiary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMicro
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
-
-            Text {
-                text: qsTr("Vale apenas para novos containers e machines. "
-                           + "Containers, machines e projetos Compose existentes exigem recriação.")
-                color: Theme.textTertiary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMicro
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 1
-                color: Theme.border
-                Layout.topMargin: 2
-                Layout.bottomMargin: 2
-            }
-
-            FormCheck {
-                id: showInTrayBox
-                text: qsTr("Mostrar ícone na bandeja")
-                checked: backend.settings().showInTray !== false
-            }
-
-            FormCheck {
-                id: keepRunningBox
-                text: qsTr("Manter rodando ao fechar a janela")
-                enabled: showInTrayBox.checked
-                checked: backend.settings().keepRunningInTray !== false
-            }
-
-            FormCheck {
-                id: startAtLoginBox
-                text: qsTr("Iniciar no login (na bandeja)")
-                checked: backend.settings().startAtLogin === true
-            }
-
-            FormCheck {
-                id: notificationsBox
-                text: qsTr("Notificar falhas de container")
-                checked: backend.settings().notifications !== false
-            }
-
-            Text {
-                text: backend.lastError
-                visible: backend.lastError.length > 0
+                visible: backend.settingsError.length > 0
+                text: backend.settingsError
                 color: Theme.danger
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
@@ -869,6 +862,7 @@ Rectangle {
                 Layout.fillWidth: true
             }
         }
+
         footer: AppFooter {
             ActionButton {
                 text: qsTr("Executar configuração")
@@ -880,25 +874,9 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: qsTr("Cancelar")
-                variant: "secondary"
-                onClicked: settingsDialog.close()
-            }
-            ActionButton {
-                text: qsTr("Salvar")
+                text: qsTr("Fechar")
                 variant: "primary"
-                onClicked: {
-                    backend.saveTraySettings(keepRunningBox.checked,
-                                             showInTrayBox.checked,
-                                             startAtLoginBox.checked,
-                                             notificationsBox.checked)
-                    backend.saveEngineMode(engineModeBox.currentText)
-                    backend.saveProxySettings(proxyModeBox.currentIndex === 2
-                                              ? proxyUrlField.text
-                                              : proxyModeBox.currentText,
-                                              proxyExcludeField.text)
-                    settingsDialog.close()
-                }
+                onClicked: settingsDialog.close()
             }
         }
     }
@@ -907,6 +885,12 @@ Rectangle {
         target: backend
         function onContainersChanged(items) {
             containersPage.setContainers(items)
+        }
+        function onSettingsSchemaChanged() {
+            settingsDialog.rebuildSettingsRows()
+        }
+        function onSettingsValuesChanged() {
+            settingsDialog.rebuildSettingsRows()
         }
     }
 

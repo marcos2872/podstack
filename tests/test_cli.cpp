@@ -46,6 +46,7 @@ private slots:
     void systemDf();
     void composeAndBuild();
     void setupCommand();
+    void configCommands();
     void errorPaths();
 
 private:
@@ -1485,6 +1486,139 @@ void CliTest::setupCommand()
         run({QStringLiteral("setup"), QStringLiteral("--remove-docker")}, env);
     QVERIFY(remove.code != 0);
     QVERIFY(remove.err.contains(QStringLiteral("--yes")));
+}
+
+void CliTest::configCommands()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("config"), QStringLiteral("show"),
+                            QStringLiteral("--json")},
+                           env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError parseError{};
+    QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QCOMPARE(document.object().size(), 82);
+    QCOMPARE(document.object().value(QStringLiteral("engine.mode")).toString(),
+             QStringLiteral("rootless"));
+
+    result = run({QStringLiteral("config"), QStringLiteral("get"),
+                  QStringLiteral("network.httpPort")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QCOMPARE(result.out.trimmed(), QStringLiteral("8080"));
+
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("app.theme"), QStringLiteral("dark")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("app.theme=dark")));
+    result = run({QStringLiteral("config"), QStringLiteral("get"),
+                  QStringLiteral("app.theme")},
+                 env);
+    QCOMPARE(result.out.trimmed(), QStringLiteral("dark"));
+
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("terminal.fontSize"), QStringLiteral("7")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("fora da faixa")));
+    result = run({QStringLiteral("config"), QStringLiteral("get"),
+                  QStringLiteral("terminal.fontSize")},
+                 env);
+    QCOMPARE(result.out.trimmed(), QStringLiteral("12"));
+
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("app.theme"), QStringLiteral("neon")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("enum")));
+
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("network.proxyExclude"),
+                  QStringLiteral("localhost,.internal")},
+                 env);
+    QCOMPARE(result.code, 0);
+    result = run({QStringLiteral("config"), QStringLiteral("add"),
+                  QStringLiteral("network.proxyExclude"),
+                  QStringLiteral("10.0.0.0/8")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("localhost,.internal,10.0.0.0/8")));
+    result = run({QStringLiteral("config"), QStringLiteral("remove"),
+                  QStringLiteral("network.proxyExclude"), QStringLiteral("localhost")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral(".internal,10.0.0.0/8")));
+    result = run({QStringLiteral("config"), QStringLiteral("remove"),
+                  QStringLiteral("network.proxyExclude"), QStringLiteral("ausente")},
+                 env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("não encontrado")));
+
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("engine.mode"), QStringLiteral("rootful")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("reinício necessário")));
+
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("app.confirmDestructive"), QStringLiteral("false")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("app.confirmDestructive=false")));
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("machines.memoryBytes"),
+                  QStringLiteral("8589934592")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("machines.memoryBytes=8589934592")));
+
+    result = run({QStringLiteral("config"), QStringLiteral("schema"),
+                  QStringLiteral("--json")},
+                 env);
+    QCOMPARE(result.code, 0);
+    document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 82);
+
+    result = run({QStringLiteral("config"), QStringLiteral("reset"),
+                  QStringLiteral("app.theme")},
+                 env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("--yes")));
+
+    result = run({QStringLiteral("config"), QStringLiteral("reset"),
+                  QStringLiteral("app.theme"), QStringLiteral("--yes")},
+                 env);
+    QCOMPARE(result.code, 0);
+    result = run({QStringLiteral("config"), QStringLiteral("get"),
+                  QStringLiteral("app.theme")},
+                 env);
+    QCOMPARE(result.out.trimmed(), QStringLiteral("system"));
+
+    result = run({QStringLiteral("config"), QStringLiteral("reset"), QStringLiteral("--all"),
+                  QStringLiteral("--yes")},
+                 env);
+    QCOMPARE(result.code, 0);
+    result = run({QStringLiteral("config"), QStringLiteral("get"),
+                  QStringLiteral("engine.mode")},
+                 env);
+    QCOMPARE(result.out.trimmed(), QStringLiteral("rootless"));
+    result = run({QStringLiteral("config"), QStringLiteral("get"),
+                  QStringLiteral("network.proxyExclude")},
+                 env);
+    QCOMPARE(result.out.trimmed(), QStringLiteral(""));
+
+    result = run({QStringLiteral("config"), QStringLiteral("get")}, env);
+    QCOMPARE(result.code, 2);
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("app.theme")},
+                 env);
+    QCOMPARE(result.code, 2);
+    result = run({QStringLiteral("config"), QStringLiteral("nope")}, env);
+    QCOMPARE(result.code, 2);
 }
 
 void CliTest::errorPaths()

@@ -5,6 +5,7 @@
 #include <QFutureWatcher>
 #include <QJsonObject>
 #include <QObject>
+#include <QQueue>
 #include <QString>
 #include <QStringList>
 #include <QSet>
@@ -123,6 +124,9 @@ class Backend : public QObject {
     Q_PROPERTY(QString setupError READ setupError NOTIFY setupChanged)
     Q_PROPERTY(bool setupBusy READ setupBusy NOTIFY setupChanged)
     Q_PROPERTY(bool setupLoaded READ setupLoaded NOTIFY setupChanged)
+    Q_PROPERTY(QVariantList settingsSchema READ settingsSchema NOTIFY settingsSchemaChanged)
+    Q_PROPERTY(QVariantMap settingsValues READ settingsValues NOTIFY settingsValuesChanged)
+    Q_PROPERTY(QString settingsError READ settingsError NOTIFY settingsErrorChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -219,6 +223,9 @@ public:
     QString setupStatus() const { return m_setupStatus; }
     QString setupError() const { return m_setupError; }
     bool setupBusy() const { return m_setupBusy; }
+    QString settingsError() const { return m_settingsError; }
+    QVariantList settingsSchema() const { return m_settingsSchema; }
+    QVariantMap settingsValues() const { return m_settingsValues; }
     bool setupLoaded() const { return m_setupLoaded; }
 
     Q_INVOKABLE void refresh();
@@ -327,6 +334,9 @@ public:
     Q_INVOKABLE void downloadFile(const QString &id, const QString &path);
     Q_INVOKABLE void uploadFile(const QString &id, const QString &path, const QString &sourcePath);
     Q_INVOKABLE QVariantMap settings() const;
+    Q_INVOKABLE void refreshSettings();
+    Q_INVOKABLE void setSetting(const QString &key, const QVariant &value);
+    Q_INVOKABLE void resetSetting(const QString &key);
     Q_INVOKABLE void saveEngineMode(const QString &mode);
     Q_INVOKABLE void saveTheme(const QString &theme);
     Q_INVOKABLE void saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
@@ -381,6 +391,10 @@ signals:
     void terminalRequested(const QString &title, const QString &program,
                            const QStringList &args);
     void settingsChanged();
+    void settingsSchemaChanged();
+    void settingsValuesChanged();
+    void settingsErrorChanged();
+    void settingFinished(const QString &key, bool ok, const QString &error);
     void setupChanged();
     void setupJobChanged();
 
@@ -391,6 +405,14 @@ private:
     void onFilesFinished();
     void onCatalogFinished();
     void onSetupFinished();
+    void onSettingsFinished();
+    void onSettingsActionFinished();
+    void setSettingInternal(const QString &key, const QVariant &value,
+                            bool applyAutostart = false);
+    void enqueueSettingsRequest(const QString &method, const QJsonObject &params,
+                                bool applyAutostart = false);
+    void startNextSettingsRequest();
+    void setSettingsError(const QString &error);
     void onMachinesFinished();
     void onMachineDistrosFinished();
     void onMachineInfoFinished();
@@ -429,6 +451,17 @@ private:
     QFutureWatcher<QJsonObject> m_machineFilesWatcher;
     QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
+    QFutureWatcher<QJsonObject> m_settingsWatcher;
+    QFutureWatcher<QJsonObject> m_settingsActionWatcher;
+    struct SettingsRequest {
+        QString method;
+        QJsonObject params;
+        bool applyAutostart = false;
+    };
+    QQueue<SettingsRequest> m_settingsQueue;
+    SettingsRequest m_settingsCurrentRequest;
+    bool m_settingsActionActive = false;
+    bool m_settingsRefreshAgain = false;
     QString m_setupPendingMethod;
     QString m_catalogSection;
     QStringList m_catalogQueue;
@@ -552,6 +585,9 @@ private:
     QString m_setupError;
     bool m_setupBusy = false;
     bool m_setupLoaded = false;
+    QVariantList m_settingsSchema;
+    QVariantMap m_settingsValues;
+    QString m_settingsError;
 };
 
 } // namespace PodStack
