@@ -104,7 +104,9 @@ int main(int argc, char *argv[])
     QGuiApplication::setWindowIcon(tray.icon());
 
     PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance, startHidden);
-    if (!window.qmlLoaded()) {
+    // O QQuickWidget pode carregar de forma assíncrona (especialmente com QML
+    // cache frio no CI); só falhe se o carregamento terminou em erro.
+    if (window.qmlFailed()) {
         return 1;
     }
 

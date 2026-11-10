@@ -786,7 +786,8 @@ void TerminalTest::mainWindowQml()
     PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance,
                                 /*startHidden=*/true, /*loadQml=*/true);
 
-    QVERIFY(window.qmlLoaded());
+    QTRY_VERIFY_WITH_TIMEOUT(window.qmlLoaded(), 5000);
+    QVERIFY(!window.qmlFailed());
     QVERIFY(window.centralWidget() != nullptr);
     QVERIFY(window.terminalDock() != nullptr);
 

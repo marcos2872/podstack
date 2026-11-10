@@ -236,4 +236,9 @@ bool MainWindow::qmlLoaded() const
            && m_quickWidget->rootObject() != nullptr;
 }
 
+bool MainWindow::qmlFailed() const
+{
+    return m_quickWidget && m_quickWidget->status() == QQuickWidget::Error;
+}
+
 } // namespace PodStack
