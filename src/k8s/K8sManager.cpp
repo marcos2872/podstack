@@ -628,6 +628,93 @@ bool K8sManager::streamLogs(const QString &namespaceName, const QString &pod,
     return ok && execError.isEmpty();
 }
 
+bool K8sManager::deleteResource(const QString &resource, const QString &namespaceName,
+                                const QString &name, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    static const QRegularExpression validName(QStringLiteral("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"));
+    const QString ns = namespaceName.trimmed();
+    const QString target = name.trimmed();
+    if (ns.isEmpty() || !validName.match(ns).hasMatch() || target.isEmpty() ||
+        target.size() > 253 || !validName.match(target).hasMatch()) {
+        setError(error, QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                 QStringLiteral("Namespace ou nome inválido."),
+                 QStringLiteral("%1/%2").arg(ns, target));
+        return false;
+    }
+    SshInfo ssh;
+    if (!clusterSsh(&ssh, error)) {
+        return false;
+    }
+    const QString command = QStringLiteral("sudo k3s kubectl delete %1 -n %2 %3 --wait=false")
+                                .arg(resource, ns, target);
+    Error execError;
+    if (!execRemote(ssh, command, {}, {}, 60000, &execError) || !execError.isEmpty()) {
+        if (error) {
+            *error = execError.isEmpty()
+                         ? Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                       QStringLiteral("Não foi possível remover o recurso."))
+                         : execError;
+        }
+        return false;
+    }
+    return true;
+}
+
+bool K8sManager::validatePortForward(const QString &namespaceName, const QString &pod,
+                                     int localPort, int remotePort, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    static const QRegularExpression validName(QStringLiteral("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"));
+    const QString ns = namespaceName.trimmed();
+    const QString podName = pod.trimmed();
+    if (ns.isEmpty() || !validName.match(ns).hasMatch() || podName.isEmpty() ||
+        podName.size() > 253 || !validName.match(podName).hasMatch()) {
+        setError(error, QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                 QStringLiteral("Namespace ou pod inválido."));
+        return false;
+    }
+    if (localPort < 1 || localPort > 65535 || remotePort < 1 || remotePort > 65535) {
+        setError(error, QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                 QStringLiteral("Portas devem ficar entre 1 e 65535."));
+        return false;
+    }
+    return true;
+}
+
+bool K8sManager::checkClusterReady(Error *error)
+{
+    SshInfo ssh;
+    return clusterSsh(&ssh, error);
+}
+
+bool K8sManager::portForward(const QString &namespaceName, const QString &pod, int localPort,
+                             int remotePort, const Line &onLine, const Cancelled &cancelled,
+                             Error *error)
+{
+    if (!validatePortForward(namespaceName, pod, localPort, remotePort, error)) {
+        return false;
+    }
+    SshInfo ssh;
+    if (!clusterSsh(&ssh, error)) {
+        return false;
+    }
+    const QString command = QStringLiteral("sudo k3s kubectl port-forward -n %1 pod/%2 %3:%4")
+                                .arg(namespaceName.trimmed(), pod.trimmed())
+                                .arg(localPort)
+                                .arg(remotePort);
+    Error execError;
+    const bool ok = execRemote(ssh, command, onLine, cancelled, 0, &execError);
+    if (!ok && error) {
+        *error = execError;
+    }
+    return ok && execError.isEmpty();
+}
+
 bool K8sManager::ensureApiAccess(K8sCluster &cluster, MachineMeta &machine, const SshInfo &ssh,
                                  const Cancelled &cancelled, Error *error)
 {

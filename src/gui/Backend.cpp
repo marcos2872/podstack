@@ -214,6 +214,8 @@ Backend::Backend(QObject *parent)
             &Backend::onK8sPodsFinished);
     connect(&m_k8sServicesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onK8sServicesFinished);
+    connect(&m_k8sForwardWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onK8sForwardFinished);
     m_k8sTimer.setInterval(2000);
     connect(&m_k8sTimer, &QTimer::timeout, this, &Backend::refreshK8s);
     connect(&m_machineSshWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -974,6 +976,78 @@ void Backend::clearK8sLogs()
 {
     m_k8sLogLines.clear();
     emit k8sLogsChanged();
+}
+
+void Backend::deleteK8sPod(const QString &namespaceName, const QString &name)
+{
+    runAction(
+        QStringLiteral("k8s.pod.delete"),
+        QJsonObject{{QStringLiteral("namespace"), namespaceName}, {QStringLiteral("name"), name}});
+}
+
+void Backend::deleteK8sService(const QString &namespaceName, const QString &name)
+{
+    runAction(
+        QStringLiteral("k8s.service.delete"),
+        QJsonObject{{QStringLiteral("namespace"), namespaceName}, {QStringLiteral("name"), name}});
+}
+
+void Backend::startK8sPortForward(const QString &namespaceName, const QString &pod, int localPort,
+                                  int remotePort)
+{
+    if (m_k8sForwardWatcher.isRunning()) {
+        return;
+    }
+    m_k8sPortForwardError.clear();
+    m_k8sForwardWatcher.setFuture(QtConcurrent::run([namespaceName, pod, localPort, remotePort] {
+        RpcClient client;
+        Error error;
+        QJsonObject result = client.call(QStringLiteral("k8s.portforward.start"),
+                                         QJsonObject{{QStringLiteral("namespace"), namespaceName},
+                                                     {QStringLiteral("pod"), pod},
+                                                     {QStringLiteral("localPort"), localPort},
+                                                     {QStringLiteral("remotePort"), remotePort}},
+                                         &error);
+        if (!error.isEmpty()) {
+            result.insert(QStringLiteral("error"), error.toJson());
+        }
+        return result;
+    }));
+}
+
+void Backend::stopK8sPortForward()
+{
+    const QString id = m_k8sPortForwardId;
+    m_k8sPortForwardActive = false;
+    m_k8sPortForwardId.clear();
+    emit k8sForwardChanged();
+    if (id.isEmpty()) {
+        return;
+    }
+    (void) QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        client.call(QStringLiteral("k8s.portforward.stop"), QJsonObject{{QStringLiteral("id"), id}},
+                    &error);
+    });
+}
+
+void Backend::onK8sForwardFinished()
+{
+    const QJsonObject result = m_k8sForwardWatcher.result();
+    if (result.value(QStringLiteral("error")).isObject()) {
+        m_k8sPortForwardError = result.value(QStringLiteral("error"))
+                                    .toObject()
+                                    .value(QStringLiteral("message"))
+                                    .toString();
+        m_k8sPortForwardActive = false;
+        m_k8sPortForwardId.clear();
+    } else {
+        m_k8sPortForwardId = result.value(QStringLiteral("id")).toString();
+        m_k8sPortForwardActive = !m_k8sPortForwardId.isEmpty();
+        m_k8sPortForwardError.clear();
+    }
+    emit k8sForwardChanged();
 }
 
 void Backend::refreshSection(const QString &section)
@@ -3913,6 +3987,10 @@ void Backend::onActionFinished()
         } else if (prefix == QStringLiteral("builds.")) {
             refreshBuilds();
         }
+    }
+
+    if (m_activeActionMethod.startsWith(QStringLiteral("k8s."))) {
+        refreshK8s();
     }
 
     if (m_activeActionMethod.startsWith(QStringLiteral("machines."))) {

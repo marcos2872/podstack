@@ -843,6 +843,8 @@ void TerminalTest::mainWindowQml()
     QCOMPARE(k8sPage->property("tab").toInt(), 1);
     k8sPage->setProperty("tab", 0);
     QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("k8sLogsDialog")) != nullptr);
+    QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("k8sDeleteDialog")) != nullptr);
+    QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("k8sForwardDialog")) != nullptr);
 
     QObject *settings = rootObject->findChild<QObject *>(QStringLiteral("settingsDialog"));
     QVERIFY(settings != nullptr);

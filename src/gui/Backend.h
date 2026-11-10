@@ -70,6 +70,9 @@ class Backend : public QObject {
     Q_PROPERTY(QStringList k8sLogLines READ k8sLogLines NOTIFY k8sLogsChanged)
     Q_PROPERTY(QString k8sLogError READ k8sLogError NOTIFY k8sLogsChanged)
     Q_PROPERTY(bool k8sLogActive READ k8sLogActive NOTIFY k8sLogsChanged)
+    Q_PROPERTY(bool k8sPortForwardActive READ k8sPortForwardActive NOTIFY k8sForwardChanged)
+    Q_PROPERTY(QString k8sPortForwardId READ k8sPortForwardId NOTIFY k8sForwardChanged)
+    Q_PROPERTY(QString k8sPortForwardError READ k8sPortForwardError NOTIFY k8sForwardChanged)
     Q_PROPERTY(bool pullActive READ pullActive NOTIFY pullStateChanged)
     Q_PROPERTY(QString pullStatus READ pullStatus NOTIFY pullStateChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
@@ -188,6 +191,9 @@ public:
     QStringList k8sLogLines() const { return m_k8sLogLines; }
     QString k8sLogError() const { return m_k8sLogError; }
     bool k8sLogActive() const { return m_k8sLogActive; }
+    bool k8sPortForwardActive() const { return m_k8sPortForwardActive; }
+    QString k8sPortForwardId() const { return m_k8sPortForwardId; }
+    QString k8sPortForwardError() const { return m_k8sPortForwardError; }
     bool pullActive() const { return m_pullActive; }
     QString pullStatus() const { return m_pullStatus; }
     QVariantMap diskUsage() const { return m_diskUsage; }
@@ -261,6 +267,11 @@ public:
                                   const QString &container = QString());
     Q_INVOKABLE void stopK8sLogs();
     Q_INVOKABLE void clearK8sLogs();
+    Q_INVOKABLE void deleteK8sPod(const QString &namespaceName, const QString &name);
+    Q_INVOKABLE void deleteK8sService(const QString &namespaceName, const QString &name);
+    Q_INVOKABLE void startK8sPortForward(const QString &namespaceName, const QString &pod,
+                                         int localPort, int remotePort);
+    Q_INVOKABLE void stopK8sPortForward();
     Q_INVOKABLE void pullImage(const QString &reference, const QString &platform = {});
     Q_INVOKABLE void cancelPull();
     Q_INVOKABLE void removeImage(const QString &id, bool force);
@@ -405,6 +416,7 @@ signals:
     void podsChanged();
     void k8sChanged();
     void k8sLogsChanged();
+    void k8sForwardChanged();
     void pullStateChanged();
     void diskUsageChanged();
     void prunePreviewChanged();
@@ -458,6 +470,7 @@ private:
     void onK8sStatusFinished();
     void onK8sPodsFinished();
     void onK8sServicesFinished();
+    void onK8sForwardFinished();
     void startMachineFilesRequest(const QString &operation, const QString &id,
                                   const QString &method, const QJsonObject &params,
                                   int timeoutMs);
@@ -495,6 +508,7 @@ private:
     QFutureWatcher<QJsonObject> m_k8sStatusWatcher;
     QFutureWatcher<QJsonObject> m_k8sPodsWatcher;
     QFutureWatcher<QJsonObject> m_k8sServicesWatcher;
+    QFutureWatcher<QJsonObject> m_k8sForwardWatcher;
     QFutureWatcher<QJsonObject> m_settingsWatcher;
     QFutureWatcher<QJsonObject> m_settingsActionWatcher;
     struct SettingsRequest {
@@ -575,6 +589,9 @@ private:
     QStringList m_k8sLogLines;
     QString m_k8sLogError;
     bool m_k8sLogActive = false;
+    bool m_k8sPortForwardActive = false;
+    QString m_k8sPortForwardId;
+    QString m_k8sPortForwardError;
     QTimer m_k8sTimer;
     bool m_pullActive = false;
     QString m_pullStatus;

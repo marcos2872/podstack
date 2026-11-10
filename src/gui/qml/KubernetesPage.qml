@@ -9,6 +9,40 @@ ColumnLayout {
     property int tab: 0
     property string logsNamespace: ""
     property string logsPod: ""
+    property string actionNamespace: ""
+    property string actionName: ""
+    property string actionKind: ""
+
+    function selectedItem() {
+        if (page.tab === 0) {
+            return podsList.currentRow >= 0 ? backend.k8sPods[podsList.currentRow] : null
+        }
+        return servicesList.currentRow >= 0 ? backend.k8sServices[servicesList.currentRow] : null
+    }
+
+    function openDelete() {
+        const item = page.selectedItem()
+        if (!item) {
+            return
+        }
+        actionNamespace = item.namespace
+        actionName = item.name
+        actionKind = page.tab === 0 ? "pod" : "service"
+        deleteDialog.open()
+    }
+
+    function openPortForward() {
+        const pod = backend.k8sPods[podsList.currentRow]
+        if (!pod) {
+            return
+        }
+        actionNamespace = pod.namespace
+        actionName = pod.name
+        forwardLocal.text = "8080"
+        forwardRemote.text = "80"
+        backend.stopK8sPortForward()
+        forwardDialog.open()
+    }
 
     function openLogs() {
         const pod = backend.k8sPods[podsList.currentRow]
@@ -52,6 +86,24 @@ ColumnLayout {
             color: Theme.textTertiary
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
+        }
+
+        ActionButton {
+            text: qsTr("Port-forward")
+            iconName: "terminal"
+            visible: page.tab === 0
+            enabled: podsList.currentRow >= 0
+            onClicked: page.openPortForward()
+            Accessible.name: qsTr("Abrir port-forward do pod")
+        }
+
+        ActionButton {
+            text: qsTr("Excluir")
+            variant: "danger"
+            iconName: "trash"
+            enabled: page.selectedItem() !== null
+            onClicked: page.openDelete()
+            Accessible.name: qsTr("Remover recurso selecionado")
         }
 
         ActionButton {
@@ -238,5 +290,159 @@ ColumnLayout {
         }
 
         onClosed: backend.stopK8sLogs()
+    }
+
+    AppDialog {
+        id: deleteDialog
+        objectName: "k8sDeleteDialog"
+        title: qsTr("Remover %1").arg(page.actionKind)
+        modal: true
+        width: 420
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Remover %1/%2? A operação não pode ser desfeita.")
+                          .arg(page.actionNamespace).arg(page.actionName)
+                color: Theme.textPrimary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+
+                ActionButton {
+                    text: qsTr("Cancelar")
+                    variant: "ghost"
+                    onClicked: deleteDialog.close()
+                }
+
+                ActionButton {
+                    text: qsTr("Remover")
+                    variant: "danger"
+                    onClicked: {
+                        if (page.actionKind === "pod") {
+                            backend.deleteK8sPod(page.actionNamespace, page.actionName)
+                        } else {
+                            backend.deleteK8sService(page.actionNamespace, page.actionName)
+                        }
+                        deleteDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
+    AppDialog {
+        id: forwardDialog
+        objectName: "k8sForwardDialog"
+        title: qsTr("Port-forward · %1/%2").arg(page.actionNamespace).arg(page.actionName)
+        modal: true
+        width: 420
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Encaminha uma porta local para o pod via API do cluster.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Label {
+                        text: qsTr("Porta local")
+                        color: Theme.textSecondary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+                    FormField {
+                        id: forwardLocal
+                        Layout.fillWidth: true
+                        inputMethodHints: Qt.ImhDigitsOnly
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Label {
+                        text: qsTr("Porta no pod")
+                        color: Theme.textSecondary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+                    FormField {
+                        id: forwardRemote
+                        Layout.fillWidth: true
+                        inputMethodHints: Qt.ImhDigitsOnly
+                    }
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: backend.k8sPortForwardActive
+                text: qsTr("ativo: 127.0.0.1:%1 → %2").arg(forwardLocal.text)
+                          .arg(forwardRemote.text)
+                color: Theme.cyan
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: backend.k8sPortForwardError.length > 0
+                text: backend.k8sPortForwardError
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+
+                ActionButton {
+                    text: qsTr("Parar")
+                    variant: "secondary"
+                    enabled: backend.k8sPortForwardActive
+                    onClicked: backend.stopK8sPortForward()
+                }
+
+                ActionButton {
+                    text: qsTr("Iniciar")
+                    variant: "primary"
+                    enabled: !backend.k8sPortForwardActive
+                    onClicked: backend.startK8sPortForward(page.actionNamespace,
+                                                           page.actionName,
+                                                           parseInt(forwardLocal.text),
+                                                           parseInt(forwardRemote.text))
+                }
+
+                ActionButton {
+                    text: qsTr("Fechar")
+                    variant: "ghost"
+                    onClicked: forwardDialog.close()
+                }
+            }
+        }
+
+        onClosed: backend.stopK8sPortForward()
     }
 }

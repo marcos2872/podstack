@@ -68,6 +68,17 @@ public:
     static bool validateLogsRequest(const QString &namespaceName, const QString &pod,
                                     const QString &container, int tailLines,
                                     Error *error = nullptr);
+    /// Remove um Pod/Service do cluster.
+    bool deleteResource(const QString &resource, const QString &namespaceName, const QString &name,
+                        Error *error = nullptr);
+    /// Mantém um `kubectl port-forward` ativo até o cancelamento.
+    bool portForward(const QString &namespaceName, const QString &pod, int localPort,
+                     int remotePort, const Line &onLine, const Cancelled &cancelled,
+                     Error *error = nullptr);
+    static bool validatePortForward(const QString &namespaceName, const QString &pod, int localPort,
+                                    int remotePort, Error *error = nullptr);
+    /// Verifica se o cluster está pronto e a VM rodando (sem abrir um stream).
+    bool checkClusterReady(Error *error = nullptr);
 
     /// Provisiona a VM (se preciso), instala o k3s e aguarda o node Ready.
     /// Idempotente quando o cluster já está pronto.
