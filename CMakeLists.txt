@@ -115,6 +115,7 @@ add_executable(podstackd
     src/daemon/SetupManager.cpp
     src/daemon/HelperClient.cpp
     src/daemon/StatsCollector.cpp
+    src/daemon/HttpProxy.cpp
 )
 target_link_libraries(podstackd PRIVATE
     podstack_podman

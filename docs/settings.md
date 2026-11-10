@@ -61,12 +61,12 @@ log (o arquivo original não é apagado; um save posterior o substitui).
 | `network.proxy` | enum/URL | `auto` | não | `none`, `auto`, `http://`, `https://`, `socks5://`, `socks5h://` |
 | `network.proxyExclude` | string[] | `[]` | não | Hosts/CIDRs fora do proxy |
 | `network.subnet4` | CIDR | `192.168.127.0/24` | sim | Subnet da bridge PodStack |
-| `network.bridge` | bool | `true` | sim | Permite acesso a domínios/IPs de containers |
+| `network.bridge` | bool | `true` | sim | Permite acesso a domínios/IPs de containers (inclui o proxy `*.localhost`) |
 | `network.ipv6` | bool | `false` | sim | Habilita IPv6 em containers |
 | `network.exposeLan` | bool | `false` | não | Expõe portas/domínios na LAN |
 | `network.domainsMode` | enum `localhost\|podstack-local` | `localhost` | sim | Mecanismo de domínio |
 | `network.httpsPort` | int | `8443` | sim | Porta HTTPS do proxy |
-| `network.httpPort` | int | `8080` | sim | Porta HTTP do proxy |
+| `network.httpPort` | int | `8080` | sim | Porta do proxy HTTP de `*.localhost` (loopback) |
 
 **Proxy na prática:** `auto` (default) herda do ambiente do daemon as variáveis de proxy já
 definidas (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` e minúsculas), sem inventar

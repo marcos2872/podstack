@@ -631,15 +631,23 @@ Host <name>.podstack <name>
 ### 11.1 `*.localhost` (v1, sem privilégio)
 
 - Qualquer nome sob `.localhost` resolve para 127.0.0.1/::1 via systemd-resolved ou glibc.
-- Proxy do daemon escuta em portas altas (ex.: 8080/8443) e encaminha por `Host`.
-- Mapeamento: `nome.localhost` → container `nome` na porta detectada.
+- `HttpProxy` (daemon) escuta **somente em loopback** (`127.0.0.1` e, quando
+  disponível, `::1`) em `network.httpPort` (default 8080) e encaminha por `Host`.
+- Mapeamento: `nome.localhost` → container `nome` na **primeira porta TCP
+  publicada** (`[ip:]porta->porta/tcp`); sem porta publicada → 404.
+- `network.bridge=false` desabilita o proxy.
+- A conexão é fechada após a resposta (`Connection: close`) e o proxy adiciona
+  `X-Forwarded-For`, `X-Forwarded-Proto` e `X-Forwarded-Host`.
 - Fallback: porta publicada + `localhost:<porta>`.
 
 **Critérios:**
 
-- [ ] `curl http://nome.localhost:8080` retorna o serviço.
-- [ ] Nome inexistente retorna 404 com página de índice.
-- [ ] Funciona sem root e sem alterar `/etc/hosts`.
+- [x] `curl http://nome.localhost:8080` retorna o serviço.
+- [ ] Nome inexistente retorna 404 com página de índice. *(o 404 HTML já
+  existe; a página de índice com a lista de serviços é a T6-02.)*
+- [x] Funciona sem root e sem alterar `/etc/hosts`.
+
+Detecção automática de porta + cache ficam na T6-03; HTTPS em T6-06.
 
 ### 11.2 `*.podstack.local` (P1, opt-in com helper)
 

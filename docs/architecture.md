@@ -54,6 +54,7 @@ flowchart LR
     Mach["MachineManager"]
     Kube["K8sManager"]
     Proxy["ProxyManager<br/>(Caddy/DNS)"]
+    HttpProxy["HttpProxy<br/>(*.localhost)"]
     Cfg["Settings"]
     Diag["Diagnostics"]
   end
@@ -74,6 +75,7 @@ flowchart LR
   Jobs --> Mach --> QMP
   Kube --> QMP
   Proxy --> Helper
+  HttpProxy --> PC
   Helper --> Resolved
   Cfg --> State
   Diag --> RPC
@@ -91,6 +93,7 @@ flowchart LR
 | **MachineManager** | ciclo de vida QEMU, cloud-init, SSH, virtiofs, QMP | containers |
 | **K8sManager** | provisionar/gerenciar k3s, kubeconfig, watch | proxy de domínios |
 | **ProxyManager** | DNS userspace, Caddy, detecção de porta, certs | lógica de containers |
+| **HttpProxy** | proxy HTTP de entrada para `*.localhost` em loopback; resolve container e porta publicada | DNS, TLS/Caddy (T6), regras de negócio |
 | **Settings** | schema, validação, migração, defaults | UI |
 | **Diagnostics** | checks, report, redaction | enviar sem consentimento |
 | **SetupManager** | detecção read-only, ações de setup via helper, jobs com progresso/cancelamento | executar shell/sudo, remover Docker por padrão |
@@ -277,7 +280,28 @@ remediação de instalação do firmware. A remoção valida o caminho canônico
 dentro de `machinesRoot`, rejeita symlink/`..`, encerra o runtime e apaga o
 diretório e a linha do índice.
 
-### 3.6 Requisição de domínio
+### 3.6 Proxy `*.localhost` (T6-01)
+
+```mermaid
+sequenceDiagram
+  participant B as Browser/curl
+  participant PX as HttpProxy (podstackd)
+  participant PC as PodmanClient
+  participant C as Container
+  B->>PX: GET http://app.localhost:8080/ (Host: app.localhost)
+  PX->>PC: listContainers(all=true)
+  PC-->>PX: container "app" + portas publicadas
+  PX->>C: GET / em 127.0.0.1:<porta publicada>
+  C-->>PX: resposta HTTP
+  PX-->>B: resposta (Connection: close)
+```
+
+- Escuta só em loopback na `network.httpPort`; `network.bridge=false` desliga.
+- Host/nome inválido, container inexistente ou sem porta TCP publicada → 404 HTML.
+- Adiciona `X-Forwarded-For/Proto/Host`; não reescreve `Location`.
+- Página de índice (T6-02), detecção/cache de porta (T6-03) e HTTPS/Caddy (T6-06).
+
+### 3.7 Requisição de domínio
 
 ```mermaid
 sequenceDiagram
@@ -296,7 +320,7 @@ sequenceDiagram
   C-->>B: response
 ```
 
-### 3.7 Habilitar Kubernetes
+### 3.8 Habilitar Kubernetes
 
 ```mermaid
 sequenceDiagram

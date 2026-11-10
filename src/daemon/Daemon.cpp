@@ -663,6 +663,18 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     return {};
 }
 
+bool Daemon::listContainersForProxy(QVector<ContainerInfo> *containers, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!containers) {
+        return false;
+    }
+    *containers = m_podman.listContainers(true, error);
+    return !error || error->isEmpty();
+}
+
 QJsonObject Daemon::machinesDistros()
 {
     QJsonArray items;

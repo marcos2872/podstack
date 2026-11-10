@@ -13,6 +13,11 @@ qt_add_executable(test_contract test_contract.cpp MockPodmanServer.cpp)
 target_link_libraries(test_contract PRIVATE podstack_podman Qt6::Test)
 add_test(NAME contract COMMAND test_contract)
 
+qt_add_executable(test_http_proxy test_http_proxy.cpp ../src/daemon/HttpProxy.cpp)
+target_link_libraries(test_http_proxy PRIVATE podstack_core podstack_podman Qt6::Network
+    Qt6::Test)
+add_test(NAME http_proxy COMMAND test_http_proxy)
+
 qt_add_executable(test_rpc test_rpc.cpp MockPodmanServer.cpp
     ../src/daemon/ComposeManager.cpp)
 target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_k8s
