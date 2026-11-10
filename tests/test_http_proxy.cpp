@@ -142,6 +142,7 @@ private slots:
     void publishedTcpPortsParsing();
     void listenReportsPortInUse();
     void proxiesGetRequest();
+    void proxiesPodstackLocalHost();
     void forwardsRequestBody();
     void servesIndexForLocalhost();
     void detectsHttpPortWithMultiplePublishedPorts();
@@ -172,8 +173,14 @@ void HttpProxyTest::hostNameParsing()
     QCOMPARE(name, QStringLiteral("demo"));
     QVERIFY(PodStack::HttpProxy::hostName("web-1.localhost", &name));
     QCOMPARE(name, QStringLiteral("web-1"));
+    QVERIFY(PodStack::HttpProxy::hostName("demo.podstack.local:8443", &name));
+    QCOMPARE(name, QStringLiteral("demo"));
+    QVERIFY(PodStack::HttpProxy::hostName("Demo.PodStack.Local", &name));
+    QCOMPARE(name, QStringLiteral("demo"));
 
     QVERIFY(!PodStack::HttpProxy::hostName("localhost", &name));
+    QVERIFY(!PodStack::HttpProxy::hostName("podstack.local", &name));
+    QVERIFY(!PodStack::HttpProxy::hostName("a.b.podstack.local", &name));
     QVERIFY(!PodStack::HttpProxy::hostName("demo.example.com", &name));
     QVERIFY(!PodStack::HttpProxy::hostName("a.b.localhost", &name));
     QVERIFY(!PodStack::HttpProxy::hostName("-demo.localhost", &name));
@@ -185,6 +192,8 @@ void HttpProxyTest::hostNameParsing()
 
     QVERIFY(PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("localhost")));
     QVERIFY(PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("LOCALHOST:8080")));
+    QVERIFY(PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("podstack.local")));
+    QVERIFY(PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("PODSTACK.LOCAL:8443")));
     QVERIFY(!PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("demo.localhost")));
     QVERIFY(!PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("localhost:0")));
     QVERIFY(!PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("localhost:abc")));
@@ -294,6 +303,23 @@ void HttpProxyTest::proxiesGetRequest()
     QVERIFY(head.contains("X-Forwarded-For:"));
     QVERIFY(head.contains("X-Forwarded-Proto: http"));
     QVERIFY(head.contains("Connection: close"));
+}
+
+void HttpProxyTest::proxiesPodstackLocalHost()
+{
+    BackendServer backend;
+    QVERIFY(backend.listen(QHostAddress::LocalHost, 0));
+
+    PodStack::HttpProxy proxy(providerFor(
+        QStringLiteral("demo"), {QStringLiteral("%1->80/tcp").arg(backend.serverPort())}));
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response =
+        exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: demo.podstack.local:8443\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
+    QVERIFY(response.endsWith("ok"));
+    QTRY_COMPARE_WITH_TIMEOUT(backend.requests.size(), 1, 3000);
+    QVERIFY(backend.requests.first().head.contains("Host: demo.podstack.local:8443"));
 }
 
 void HttpProxyTest::forwardsRequestBody()

@@ -117,6 +117,7 @@ add_executable(podstackd
     src/daemon/StatsCollector.cpp
     src/daemon/HttpProxy.cpp
     src/daemon/DnsServer.cpp
+    src/daemon/CaddyProxy.cpp
 )
 target_link_libraries(podstackd PRIVATE
     podstack_podman

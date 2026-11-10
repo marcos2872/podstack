@@ -9,6 +9,7 @@
 #include <QHash>
 #include <QHostAddress>
 #include <QRegularExpression>
+#include <QStringList>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -775,8 +776,16 @@ bool HttpProxy::hostName(const QByteArray &hostHeader, QString *name)
         return false;
     }
 
-    static const QString suffix = QStringLiteral(".localhost");
-    if (!host.endsWith(suffix)) {
+    static const QStringList suffixes{QStringLiteral(".localhost"),
+                                      QStringLiteral(".podstack.local")};
+    QString suffix;
+    for (const QString &candidate : suffixes) {
+        if (host.endsWith(candidate)) {
+            suffix = candidate;
+            break;
+        }
+    }
+    if (suffix.isEmpty()) {
         return false;
     }
     const QString label = host.left(host.size() - suffix.size());
@@ -792,7 +801,8 @@ bool HttpProxy::hostName(const QByteArray &hostHeader, QString *name)
 bool HttpProxy::isIndexHost(const QByteArray &hostHeader)
 {
     QString host;
-    return splitHost(hostHeader, &host) && host == QStringLiteral("localhost");
+    return splitHost(hostHeader, &host) &&
+           (host == QStringLiteral("localhost") || host == QStringLiteral("podstack.local"));
 }
 
 QVector<PortMapping> HttpProxy::publishedTcpPorts(const ContainerInfo &container)

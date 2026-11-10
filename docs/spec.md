@@ -639,6 +639,8 @@ Host <name>.podstack <name>
 - A conexão é fechada após a resposta (`Connection: close`) e o proxy adiciona
   `X-Forwarded-For`, `X-Forwarded-Proto` e `X-Forwarded-Host`.
 - Fallback: porta publicada + `localhost:<porta>`.
+- O mesmo mapeamento vale para `<nome>.podstack.local` (usado pelo DNS
+  userspace e pelo HTTPS); `localhost` e `podstack.local` servem o índice.
 - `http://localhost:<network.httpPort>/` serve a **página de índice** com os
   containers que publicam porta TCP: nome, estado, porta publicada e URL
   `http://<nome>.localhost:<porta>/`. Acesso por `GET`/`HEAD`; os demais
@@ -680,10 +682,24 @@ Domains=~podstack.local
 
 ### 11.3 HTTPS
 
-- Caddy embutido com CA interna; certificados on-the-fly para `*.podstack.local`/`*.localhost`.
+- Caddy filho do daemon, ativado por `network.https` (default `false`), com CA
+  interna e certificados on-demand para `*.localhost` e `*.podstack.local` na
+  `network.httpsPort` (default 8443).
+- O Caddyfile é gerado pelo daemon (`<data>/podstack/caddy/Caddyfile`), usa
+  storage próprio (`<data>/podstack/caddy/storage`), `skip_install_trust` e
+  encaminha o HTTP para o `HttpProxy` em `127.0.0.1:<network.httpPort>`; o
+  `Host` original é preservado para a resolução do container.
 - Confiar na CA via helper (`update-ca-trust`) apenas com consentimento.
 - CA montada nos containers via label opt-out.
-- Renovação automática; chave 0600.
+- Renovação automática; chave e CA com permissões restritas (root `0600`).
+
+**Critérios:**
+
+- [x] Certificado válido para os domínios, assinado pela CA local.
+- [x] `network.https=false` não sobe o Caddy; ausência do binário gera aviso e
+  não derruba o daemon.
+- [x] Chave/CA sem leitura por grupo/outros.
+- [ ] Confiar na CA no host e nos containers (T6-07).
 
 ### 11.4 Detecção de porta
 
