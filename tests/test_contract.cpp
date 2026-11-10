@@ -1,6 +1,7 @@
 #include "MockPodmanServer.h"
 
 #include "podman/PodmanClient.h"
+#include "podman/UnixHttpClient.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -12,6 +13,8 @@
 #include <QTemporaryDir>
 #include <QStringList>
 #include <QTest>
+
+#include <atomic>
 
 namespace {
 
@@ -26,6 +29,7 @@ private slots:
     void files();
     void catalog();
     void catalogOperations();
+    void rawHttpErrors();
     void catalogErrors();
     void buildContext();
     void errorMapping();
@@ -631,6 +635,36 @@ void ContractTest::catalogOperations()
     client.removePod(QStringLiteral("pod1"), false, &error);
     error = {};
     client.systemDf(&error);
+}
+
+void ContractTest::rawHttpErrors()
+{
+    MockPodmanServer server;
+    QVERIFY(server.isListening());
+    PodStack::UnixHttpClient client(server.socketPath());
+
+    const PodStack::HttpResponse ping = client.request(QByteArrayLiteral("GET"),
+                                                       QStringLiteral("/_ping"));
+    QCOMPARE(ping.status, 200L);
+    QVERIFY(ping.error.isEmpty());
+
+    const PodStack::HttpResponse missing =
+        client.request(QByteArrayLiteral("GET"),
+                       QStringLiteral("/containers/missing/json"));
+    QCOMPARE(missing.status, 404L);
+    QVERIFY(missing.body.contains("no such container"));
+
+    PodStack::UnixHttpClient offline(server.socketPath() + QStringLiteral(".missing"));
+    const PodStack::HttpResponse failed =
+        offline.request(QByteArrayLiteral("GET"), QStringLiteral("/_ping"));
+    QCOMPARE(failed.status, 0L);
+    QVERIFY(!failed.error.isEmpty());
+
+    std::atomic_bool cancel{true};
+    QString error;
+    QVERIFY(!client.stream(QStringLiteral("/events"),
+                           [](const QByteArray &) { return true; }, &cancel, &error));
+    QVERIFY(!error.isEmpty());
 }
 
 void ContractTest::catalogErrors()

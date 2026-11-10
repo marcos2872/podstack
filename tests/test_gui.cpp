@@ -3,16 +3,20 @@
 #include "core/Config.h"
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
+#include "gui/StreamClient.h"
 #include "gui/ContainerListModel.h"
 #include "machines/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QScopeGuard>
@@ -54,6 +58,7 @@ private slots:
     void backendSetup();
     void backendTray();
     void backendActivityMonitor();
+    void streamClientProtocol();
     void guiStartsAndQuits();
 
 private:
@@ -1472,6 +1477,117 @@ void GuiTest::backendActivityMonitor()
 
     backend.stopActivityMonitor();
     QVERIFY(!backend.activityActive());
+}
+
+void GuiTest::streamClientProtocol()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString socketPath = dir.filePath(QStringLiteral("control.sock"));
+    QLocalServer server;
+    QVERIFY2(server.listen(socketPath), qPrintable(server.errorString()));
+
+    const QByteArray previous = qgetenv("PODSTACK_CONTROL_SOCKET");
+    qputenv("PODSTACK_CONTROL_SOCKET", socketPath.toUtf8());
+    const auto restore = qScopeGuard([previous] {
+        if (previous.isEmpty()) {
+            qunsetenv("PODSTACK_CONTROL_SOCKET");
+        } else {
+            qputenv("PODSTACK_CONTROL_SOCKET", previous);
+        }
+    });
+
+    const auto accept = [&server](const QByteArray &needle) -> QLocalSocket * {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 5000) {
+            if (!server.waitForNewConnection(1000)) {
+                continue;
+            }
+            QLocalSocket *socket = server.nextPendingConnection();
+            if (!socket) {
+                continue;
+            }
+            QByteArray request;
+            while (!request.contains('\n') && socket->waitForReadyRead(1000)) {
+                request += socket->readAll();
+            }
+            if (request.contains(needle)) {
+                return socket;
+            }
+            socket->deleteLater();
+        }
+        return nullptr;
+    };
+
+    PodStack::StreamClient client;
+    QSignalSpy readySpy(&client, &PodStack::StreamClient::subscriptionReady);
+    QSignalSpy logSpy(&client, &PodStack::StreamClient::logLine);
+    QSignalSpy errorSpy(&client, &PodStack::StreamClient::error);
+    QSignalSpy statsSpy(&client, &PodStack::StreamClient::stats);
+    QSignalSpy consoleSpy(&client, &PodStack::StreamClient::machineConsoleEvent);
+    QSignalSpy buildSpy(&client, &PodStack::StreamClient::buildFinished);
+    QSignalSpy setupSpy(&client, &PodStack::StreamClient::setupFinished);
+
+    client.subscribeLogs(QStringLiteral("abc"), 10, true);
+    QLocalSocket *socket = accept(QByteArrayLiteral("containers.logs.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-1\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"containers.logs.delta\",\"params\":{\"line\":\"ola\"}}\n"
+        "not-json\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"containers.logs.error\",\"params\":{\"error\":"
+        "{\"message\":\"falhou\"}}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(readySpy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(logSpy.count() > 0, 5000);
+    QCOMPARE(logSpy.last().at(0).toString(), QStringLiteral("ola"));
+    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > 0, 5000);
+    QVERIFY(errorSpy.last().at(0).toString().contains(QStringLiteral("falhou")));
+
+    client.subscribeStats(QStringLiteral("abc"), 2);
+    socket = accept(QByteArrayLiteral("containers.stats.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-2\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"containers.stats.delta\",\"params\":{\"cpu_percent\":"
+        "\"1.5%\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(statsSpy.count() > 0, 5000);
+    QCOMPARE(statsSpy.last().at(0).toJsonObject().value(QStringLiteral("cpu_percent")).toString(),
+             QStringLiteral("1.5%"));
+
+    client.startMachineConsole(QStringLiteral("machine-1"), 1024);
+    socket = accept(QByteArrayLiteral("\"method\":\"machines.console\""));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-3\","
+        "\"id\":\"machine-1\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"machines.console.delta\",\"params\":{\"data\":"
+        "\"boot\",\"reset\":true}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(consoleSpy.count() > 0, 5000);
+
+    client.startBuild(QJsonObject{{QStringLiteral("context"), QStringLiteral("/tmp")},
+                                  {QStringLiteral("tag"), QStringLiteral("x")}});
+    socket = accept(QByteArrayLiteral("builds.start"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-4\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"builds.done\",\"params\":{\"state\":\"success\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(buildSpy.count() > 0, 5000);
+
+    client.startSetup(QJsonObject{{QStringLiteral("action"), QStringLiteral("enable-socket")}});
+    socket = accept(QByteArrayLiteral("setup.apply"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-5\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"setup.done\",\"params\":{\"state\":\"success\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(setupSpy.count() > 0, 5000);
+
+    client.unsubscribe();
 }
 
 void GuiTest::backendProxy()

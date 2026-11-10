@@ -60,6 +60,7 @@ private slots:
     void externalTerminalCommands();
     void externalTerminalDetection();
     void externalTerminalDesktopFallback();
+    void externalTerminalBranches();
     void containerDetailDialog();
     void containerDetailDialogQml();
     void machineDetailDialog();
@@ -275,6 +276,114 @@ void TerminalTest::externalTerminalDesktopFallback()
     restore("XDG_CURRENT_DESKTOP", oldDesktop);
     restore("DESKTOP_SESSION", oldSession);
     restore("TERM_PROGRAM", oldTermProgram);
+}
+
+void TerminalTest::externalTerminalBranches()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    const auto writeScript = [&dir](const QString &name) {
+        const QString path = dir.filePath(name);
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return QString();
+        }
+        file.write("#!/bin/sh\nexit 0\n");
+        file.close();
+        if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                 | QFileDevice::ExeOwner)) {
+            return QString();
+        }
+        return path;
+    };
+
+    for (const QString &name : {QStringLiteral("alacritty"), QStringLiteral("ghostty"),
+                                QStringLiteral("foot"), QStringLiteral("wezterm"),
+                                QStringLiteral("konsole"), QStringLiteral("kitty"),
+                                QStringLiteral("xfce4-terminal"),
+                                QStringLiteral("gnome-terminal"), QStringLiteral("kgx")}) {
+        QVERIFY2(!writeScript(name).isEmpty(), qPrintable(name));
+    }
+
+    const QByteArray oldPath = qgetenv("PATH");
+    const QByteArray oldTerminal = qgetenv("TERMINAL");
+    const QByteArray oldDesktop = qgetenv("XDG_CURRENT_DESKTOP");
+    const QByteArray oldSession = qgetenv("DESKTOP_SESSION");
+    const QByteArray oldTermProgram = qgetenv("TERM_PROGRAM");
+    const auto restore = [&] {
+        qputenv("PATH", oldPath);
+        if (oldTerminal.isEmpty()) {
+            qunsetenv("TERMINAL");
+        } else {
+            qputenv("TERMINAL", oldTerminal);
+        }
+        if (oldDesktop.isEmpty()) {
+            qunsetenv("XDG_CURRENT_DESKTOP");
+        } else {
+            qputenv("XDG_CURRENT_DESKTOP", oldDesktop);
+        }
+        if (oldSession.isEmpty()) {
+            qunsetenv("DESKTOP_SESSION");
+        } else {
+            qputenv("DESKTOP_SESSION", oldSession);
+        }
+        if (oldTermProgram.isEmpty()) {
+            qunsetenv("TERM_PROGRAM");
+        } else {
+            qputenv("TERM_PROGRAM", oldTermProgram);
+        }
+    };
+
+    qputenv("PATH", dir.path().toUtf8());
+    qunsetenv("TERMINAL");
+    qunsetenv("XDG_CURRENT_DESKTOP");
+    qunsetenv("DESKTOP_SESSION");
+
+    const QList<QPair<QString, QString>> termPrograms = {
+        {QStringLiteral("ghostty"), QStringLiteral("ghostty")},
+        {QStringLiteral("WezTerm"), QStringLiteral("wezterm")},
+        {QStringLiteral("foot"), QStringLiteral("foot")},
+        {QStringLiteral("konsole"), QStringLiteral("konsole")},
+        {QStringLiteral("kitty"), QStringLiteral("kitty")},
+        {QStringLiteral("xfce4-terminal"), QStringLiteral("xfce4-terminal")},
+        {QStringLiteral("gnome-terminal"), QStringLiteral("gnome-terminal")},
+        {QStringLiteral("alacritty"), QStringLiteral("alacritty")},
+    };
+    for (const auto &[termProgram, expected] : termPrograms) {
+        qputenv("TERM_PROGRAM", termProgram.toUtf8());
+        QCOMPARE(PodStack::ExternalTerminal::findTerminal(), dir.filePath(expected));
+    }
+
+    qunsetenv("TERM_PROGRAM");
+    qputenv("XDG_CURRENT_DESKTOP", "KDE");
+    QCOMPARE(PodStack::ExternalTerminal::findTerminal(), dir.filePath(QStringLiteral("konsole")));
+    qputenv("XDG_CURRENT_DESKTOP", "GNOME");
+    QCOMPARE(PodStack::ExternalTerminal::findTerminal(), dir.filePath(QStringLiteral("kgx")));
+    qputenv("XDG_CURRENT_DESKTOP", "XFCE");
+    QCOMPARE(PodStack::ExternalTerminal::findTerminal(),
+             dir.filePath(QStringLiteral("xfce4-terminal")));
+
+    QString error;
+    qputenv("PATH", QByteArrayLiteral("/nonexistent"));
+    qunsetenv("XDG_CURRENT_DESKTOP");
+    qunsetenv("TERMINAL");
+    QVERIFY(!PodStack::ExternalTerminal::launch(QStringLiteral("/bin/true"), {}, &error));
+    QVERIFY(!error.isEmpty());
+    QVERIFY(!PodStack::ExternalTerminal::launch(QString(), {}, &error));
+    QVERIFY(!error.isEmpty());
+
+    qputenv("PATH", dir.path().toUtf8());
+    qputenv("TERMINAL", dir.filePath(QStringLiteral("alacritty")).toUtf8());
+    QVERIFY2(PodStack::ExternalTerminal::launch(QStringLiteral("/bin/true"), {}, &error),
+             qPrintable(error));
+    QTest::qWait(100);
+    QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("desconhecido"),
+                                                    QStringLiteral("/bin/true"),
+                                                    {QStringLiteral("arg")}),
+             QStringList({QStringLiteral("/bin/true"), QStringLiteral("arg")}));
+
+    restore();
 }
 
 void TerminalTest::containerDetailDialog()

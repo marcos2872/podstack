@@ -846,6 +846,7 @@ private slots:
     void machineStats();
     void machineStatsErrors();
     void machineFiles();
+    void machineFilesErrors();
     void machineFilesIntegration();
     void qemuRuntimeIntegration();
     void virtiofsdValidation();
@@ -6464,6 +6465,103 @@ void MachinesTest::machineFiles()
     qunsetenv("PODSTACK_SSH_BINARY");
 
     QDir(root).removeRecursively();
+}
+
+void MachinesTest::machineFilesErrors()
+{
+    const QString root = m_root + QStringLiteral("/machine-files-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    MachineFiles files;
+    QJsonArray items;
+    PodStack::Error error;
+    SshInfo ssh;
+    ssh.host = QStringLiteral("127.0.0.1");
+    ssh.user = QStringLiteral("podstack");
+    ssh.port = 32222;
+    ssh.identityFile = root + QStringLiteral("/id_ed25519");
+    QVERIFY(writeTestFile(ssh.identityFile, QByteArrayLiteral("key")));
+
+    QVERIFY(!files.list(ssh, QStringLiteral("/"), nullptr, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    SshInfo badSsh = ssh;
+    badSsh.host.clear();
+    error = {};
+    QVERIFY(!files.list(badSsh, QStringLiteral("/"), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.list(ssh, QString(), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.list(ssh, QStringLiteral("/tmp/\n"), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QByteArray previousSsh = qgetenv("PODSTACK_SSH_BINARY");
+    const QByteArray previousScp = qgetenv("PODSTACK_SCP_BINARY");
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PODSTACK_SSH_BINARY", "/nonexistent/ssh");
+    qputenv("PODSTACK_SCP_BINARY", "/nonexistent/scp");
+    qputenv("PATH", QByteArrayLiteral("/nonexistent"));
+    const auto restore = qScopeGuard([previousSsh, previousScp, previousPath] {
+        qputenv("PODSTACK_SSH_BINARY", previousSsh);
+        qputenv("PODSTACK_SCP_BINARY", previousScp);
+        qputenv("PATH", previousPath);
+    });
+
+    error = {};
+    QVERIFY(!files.list(ssh, QStringLiteral("/"), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"), root + QStringLiteral("/file"),
+                            &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    error = {};
+    QVERIFY(!files.upload(ssh, ssh.identityFile, QStringLiteral("/tmp/file"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    qputenv("PODSTACK_SSH_BINARY", previousSsh);
+    qputenv("PODSTACK_SCP_BINARY", previousScp);
+    qputenv("PATH", previousPath);
+
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"), QStringLiteral("relative"),
+                            &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"),
+                            root + QStringLiteral("/a/../file"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"), root + QLatin1Char('/'), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"),
+                            root + QStringLiteral("/missing/dir/file"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/directory")));
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"),
+                            root + QStringLiteral("/directory"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.upload(ssh, QStringLiteral("relative"), QStringLiteral("/tmp/file"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.upload(ssh, root + QStringLiteral("/missing-file"),
+                          QStringLiteral("/tmp/file"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
 }
 
 void MachinesTest::machineFilesIntegration()
