@@ -35,7 +35,8 @@ CaddyProxy::~CaddyProxy()
     stop();
 }
 
-QString CaddyProxy::configText(quint16 httpsPort, quint16 httpPort, const QString &storageDir)
+QString CaddyProxy::configText(quint16 httpsPort, quint16 httpPort, const QString &storageDir,
+                               bool exposeLan)
 {
     return QStringLiteral("# Gerado pelo PodStack; não edite manualmente.\n"
                           "{\n"
@@ -47,6 +48,7 @@ QString CaddyProxy::configText(quint16 httpsPort, quint16 httpPort, const QStrin
                           "}\n"
                           "\n"
                           "*.localhost, *.podstack.local {\n"
+                          "    bind %4\n"
                           "    tls internal {\n"
                           "        on_demand\n"
                           "    }\n"
@@ -54,7 +56,8 @@ QString CaddyProxy::configText(quint16 httpsPort, quint16 httpPort, const QStrin
                           "}\n")
         .arg(httpsPort)
         .arg(storageDir)
-        .arg(httpPort);
+        .arg(httpPort)
+        .arg(exposeLan ? QStringLiteral("0.0.0.0") : QStringLiteral("127.0.0.1"));
 }
 
 bool CaddyProxy::start(quint16 httpsPort, quint16 httpPort, Error *error)
@@ -105,7 +108,7 @@ bool CaddyProxy::start(quint16 httpsPort, quint16 httpPort, Error *error)
                           QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
 
     QSaveFile file(configPath());
-    const QByteArray content = configText(httpsPort, httpPort, storage).toUtf8();
+    const QByteArray content = configText(httpsPort, httpPort, storage, m_exposeLan).toUtf8();
     if (!file.open(QIODevice::WriteOnly) || file.write(content) != content.size() ||
         !file.commit()) {
         if (error) {
@@ -169,6 +172,11 @@ bool CaddyProxy::start(quint16 httpsPort, quint16 httpPort, Error *error)
     m_httpsPort = httpsPort;
     qCInfo(lcRpc) << "HTTPS de *.localhost/*.podstack.local em 127.0.0.1:" << httpsPort;
     return true;
+}
+
+void CaddyProxy::setExposeLan(bool exposeLan)
+{
+    m_exposeLan = exposeLan;
 }
 
 void CaddyProxy::stop()

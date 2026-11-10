@@ -635,7 +635,9 @@ Host <name>.podstack <name>
   disponível, `::1`) em `network.httpPort` (default 8080) e encaminha por `Host`.
 - Mapeamento: `nome.localhost` → container `nome` na **primeira porta TCP
   publicada** (`[ip:]porta->porta/tcp`); sem porta publicada → 404.
-- `network.bridge=false` desabilita o proxy.
+- `network.bridge=false` desabilita o proxy. `network.exposeLan=true` (opt-in,
+  restart) faz o proxy escutar em `0.0.0.0`/`::`; o firewall das portas
+  8080/8443 precisa ser liberado explicitamente.
 - A conexão é fechada após a resposta (`Connection: close`) e o proxy adiciona
   `X-Forwarded-For`, `X-Forwarded-Proto` e `X-Forwarded-Host`.
 - Fallback: porta publicada + `localhost:<porta>`.
@@ -692,8 +694,12 @@ Domains=~podstack.local
 - Confiar na CA via helper (`update-ca-trust`) apenas com consentimento: o
   helper exige CA autoassinada, fingerprint SHA-256 correspondente e arquivo
   pertencente ao chamador, grava o anchor e roda o update do trust store.
-- CA montada nos containers via label opt-out (T6-08).
+- CA montada read-only nos containers criados/duplicados pelo PodStack quando
+  o arquivo existe; `dev.podstack.ca=false` faz opt-out. Containers de Compose
+  ficam pendentes (o provider externo monta os volumes).
 - Renovação automática; chave e CA com permissões restritas (root `0600`).
+- Com `network.exposeLan=true`, o Caddyfile usa `bind 0.0.0.0` para expor o
+  HTTPS na LAN (mesmo aviso de firewall).
 
 **Critérios:**
 
@@ -702,7 +708,8 @@ Domains=~podstack.local
   não derruba o daemon.
 - [x] Chave/CA sem leitura por grupo/outros.
 - [x] Confiar/remover a CA no host via helper, com fingerprint e consentimento.
-- [ ] Montar a CA nos containers via label opt-out (T6-08).
+- [x] Montar a CA nos containers de `containers.create`/`duplicate`, com
+  opt-out `dev.podstack.ca=false` (Compose pendente).
 
 ### 11.4 Detecção de porta
 
@@ -717,8 +724,10 @@ Domains=~podstack.local
 - Cachear por container (id) + digest de `image` + portas publicadas; recriar
   o container troca o id e invalida naturalmente. Cache limitado a 64 entradas
   e 10 minutos.
-- Override por label `dev.podstack.http-port`/`https-port` fica na T6-08;
-  HTTPS de backend fica na T6-06.
+- Overrides por label: `dev.podstack.http-port`/`https-port` forçam a porta
+  publicada (por porta do container ou do host; HTTPS conecta com TLS sem
+  verificação de peer) e `dev.podstack.domains` adiciona domínios customizados
+  ao roteamento por `Host` e ao índice. Label inválido cai na detecção normal.
 
 **Critérios:**
 
@@ -759,6 +768,13 @@ Domains=~podstack.local
 - [x] `BindPorts`/`UnbindPorts` idempotentes (teste com runner fake).
 - [ ] Bind real em :80/:443 com polkit e acesso `http://nome.localhost/` sem
   porta (validação manual com root; fiação pelo setup em T7).
+
+### 11.7 Portas não publicadas (limitação)
+
+No modo rootless o Podman não publica portas depois que o container foi
+criado. Port forwarding de portas não publicadas (T6-10) fica adiado: as
+alternativas são publicar no `podman run`/Compose ou usar um container
+roteador; o PodStack não altera a rede do usuário nem usa root para isso.
 
 ---
 

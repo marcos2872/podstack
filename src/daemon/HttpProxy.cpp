@@ -9,6 +9,7 @@
 #include <QHash>
 #include <QHostAddress>
 #include <QRegularExpression>
+#include <QSslSocket>
 #include <QStringList>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -23,6 +24,7 @@ struct PortCacheEntry {
     QString digest;
     QString host;
     quint16 port = 0;
+    bool tls = false;
     qint64 updatedAt = 0;
 };
 
@@ -80,11 +82,64 @@ QVector<PortMapping> orderedCandidates(const ContainerInfo &container)
     return candidates;
 }
 
+constexpr auto kHttpPortLabel = "dev.podstack.http-port";
+constexpr auto kHttpsPortLabel = "dev.podstack.https-port";
+constexpr auto kDomainsLabel = "dev.podstack.domains";
+
+/// Domínios extras declarados no label `dev.podstack.domains`.
+QStringList customDomains(const ContainerInfo &container)
+{
+    static const QRegularExpression validDomain(QStringLiteral("^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$"));
+    QStringList domains;
+    const QString raw = container.labels.value(QString::fromLatin1(kDomainsLabel));
+    for (QString domain : raw.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        domain = domain.trimmed().toLower();
+        if (domain.isEmpty() || domain.size() > 253 || domain.contains(QStringLiteral("..")) ||
+            !validDomain.match(domain).hasMatch()) {
+            continue;
+        }
+        domains.append(domain);
+    }
+    domains.removeDuplicates();
+    return domains;
+}
+
+/// Porta forçada por label: aceita tanto a porta do container quanto a porta
+/// publicada no host. Retorna `false` quando o label não casa com nenhuma porta.
+bool labeledTarget(const ContainerInfo &container, const QString &label, QString *host,
+                   quint16 *port)
+{
+    const QString value = container.labels.value(label).trimmed();
+    bool ok = false;
+    const int wanted = value.toInt(&ok);
+    if (!ok || wanted < 1 || wanted > 65535) {
+        return false;
+    }
+    for (const PortMapping &mapping : HttpProxy::publishedTcpPorts(container)) {
+        if (mapping.containerPort != wanted && mapping.hostPort != wanted) {
+            continue;
+        }
+        if (host) {
+            *host = mapping.hostIp;
+        }
+        if (port) {
+            *port = static_cast<quint16>(mapping.hostPort);
+        }
+        return true;
+    }
+    return false;
+}
+
 /// Digest da configuração que influencia a detecção; o id do container é a
 /// chave do cache, então recriar o container troca a chave naturalmente.
 QString containerDigest(const ContainerInfo &container)
 {
-    return container.image + QLatin1Char('\n') + container.ports.join(QLatin1Char('\n'));
+    QStringList parts{container.image, container.ports.join(QLatin1Char('\n'))};
+    parts.append(QString::fromLatin1(kHttpPortLabel) + QLatin1Char('=') +
+                 container.labels.value(QString::fromLatin1(kHttpPortLabel)));
+    parts.append(QString::fromLatin1(kHttpsPortLabel) + QLatin1Char('=') +
+                 container.labels.value(QString::fromLatin1(kHttpsPortLabel)));
+    return parts.join(QLatin1Char('\n'));
 }
 
 QByteArray probeRequest(const QString &name)
@@ -197,13 +252,23 @@ QByteArray indexBody(const QVector<ContainerInfo> &containers, quint16 proxyPort
         const QString state =
             entry->state.isEmpty() ? QStringLiteral("—") : entry->state.toHtmlEscaped();
         const QString lowerName = entry->name.toLower();
-        QString url;
+        QStringList urls;
         if (entry->name == lowerName && isValidLabel(lowerName)) {
-            const QString text =
-                QStringLiteral("http://%1.localhost:%2/").arg(lowerName).arg(proxyPort);
-            url = QStringLiteral("<a href=\"%1\"><code>%1</code></a>").arg(text.toHtmlEscaped());
-        } else {
+            urls.append(QStringLiteral("http://%1.localhost:%2/").arg(lowerName).arg(proxyPort));
+        }
+        for (const QString &domain : customDomains(*entry)) {
+            urls.append(QStringLiteral("http://%1:%2/").arg(domain).arg(proxyPort));
+        }
+        QString url;
+        if (urls.isEmpty()) {
             url = QStringLiteral("<span>nome incompatível com Host</span>");
+        } else {
+            QStringList links;
+            for (const QString &text : urls) {
+                links.append(
+                    QStringLiteral("<a href=\"%1\"><code>%1</code></a>").arg(text.toHtmlEscaped()));
+            }
+            url = links.join(QStringLiteral("<br>"));
         }
         content += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>")
                        .arg(entry->name.toHtmlEscaped(), state, QString::number(port), url);
@@ -405,12 +470,7 @@ private:
         }
 
         QString name;
-        if (!HttpProxy::hostName(m_request.host, &name)) {
-            fail(404, QStringLiteral("Domínio não encontrado"),
-                 QStringLiteral("Use http://<nome>.localhost:<porta>/; recebido Host: %1.")
-                     .arg(QString::fromLatin1(m_request.host)));
-            return;
-        }
+        const bool zoneHost = HttpProxy::hostName(m_request.host, &name);
 
         QVector<ContainerInfo> containers;
         if (!fetchContainers(&containers)) {
@@ -418,23 +478,63 @@ private:
         }
 
         const ContainerInfo *container = nullptr;
-        for (const ContainerInfo &candidate : containers) {
-            if (candidate.name == name) {
-                container = &candidate;
-                break;
+        if (zoneHost) {
+            for (const ContainerInfo &candidate : containers) {
+                if (candidate.name == name) {
+                    container = &candidate;
+                    break;
+                }
             }
-        }
-        if (!container) {
-            sendIndex(404, QStringLiteral("Container não encontrado"),
-                      QStringLiteral("Nenhum container chamado \"%1\" está em execução.").arg(name),
-                      containers);
-            return;
+            if (!container) {
+                sendIndex(
+                    404, QStringLiteral("Container não encontrado"),
+                    QStringLiteral("Nenhum container chamado \"%1\" está em execução.").arg(name),
+                    containers);
+                return;
+            }
+        } else {
+            QString customHost;
+            if (splitHost(m_request.host, &customHost)) {
+                for (const ContainerInfo &candidate : containers) {
+                    if (customDomains(candidate).contains(customHost)) {
+                        container = &candidate;
+                        break;
+                    }
+                }
+            }
+            if (!container) {
+                fail(404, QStringLiteral("Domínio não encontrado"),
+                     QStringLiteral("Use http://<nome>.localhost[:porta]/ ou um domínio "
+                                    "declarado em %1; recebido Host: %2.")
+                         .arg(QString::fromLatin1(kDomainsLabel),
+                              QString::fromLatin1(m_request.host)));
+                return;
+            }
+            name = container->name;
         }
 
         if (HttpProxy::publishedTcpPorts(*container).isEmpty()) {
-            sendIndex(404, QStringLiteral("Sem porta publicada"),
-                      QStringLiteral("O container \"%1\" não publica portas TCP.").arg(name),
-                      containers);
+            sendIndex(
+                404, QStringLiteral("Sem porta publicada"),
+                QStringLiteral("O container \"%1\" não publica portas TCP.").arg(container->name),
+                containers);
+            return;
+        }
+
+        QString labeledHost;
+        quint16 labeledPort = 0;
+        if (labeledTarget(*container, QString::fromLatin1(kHttpPortLabel), &labeledHost,
+                          &labeledPort)) {
+            rememberTarget(container->id.isEmpty() ? name : container->id,
+                           containerDigest(*container), labeledHost, labeledPort, false);
+            connectBackend(labeledHost, labeledPort, false);
+            return;
+        }
+        if (labeledTarget(*container, QString::fromLatin1(kHttpsPortLabel), &labeledHost,
+                          &labeledPort)) {
+            rememberTarget(container->id.isEmpty() ? name : container->id,
+                           containerDigest(*container), labeledHost, labeledPort, true);
+            connectBackend(labeledHost, labeledPort, true);
             return;
         }
         resolveContainerPort(*container, name);
@@ -449,7 +549,7 @@ private:
             const auto cached = m_portCache->entries.constFind(key);
             if (cached != m_portCache->entries.constEnd() && cached->digest == digest &&
                 cached->port != 0) {
-                connectBackend(cached->host, cached->port);
+                connectBackend(cached->host, cached->port, cached->tls);
                 return;
             }
         }
@@ -462,8 +562,8 @@ private:
         }
         if (candidates.size() == 1) {
             const PortMapping &only = candidates.first();
-            rememberTarget(key, digest, only.hostIp, quint16(only.hostPort));
-            connectBackend(only.hostIp, quint16(only.hostPort));
+            rememberTarget(key, digest, only.hostIp, quint16(only.hostPort), false);
+            connectBackend(only.hostIp, quint16(only.hostPort), false);
             return;
         }
         probePorts(key, digest, name, candidates);
@@ -544,12 +644,12 @@ private:
                  QStringLiteral("O container não tem porta TCP publicada."));
             return;
         }
-        rememberTarget(m_probeKey, m_probeDigest, m_bestHost, m_bestPort);
-        connectBackend(m_bestHost, m_bestPort);
+        rememberTarget(m_probeKey, m_probeDigest, m_bestHost, m_bestPort, false);
+        connectBackend(m_bestHost, m_bestPort, false);
     }
 
     void rememberTarget(const QString &key, const QString &digest, const QString &host,
-                        quint16 port)
+                        quint16 port, bool tls)
     {
         if (!m_portCache) {
             return;
@@ -569,7 +669,7 @@ private:
             }
         }
         cache.entries.insert(
-            key, PortCacheEntry{digest, host, port, QDateTime::currentMSecsSinceEpoch()});
+            key, PortCacheEntry{digest, host, port, tls, QDateTime::currentMSecsSinceEpoch()});
     }
 
     bool fetchContainers(QVector<ContainerInfo> *containers)
@@ -599,10 +699,10 @@ private:
         respond(status, indexBody(containers, m_proxyPort, title, detail));
     }
 
-    void connectBackend(const QString &host, quint16 port)
+    void connectBackend(const QString &host, quint16 port, bool tls)
     {
-        m_backend = new QTcpSocket(this);
-        connect(m_backend, &QTcpSocket::connected, this, [this] {
+        m_backend = tls ? new QSslSocket(this) : new QTcpSocket(this);
+        const auto onConnected = [this] {
             if (m_responseSent) {
                 m_backend->abort();
                 return;
@@ -622,18 +722,29 @@ private:
                 m_idleTimer->stop();
                 m_client->disconnectFromHost();
             });
-        });
-        connect(m_backend, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        };
+        const auto onError = [this](QAbstractSocket::SocketError) {
             if (!m_connected) {
                 fail(502, QStringLiteral("Container indisponível"),
                      QStringLiteral("Não foi possível conectar à porta publicada."));
             } else {
                 m_client->disconnectFromHost();
             }
-        });
+        };
+
         m_connectTimer->start(m_connectTimeoutMs);
         m_idleTimer->start(m_idleTimeoutMs);
-        m_backend->connectToHost(host, port);
+        if (tls) {
+            auto *ssl = static_cast<QSslSocket *>(m_backend);
+            ssl->setPeerVerifyMode(QSslSocket::VerifyNone);
+            connect(ssl, &QSslSocket::encrypted, this, onConnected);
+            connect(ssl, &QAbstractSocket::errorOccurred, this, onError);
+            ssl->connectToHostEncrypted(host, port);
+        } else {
+            connect(m_backend, &QTcpSocket::connected, this, onConnected);
+            connect(m_backend, &QAbstractSocket::errorOccurred, this, onError);
+            m_backend->connectToHost(host, port);
+        }
     }
 
     void fail(int status, const QString &title, const QString &detail,
@@ -705,14 +816,19 @@ bool HttpProxy::listen(quint16 port, Error *error)
     }
     close();
 
+    const QHostAddress bindV4 =
+        m_exposeLan ? QHostAddress(QHostAddress::Any) : QHostAddress(QHostAddress::LocalHost);
+    const QHostAddress bindV6 = m_exposeLan ? QHostAddress(QHostAddress::AnyIPv6)
+                                            : QHostAddress(QHostAddress::LocalHostIPv6);
     auto *v4 = new QTcpServer(this);
-    if (!v4->listen(QHostAddress::LocalHost, port)) {
+    if (!v4->listen(bindV4, port)) {
         const QString detail = v4->errorString();
         delete v4;
         if (error) {
-            *error = Error::make(
-                QStringLiteral("PODSTACK_IO_ERROR"),
-                QStringLiteral("Não foi possível escutar em 127.0.0.1:%1.").arg(port), detail);
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível escutar em %1:%2.")
+                                     .arg(bindV4.toString(), QString::number(port)),
+                                 detail);
         }
         return false;
     }
@@ -720,7 +836,7 @@ bool HttpProxy::listen(quint16 port, Error *error)
     connect(m_v4, &QTcpServer::newConnection, this, [this] { accept(m_v4); });
 
     auto *v6 = new QTcpServer(this);
-    if (v6->listen(QHostAddress::LocalHostIPv6, m_v4->serverPort())) {
+    if (v6->listen(bindV6, m_v4->serverPort())) {
         m_v6 = v6;
         connect(m_v6, &QTcpServer::newConnection, this, [this] { accept(m_v6); });
     } else {
@@ -728,7 +844,11 @@ bool HttpProxy::listen(quint16 port, Error *error)
         delete v6;
     }
 
-    qCInfo(lcRpc) << "Proxy HTTP de *.localhost em 127.0.0.1:" << m_v4->serverPort();
+    qCInfo(lcRpc) << "Proxy HTTP de *.localhost em" << (m_exposeLan ? "0.0.0.0" : "127.0.0.1")
+                  << ":" << m_v4->serverPort();
+    if (m_exposeLan) {
+        qCWarning(lcRpc) << "Proxy exposto na LAN; garanta que o firewall permita as portas.";
+    }
     return true;
 }
 
@@ -755,6 +875,16 @@ void HttpProxy::setTimeouts(int connectTimeoutMs, int idleTimeoutMs)
 {
     m_connectTimeoutMs = connectTimeoutMs;
     m_idleTimeoutMs = idleTimeoutMs;
+}
+
+void HttpProxy::setExposeLan(bool exposeLan)
+{
+    m_exposeLan = exposeLan;
+}
+
+bool HttpProxy::exposeLan() const
+{
+    return m_exposeLan;
 }
 
 void HttpProxy::accept(QTcpServer *server)

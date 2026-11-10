@@ -68,6 +68,25 @@ private:
     bool m_answerHead = true;
 };
 
+/// Responde qualquer byte recebido com um corpo cru (quebra handshake TLS).
+class RawServer : public QTcpServer {
+public:
+    explicit RawServer(QObject *parent = nullptr) : QTcpServer(parent)
+    {
+        connect(this, &QTcpServer::newConnection, this, [this] {
+            while (hasPendingConnections()) {
+                QTcpSocket *socket = nextPendingConnection();
+                connect(socket, &QTcpSocket::readyRead, socket, [socket] {
+                    socket->readAll();
+                    socket->write("ok");
+                    socket->disconnectFromHost();
+                });
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            }
+        });
+    }
+};
+
 /// Aceita conexões e nunca responde (porta que não fala HTTP).
 class SilentServer : public QTcpServer {
 public:
@@ -141,11 +160,17 @@ private slots:
     void publishedPortParsing();
     void publishedTcpPortsParsing();
     void listenReportsPortInUse();
+    void exposesLanWhenConfigured();
     void proxiesGetRequest();
     void proxiesPodstackLocalHost();
     void forwardsRequestBody();
     void servesIndexForLocalhost();
     void detectsHttpPortWithMultiplePublishedPorts();
+    void honorsHttpPortLabel();
+    void invalidPortLabelFallsBackToDetection();
+    void httpsPortLabelUsesTlsToBackend();
+    void customDomainRoutesToContainer();
+    void indexListsCustomDomains();
     void prefersCommonHttpPort();
     void fallsBackToFirstPortWhenNoProbeAnswers();
     void cachesDetectedPort();
@@ -238,6 +263,22 @@ void HttpProxyTest::publishedPortParsing()
     QVERIFY(!PodStack::HttpProxy::publishedPort(info, &host, &port));
     info.ports.clear();
     QVERIFY(!PodStack::HttpProxy::publishedPort(info, &host, &port));
+}
+
+void HttpProxyTest::exposesLanWhenConfigured()
+{
+    BackendServer backend;
+    QVERIFY(backend.listen(QHostAddress::LocalHost, 0));
+    PodStack::HttpProxy proxy(providerFor(
+        QStringLiteral("demo"), {QStringLiteral("%1->80/tcp").arg(backend.serverPort())}));
+    QVERIFY(!proxy.exposeLan());
+    proxy.setExposeLan(true);
+    QVERIFY(proxy.exposeLan());
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response =
+        exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: demo.localhost\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
 }
 
 void HttpProxyTest::publishedTcpPortsParsing()
@@ -410,6 +451,152 @@ void HttpProxyTest::detectsHttpPortWithMultiplePublishedPorts()
     QVERIFY(backend.requests.first().head.contains("User-Agent: PodStack-Server-Detection"));
     QVERIFY(backend.requests.last().head.startsWith("GET /"));
     QCOMPARE(silent.connections, 1);
+}
+
+void HttpProxyTest::honorsHttpPortLabel()
+{
+    SilentServer silent;
+    QVERIFY(silent.listen(QHostAddress::LocalHost, 0));
+    BackendServer first(QByteArrayLiteral("first-ok"));
+    QVERIFY(first.listen(QHostAddress::LocalHost, 0));
+    BackendServer second(QByteArrayLiteral("second-ok"));
+    QVERIFY(second.listen(QHostAddress::LocalHost, 0));
+
+    PodStack::HttpProxy proxy(
+        [&](QVector<PodStack::ContainerInfo> *containers, PodStack::Error *error) {
+            if (error) {
+                *error = {};
+            }
+            PodStack::ContainerInfo info;
+            info.id = QStringLiteral("c1");
+            info.name = QStringLiteral("demo");
+            info.ports = {QStringLiteral("%1->9000/tcp").arg(silent.serverPort()),
+                          QStringLiteral("%1->9001/tcp").arg(first.serverPort()),
+                          QStringLiteral("%1->9002/tcp").arg(second.serverPort())};
+            info.labels.insert(QStringLiteral("dev.podstack.http-port"), QStringLiteral("9002"));
+            containers->append(info);
+            return true;
+        });
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response =
+        exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: demo.localhost\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
+    QVERIFY(response.endsWith("second-ok"));
+    QCOMPARE(second.requests.size(), 1);
+    QCOMPARE(first.requests.size(), 0);
+    QCOMPARE(silent.connections, 0);
+}
+
+void HttpProxyTest::invalidPortLabelFallsBackToDetection()
+{
+    SilentServer silent;
+    QVERIFY(silent.listen(QHostAddress::LocalHost, 0));
+    BackendServer backend;
+    QVERIFY(backend.listen(QHostAddress::LocalHost, 0));
+
+    PodStack::HttpProxy proxy(
+        [&](QVector<PodStack::ContainerInfo> *containers, PodStack::Error *error) {
+            if (error) {
+                *error = {};
+            }
+            PodStack::ContainerInfo info;
+            info.id = QStringLiteral("c1");
+            info.name = QStringLiteral("demo");
+            info.ports = {QStringLiteral("%1->9000/tcp").arg(silent.serverPort()),
+                          QStringLiteral("%1->9001/tcp").arg(backend.serverPort())};
+            info.labels.insert(QStringLiteral("dev.podstack.http-port"), QStringLiteral("9999"));
+            containers->append(info);
+            return true;
+        });
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response =
+        exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: demo.localhost\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
+    QVERIFY(response.endsWith("ok"));
+    QCOMPARE(silent.connections, 1);
+}
+
+void HttpProxyTest::httpsPortLabelUsesTlsToBackend()
+{
+    RawServer backend;
+    QVERIFY(backend.listen(QHostAddress::LocalHost, 0));
+
+    PodStack::HttpProxy proxy(
+        [&](QVector<PodStack::ContainerInfo> *containers, PodStack::Error *error) {
+            if (error) {
+                *error = {};
+            }
+            PodStack::ContainerInfo info;
+            info.id = QStringLiteral("c1");
+            info.name = QStringLiteral("demo");
+            info.ports = {QStringLiteral("%1->9001/tcp").arg(backend.serverPort())};
+            info.labels.insert(QStringLiteral("dev.podstack.https-port"), QStringLiteral("9001"));
+            containers->append(info);
+            return true;
+        });
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response =
+        exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: demo.localhost\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 502"));
+    QVERIFY(response.contains("Container indisponível"));
+}
+
+void HttpProxyTest::customDomainRoutesToContainer()
+{
+    BackendServer backend;
+    QVERIFY(backend.listen(QHostAddress::LocalHost, 0));
+
+    PodStack::HttpProxy proxy(
+        [&](QVector<PodStack::ContainerInfo> *containers, PodStack::Error *error) {
+            if (error) {
+                *error = {};
+            }
+            PodStack::ContainerInfo info;
+            info.id = QStringLiteral("c1");
+            info.name = QStringLiteral("demo");
+            info.ports = {QStringLiteral("%1->80/tcp").arg(backend.serverPort())};
+            info.labels.insert(QStringLiteral("dev.podstack.domains"),
+                               QStringLiteral("app.test, api.test"));
+            containers->append(info);
+            return true;
+        });
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response =
+        exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: APP.TEST:8080\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
+    QVERIFY(response.endsWith("ok"));
+    QTRY_COMPARE_WITH_TIMEOUT(backend.requests.size(), 1, 3000);
+    QVERIFY(backend.requests.first().head.contains("Host: APP.TEST:8080"));
+}
+
+void HttpProxyTest::indexListsCustomDomains()
+{
+    PodStack::HttpProxy proxy(
+        [](QVector<PodStack::ContainerInfo> *containers, PodStack::Error *error) {
+            if (error) {
+                *error = {};
+            }
+            PodStack::ContainerInfo info;
+            info.name = QStringLiteral("demo");
+            info.state = QStringLiteral("running");
+            info.ports = {QStringLiteral("9001->80/tcp")};
+            info.labels.insert(QStringLiteral("dev.podstack.domains"),
+                               QStringLiteral("app.test,api.test"));
+            containers->append(info);
+            return true;
+        });
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response = exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
+    const QByteArray port = QByteArray::number(proxy.port());
+    QVERIFY(response.contains("http://demo.localhost:" + port + "/"));
+    QVERIFY(response.contains("http://app.test:" + port + "/"));
+    QVERIFY(response.contains("http://api.test:" + port + "/"));
 }
 
 void HttpProxyTest::prefersCommonHttpPort()

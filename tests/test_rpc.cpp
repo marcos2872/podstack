@@ -30,6 +30,7 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
     void lifecycle();
+    void containerMountsLocalCaUnlessOptedOut();
     void proxyEnvironment();
     void exposeLan();
     void subscriptions();
@@ -460,6 +461,57 @@ void RpcTest::lifecycle()
     PodStack::Error unknownError;
     client.call(QStringLiteral("no.such.method"), {}, &unknownError);
     QCOMPARE(unknownError.code, QStringLiteral("PODSTACK_METHOD_NOT_FOUND"));
+}
+
+void RpcTest::containerMountsLocalCaUnlessOptedOut()
+{
+    const QString caDir =
+        m_testDataDir + QStringLiteral("/data/podstack/caddy/storage/pki/authorities/local");
+    QVERIFY(QDir().mkpath(caDir));
+    QFile cert(caDir + QStringLiteral("/root.crt"));
+    QVERIFY(cert.open(QIODevice::WriteOnly));
+    cert.write("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----\n");
+    cert.close();
+
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+    const auto createContainer = [&](const QString &name, const QJsonObject &labels) {
+        QJsonObject params;
+        params.insert(QStringLiteral("image"), QStringLiteral("alpine"));
+        params.insert(QStringLiteral("name"), name);
+        params.insert(QStringLiteral("start"), false);
+        if (!labels.isEmpty()) {
+            params.insert(QStringLiteral("labels"), labels);
+        }
+        return client.call(QStringLiteral("containers.create"), params, &error);
+    };
+    const auto hasCaMount = [this] {
+        const QJsonArray mounts = QJsonDocument::fromJson(m_mock.lastCreateBody())
+                                      .object()
+                                      .value(QStringLiteral("mounts"))
+                                      .toArray();
+        for (const QJsonValue &value : mounts) {
+            const QJsonObject mount = value.toObject();
+            if (mount.value(QStringLiteral("destination")).toString() ==
+                QStringLiteral("/etc/pki/ca-trust/source/anchors/podstack-local-ca.crt")) {
+                return mount.value(QStringLiteral("options"))
+                    .toArray()
+                    .contains(QStringLiteral("ro"));
+            }
+        }
+        return false;
+    };
+
+    QVERIFY(!createContainer(QStringLiteral("with-ca"), {}).isEmpty());
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(hasCaMount());
+
+    QVERIFY(
+        !createContainer(QStringLiteral("without-ca"),
+                         QJsonObject{{QStringLiteral("dev.podstack.ca"), QStringLiteral("false")}})
+             .isEmpty());
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!hasCaMount());
 }
 
 void RpcTest::proxyEnvironment()

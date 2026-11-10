@@ -119,6 +119,28 @@ void applyProxyEnvironment(ContainerCreateSpec &spec)
     }
 }
 
+/// Monta a CA local (quando existe) no container; opt-out por label.
+void applyCaTrustMount(ContainerCreateSpec &spec)
+{
+    if (spec.labels.value(QStringLiteral("dev.podstack.ca"))
+            .compare(QStringLiteral("false"), Qt::CaseInsensitive) == 0) {
+        return;
+    }
+    const QString cert =
+        Paths::dataDir() + QStringLiteral("/caddy/storage/pki/authorities/local/root.crt");
+    if (!QFileInfo::exists(cert)) {
+        return;
+    }
+    const QString destination =
+        QStringLiteral("/etc/pki/ca-trust/source/anchors/podstack-local-ca.crt");
+    for (const MountMapping &mount : spec.mounts) {
+        if (mount.destination == destination) {
+            return;
+        }
+    }
+    spec.mounts.append({cert, destination, true});
+}
+
 bool isWildcardHostIp(const QString &hostIp)
 {
     return hostIp.isEmpty() || hostIp == QStringLiteral("0.0.0.0")
@@ -2199,6 +2221,7 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
     }
 
     applyProxyEnvironment(spec);
+    applyCaTrustMount(spec);
 
     const QString id = m_podman.createContainer(spec, error);
     if (id.isEmpty()) {
@@ -2450,6 +2473,12 @@ QJsonObject Daemon::containerDuplicate(const QJsonObject &params, Error *error)
             spec.mounts.append({source, destination, !mount.value(QStringLiteral("RW")).toBool()});
         }
     }
+
+    const QJsonObject labels = config.value(QStringLiteral("Labels")).toObject();
+    for (auto it = labels.constBegin(); it != labels.constEnd(); ++it) {
+        spec.labels.insert(it.key(), it.value().toString());
+    }
+    applyCaTrustMount(spec);
 
     const QString newId = m_podman.createContainer(spec, error);
     if (newId.isEmpty()) {

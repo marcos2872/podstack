@@ -82,6 +82,7 @@ int main(int argc, char *argv[])
 
     std::unique_ptr<PodStack::HttpProxy> httpProxy;
     const PodStack::Config config = PodStack::Config::load();
+    const bool exposeLan = config.get(QStringLiteral("network.exposeLan")).toBool(false);
     const int httpPort = config.get(QStringLiteral("network.httpPort")).toInt(8080);
     if (config.get(QStringLiteral("network.bridge")).toBool(true) && httpPort >= 1 &&
         httpPort <= 65535) {
@@ -89,6 +90,7 @@ int main(int argc, char *argv[])
             [&daemon](QVector<PodStack::ContainerInfo> *containers, PodStack::Error *proxyError) {
                 return daemon.listContainersForProxy(containers, proxyError);
             });
+        httpProxy->setExposeLan(exposeLan);
         PodStack::Error proxyError;
         if (!httpProxy->listen(static_cast<quint16>(httpPort), &proxyError)) {
             qCWarning(lcRpc) << "Proxy HTTP de *.localhost indisponível:" << proxyError.message
@@ -102,6 +104,7 @@ int main(int argc, char *argv[])
     if (httpProxy && config.get(QStringLiteral("network.https")).toBool(false) && httpsPort >= 1 &&
         httpsPort <= 65535) {
         caddyProxy = std::make_unique<PodStack::CaddyProxy>();
+        caddyProxy->setExposeLan(exposeLan);
         PodStack::Error caddyError;
         if (!caddyProxy->start(static_cast<quint16>(httpsPort), static_cast<quint16>(httpPort),
                                &caddyError)) {

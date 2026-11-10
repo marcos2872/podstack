@@ -310,6 +310,9 @@ sequenceDiagram
 - `:80`/`:443` entram por unidades systemd do helper
   (`podstack-http.socket`/`podstack-https.socket` +
   `systemd-socket-proxyd`) apontando para o proxy local (T6-05).
+- Labels `dev.podstack.http-port`/`https-port`/`domains` sobrescrevem a porta e
+  adicionam domínios; `dev.podstack.ca=false` opta por não montar a CA no
+  container (T6-08).
 
 ### 3.7 Requisição de domínio
 

@@ -93,6 +93,11 @@ void CaddyTest::configTextHasInternalCaAndProxy()
     QVERIFY(text.contains(QStringLiteral("reverse_proxy 127.0.0.1:8080")));
     QVERIFY(text.contains(QStringLiteral("storage file_system \"/tmp/ca\"")));
     QVERIFY(text.contains(QStringLiteral("skip_install_trust")));
+    QVERIFY(text.contains(QStringLiteral("bind 127.0.0.1")));
+
+    const QString lanText =
+        PodStack::CaddyProxy::configText(8443, 8080, QStringLiteral("/tmp/ca"), true);
+    QVERIFY(lanText.contains(QStringLiteral("bind 0.0.0.0")));
 }
 
 void CaddyTest::startFailsWithoutCaddy()
