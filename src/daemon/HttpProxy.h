@@ -56,6 +56,11 @@ public:
     /// Ajusta os timeouts de conexão e de inatividade (milissegundos).
     void setTimeouts(int connectTimeoutMs, int idleTimeoutMs);
 
+    /// Expõe o listener em todas as interfaces (LAN) em vez de só loopback.
+    /// Deve ser chamado antes de `listen`.
+    void setExposeLan(bool exposeLan);
+    bool exposeLan() const;
+
 private:
     void accept(QTcpServer *server);
 
@@ -63,6 +68,7 @@ private:
     std::shared_ptr<PortCache> m_portCache;
     QTcpServer *m_v4 = nullptr;
     QTcpServer *m_v6 = nullptr;
+    bool m_exposeLan = false;
     int m_connectTimeoutMs = 10000;
     int m_idleTimeoutMs = 60000;
 };

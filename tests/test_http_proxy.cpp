@@ -160,6 +160,7 @@ private slots:
     void publishedPortParsing();
     void publishedTcpPortsParsing();
     void listenReportsPortInUse();
+    void exposesLanWhenConfigured();
     void proxiesGetRequest();
     void proxiesPodstackLocalHost();
     void forwardsRequestBody();
@@ -262,6 +263,22 @@ void HttpProxyTest::publishedPortParsing()
     QVERIFY(!PodStack::HttpProxy::publishedPort(info, &host, &port));
     info.ports.clear();
     QVERIFY(!PodStack::HttpProxy::publishedPort(info, &host, &port));
+}
+
+void HttpProxyTest::exposesLanWhenConfigured()
+{
+    BackendServer backend;
+    QVERIFY(backend.listen(QHostAddress::LocalHost, 0));
+    PodStack::HttpProxy proxy(providerFor(
+        QStringLiteral("demo"), {QStringLiteral("%1->80/tcp").arg(backend.serverPort())}));
+    QVERIFY(!proxy.exposeLan());
+    proxy.setExposeLan(true);
+    QVERIFY(proxy.exposeLan());
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response =
+        exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: demo.localhost\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
 }
 
 void HttpProxyTest::publishedTcpPortsParsing()

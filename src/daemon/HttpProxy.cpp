@@ -816,14 +816,19 @@ bool HttpProxy::listen(quint16 port, Error *error)
     }
     close();
 
+    const QHostAddress bindV4 =
+        m_exposeLan ? QHostAddress(QHostAddress::Any) : QHostAddress(QHostAddress::LocalHost);
+    const QHostAddress bindV6 = m_exposeLan ? QHostAddress(QHostAddress::AnyIPv6)
+                                            : QHostAddress(QHostAddress::LocalHostIPv6);
     auto *v4 = new QTcpServer(this);
-    if (!v4->listen(QHostAddress::LocalHost, port)) {
+    if (!v4->listen(bindV4, port)) {
         const QString detail = v4->errorString();
         delete v4;
         if (error) {
-            *error = Error::make(
-                QStringLiteral("PODSTACK_IO_ERROR"),
-                QStringLiteral("Não foi possível escutar em 127.0.0.1:%1.").arg(port), detail);
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível escutar em %1:%2.")
+                                     .arg(bindV4.toString(), QString::number(port)),
+                                 detail);
         }
         return false;
     }
@@ -831,7 +836,7 @@ bool HttpProxy::listen(quint16 port, Error *error)
     connect(m_v4, &QTcpServer::newConnection, this, [this] { accept(m_v4); });
 
     auto *v6 = new QTcpServer(this);
-    if (v6->listen(QHostAddress::LocalHostIPv6, m_v4->serverPort())) {
+    if (v6->listen(bindV6, m_v4->serverPort())) {
         m_v6 = v6;
         connect(m_v6, &QTcpServer::newConnection, this, [this] { accept(m_v6); });
     } else {
@@ -839,7 +844,11 @@ bool HttpProxy::listen(quint16 port, Error *error)
         delete v6;
     }
 
-    qCInfo(lcRpc) << "Proxy HTTP de *.localhost em 127.0.0.1:" << m_v4->serverPort();
+    qCInfo(lcRpc) << "Proxy HTTP de *.localhost em" << (m_exposeLan ? "0.0.0.0" : "127.0.0.1")
+                  << ":" << m_v4->serverPort();
+    if (m_exposeLan) {
+        qCWarning(lcRpc) << "Proxy exposto na LAN; garanta que o firewall permita as portas.";
+    }
     return true;
 }
 
@@ -866,6 +875,16 @@ void HttpProxy::setTimeouts(int connectTimeoutMs, int idleTimeoutMs)
 {
     m_connectTimeoutMs = connectTimeoutMs;
     m_idleTimeoutMs = idleTimeoutMs;
+}
+
+void HttpProxy::setExposeLan(bool exposeLan)
+{
+    m_exposeLan = exposeLan;
+}
+
+bool HttpProxy::exposeLan() const
+{
+    return m_exposeLan;
 }
 
 void HttpProxy::accept(QTcpServer *server)

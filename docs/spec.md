@@ -635,7 +635,9 @@ Host <name>.podstack <name>
   disponível, `::1`) em `network.httpPort` (default 8080) e encaminha por `Host`.
 - Mapeamento: `nome.localhost` → container `nome` na **primeira porta TCP
   publicada** (`[ip:]porta->porta/tcp`); sem porta publicada → 404.
-- `network.bridge=false` desabilita o proxy.
+- `network.bridge=false` desabilita o proxy. `network.exposeLan=true` (opt-in,
+  restart) faz o proxy escutar em `0.0.0.0`/`::`; o firewall das portas
+  8080/8443 precisa ser liberado explicitamente.
 - A conexão é fechada após a resposta (`Connection: close`) e o proxy adiciona
   `X-Forwarded-For`, `X-Forwarded-Proto` e `X-Forwarded-Host`.
 - Fallback: porta publicada + `localhost:<porta>`.
@@ -696,6 +698,8 @@ Domains=~podstack.local
   o arquivo existe; `dev.podstack.ca=false` faz opt-out. Containers de Compose
   ficam pendentes (o provider externo monta os volumes).
 - Renovação automática; chave e CA com permissões restritas (root `0600`).
+- Com `network.exposeLan=true`, o Caddyfile usa `bind 0.0.0.0` para expor o
+  HTTPS na LAN (mesmo aviso de firewall).
 
 **Critérios:**
 
@@ -764,6 +768,13 @@ Domains=~podstack.local
 - [x] `BindPorts`/`UnbindPorts` idempotentes (teste com runner fake).
 - [ ] Bind real em :80/:443 com polkit e acesso `http://nome.localhost/` sem
   porta (validação manual com root; fiação pelo setup em T7).
+
+### 11.7 Portas não publicadas (limitação)
+
+No modo rootless o Podman não publica portas depois que o container foi
+criado. Port forwarding de portas não publicadas (T6-10) fica adiado: as
+alternativas são publicar no `podman run`/Compose ou usar um container
+roteador; o PodStack não altera a rede do usuário nem usa root para isso.
 
 ---
 

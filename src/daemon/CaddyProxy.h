@@ -25,6 +25,9 @@ public:
     bool start(quint16 httpsPort, quint16 httpPort, Error *error = nullptr);
     void stop();
 
+    /// Expõe o HTTPS na LAN (bind em 0.0.0.0) em vez de só loopback.
+    void setExposeLan(bool exposeLan);
+
     bool running() const;
     quint16 httpsPort() const;
     QString directory() const;
@@ -32,12 +35,14 @@ public:
     QString rootCertPath() const;
 
     /// Conteúdo do Caddyfile; exposto para teste.
-    static QString configText(quint16 httpsPort, quint16 httpPort, const QString &storageDir);
+    static QString configText(quint16 httpsPort, quint16 httpPort, const QString &storageDir,
+                              bool exposeLan = false);
 
 private:
     QString m_directory;
     QProcess *m_process = nullptr;
     quint16 m_httpsPort = 0;
+    bool m_exposeLan = false;
 };
 
 } // namespace PodStack
