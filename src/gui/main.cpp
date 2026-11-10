@@ -15,8 +15,8 @@
 
 #include <cstdio>
 
-#include <qqml.h>
 #include <QtQml/qqmlextensionplugin.h>
+#include <qqml.h>
 
 Q_IMPORT_QML_PLUGIN(PodStackPlugin)
 
