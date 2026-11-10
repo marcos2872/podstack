@@ -385,7 +385,24 @@ qint64 readPidFile(const QString &path)
 
 bool processAlive(qint64 pid)
 {
-    return pid > 0 && ::kill(static_cast<pid_t>(pid), 0) == 0;
+    if (pid <= 0) {
+        return false;
+    }
+    if (::kill(static_cast<pid_t>(pid), 0) != 0) {
+        return false;
+    }
+    // No CI o PID 1 do container pode não recolher zumbis; um processo em
+    // estado Z já terminou e não deve segurar o teste.
+    QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+    if (!stat.open(QIODevice::ReadOnly)) {
+        return true;
+    }
+    const QByteArray data = stat.readAll();
+    const qsizetype close = data.lastIndexOf(')');
+    if (close < 0 || close + 2 >= data.size()) {
+        return true;
+    }
+    return data.at(close + 2) != 'Z';
 }
 
 bool waitForProcessGone(qint64 pid, int timeoutMs = 3000)
