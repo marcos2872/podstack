@@ -123,13 +123,19 @@ Rectangle {
 
                 Rectangle {
                     anchors.fill: parent
-                    color: (root.selection && root.selection.has(row.rowId))
-                           || root.currentRow === index
-                           ? Theme.accentSoft
-                           : row.hovered
-                             ? Qt.rgba(Theme.textPrimary.r, Theme.textPrimary.g,
-                                       Theme.textPrimary.b, 0.03)
-                             : "transparent"
+                    color: root.selection
+                           ? (root.selection.has(row.rowId)
+                              ? Theme.accentSoft
+                              : row.hovered
+                                ? Qt.rgba(Theme.textPrimary.r, Theme.textPrimary.g,
+                                          Theme.textPrimary.b, 0.03)
+                                : "transparent")
+                           : (root.currentRow === index
+                              ? Theme.accentSoft
+                              : row.hovered
+                                ? Qt.rgba(Theme.textPrimary.r, Theme.textPrimary.g,
+                                          Theme.textPrimary.b, 0.03)
+                                : "transparent")
                 }
 
                 Rectangle {
