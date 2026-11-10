@@ -3128,10 +3128,13 @@ void MachinesTest::k8sStoreLifecycle()
     const QString readonlyDir = directory.filePath(QStringLiteral("readonly"));
     QVERIFY(QDir().mkpath(readonlyDir));
     QVERIFY(QFile::setPermissions(readonlyDir, QFileDevice::ReadOwner | QFileDevice::ExeOwner));
-    K8sStore readonlyStore(readonlyDir + QStringLiteral("/k8s.db"));
-    error = {};
-    QVERIFY(!readonlyStore.open(&error));
-    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+    // Root ignora as permissões do diretório; o cenário só vale para usuário comum.
+    if (::geteuid() != 0) {
+        K8sStore readonlyStore(readonlyDir + QStringLiteral("/k8s.db"));
+        error = {};
+        QVERIFY(!readonlyStore.open(&error));
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+    }
     QFile::setPermissions(readonlyDir,
                           QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
 }
