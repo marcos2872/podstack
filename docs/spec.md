@@ -675,9 +675,27 @@ Domains=~podstack.local
 
 ### 11.4 Detecção de porta
 
-- Na primeira requisição, testar portas expostas (80, 8080, 3000, 5000, 8000, 8443...) com timeout curto.
-- Cachear por container + digest da config; invalidar ao recriar.
-- Override por label `dev.podstack.http-port`/`https-port`.
+- Na primeira requisição, testar as portas TCP **publicadas** (as únicas
+  alcançáveis no modelo rootless) em paralelo, com timeout de 300 ms e
+  `HEAD /` com `User-Agent: PodStack-Server-Detection`; a resposta que começa
+  com `HTTP/` vence.
+- Preferência por portas de container comuns: 80, 8080, 3000, 5000, 8000,
+  8081, 8888, 443 e 8443; depois as demais em ordem crescente.
+- Uma única porta publicada é usada direto, sem probe. Se nenhuma porta
+  responde HTTP, o proxy usa a primeira publicada (comportamento anterior).
+- Cachear por container (id) + digest de `image` + portas publicadas; recriar
+  o container troca o id e invalida naturalmente. Cache limitado a 64 entradas
+  e 10 minutos.
+- Override por label `dev.podstack.http-port`/`https-port` fica na T6-08;
+  HTTPS de backend fica na T6-06.
+
+**Critérios:**
+
+- [x] Container com uma porta publicada funciona sem probe.
+- [x] Com múltiplas portas, escolhe a que responde HTTP e prefere as comuns.
+- [x] Cache evita novo probe; mudança de id/digest invalida.
+- [ ] Override por label (T6-08).
+- [ ] HTTPS de backend (T6-06).
 
 ### 11.5 Port forwarding de máquinas
 
