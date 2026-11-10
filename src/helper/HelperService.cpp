@@ -6,6 +6,7 @@
 #include "helper/DnsZone.h"
 #include "helper/Firewall.h"
 #include "helper/Polkit.h"
+#include "helper/PortBinding.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -27,6 +28,7 @@ constexpr auto kRemoveAction = "dev.podstack.helper.remove-packages";
 constexpr auto kOpenPortsAction = "dev.podstack.helper.open-ports";
 constexpr auto kClosePortsAction = "dev.podstack.helper.close-ports";
 constexpr auto kDnsZoneAction = "dev.podstack.helper.dns-zone";
+constexpr auto kBindPortsAction = "dev.podstack.helper.bind-ports";
 
 const QStringList &installAllowlist()
 {
@@ -368,6 +370,100 @@ bool HelperService::avahiActive() const
     return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
 }
 
+QString HelperService::systemUnitDirectory() const
+{
+    return QStringLiteral("/etc/systemd/system");
+}
+
+bool HelperService::runSystemctl(const QStringList &arguments, QString *error) const
+{
+    const QString failure = runProcess(QStringLiteral("systemctl"), arguments, 15000);
+    if (!failure.isEmpty()) {
+        if (error) {
+            *error = failure;
+        }
+        return false;
+    }
+    if (error) {
+        error->clear();
+    }
+    return true;
+}
+
+QVariantMap HelperService::changePortBindings(const QStringList &ports, const QString &httpTarget,
+                                              const QString &httpsTarget, bool bind)
+{
+    QString validationError;
+    if (!PortBinding::validatePorts(ports, &validationError)) {
+        return result(false, validationError);
+    }
+    if (bind) {
+        for (const QString &port : ports) {
+            const QString target =
+                port == QString::fromLatin1(PortBinding::kHttpPort) ? httpTarget : httpsTarget;
+            if (!PortBinding::validateTarget(target, &validationError)) {
+                return result(false, validationError);
+            }
+        }
+    }
+
+    QString error;
+    if (!authorize(QString::fromLatin1(kBindPortsAction), &error)) {
+        qCWarning(lcHelper, "%s uid=%u ports=%s result=denied", bind ? "BindPorts" : "UnbindPorts",
+                  callerUid(), qUtf8Printable(ports.join(QLatin1Char(','))));
+        return result(false, error);
+    }
+
+    const QString directory = systemUnitDirectory();
+    if (bind) {
+        QString writeError;
+        if (!PortBinding::install(directory, ports, httpTarget, httpsTarget, &writeError)) {
+            qCWarning(lcHelper, "BindPorts uid=%u ports=%s result=error", callerUid(),
+                      qUtf8Printable(ports.join(QLatin1Char(','))));
+            return result(false, writeError);
+        }
+        if (!runSystemctl({QStringLiteral("daemon-reload")}, &error)) {
+            return result(false, error);
+        }
+        for (const QString &port : ports) {
+            if (!runSystemctl({QStringLiteral("enable"), QStringLiteral("--now"),
+                               PortBinding::socketUnitName(port)},
+                              &error)) {
+                qCWarning(lcHelper, "BindPorts uid=%u port=%s result=enable-error", callerUid(),
+                          qUtf8Printable(port));
+                return result(false, error);
+            }
+        }
+        qCInfo(lcHelper, "BindPorts uid=%u ports=%s result=ok", callerUid(),
+               qUtf8Printable(ports.join(QLatin1Char(','))));
+        return result(true, QStringLiteral("Socket activation ativa nas portas: %1.")
+                                .arg(ports.join(QStringLiteral(", "))));
+    }
+
+    for (const QString &port : ports) {
+        QString ignored;
+        if (!runSystemctl({QStringLiteral("disable"), QStringLiteral("--now"),
+                           PortBinding::socketUnitName(port)},
+                          &ignored)) {
+            qCDebug(lcHelper, "UnbindPorts: %s não estava ativa: %s", qUtf8Printable(port),
+                    qUtf8Printable(ignored));
+        }
+    }
+    QString removeError;
+    if (!PortBinding::remove(directory, ports, &removeError)) {
+        qCWarning(lcHelper, "UnbindPorts uid=%u ports=%s result=error", callerUid(),
+                  qUtf8Printable(ports.join(QLatin1Char(','))));
+        return result(false, removeError);
+    }
+    if (!runSystemctl({QStringLiteral("daemon-reload")}, &error)) {
+        return result(false, error);
+    }
+    qCInfo(lcHelper, "UnbindPorts uid=%u ports=%s result=ok", callerUid(),
+           qUtf8Printable(ports.join(QLatin1Char(','))));
+    return result(true, QStringLiteral("Socket activation removida das portas: %1.")
+                            .arg(ports.join(QStringLiteral(", "))));
+}
+
 QVariantMap HelperService::changeDnsZone(const QString &zone, const QString &upstream,
                                          bool installZone)
 {
@@ -434,6 +530,17 @@ QVariantMap HelperService::InstallDnsZone(const QString &zone, const QString &up
 QVariantMap HelperService::RemoveDnsZone(const QString &zone)
 {
     return changeDnsZone(zone, QString(), false);
+}
+
+QVariantMap HelperService::BindPorts(const QStringList &ports, const QString &httpTarget,
+                                     const QString &httpsTarget)
+{
+    return changePortBindings(ports, httpTarget, httpsTarget, true);
+}
+
+QVariantMap HelperService::UnbindPorts(const QStringList &ports)
+{
+    return changePortBindings(ports, QString(), QString(), false);
 }
 
 } // namespace PodStack

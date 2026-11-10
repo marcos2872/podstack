@@ -169,22 +169,22 @@
 | T6-02 | P0 | Página de índice de serviços | T6-01 | ✅ — `http://localhost:<network.httpPort>/` responde **200** com a lista de containers que publicam porta TCP (nome, estado, porta e URL `http://<nome>.localhost:<porta>/`), ordenada por nome; container desconhecido ou sem porta responde **404 com a mesma lista**, host inválido continua 404 sem expor o índice; só `GET`/`HEAD` (demais métodos → 405 com `Allow: GET, HEAD`); conteúdo escapado em HTML. Evidência: `test_http_proxy` (20 casos, 5 novos), `ctest` 15/15. |
 | T6-03 | P1 | Detecção automática de porta + cache | T6-01 | ✅ — com **1 porta TCP publicada**, usa direto sem probe; com várias, faz probe concorrente (`HEAD /`, `User-Agent: PodStack-Server-Detection`, 300 ms) e escolhe a que responde HTTP, preferindo 80/8080/3000/5000/8000/8081/8888/443/8443; se nenhuma responde, cai na primeira publicada. Cache em memória por id do container + digest de `image`+portas (64 entradas/10 min), reutilizado entre conexões e invalidado ao recriar/mudar as portas. Labels ficam na T6-08 e HTTPS de backend na T6-06. Evidência: `test_http_proxy` (26 casos, 6 novos), `ctest` 15/15. |
 | T6-04 | P1 | Helper: DNS userspace + drop-in resolved | T6-01 | ✅ — `DnsServer` escuta em `127.0.0.1:5353` (UDP + TCP quando possível) e responde A/AAAA com 127.0.0.1/::1 para `podstack.local` e subdomínios, NXDOMAIN fora da zona e NOERROR sem resposta para tipos não suportados. O helper ganhou `InstallDnsZone`/`RemoveDnsZone` com allowlist fixa (`podstack.local`, `127.0.0.1:5353`), escrita atômica de `/etc/systemd/resolved.conf.d/podstack.conf`, backup `.bak`, reload via `systemctl`/`resolvectl` e aviso quando o Avahi está ativo; policy `dev.podstack.helper.dns-zone`. Evidência: `test_dns` (9 casos), `test_setup` (3 novos: backup/remoção, allowlist e instalação com hooks fake), `ctest` 16/16; E2E local com `podstackd` respondendo `A web.podstack.local → 127.0.0.1` na 5353 mesmo com o `kdeconnectd` no mDNS (bind compartilhado). RPC `proxy.dns.*`/toggle de settings ficam para a fiação do setup (T7). |
-| T6-05 | P1 | Helper: socket activation :80/:443 | T6-04 | Sem porta no browser |
+| T6-05 | P1 | Helper: socket activation :80/:443 | T6-04 | ✅ — `BindPorts`/`UnbindPorts` no helper geram `podstack-http.socket`/`podstack-https.socket` (`ListenStream=80/443`) e serviços `systemd-socket-proxyd` apontando para `127.0.0.1:<httpPort|httpsPort>`; allowlist fixa (80/443 e alvo loopback), escrita atômica com backup, `daemon-reload` + `enable/disable --now`, remoção idempotente e policy `dev.podstack.helper.bind-ports`. Evidência: `test_setup` (32 casos, 3 novos: unidades/validação e helper com runner fake), `ctest` 16/16. O bind real em :80/:443 exige polkit/root e fica para a validação manual/fiação do setup (T7). |
 | T6-06 | P1 | Caddy: CA interna + HTTPS on-the-fly | T6-05 | Certificado válido |
 | T6-07 | P1 | Confiar na CA (host/containers) opt-in | T6-06 | `update-ca-trust` |
 | T6-08 | P1 | Labels `dev.podstack.domains/http-port/https-port` | T6-03 | Overrides |
 | T6-09 | P1 | Exposição LAN de domínios/portas | T6-01 | Acesso externo |
 | T6-10 | P2 | Port forwarding de portas não publicadas | T6-04 | Via router/helper |
 
-**Status (2026-11-10): M6 com T6-01..T6-04 implementadas.** O proxy HTTP de
+**Status (2026-11-10): M6 com T6-01..T6-05 implementadas.** O proxy HTTP de
 entrada vive no daemon (`HttpProxy`), escuta apenas em loopback e mapeia
 `<nome>.localhost` para a porta TCP publicada do container `<nome>`; não há
 dependência de root, `/etc/hosts` ou DNS. `http://localhost:<porta>/` lista os
 serviços publicados, o 404 de container desconhecido reaproveita a lista, e a
 porta HTTP é detectada (com cache) quando o container publica mais de uma. O
-`DnsServer` responde `*.podstack.local` na 5353 e o helper instala o drop-in do
-resolved com polkit. A próxima tarefa é a socket activation de :80/:443
-(T6-05).
+`DnsServer` responde `*.podstack.local` na 5353, o helper instala o drop-in do
+resolved e gera a socket activation de :80/:443. A próxima tarefa é o
+Caddy/HTTPS (T6-06).
 
 **Saída M6:** G4 completo.
 

@@ -722,6 +722,25 @@ Domains=~podstack.local
   `meta.json`+SQLite antes do restart.
 - Detectar serviços no guest via `ss`/`netstat` (opcional) e sugerir.
 
+### 11.6 Portas 80/443 (socket activation)
+
+- O helper instala unidades systemd de sistema `podstack-http.socket` e/ou
+  `podstack-https.socket` (`ListenStream=80`/`443`) mais serviços
+  `systemd-socket-proxyd` que encaminham para `127.0.0.1:<httpPort|httpsPort>`
+  (default 8080/8443). Com isso o browser acessa `http://nome.localhost/` sem
+  porta.
+- Portas e alvos são allowlisted: apenas 80/443 e apenas `127.0.0.1:<porta>`.
+- `BindPorts`/`UnbindPorts` exigem polkit; a remoção é idempotente e apaga
+  socket + service + backup.
+
+**Critérios:**
+
+- [x] Unidades geradas com `ListenStream` correto e alvo loopback validado.
+- [x] Porta/alvo fora da allowlist é recusado antes da autorização.
+- [x] `BindPorts`/`UnbindPorts` idempotentes (teste com runner fake).
+- [ ] Bind real em :80/:443 com polkit e acesso `http://nome.localhost/` sem
+  porta (validação manual com root; fiação pelo setup em T7).
+
 ---
 
 ## 12. Settings

@@ -134,6 +134,7 @@ add_executable(podstack-helper
     src/helper/main.cpp
     src/helper/HelperService.cpp
     src/helper/DnsZone.cpp
+    src/helper/PortBinding.cpp
     src/helper/Firewall.cpp
     src/helper/Polkit.cpp
 )
