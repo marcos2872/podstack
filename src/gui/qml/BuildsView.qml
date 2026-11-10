@@ -10,6 +10,8 @@ ColumnLayout {
 
     property bool compact: false
 
+    SelectionState { id: buildSelection }
+
     readonly property bool hasPlatforms: {
         for (let i = 0; i < backend.builds.length; ++i) {
             const build = backend.builds[i]
@@ -52,7 +54,25 @@ ColumnLayout {
             }
         }
 
+        Text {
+            visible: buildSelection.count > 0
+            text: buildSelection.count + qsTr(" selecionados")
+            color: Theme.indigo400
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMeta
+        }
+
         ActionButton {
+            visible: buildSelection.count > 0 && !backend.buildActive
+            text: qsTr("Remover")
+            variant: "danger"
+            iconName: "trash"
+            onClicked: backend.batchBuilds(buildSelection.ids())
+            Accessible.name: qsTr("Remover builds selecionados")
+        }
+
+        ActionButton {
+            visible: buildSelection.count === 0 || backend.buildActive
             text: backend.buildActive ? qsTr("Cancelar") : qsTr("Remover")
             variant: backend.buildActive ? "secondary" : "danger"
             enabled: backend.buildActive || buildsList.currentRow >= 0
@@ -90,6 +110,8 @@ ColumnLayout {
             emptyText: qsTr("Nenhum build registrado.\n"
                             + "Inicie um build informando contexto, Dockerfile e tag.")
             items: backend.builds
+            selection: buildSelection
+            idKey: "id"
             columns: {
                 const base = [
                     { key: "imageRef", label: "IMAGEM", width: 0 },

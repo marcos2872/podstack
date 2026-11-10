@@ -24,6 +24,8 @@ ColumnLayout {
 
     spacing: 0
 
+    SelectionState { id: volumeSelection }
+
     ViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: 22
@@ -69,7 +71,25 @@ ColumnLayout {
             onClicked: pruneDialog.open()
         }
 
+        Text {
+            visible: volumeSelection.count > 0
+            text: volumeSelection.count + qsTr(" selecionados")
+            color: Theme.indigo400
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMeta
+        }
+
         ActionButton {
+            visible: volumeSelection.count > 0
+            text: qsTr("Remover")
+            variant: "danger"
+            iconName: "trash"
+            onClicked: backend.batchVolumes(volumeSelection.ids(), false)
+            Accessible.name: qsTr("Remover volumes selecionados")
+        }
+
+        ActionButton {
+            visible: volumeSelection.count === 0
             text: qsTr("Remover")
             variant: "danger"
             enabled: volumesList.currentRow >= 0
@@ -94,6 +114,8 @@ ColumnLayout {
         emptyIcon: "volumes"
             emptyText: qsTr("Nenhum volume.\nCrie um volume para persistir dados.")
         items: backend.volumes
+        selection: volumeSelection
+        idKey: "name"
         columns: [
             { key: "name", label: "NAME", width: 0 },
             { key: "driver", label: "DRIVER", width: 80 },

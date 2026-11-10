@@ -52,6 +52,7 @@ private slots:
     void backendErrors();
     void backendInvalidArguments();
     void backendOperations();
+    void backendBatchActions();
     void backendTheme();
     void backendSettings();
     void backendProxy();
@@ -1297,6 +1298,50 @@ void GuiTest::backendOperations()
 
     // Dá tempo para os jobs assíncronos concluírem antes de destruir o Backend.
     QTest::qWait(1500);
+}
+
+void GuiTest::backendBatchActions()
+{
+    PodStack::Backend backend;
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    backend.batchPods({QStringLiteral("missing")}, QStringLiteral("bogus"));
+    QVERIFY(!backend.lastError().isEmpty());
+
+    backend.batchImages({QStringLiteral("missing-image")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() >= 1, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QVERIFY(!backend.lastError().isEmpty());
+
+    const int beforeVolumes = actionSpy.count();
+    backend.batchVolumes({QStringLiteral("missing-volume")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeVolumes, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforeNetworks = actionSpy.count();
+    backend.batchNetworks({QStringLiteral("missing-network")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeNetworks, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforePods = actionSpy.count();
+    backend.batchPods({QStringLiteral("missing-pod")}, QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforePods, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforeMachines = actionSpy.count();
+    backend.batchMachines({QStringLiteral("missing-machine")}, QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeMachines, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforeBuilds = actionSpy.count();
+    backend.batchBuilds({QStringLiteral("missing-build")});
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeBuilds, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforeCompose = actionSpy.count();
+    backend.batchCompose({QStringLiteral("/tmp/mock-project")}, QStringLiteral("up"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeCompose, 10000);
+    QVERIFY2(actionSpy.last().at(0).toBool(), qPrintable(actionSpy.last().at(1).toString()));
 }
 
 void GuiTest::backendTheme()

@@ -96,6 +96,38 @@ void appendHistory(QVariantList &list, double value)
     }
 }
 
+QJsonObject runBatchResource(const QString &prefix, const QString &idKey, const QString &action,
+                             const QStringList &ids, bool force, const QJsonObject &extra)
+{
+    RpcClient client;
+    int failed = 0;
+    QJsonObject lastError;
+
+    for (const QString &id : ids) {
+        Error error;
+        QJsonObject params = extra;
+        params.insert(idKey, id);
+        if (force) {
+            params.insert(QStringLiteral("force"), true);
+        }
+        client.call(prefix + action, params, &error);
+        if (!error.isEmpty()) {
+            ++failed;
+            lastError = error.toJson();
+        }
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("count"), ids.size());
+    result.insert(QStringLiteral("failed"), failed);
+    if (failed > 0) {
+        result.insert(QStringLiteral("error"), lastError);
+    } else {
+        result.insert(QStringLiteral("ok"), true);
+    }
+    return result;
+}
+
 QJsonObject runBatchAction(const QString &action, const QStringList &ids)
 {
     RpcClient client;
@@ -2357,6 +2389,101 @@ void Backend::batchIds(const QStringList &ids, const QString &action)
     startAction(pending);
 }
 
+void Backend::batchResource(const QString &prefix, const QString &idKey, const QString &action,
+                            const QStringList &ids, bool force, const QJsonObject &extra,
+                            int timeoutMs)
+{
+    if (ids.isEmpty()) {
+        return;
+    }
+    const PendingAction pending{
+        QStringLiteral("__batch_resource__"),
+        QJsonObject{{QStringLiteral("prefix"), prefix},
+                    {QStringLiteral("idKey"), idKey},
+                    {QStringLiteral("action"), action},
+                    {QStringLiteral("ids"), QJsonArray::fromStringList(ids)},
+                    {QStringLiteral("force"), force},
+                    {QStringLiteral("extra"), extra}},
+        timeoutMs,
+    };
+    if (m_actionActive) {
+        enqueueAction(pending);
+        return;
+    }
+    startAction(pending);
+}
+
+void Backend::batchImages(const QStringList &ids, bool force)
+{
+    batchResource(QStringLiteral("images."), QStringLiteral("id"), QStringLiteral("remove"), ids,
+                  force, {}, 120000);
+}
+
+void Backend::batchVolumes(const QStringList &names, bool force)
+{
+    batchResource(QStringLiteral("volumes."), QStringLiteral("name"), QStringLiteral("remove"),
+                  names, force, {}, 120000);
+}
+
+void Backend::batchNetworks(const QStringList &names, bool force)
+{
+    batchResource(QStringLiteral("networks."), QStringLiteral("name"), QStringLiteral("remove"),
+                  names, force, {}, 120000);
+}
+
+void Backend::batchPods(const QStringList &ids, const QString &action, bool force)
+{
+    if (action != QStringLiteral("start") && action != QStringLiteral("stop") &&
+        action != QStringLiteral("restart") && action != QStringLiteral("remove")) {
+        m_lastError = QStringLiteral("Ação de lote inválida.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+    batchResource(QStringLiteral("pods."), QStringLiteral("id"), action, ids, force, {}, 120000);
+}
+
+void Backend::batchMachines(const QStringList &ids, const QString &action, bool force)
+{
+    if (action != QStringLiteral("start") && action != QStringLiteral("stop") &&
+        action != QStringLiteral("restart") && action != QStringLiteral("delete")) {
+        m_lastError = QStringLiteral("Ação de lote inválida.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+    batchResource(QStringLiteral("machines."), QStringLiteral("id"), action, ids, force, {},
+                  600000);
+}
+
+void Backend::batchCompose(const QStringList &projectPaths, const QString &action)
+{
+    if (action != QStringLiteral("up") && action != QStringLiteral("down") &&
+        action != QStringLiteral("restart") && action != QStringLiteral("stop") &&
+        action != QStringLiteral("start")) {
+        m_lastError = QStringLiteral("Ação de lote inválida.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+    QJsonObject extra;
+    if (action == QStringLiteral("up")) {
+        extra.insert(QStringLiteral("detach"), true);
+    } else if (action == QStringLiteral("down")) {
+        extra.insert(QStringLiteral("volumes"), false);
+    } else {
+        extra.insert(QStringLiteral("service"), QString());
+    }
+    batchResource(QStringLiteral("compose."), QStringLiteral("projectPath"), action, projectPaths,
+                  false, extra, 600000);
+}
+
+void Backend::batchBuilds(const QStringList &ids)
+{
+    batchResource(QStringLiteral("builds."), QStringLiteral("id"), QStringLiteral("remove"), ids,
+                  false, {}, 120000);
+}
+
 void Backend::uploadFile(const QString &id, const QString &path, const QString &sourcePath)
 {
     if (id.isEmpty() || path.isEmpty() || sourcePath.isEmpty()) {
@@ -3525,6 +3652,23 @@ void Backend::startAction(const PendingAction &action)
         return;
     }
 
+    if (action.method == QStringLiteral("__batch_resource__")) {
+        const QString prefix = action.params.value(QStringLiteral("prefix")).toString();
+        const QString idKey = action.params.value(QStringLiteral("idKey")).toString();
+        const QString batchAction = action.params.value(QStringLiteral("action")).toString();
+        const QJsonArray array = action.params.value(QStringLiteral("ids")).toArray();
+        const bool force = action.params.value(QStringLiteral("force")).toBool();
+        const QJsonObject extra = action.params.value(QStringLiteral("extra")).toObject();
+        QStringList ids;
+        ids.reserve(array.size());
+        for (const QJsonValue &value : array) {
+            ids.append(value.toString());
+        }
+        m_actionWatcher.setFuture(
+            QtConcurrent::run(runBatchResource, prefix, idKey, batchAction, ids, force, extra));
+        return;
+    }
+
     m_actionWatcher.setFuture(QtConcurrent::run([action] {
         RpcClient client;
         Error error;
@@ -3577,6 +3721,17 @@ void Backend::onActionFinished()
         emit actionFinished(true, {});
         refresh();
         refreshCatalog();
+    }
+
+    if (m_activeActionMethod == QStringLiteral("__batch_resource__")) {
+        const QString prefix = m_activeActionParams.value(QStringLiteral("prefix")).toString();
+        if (prefix == QStringLiteral("machines.")) {
+            refreshMachines();
+        } else if (prefix == QStringLiteral("compose.")) {
+            refreshCompose();
+        } else if (prefix == QStringLiteral("builds.")) {
+            refreshBuilds();
+        }
     }
 
     if (m_activeActionMethod.startsWith(QStringLiteral("machines."))) {

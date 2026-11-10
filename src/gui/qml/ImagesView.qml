@@ -42,6 +42,8 @@ ColumnLayout {
 
     spacing: 0
 
+    SelectionState { id: imageSelection }
+
     ViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: 22
@@ -110,7 +112,25 @@ ColumnLayout {
             }
         }
 
+        Text {
+            visible: imageSelection.count > 0
+            text: imageSelection.count + qsTr(" selecionadas")
+            color: Theme.indigo400
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMeta
+        }
+
         ActionButton {
+            visible: imageSelection.count > 0
+            text: qsTr("Remover")
+            variant: "danger"
+            iconName: "trash"
+            onClicked: backend.batchImages(imageSelection.ids(), false)
+            Accessible.name: qsTr("Remover imagens selecionadas")
+        }
+
+        ActionButton {
+            visible: imageSelection.count === 0
             text: qsTr("Remover")
             variant: "danger"
             enabled: imagesList.currentRow >= 0
@@ -135,6 +155,8 @@ ColumnLayout {
         emptyIcon: "images"
             emptyText: qsTr("Nenhuma imagem.\nUse Pull para baixar uma imagem.")
         items: backend.images
+        selection: imageSelection
+        idKey: "id"
         columns: [
             { key: "name", label: "REPOSITORY:TAG", width: 0 },
             { key: "digest", label: "DIGEST", width: 150, mono: true },

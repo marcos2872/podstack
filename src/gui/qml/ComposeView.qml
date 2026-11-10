@@ -10,6 +10,8 @@ ColumnLayout {
 
     property bool compact: false
 
+    SelectionState { id: composeSelection }
+
     function openProject(project, service, logs) {
         for (let i = 0; i < backend.composeProjects.length; ++i) {
             if (backend.composeProjects[i].name === project) {
@@ -56,7 +58,36 @@ ColumnLayout {
         Layout.bottomMargin: 14
         spacing: 7
 
+        Text {
+            visible: composeSelection.count > 0
+            text: composeSelection.count + qsTr(" selecionados")
+            color: Theme.indigo400
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMeta
+        }
+
         ActionButton {
+            visible: composeSelection.count > 0
+            text: qsTr("Up")
+            iconName: "play"
+            onClicked: backend.batchCompose(composeSelection.ids(), "up")
+        }
+
+        ActionButton {
+            visible: composeSelection.count > 0
+            text: qsTr("Down")
+            iconName: "stop"
+            onClicked: backend.batchCompose(composeSelection.ids(), "down")
+        }
+
+        ActionButton {
+            visible: composeSelection.count > 0
+            text: qsTr("Restart")
+            onClicked: backend.batchCompose(composeSelection.ids(), "restart")
+        }
+
+        ActionButton {
+            visible: composeSelection.count === 0
             text: qsTr("Up")
             enabled: composeList.currentRow >= 0
             onClicked: backend.composeUp(
@@ -64,12 +95,14 @@ ColumnLayout {
         }
 
         ActionButton {
+            visible: composeSelection.count === 0
             text: qsTr("Down")
             enabled: composeList.currentRow >= 0
             onClicked: downDialog.open()
         }
 
         ActionButton {
+            visible: composeSelection.count === 0
             text: qsTr("Restart")
             enabled: composeList.currentRow >= 0
             onClicked: backend.composeRestart(
@@ -115,6 +148,8 @@ ColumnLayout {
             emptyText: qsTr("Nenhum projeto Compose em execução.\n"
                             + "Use a CLI: podstack compose up <diretório>.")
             items: backend.composeProjects
+            selection: composeSelection
+            idKey: "workingDir"
             columns: [
                 { key: "name", label: "PROJETO", width: 0 },
                 { key: "status", label: "STATUS", width: compact ? 58 : 80 },

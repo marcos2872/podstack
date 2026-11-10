@@ -321,6 +321,14 @@ public:
     Q_INVOKABLE void exposeContainerLan(const QString &id, bool expose);
     Q_INVOKABLE void batchAll(const QString &action);
     Q_INVOKABLE void batchIds(const QStringList &ids, const QString &action);
+    Q_INVOKABLE void batchImages(const QStringList &ids, bool force = false);
+    Q_INVOKABLE void batchVolumes(const QStringList &names, bool force = false);
+    Q_INVOKABLE void batchNetworks(const QStringList &names, bool force = false);
+    Q_INVOKABLE void batchPods(const QStringList &ids, const QString &action, bool force = false);
+    Q_INVOKABLE void batchMachines(const QStringList &ids, const QString &action,
+                                   bool force = false);
+    Q_INVOKABLE void batchCompose(const QStringList &projectPaths, const QString &action);
+    Q_INVOKABLE void batchBuilds(const QStringList &ids);
     Q_INVOKABLE void renameContainer(const QString &id, const QString &name);
     Q_INVOKABLE void duplicateContainer(const QString &id);
     Q_INVOKABLE void subscribeLogs(const QString &id, int tail, bool follow);
@@ -429,6 +437,8 @@ private:
     void startNextCatalog();
     void runAction(const QString &method, const QJsonObject &params,
                    int timeoutMs = 30000);
+    void batchResource(const QString &prefix, const QString &idKey, const QString &action,
+                       const QStringList &ids, bool force, const QJsonObject &extra, int timeoutMs);
 
     struct PendingAction {
         QString method;

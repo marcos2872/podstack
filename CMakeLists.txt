@@ -208,6 +208,7 @@ qt_add_qml_module(podstack_qml
         src/gui/qml/ContainerDetail.qml
         src/gui/qml/FilesView.qml
         src/gui/qml/CatalogList.qml
+        src/gui/qml/SelectionState.qml
         src/gui/qml/ContainersPage.qml
         src/gui/qml/ImagesView.qml
         src/gui/qml/VolumesView.qml
