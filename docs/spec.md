@@ -639,12 +639,15 @@ Host <name>.podstack <name>
 - A conexão é fechada após a resposta (`Connection: close`) e o proxy adiciona
   `X-Forwarded-For`, `X-Forwarded-Proto` e `X-Forwarded-Host`.
 - Fallback: porta publicada + `localhost:<porta>`.
+- `http://localhost:<network.httpPort>/` serve a **página de índice** com os
+  containers que publicam porta TCP: nome, estado, porta publicada e URL
+  `http://<nome>.localhost:<porta>/`. Acesso por `GET`/`HEAD`; os demais
+  métodos recebem 405.
 
 **Critérios:**
 
 - [x] `curl http://nome.localhost:8080` retorna o serviço.
-- [ ] Nome inexistente retorna 404 com página de índice. *(o 404 HTML já
-  existe; a página de índice com a lista de serviços é a T6-02.)*
+- [x] Nome inexistente retorna 404 com página de índice.
 - [x] Funciona sem root e sem alterar `/etc/hosts`.
 
 Detecção automática de porta + cache ficam na T6-03; HTTPS em T6-06.

@@ -11,6 +11,8 @@
 #include <QTcpSocket>
 #include <QTimer>
 
+#include <algorithm>
+
 namespace PodStack {
 namespace {
 
@@ -31,6 +33,8 @@ QByteArray reasonPhrase(int status)
         return QByteArrayLiteral("Bad Request");
     case 404:
         return QByteArrayLiteral("Not Found");
+    case 405:
+        return QByteArrayLiteral("Method Not Allowed");
     case 431:
         return QByteArrayLiteral("Request Header Fields Too Large");
     case 502:
@@ -42,14 +46,120 @@ QByteArray reasonPhrase(int status)
     }
 }
 
-QByteArray errorBody(const QString &title, const QString &detail)
+QByteArray htmlDocument(const QString &title, const QString &content)
 {
     const QString html =
         QStringLiteral("<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\">"
-                       "<title>%1 — PodStack</title></head><body><h1>%1</h1><p>%2</p>"
-                       "<p>PodStack · proxy local</p></body></html>")
-            .arg(title.toHtmlEscaped(), detail.toHtmlEscaped());
+                       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+                       "<title>%1 — PodStack</title><style>"
+                       "body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:48rem;"
+                       "padding:0 1rem;color:#1f2937;background:#fafafa}"
+                       "h1{font-size:1.5rem;margin-bottom:.25rem}"
+                       "p{color:#4b5563}"
+                       "table{width:100%;border-collapse:collapse;margin-top:1rem}"
+                       "th,td{text-align:left;padding:.5rem;border-bottom:1px solid #e5e7eb}"
+                       "th{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;"
+                       "color:#6b7280}"
+                       "code{background:#eef2ff;padding:.15rem .35rem;border-radius:.25rem}"
+                       "footer{margin-top:2rem;font-size:.8rem;color:#9ca3af}"
+                       "</style></head><body>%2"
+                       "<footer>PodStack · proxy local</footer></body></html>")
+            .arg(title.toHtmlEscaped(), content);
     return html.toUtf8();
+}
+
+QByteArray errorBody(const QString &title, const QString &detail)
+{
+    const QString content =
+        QStringLiteral("<h1>%1</h1><p>%2</p>").arg(title.toHtmlEscaped(), detail.toHtmlEscaped());
+    return htmlDocument(title, content);
+}
+
+bool isValidLabel(const QString &label)
+{
+    static const QRegularExpression validLabel(
+        QStringLiteral("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"));
+    return validLabel.match(label).hasMatch();
+}
+
+/// Página de índice de serviços: lista os containers com porta TCP publicada e
+/// o endereço `http://<nome>.localhost:<porta do proxy>/` de cada um.
+QByteArray indexBody(const QVector<ContainerInfo> &containers, quint16 proxyPort,
+                     const QString &title, const QString &detail)
+{
+    QVector<const ContainerInfo *> entries;
+    for (const ContainerInfo &container : containers) {
+        QString host;
+        quint16 port = 0;
+        if (HttpProxy::publishedPort(container, &host, &port)) {
+            entries.append(&container);
+        }
+    }
+    std::sort(entries.begin(), entries.end(), [](const ContainerInfo *a, const ContainerInfo *b) {
+        return a->name.compare(b->name, Qt::CaseInsensitive) < 0;
+    });
+
+    QString content = QStringLiteral("<h1>%1</h1>").arg(title.toHtmlEscaped());
+    if (!detail.isEmpty()) {
+        content += QStringLiteral("<p>%1</p>").arg(detail.toHtmlEscaped());
+    }
+
+    if (entries.isEmpty()) {
+        content += QStringLiteral("<p>Nenhum container com porta TCP publicada.</p>");
+        return htmlDocument(title, content);
+    }
+
+    content += QStringLiteral(
+        "<table><thead><tr><th>Serviço</th><th>Estado</th><th>Porta</th><th>URL</th></tr>"
+        "</thead><tbody>");
+    for (const ContainerInfo *entry : entries) {
+        QString host;
+        quint16 port = 0;
+        HttpProxy::publishedPort(*entry, &host, &port);
+
+        const QString state =
+            entry->state.isEmpty() ? QStringLiteral("—") : entry->state.toHtmlEscaped();
+        const QString lowerName = entry->name.toLower();
+        QString url;
+        if (entry->name == lowerName && isValidLabel(lowerName)) {
+            const QString text =
+                QStringLiteral("http://%1.localhost:%2/").arg(lowerName).arg(proxyPort);
+            url = QStringLiteral("<a href=\"%1\"><code>%1</code></a>").arg(text.toHtmlEscaped());
+        } else {
+            url = QStringLiteral("<span>nome incompatível com Host</span>");
+        }
+        content += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>")
+                       .arg(entry->name.toHtmlEscaped(), state, QString::number(port), url);
+    }
+    content += QStringLiteral("</tbody></table>");
+    content += QStringLiteral("<p>Também é possível acessar cada serviço pela porta publicada: "
+                              "<code>http://localhost:&lt;porta&gt;/</code>.</p>");
+    return htmlDocument(title, content);
+}
+
+/// Remove a porta opcional de `Host` e valida o valor (sem IPv6 literal).
+bool splitHost(const QByteArray &hostHeader, QString *host)
+{
+    QString value = QString::fromLatin1(hostHeader).trimmed().toLower();
+    if (value.isEmpty() || value.startsWith(QLatin1Char('['))) {
+        return false;
+    }
+
+    const int colon = value.lastIndexOf(QLatin1Char(':'));
+    if (colon >= 0) {
+        const QString port = value.mid(colon + 1);
+        bool ok = false;
+        const uint number = port.toUInt(&ok);
+        if (!ok || number < 1 || number > 65535) {
+            return false;
+        }
+        value.truncate(colon);
+    }
+
+    if (host) {
+        *host = value;
+    }
+    return true;
 }
 
 bool parseRequest(const QByteArray &head, RequestHead *request)
@@ -125,10 +235,11 @@ QByteArray buildRequest(const RequestHead &request, const QString &clientAddress
 
 class ProxyConnection : public QObject {
 public:
-    ProxyConnection(QTcpSocket *client, HttpProxy::ContainerProvider provider, int connectTimeoutMs,
-                    int idleTimeoutMs, QObject *parent)
+    ProxyConnection(QTcpSocket *client, HttpProxy::ContainerProvider provider, quint16 proxyPort,
+                    int connectTimeoutMs, int idleTimeoutMs, QObject *parent)
         : QObject(parent), m_client(client), m_provider(std::move(provider)),
-          m_connectTimeoutMs(connectTimeoutMs), m_idleTimeoutMs(idleTimeoutMs)
+          m_proxyPort(proxyPort), m_connectTimeoutMs(connectTimeoutMs),
+          m_idleTimeoutMs(idleTimeoutMs)
     {
         m_client->setParent(this);
         m_connectTimer = new QTimer(this);
@@ -204,6 +315,17 @@ private:
 
     void resolveAndConnect()
     {
+        if (HttpProxy::isIndexHost(m_request.host)) {
+            if (m_request.method != "GET" && m_request.method != "HEAD") {
+                fail(405, QStringLiteral("Método não permitido"),
+                     QStringLiteral("A página de índice aceita apenas GET e HEAD."),
+                     QByteArrayLiteral("Allow: GET, HEAD\r\n"));
+                return;
+            }
+            serveIndex();
+            return;
+        }
+
         QString name;
         if (!HttpProxy::hostName(m_request.host, &name)) {
             fail(404, QStringLiteral("Domínio não encontrado"),
@@ -213,11 +335,7 @@ private:
         }
 
         QVector<ContainerInfo> containers;
-        Error error;
-        if (!m_provider || !m_provider(&containers, &error)) {
-            fail(502, QStringLiteral("Podman indisponível"),
-                 error.message.isEmpty() ? QStringLiteral("Não foi possível listar containers.")
-                                         : error.message);
+        if (!fetchContainers(&containers)) {
             return;
         }
 
@@ -229,19 +347,48 @@ private:
             }
         }
         if (!container) {
-            fail(404, QStringLiteral("Container não encontrado"),
-                 QStringLiteral("Nenhum container chamado \"%1\" está em execução.").arg(name));
+            sendIndex(404, QStringLiteral("Container não encontrado"),
+                      QStringLiteral("Nenhum container chamado \"%1\" está em execução.").arg(name),
+                      containers);
             return;
         }
 
         QString host;
         quint16 port = 0;
         if (!HttpProxy::publishedPort(*container, &host, &port)) {
-            fail(404, QStringLiteral("Sem porta publicada"),
-                 QStringLiteral("O container \"%1\" não publica portas TCP.").arg(name));
+            sendIndex(404, QStringLiteral("Sem porta publicada"),
+                      QStringLiteral("O container \"%1\" não publica portas TCP.").arg(name),
+                      containers);
             return;
         }
         connectBackend(host, port);
+    }
+
+    bool fetchContainers(QVector<ContainerInfo> *containers)
+    {
+        Error error;
+        if (!m_provider || !m_provider(containers, &error)) {
+            fail(502, QStringLiteral("Podman indisponível"),
+                 error.message.isEmpty() ? QStringLiteral("Não foi possível listar containers.")
+                                         : error.message);
+            return false;
+        }
+        return true;
+    }
+
+    void serveIndex()
+    {
+        QVector<ContainerInfo> containers;
+        if (!fetchContainers(&containers)) {
+            return;
+        }
+        sendIndex(200, QStringLiteral("Serviços locais"), QString(), containers);
+    }
+
+    void sendIndex(int status, const QString &title, const QString &detail,
+                   const QVector<ContainerInfo> &containers)
+    {
+        respond(status, indexBody(containers, m_proxyPort, title, detail));
     }
 
     void connectBackend(const QString &host, quint16 port)
@@ -281,7 +428,13 @@ private:
         m_backend->connectToHost(host, port);
     }
 
-    void fail(int status, const QString &title, const QString &detail)
+    void fail(int status, const QString &title, const QString &detail,
+              const QByteArray &extraHeaders = {})
+    {
+        respond(status, errorBody(title, detail), extraHeaders);
+    }
+
+    void respond(int status, const QByteArray &body, const QByteArray &extraHeaders = {})
     {
         if (m_responseSent) {
             return;
@@ -290,13 +443,12 @@ private:
         m_connectTimer->stop();
         m_idleTimer->stop();
 
-        const QByteArray body = errorBody(title, detail);
         QByteArray response = "HTTP/1.1 " + QByteArray::number(status) + ' ' +
                               reasonPhrase(status) +
                               "\r\nContent-Type: text/html; charset=utf-8\r\n"
                               "Content-Length: " +
-                              QByteArray::number(body.size()) +
-                              "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
+                              QByteArray::number(body.size()) + "\r\nCache-Control: no-store\r\n" +
+                              extraHeaders + "Connection: close\r\n\r\n";
         if (!m_headRequest) {
             response += body;
         }
@@ -307,6 +459,7 @@ private:
     QTcpSocket *m_client = nullptr;
     QTcpSocket *m_backend = nullptr;
     HttpProxy::ContainerProvider m_provider;
+    quint16 m_proxyPort = 0;
     int m_connectTimeoutMs = 10000;
     int m_idleTimeoutMs = 60000;
     QTimer *m_connectTimer = nullptr;
@@ -393,26 +546,16 @@ void HttpProxy::accept(QTcpServer *server)
         if (!socket) {
             break;
         }
-        new ProxyConnection(socket, m_provider, m_connectTimeoutMs, m_idleTimeoutMs, this);
+        new ProxyConnection(socket, m_provider, server->serverPort(), m_connectTimeoutMs,
+                            m_idleTimeoutMs, this);
     }
 }
 
 bool HttpProxy::hostName(const QByteArray &hostHeader, QString *name)
 {
-    QString host = QString::fromLatin1(hostHeader).trimmed().toLower();
-    if (host.isEmpty() || host.startsWith(QLatin1Char('['))) {
+    QString host;
+    if (!splitHost(hostHeader, &host)) {
         return false;
-    }
-
-    const int colon = host.lastIndexOf(QLatin1Char(':'));
-    if (colon >= 0) {
-        const QString port = host.mid(colon + 1);
-        bool ok = false;
-        const uint value = port.toUInt(&ok);
-        if (!ok || value < 1 || value > 65535) {
-            return false;
-        }
-        host.truncate(colon);
     }
 
     static const QString suffix = QStringLiteral(".localhost");
@@ -420,19 +563,19 @@ bool HttpProxy::hostName(const QByteArray &hostHeader, QString *name)
         return false;
     }
     const QString label = host.left(host.size() - suffix.size());
-    if (label.isEmpty() || label.contains(QLatin1Char('.'))) {
-        return false;
-    }
-
-    static const QRegularExpression validLabel(
-        QStringLiteral("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"));
-    if (!validLabel.match(label).hasMatch()) {
+    if (label.isEmpty() || label.contains(QLatin1Char('.')) || !isValidLabel(label)) {
         return false;
     }
     if (name) {
         *name = label;
     }
     return true;
+}
+
+bool HttpProxy::isIndexHost(const QByteArray &hostHeader)
+{
+    QString host;
+    return splitHost(hostHeader, &host) && host == QStringLiteral("localhost");
 }
 
 bool HttpProxy::publishedPort(const ContainerInfo &container, QString *host, quint16 *port)

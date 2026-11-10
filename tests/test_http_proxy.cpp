@@ -115,8 +115,12 @@ private slots:
     void listenReportsPortInUse();
     void proxiesGetRequest();
     void forwardsRequestBody();
-    void returns404ForUnknownHost();
+    void servesIndexForLocalhost();
+    void returns404WithIndexForUnknownContainer();
     void returns404ForInvalidHost();
+    void indexRequiresGetOrHead();
+    void headIndexHasNoBody();
+    void indexEscapesContainerContent();
     void returns404WithoutPublishedPort();
     void returns502WhenProviderFails();
     void returns502WhenBackendRefuses();
@@ -145,6 +149,13 @@ void HttpProxyTest::hostNameParsing()
     QVERIFY(!PodStack::HttpProxy::hostName("demo.localhost:0", &name));
     QVERIFY(!PodStack::HttpProxy::hostName(QByteArray(), &name));
     QVERIFY(!PodStack::HttpProxy::hostName("[::1]:8080", &name));
+
+    QVERIFY(PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("localhost")));
+    QVERIFY(PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("LOCALHOST:8080")));
+    QVERIFY(!PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("demo.localhost")));
+    QVERIFY(!PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("localhost:0")));
+    QVERIFY(!PodStack::HttpProxy::isIndexHost(QByteArrayLiteral("localhost:abc")));
+    QVERIFY(!PodStack::HttpProxy::isIndexHost(QByteArray()));
 }
 
 void HttpProxyTest::publishedPortParsing()
@@ -253,15 +264,86 @@ void HttpProxyTest::forwardsRequestBody()
                                                    QByteArray::number(body.size())));
 }
 
-void HttpProxyTest::returns404ForUnknownHost()
+void HttpProxyTest::servesIndexForLocalhost()
 {
-    PodStack::HttpProxy proxy(providerFor(QStringLiteral("demo"), {}));
+    PodStack::HttpProxy proxy(
+        [](QVector<PodStack::ContainerInfo> *containers, PodStack::Error *error) {
+            if (error) {
+                *error = {};
+            }
+            PodStack::ContainerInfo web;
+            web.name = QStringLiteral("web");
+            web.state = QStringLiteral("running");
+            web.ports = {QStringLiteral("9001->80/tcp")};
+            PodStack::ContainerInfo api;
+            api.name = QStringLiteral("api");
+            api.state = QStringLiteral("exited");
+            api.ports = {QStringLiteral("9002->8080/tcp")};
+            containers->append(web);
+            containers->append(api);
+            return true;
+        });
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response = exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
+    QVERIFY(response.contains("Serviços locais"));
+    const QByteArray port = QByteArray::number(proxy.port());
+    QVERIFY(response.contains("http://web.localhost:" + port + "/"));
+    QVERIFY(response.contains("http://api.localhost:" + port + "/"));
+    QVERIFY(response.contains(">9001<"));
+    QVERIFY(response.contains(">9002<"));
+    QVERIFY(response.contains("exited"));
+    QVERIFY(response.indexOf("http://api.localhost") < response.indexOf("http://web.localhost"));
+}
+
+void HttpProxyTest::returns404WithIndexForUnknownContainer()
+{
+    PodStack::HttpProxy proxy(
+        providerFor(QStringLiteral("demo"), {QStringLiteral("9001->80/tcp")}));
     QVERIFY(proxy.listen(0));
 
     const QByteArray response =
         exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: missing.localhost\r\n\r\n");
     QVERIFY(response.startsWith("HTTP/1.1 404"));
     QVERIFY(response.contains("Container não encontrado"));
+    QVERIFY(response.contains("http://demo.localhost:" + QByteArray::number(proxy.port()) + "/"));
+}
+
+void HttpProxyTest::indexRequiresGetOrHead()
+{
+    PodStack::HttpProxy proxy(providerFor(QStringLiteral("demo"), {}));
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response =
+        exchange(proxy.port(), "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 405"));
+    QVERIFY(response.contains("Allow: GET, HEAD"));
+}
+
+void HttpProxyTest::headIndexHasNoBody()
+{
+    PodStack::HttpProxy proxy(providerFor(QStringLiteral("demo"), {}));
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response =
+        exchange(proxy.port(), "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n", 3000, false);
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
+    QVERIFY(response.contains("Content-Length:"));
+    QVERIFY(!response.contains("<html"));
+}
+
+void HttpProxyTest::indexEscapesContainerContent()
+{
+    PodStack::HttpProxy proxy(
+        providerFor(QStringLiteral("bad<script>"), {QStringLiteral("9001->80/tcp")}));
+    QVERIFY(proxy.listen(0));
+
+    const QByteArray response = exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    QVERIFY(response.startsWith("HTTP/1.1 200"));
+    QVERIFY(response.contains("bad&lt;script&gt;"));
+    QVERIFY(!response.contains("bad<script>"));
+    QVERIFY(response.contains("nome incompatível com Host"));
 }
 
 void HttpProxyTest::returns404ForInvalidHost()
@@ -273,6 +355,7 @@ void HttpProxyTest::returns404ForInvalidHost()
         exchange(proxy.port(), "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
     QVERIFY(response.startsWith("HTTP/1.1 404"));
     QVERIFY(response.contains("Domínio não encontrado"));
+    QVERIFY(!response.contains("Serviços locais"));
 }
 
 void HttpProxyTest::returns404WithoutPublishedPort()
