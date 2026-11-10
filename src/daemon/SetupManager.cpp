@@ -323,8 +323,9 @@ QList<SetupCheck> SetupManager::check(bool deep)
     k3sCheck.id = QStringLiteral("k3s");
     const QString k3s = findBinary(QStringLiteral("k3s"), {QStringLiteral("/usr/local/bin/k3s")});
     k3sCheck.status = k3s.isEmpty() ? QStringLiteral("optional") : QStringLiteral("ok");
-    k3sCheck.detail = k3s.isEmpty() ? QStringLiteral("k3s não instalado · Kubernetes opcional")
-                                    : QStringLiteral("k3s instalado · Kubernetes disponível");
+    k3sCheck.detail =
+        k3s.isEmpty() ? QStringLiteral("k3s não instalado no host · cluster roda em VM dedicada")
+                      : QStringLiteral("k3s no host detectado · o PodStack usa uma VM dedicada");
     checks.append(k3sCheck);
 
     return checks;

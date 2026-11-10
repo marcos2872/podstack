@@ -15,7 +15,6 @@ Item {
     property bool jobPanelDismissed: false
     property int step: 0
     property bool installCaddy: false
-    property bool installK3s: false
 
     readonly property var checks: backend.setupChecks
     readonly property bool jobActive: backend.setupJobActive
@@ -666,17 +665,21 @@ Item {
                                 onToggled: setupWindow.installCaddy = checked
                             }
 
-                            FormCheck {
-                                text: qsTr("k3s — Kubernetes em VM (M4)")
-                                checked: setupWindow.installK3s
-                                enabled: false
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("Kubernetes (k3s em VM)")
+                                color: Theme.textPrimary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontBody
+                                font.weight: Font.Medium
                             }
 
                             Text {
                                 Layout.fillWidth: true
                                 visible: true
-                                text: qsTr("O k3s do PodStack roda em uma VM dedicada, não no host; "
-                                           + "por isso ele não é instalado por este assistente.")
+                                text: qsTr("O cluster roda em uma VM dedicada e é habilitado depois, "
+                                           + "na página Kubernetes. A VM e o k3s são criados pelo app; "
+                                           + "nada é instalado no host por este assistente.")
                                 color: Theme.textTertiary
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontMicro
@@ -856,8 +859,7 @@ Item {
                             SummaryItem {
                                 Layout.preferredWidth: 220
                                 label: "k3s"
-                                value: (setupWindow.k3sCheck.detail || "").indexOf("não instalado") >= 0
-                                       ? qsTr("opcional") : qsTr("instalado")
+                                value: qsTr("VM gerenciada no app")
                             }
                         }
 
