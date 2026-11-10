@@ -1589,7 +1589,7 @@ ColumnLayout {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(220, Math.max(44,
-                    backend.machineSnapshots.length * 34 + 8))
+                    backend.machineSnapshots.length * 38 + 8))
                 visible: backend.machineSnapshots.length > 0
                 radius: Theme.radiusSm
                 color: Theme.bgSurface2
@@ -1604,57 +1604,79 @@ ColumnLayout {
                     model: backend.machineSnapshots
                     spacing: 2
 
-                    delegate: RowLayout {
+                    delegate: Item {
                         required property var modelData
 
                         width: snapshotsList.width
-                        spacing: 8
+                        height: 38
 
-                        Text {
-                            Layout.preferredWidth: 140
-                            text: modelData.name
-                            color: Theme.textPrimary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMeta
-                            elide: Text.ElideRight
-                        }
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            spacing: 10
 
-                        Text {
-                            Layout.fillWidth: true
-                            text: modelData.date ? String(modelData.date) : "-"
-                            color: Theme.textTertiary
-                            font.family: Theme.monoFamily
-                            font.pixelSize: Theme.fontMicro
-                            elide: Text.ElideRight
-                        }
+                            Text {
+                                Layout.preferredWidth: 140
+                                Layout.alignment: Qt.AlignVCenter
+                                text: modelData.name
+                                color: Theme.textPrimary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMeta
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
 
-                        Text {
-                            Layout.preferredWidth: 70
-                            text: machinesPage.snapshotSize(modelData.sizeBytes)
-                            color: Theme.textSecondary
-                            font.family: Theme.monoFamily
-                            font.pixelSize: Theme.fontMicro
-                            horizontalAlignment: Text.AlignRight
-                        }
+                            Text {
+                                Layout.preferredWidth: 170
+                                Layout.alignment: Qt.AlignVCenter
+                                text: {
+                                    const date = new Date(modelData.date)
+                                    return isNaN(date.getTime())
+                                           ? String(modelData.date || "-")
+                                           : Qt.formatDateTime(date, "yyyy-MM-dd HH:mm:ss")
+                                }
+                                color: Theme.textTertiary
+                                font.family: Theme.monoFamily
+                                font.pixelSize: Theme.fontMicro
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
 
-                        ActionButton {
-                            text: qsTr("Restaurar")
-                            size: "sm"
-                            variant: "ghost"
-                            enabled: !machinesPage.snapshotActionPending
-                                     && !backend.actionActive
-                            onClicked: machinesPage.requestSnapshotAction("restore",
-                                                                          String(modelData.name))
-                        }
+                            Item { Layout.fillWidth: true }
 
-                        ActionButton {
-                            text: qsTr("Remover")
-                            size: "sm"
-                            variant: "danger"
-                            enabled: !machinesPage.snapshotActionPending
-                                     && !backend.actionActive
-                            onClicked: machinesPage.requestSnapshotAction("remove",
-                                                                          String(modelData.name))
+                            Text {
+                                Layout.preferredWidth: 60
+                                Layout.alignment: Qt.AlignVCenter
+                                text: machinesPage.snapshotSize(modelData.sizeBytes)
+                                color: Theme.textSecondary
+                                font.family: Theme.monoFamily
+                                font.pixelSize: Theme.fontMicro
+                                horizontalAlignment: Text.AlignRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            ActionButton {
+                                text: qsTr("Restaurar")
+                                size: "sm"
+                                variant: "ghost"
+                                Layout.alignment: Qt.AlignVCenter
+                                enabled: !machinesPage.snapshotActionPending
+                                         && !backend.actionActive
+                                onClicked: machinesPage.requestSnapshotAction("restore",
+                                                                              String(modelData.name))
+                            }
+
+                            ActionButton {
+                                text: qsTr("Remover")
+                                size: "sm"
+                                variant: "danger"
+                                Layout.alignment: Qt.AlignVCenter
+                                enabled: !machinesPage.snapshotActionPending
+                                         && !backend.actionActive
+                                onClicked: machinesPage.requestSnapshotAction("remove",
+                                                                              String(modelData.name))
+                            }
                         }
                     }
                 }
@@ -1698,6 +1720,7 @@ ColumnLayout {
 
                     Text {
                         Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
                         text: machinesPage.pendingSnapshotAction === "remove"
                               ? qsTr("Remover o snapshot %1? Esta ação não pode ser desfeita.")
                                     .arg(machinesPage.pendingSnapshotName)
@@ -1713,6 +1736,7 @@ ColumnLayout {
                         text: qsTr("Cancelar")
                         size: "sm"
                         variant: "secondary"
+                        Layout.alignment: Qt.AlignVCenter
                         enabled: !machinesPage.snapshotActionPending
                         onClicked: {
                             machinesPage.pendingSnapshotAction = ""
@@ -1726,6 +1750,7 @@ ColumnLayout {
                         size: "sm"
                         variant: machinesPage.pendingSnapshotAction === "remove"
                                  ? "danger" : "primary"
+                        Layout.alignment: Qt.AlignVCenter
                         enabled: !machinesPage.snapshotActionPending
                         onClicked: machinesPage.confirmSnapshotAction()
                     }
@@ -1739,6 +1764,7 @@ ColumnLayout {
                 FormField {
                     id: snapshotsName
                     Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
                     placeholderText: qsTr("[A-Za-z0-9._-], até 64 caracteres")
                     enabled: !machinesPage.snapshotActionPending
                 }
@@ -1747,9 +1773,11 @@ ColumnLayout {
                     text: qsTr("Criar")
                     size: "sm"
                     variant: "primary"
+                    Layout.alignment: Qt.AlignVCenter
                     enabled: !machinesPage.snapshotActionPending
                              && !backend.actionActive
                              && machinesPage.pendingSnapshotsId.length > 0
+                             && snapshotsName.text.trim().length > 0
                     onClicked: machinesPage.createSnapshot()
                 }
             }
