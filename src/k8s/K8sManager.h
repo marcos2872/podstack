@@ -6,6 +6,7 @@
 #include "k8s/K8sStore.h"
 #include "machines/MachineManager.h"
 
+#include <QJsonArray>
 #include <QString>
 
 #include <atomic>
@@ -56,6 +57,11 @@ public:
     K8sCluster status(Error *error = nullptr);
     K8sCluster status(const QString &clusterName, Error *error = nullptr);
 
+    /// Pods do cluster (namespace vazio = todos), no formato consumido pela GUI/CLI.
+    QJsonArray pods(const QString &namespaceFilter, Error *error = nullptr);
+    /// Services do cluster (namespace vazio = todos).
+    QJsonArray services(const QString &namespaceFilter, Error *error = nullptr);
+
     /// Provisiona a VM (se preciso), instala o k3s e aguarda o node Ready.
     /// Idempotente quando o cluster já está pronto.
     K8sCluster enable(const EnableRequest &request, const Progress &progress,
@@ -67,6 +73,10 @@ private:
     bool waitForNodeReady(const SshInfo &ssh, const Cancelled &cancelled, Error *error);
     bool ensureApiAccess(K8sCluster &cluster, MachineMeta &machine, const SshInfo &ssh,
                          const Cancelled &cancelled, Error *error);
+    bool clusterSsh(SshInfo *ssh, Error *error);
+    bool execRemote(const SshInfo &ssh, const QString &script, const Line &onLine,
+                    const Cancelled &cancelled, int timeoutMs, Error *error) const;
+    QJsonArray kubectlItems(const QString &resource, const QString &namespaceFilter, Error *error);
     int allocateApiPort(Error *error) const;
     void persistState(K8sCluster &cluster, const QString &state, const QString &errorText,
                       bool touchUpdatedAt = true);

@@ -81,6 +81,9 @@ Rectangle {
             { key: "builds", label: "Builds", icon: "builds" },
             { key: "pods", label: "Pods", icon: "pods" }
         ] },
+        { group: "Kubernetes", items: [
+            { key: "kubernetes", label: "Kubernetes", icon: "pods" }
+        ] },
         { group: "Linux", items: [
             { key: "machines", label: "Machines", icon: "machines" },
             { key: "devices", label: "Devices", icon: "devices", disabled: true }
@@ -128,6 +131,9 @@ Rectangle {
         if (key === "machines") {
             return backend.machines.length
         }
+        if (key === "kubernetes") {
+            return backend.k8sPods.length + backend.k8sServices.length
+        }
         return -1
     }
 
@@ -153,6 +159,9 @@ Rectangle {
         if (key === "machines") {
             return 7
         }
+        if (key === "kubernetes") {
+            return 8
+        }
         return 0
     }
 
@@ -173,6 +182,8 @@ Rectangle {
             backend.refreshBuilds()
         } else if (section === "machines") {
             backend.refreshMachines()
+        } else if (section === "kubernetes") {
+            backend.refreshK8s()
         }
     }
 
@@ -579,6 +590,18 @@ Rectangle {
                         onMachineExpandRequested: function(id, tab) {
                             appWindow.openMachineDetail(id, tab)
                         }
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    KubernetesPage {
+                        id: kubernetesPage
+                        objectName: "kubernetesPage"
+                        anchors.fill: parent
                     }
                 }
             }

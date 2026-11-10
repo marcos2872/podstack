@@ -15,7 +15,8 @@ add_test(NAME contract COMMAND test_contract)
 
 qt_add_executable(test_rpc test_rpc.cpp MockPodmanServer.cpp
     ../src/daemon/ComposeManager.cpp)
-target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_podman Qt6::Test
+target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_k8s
+    podstack_podman Qt6::Test
     Qt6::Network)
 add_dependencies(test_rpc podstackd)
 add_test(NAME rpc COMMAND test_rpc)

@@ -227,6 +227,7 @@ qt_add_qml_module(podstack_qml
         src/gui/qml/NetworksView.qml
         src/gui/qml/PodsView.qml
         src/gui/qml/MachinesPage.qml
+        src/gui/qml/KubernetesPage.qml
         src/gui/qml/MachineInspector.qml
         src/gui/qml/MachineFilesView.qml
         src/gui/qml/ComposeView.qml

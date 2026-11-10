@@ -2,6 +2,7 @@
 
 #include "core/RpcClient.h"
 #include "daemon/ComposeManager.h"
+#include "k8s/K8sStore.h"
 #include "machines/MachineStore.h"
 
 #include <QCoreApplication>
@@ -43,6 +44,7 @@ private slots:
     void machineFiles();
     void machineInvalidOperations();
     void k8sStatusAndValidation();
+    void k8sListsResources();
     void composeProviderFallback();
     void composeAndBuilds();
     void multiPlatformBuild();
@@ -108,28 +110,43 @@ void writeFakeSsh(const QString &path)
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return;
     }
-    const QString script = QStringLiteral(
-        "#!/bin/sh\n"
-        "echo \"$@\" >> \"%1\"\n"
-        "case \"$*\" in\n"
-        "  *\"ls -la --time-style=long-iso\"*)\n"
-        "    echo \"total 8\"\n"
-        "    echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
-        "    echo \"-rw-r--r-- 1 podstack podstack 42 2026-11-09 10:05 rpc.txt\"\n"
-        "    exit 0;;\n"
-        "esac\n"
-        "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
-        "echo \"__PODSTACK_MEM__\"\n"
-        "echo \"MemTotal:        2097152 kB\"\n"
-        "echo \"MemAvailable:    1048576 kB\"\n"
-        "echo \"__PODSTACK_NET__\"\n"
-        "echo \"  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\"\n"
-        "echo \"__PODSTACK_DISK__\"\n"
-        "echo \"   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\"\n"
-        "echo \"__PODSTACK_DF__\"\n"
-        "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
-        "echo \"/dev/vda1    10000000000  2500000000  7500000000      25% /\"\n")
-                               .arg(path + QStringLiteral(".args.log"));
+    const QString script =
+        QStringLiteral(
+            "#!/bin/sh\n"
+            "echo \"$@\" >> \"%1\"\n"
+            "case \"$*\" in\n"
+            "  *\"ls -la --time-style=long-iso\"*)\n"
+            "    echo \"total 8\"\n"
+            "    echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
+            "    echo \"-rw-r--r-- 1 podstack podstack 42 2026-11-09 10:05 rpc.txt\"\n"
+            "    exit 0;;\n"
+            "  *\"kubectl get pods\"*)\n"
+            "    printf '%s\\n' "
+            "'{\"items\":[{\"metadata\":{\"name\":\"web\",\"namespace\":\"prod\","
+            "\"creationTimestamp\":\"2026-11-10T10:00:00Z\"},\"spec\":{\"nodeName\":\"node-a\","
+            "\"containers\":[{\"name\":\"web\"}]},\"status\":{\"phase\":\"Running\",\"podIP\":\"10."
+            "42.0.5\",\"containerStatuses\":[{\"ready\":true,\"restartCount\":0}]}}]}'\n"
+            "    exit 0;;\n"
+            "  *\"kubectl get services\"*)\n"
+            "    printf '%s\\n' "
+            "'{\"items\":[{\"metadata\":{\"name\":\"web\",\"namespace\":\"prod\","
+            "\"creationTimestamp\":\"2026-11-10T10:00:00Z\"},\"spec\":{\"type\":\"ClusterIP\","
+            "\"clusterIP\":\"10.43.0.10\",\"ports\":[{\"port\":80,\"protocol\":\"TCP\"}]},"
+            "\"status\":{}}]}'\n"
+            "    exit 0;;\n"
+            "esac\n"
+            "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
+            "echo \"__PODSTACK_MEM__\"\n"
+            "echo \"MemTotal:        2097152 kB\"\n"
+            "echo \"MemAvailable:    1048576 kB\"\n"
+            "echo \"__PODSTACK_NET__\"\n"
+            "echo \"  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\"\n"
+            "echo \"__PODSTACK_DISK__\"\n"
+            "echo \"   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\"\n"
+            "echo \"__PODSTACK_DF__\"\n"
+            "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
+            "echo \"/dev/vda1    10000000000  2500000000  7500000000      25% /\"\n")
+            .arg(path + QStringLiteral(".args.log"));
     file.write(script.toUtf8());
     file.close();
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
@@ -2206,6 +2223,88 @@ void RpcTest::k8sStatusAndValidation()
     client.call(QStringLiteral("k8s.cancel"),
                 QJsonObject{{QStringLiteral("jobId"), QStringLiteral("missing")}}, &error);
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+}
+
+void RpcTest::k8sListsResources()
+{
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    const QString id = QStringLiteral("machine-k8s-list");
+    const QString directory = m_testDataDir + QStringLiteral("/data/podstack/machines/") + id;
+    QVERIFY(QDir().mkpath(directory));
+    const QString keyPath = directory + QStringLiteral("/id_ed25519");
+    QFile key(keyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("fake-key");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    PodStack::MachineMeta meta;
+    meta.id = id;
+    meta.name = QStringLiteral("k8s-list");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024 * 1024 * 1024;
+    meta.diskBytes = 20LL * 1024 * 1024 * 1024;
+    meta.diskPath = directory + QStringLiteral("/disk.qcow2");
+    meta.seedPath = directory + QStringLiteral("/seed.iso");
+    meta.sshKeyPath = keyPath;
+    meta.sshPort = 32223;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.state = QStringLiteral("running");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    meta.ports = {PodStack::MachinePort{QStringLiteral("k8s-list-ssh"), 32223, 22,
+                                        QStringLiteral("tcp"), false, QStringLiteral("ssh")}};
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    PodStack::K8sStore k8sStore(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    QVERIFY2(k8sStore.open(&storeError), qPrintable(storeError.message));
+    PodStack::K8sCluster cluster;
+    cluster.id = QStringLiteral("k8s-default");
+    cluster.name = QStringLiteral("default");
+    cluster.state = QStringLiteral("ready");
+    cluster.vmMachineId = id;
+    cluster.apiPort = 6443;
+    cluster.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    cluster.updatedAt = cluster.createdAt;
+    QVERIFY2(k8sStore.upsert(cluster, &storeError), qPrintable(storeError.message));
+
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+    QJsonObject result = client.call(QStringLiteral("k8s.pods.list"), QJsonObject{}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message + QStringLiteral(" | ") + error.detail));
+    QJsonArray items = result.value(QStringLiteral("items")).toArray();
+    QCOMPARE(items.size(), 1);
+    QCOMPARE(items.first().toObject().value(QStringLiteral("id")).toString(),
+             QStringLiteral("prod/web"));
+
+    result = client.call(QStringLiteral("k8s.services.list"), QJsonObject{}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    items = result.value(QStringLiteral("items")).toArray();
+    QCOMPARE(items.size(), 1);
+    QCOMPARE(items.first().toObject().value(QStringLiteral("clusterIP")).toString(),
+             QStringLiteral("10.43.0.10"));
+
+    result =
+        client.call(QStringLiteral("k8s.pods.list"),
+                    QJsonObject{{QStringLiteral("namespace"), QStringLiteral("prod")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    error = {};
+    client.call(QStringLiteral("k8s.pods.list"),
+                QJsonObject{{QStringLiteral("namespace"), QStringLiteral("bad namespace")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("k8s.pods.list"), QJsonObject{{QStringLiteral("namespace"), 42}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void RpcTest::composeProviderFallback()

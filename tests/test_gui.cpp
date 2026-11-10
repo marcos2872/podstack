@@ -43,6 +43,7 @@ private slots:
     void backendStreams();
     void backendContainerDetail();
     void backendCatalog();
+    void backendKubernetes();
     void backendMachines();
     void backendMachineStats();
     void backendMachineConsole();
@@ -508,6 +509,22 @@ void GuiTest::backendContainerDetail()
 
     backend.containerDetailLifecycle(QStringLiteral("invalid"), QStringLiteral("abc123"));
     QVERIFY(!backend.lastError().isEmpty());
+}
+
+void GuiTest::backendKubernetes()
+{
+    PodStack::Backend backend;
+    QSignalSpy spy(&backend, &PodStack::Backend::k8sChanged);
+
+    backend.refreshK8s();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sLoading(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
+    QVERIFY(!backend.k8sError().isEmpty());
+    QVERIFY(backend.k8sPods().isEmpty());
+    QVERIFY(backend.k8sServices().isEmpty());
+
+    backend.startK8sWatch();
+    backend.stopK8sWatch();
 }
 
 void GuiTest::backendCatalog()

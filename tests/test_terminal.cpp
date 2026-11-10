@@ -836,6 +836,13 @@ void TerminalTest::mainWindowQml()
     QVERIFY(quick != nullptr);
     QObject *rootObject = quick->rootObject();
     QVERIFY(rootObject != nullptr);
+    QObject *k8sPage = rootObject->findChild<QObject *>(QStringLiteral("kubernetesPage"));
+    QVERIFY(k8sPage != nullptr);
+    QCOMPARE(k8sPage->property("tab").toInt(), 0);
+    k8sPage->setProperty("tab", 1);
+    QCOMPARE(k8sPage->property("tab").toInt(), 1);
+    k8sPage->setProperty("tab", 0);
+
     QObject *settings = rootObject->findChild<QObject *>(QStringLiteral("settingsDialog"));
     QVERIFY(settings != nullptr);
     QVERIFY(QMetaObject::invokeMethod(settings, "open"));
