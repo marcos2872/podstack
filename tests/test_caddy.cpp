@@ -2,6 +2,8 @@
 
 #include "daemon/CaddyProxy.h"
 
+#include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -50,6 +52,22 @@ quint16 freePort()
     return port;
 }
 
+bool writeFakeCaddy(const QString &directory, const QByteArray &body)
+{
+    QFile file(QDir(directory).filePath(QStringLiteral("caddy")));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return false;
+    }
+    file.write("#!/bin/sh\n");
+    file.write(body);
+    file.write("\n");
+    file.close();
+    return file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                               QFileDevice::ExeOwner | QFileDevice::ReadGroup |
+                               QFileDevice::ExeGroup | QFileDevice::ReadOther |
+                               QFileDevice::ExeOther);
+}
+
 } // namespace
 
 class CaddyTest : public QObject {
@@ -58,6 +76,10 @@ class CaddyTest : public QObject {
 private slots:
     void configTextHasInternalCaAndProxy();
     void startFailsWithoutCaddy();
+    void rejectsInvalidPorts();
+    void startsAndStopsWithFakeCaddy();
+    void startFailsWhenProcessExits();
+    void startFailsWhenDirectoryIsFile();
     void servesTlsOnDemand();
 };
 
@@ -87,6 +109,81 @@ void CaddyTest::startFailsWithoutCaddy()
     QVERIFY(!caddy.start(9443, 8080, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
     QVERIFY(!caddy.running());
+}
+
+void CaddyTest::rejectsInvalidPorts()
+{
+    QTemporaryDir dir;
+    PodStack::CaddyProxy caddy(dir.path());
+    PodStack::Error error;
+    QVERIFY(!caddy.start(0, 8080, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_ARGUMENT"));
+    QVERIFY(!caddy.start(8443, 8443, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_ARGUMENT"));
+}
+
+void CaddyTest::startsAndStopsWithFakeCaddy()
+{
+    QTemporaryDir dir;
+    QTemporaryDir bin;
+    QVERIFY(dir.isValid());
+    QVERIFY(bin.isValid());
+    QVERIFY(writeFakeCaddy(
+        bin.path(), QByteArrayLiteral("port=$(grep -m1 'https_port' \"$3\" | awk '{print $2}')\n"
+                                      "exec \"$TEST_CADDY_BINARY\" --fake-caddy \"$port\"")));
+
+    const QByteArray previousPath = qgetenv("PATH");
+    const QByteArray previousBinary = qgetenv("TEST_CADDY_BINARY");
+    qputenv("PATH", bin.path().toUtf8() + ':' + previousPath);
+    qputenv("TEST_CADDY_BINARY", QCoreApplication::applicationFilePath().toUtf8());
+    const auto restore = qScopeGuard([previousPath, previousBinary] {
+        qputenv("PATH", previousPath);
+        qputenv("TEST_CADDY_BINARY", previousBinary);
+    });
+
+    const quint16 httpsPort = freePort();
+    QVERIFY(httpsPort != 0);
+    PodStack::CaddyProxy caddy(dir.path());
+    PodStack::Error error;
+    QVERIFY2(caddy.start(httpsPort, 8080, &error), qPrintable(error.message));
+    QVERIFY(caddy.running());
+    QCOMPARE(caddy.httpsPort(), httpsPort);
+    QVERIFY(QFile::exists(caddy.configPath()));
+    QVERIFY(caddy.configPath().startsWith(dir.path()));
+
+    caddy.stop();
+    QVERIFY(!caddy.running());
+}
+
+void CaddyTest::startFailsWhenProcessExits()
+{
+    QTemporaryDir dir;
+    QTemporaryDir bin;
+    QVERIFY(writeFakeCaddy(bin.path(), QByteArrayLiteral("exit 1")));
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", bin.path().toUtf8() + ':' + previousPath);
+    const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
+    PodStack::CaddyProxy caddy(dir.path());
+    PodStack::Error error;
+    QVERIFY(!caddy.start(freePort(), 8080, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(error.message.contains(QStringLiteral("Caddy não abriu")));
+    QVERIFY(!caddy.running());
+}
+
+void CaddyTest::startFailsWhenDirectoryIsFile()
+{
+    QTemporaryDir temp;
+    const QString path = temp.filePath(QStringLiteral("not-a-dir"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.close();
+
+    PodStack::CaddyProxy caddy(path);
+    PodStack::Error error;
+    QVERIFY(!caddy.start(freePort(), 8080, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
 }
 
 void CaddyTest::servesTlsOnDemand()
@@ -143,6 +240,20 @@ void CaddyTest::servesTlsOnDemand()
     QVERIFY(!caddy.running());
 }
 
-QTEST_GUILESS_MAIN(CaddyTest)
+int main(int argc, char *argv[])
+{
+    QCoreApplication app(argc, argv);
+    if (argc == 3 && QString::fromLatin1(argv[1]) == QStringLiteral("--fake-caddy")) {
+        bool ok = false;
+        const quint16 port = QString::fromLatin1(argv[2]).toUShort(&ok);
+        QTcpServer server;
+        if (!ok || port == 0 || !server.listen(QHostAddress::LocalHost, port)) {
+            return 1;
+        }
+        return app.exec();
+    }
+    CaddyTest test;
+    return QTest::qExec(&test, argc, argv);
+}
 
 #include "test_caddy.moc"
