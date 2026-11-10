@@ -692,7 +692,9 @@ Domains=~podstack.local
 - Confiar na CA via helper (`update-ca-trust`) apenas com consentimento: o
   helper exige CA autoassinada, fingerprint SHA-256 correspondente e arquivo
   pertencente ao chamador, grava o anchor e roda o update do trust store.
-- CA montada nos containers via label opt-out (T6-08).
+- CA montada read-only nos containers criados/duplicados pelo PodStack quando
+  o arquivo existe; `dev.podstack.ca=false` faz opt-out. Containers de Compose
+  ficam pendentes (o provider externo monta os volumes).
 - Renovação automática; chave e CA com permissões restritas (root `0600`).
 
 **Critérios:**
@@ -702,7 +704,8 @@ Domains=~podstack.local
   não derruba o daemon.
 - [x] Chave/CA sem leitura por grupo/outros.
 - [x] Confiar/remover a CA no host via helper, com fingerprint e consentimento.
-- [ ] Montar a CA nos containers via label opt-out (T6-08).
+- [x] Montar a CA nos containers de `containers.create`/`duplicate`, com
+  opt-out `dev.podstack.ca=false` (Compose pendente).
 
 ### 11.4 Detecção de porta
 
@@ -717,8 +720,10 @@ Domains=~podstack.local
 - Cachear por container (id) + digest de `image` + portas publicadas; recriar
   o container troca o id e invalida naturalmente. Cache limitado a 64 entradas
   e 10 minutos.
-- Override por label `dev.podstack.http-port`/`https-port` fica na T6-08;
-  HTTPS de backend fica na T6-06.
+- Overrides por label: `dev.podstack.http-port`/`https-port` forçam a porta
+  publicada (por porta do container ou do host; HTTPS conecta com TLS sem
+  verificação de peer) e `dev.podstack.domains` adiciona domínios customizados
+  ao roteamento por `Host` e ao índice. Label inválido cai na detecção normal.
 
 **Critérios:**
 
