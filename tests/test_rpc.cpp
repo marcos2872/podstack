@@ -506,10 +506,10 @@ void RpcTest::containerMountsLocalCaUnlessOptedOut()
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(hasCaMount());
 
-    QVERIFY(!createContainer(QStringLiteral("without-ca"),
-                             QJsonObject{{QStringLiteral("dev.podstack.ca"),
-                                          QStringLiteral("false")}})
-                 .isEmpty());
+    QVERIFY(
+        !createContainer(QStringLiteral("without-ca"),
+                         QJsonObject{{QStringLiteral("dev.podstack.ca"), QStringLiteral("false")}})
+             .isEmpty());
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(!hasCaMount());
 }

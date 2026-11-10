@@ -126,8 +126,8 @@ void applyCaTrustMount(ContainerCreateSpec &spec)
             .compare(QStringLiteral("false"), Qt::CaseInsensitive) == 0) {
         return;
     }
-    const QString cert = Paths::dataDir() +
-                         QStringLiteral("/caddy/storage/pki/authorities/local/root.crt");
+    const QString cert =
+        Paths::dataDir() + QStringLiteral("/caddy/storage/pki/authorities/local/root.crt");
     if (!QFileInfo::exists(cert)) {
         return;
     }
