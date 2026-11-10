@@ -1452,6 +1452,34 @@ void RpcTest::machineConsole()
     QCOMPARE(resetDelta.value(QStringLiteral("data")).toString(), QStringLiteral("fresh\n"));
     QVERIFY(resetDelta.value(QStringLiteral("reset")).toBool());
 
+    // Um caractere UTF-8 ("é" = C3 A9) dividido entre dois chunks não pode
+    // virar U+FFFD: o decoder do stream mantém o estado entre deltas.
+    QFile splitConsole(consolePath);
+    QVERIFY(splitConsole.open(QIODevice::Append));
+    splitConsole.write(QByteArray::fromHex("c3"));
+    splitConsole.close();
+    QTest::qWait(500);
+    QVERIFY(splitConsole.open(QIODevice::Append));
+    splitConsole.write(QByteArray::fromHex("a9") + '\n');
+    splitConsole.close();
+
+    QString decoded;
+    for (int i = 0; i < 40 && !decoded.contains(QString::fromUtf8("é")); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("method")).toString() ==
+            QStringLiteral("machines.console.delta")) {
+            decoded += message.value(QStringLiteral("params"))
+                           .toObject()
+                           .value(QStringLiteral("data"))
+                           .toString();
+        }
+    }
+    QVERIFY2(decoded.contains(QString::fromUtf8("é")), qPrintable(decoded));
+    QVERIFY(!decoded.contains(QChar::ReplacementCharacter));
+
     sendMessage(socket,
                 {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
                  {QStringLiteral("id"), 2},

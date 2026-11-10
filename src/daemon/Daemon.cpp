@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QStringDecoder>
 #include <QStringList>
 #include <QtConcurrent>
 
@@ -123,8 +124,8 @@ bool isWildcardHostIp(const QString &hostIp)
            || hostIp == QStringLiteral("::");
 }
 
-constexpr qint64 kMachineConsoleDefaultTail = 64 * 1024;
-constexpr qint64 kMachineConsoleMaxBytes = 512 * 1024;
+constexpr qint64 kMachineConsoleDefaultTail = 64LL * 1024;
+constexpr qint64 kMachineConsoleMaxBytes = 512LL * 1024;
 
 qint64 consoleTailBytes(const QJsonObject &params)
 {
@@ -1568,13 +1569,20 @@ QJsonObject Daemon::subscribeMachineConsole(const QJsonObject &params, const Not
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void)QtConcurrent::run([this, machineId = machine.id, path, offset, pendingReset, initial,
-                             subscriptionId, subscription, notify]() mutable {
+    (void) QtConcurrent::run([this, machineId = machine.id, path, offset, pendingReset, initial,
+                              subscriptionId, subscription, notify]() mutable {
+        // O serial entrega bytes crus; um caractere UTF-8 pode ser dividido
+        // entre dois chunks. O decoder mantém o estado entre deltas para não
+        // produzir U+FFFD no meio de uma sequência.
+        QStringDecoder decoder(QStringDecoder::Utf8);
         const auto sendDelta = [&](const QByteArray &bytes, bool reset) {
+            if (reset) {
+                decoder = QStringDecoder(QStringDecoder::Utf8);
+            }
             QJsonObject payload;
             payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
             payload.insert(QStringLiteral("id"), machineId);
-            payload.insert(QStringLiteral("data"), QString::fromUtf8(bytes));
+            payload.insert(QStringLiteral("data"), QString(decoder(bytes)));
             payload.insert(QStringLiteral("reset"), reset);
             notify(QStringLiteral("machines.console.delta"), payload);
         };
