@@ -567,7 +567,7 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
         return subscribeMachineStats(params, notify, error);
     }
     if (method == QStringLiteral("k8s.status")) {
-        return k8sStatus(error);
+        return k8sStatus(params, error);
     }
     if (method == QStringLiteral("k8s.enable")) {
         return k8sEnable(params, notify, error);
@@ -3940,9 +3940,10 @@ QJsonObject Daemon::settingsSchema() const
     return Settings::schemaJson();
 }
 
-QJsonObject Daemon::k8sStatus(Error *error)
+QJsonObject Daemon::k8sStatus(const QJsonObject &params, Error *error)
 {
-    K8sCluster cluster = m_k8s.status(error);
+    const QString name = params.value(QStringLiteral("cluster")).toString().trimmed();
+    K8sCluster cluster = name.isEmpty() ? m_k8s.status(error) : m_k8s.status(name, error);
     if (error && !error->isEmpty()) {
         return {};
     }

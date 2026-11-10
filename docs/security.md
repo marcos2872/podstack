@@ -157,6 +157,7 @@ encerra a janela da instância já em execução.
 | Chaves SSH das máquinas | `~/.local/share/podstack/machines/<id>/id_ed25519` (0600) e `.pub` (0644) | daemon, `ssh` |
 | Bloco SSH gerenciado | `~/.ssh/config` (0600; `~/.ssh` 0700) | daemon, `ssh` |
 | Chave da CA | `~/.local/share/podstack/ca/key.pem` (0600) | Caddy/daemon |
+| Kubeconfig do cluster | `kubernetes.kubeconfigPath/<cluster>.yaml` (0600; dir 0700) | daemon, `kubectl` |
 | Tokens de update | keyring | daemon |
 | Senhas de máquina | cloud-init seed (`seed.iso` e arquivos internos `0600`, senha só como hash SHA-512 crypt; apagada após o boot) / keyring | daemon |
 
@@ -172,6 +173,10 @@ encerra a janela da instância já em execução.
   (`~/.ssh` `0700`) e preserva blocos de terceiros. `machines.ssh` devolve apenas
   `host/port/user/identityFile/forwardAgent`; o conteúdo da chave nunca aparece em log, UI
   ou resposta. O CLI usa `StrictHostKeyChecking=accept-new` e `IdentitiesOnly=yes`.
+- Kubernetes: o kubeconfig é lido do k3s por SSH, reescrito para `127.0.0.1:<apiPort>` e
+  gravado em diretório `0700`/arquivo `0600`; `~/.kube/config` não é alterado. O SSH do
+  cluster usa `known_hosts` próprio em `machines/<id>/known_hosts`, evitando conflito de
+  chave de host quando a VM é recriada na mesma porta.
 - SSH agent forwarding (`forwardSshAgent`) é **off por padrão**. Quando ativado, o bloco
   gerenciado recebe `ForwardAgent yes` e o `ssh` aberto pelo PodStack (CLI e terminal
   embutido/externo) recebe `-A`: o guest passa a poder usar as chaves carregadas no agent do

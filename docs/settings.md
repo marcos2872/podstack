@@ -107,8 +107,8 @@ o conteúdo não é mesclado.
 | `kubernetes.cpus` | int | `2` | sim | CPUs da VM do cluster |
 | `kubernetes.memoryBytes` | int64 | `4294967296` | sim | Memória da VM |
 | `kubernetes.diskBytes` | int64 | `21474836480` | sim | Disco da VM |
-| `kubernetes.kubeconfigPath` | string | `~/.local/share/podstack/kubeconfigs/` | não | Diretório de kubeconfigs |
-| `kubernetes.contextPrefix` | string | `podstack-` | não | Prefixo de contexto |
+| `kubernetes.kubeconfigPath` | string | `~/.local/share/podstack/kubeconfigs/` | não | Diretório de kubeconfigs (usado pelo `k8s.enable`/T5-02; `~` é expandido) |
+| `kubernetes.contextPrefix` | string | `podstack-` | não | Prefixo de contexto (aplicado no kubeconfig; T5-02) |
 
 ### 2.7 SSH
 

@@ -51,6 +51,7 @@ private slots:
     void catalog();
     void machineDistros();
     void machineCommands();
+    void kubeCommands();
     void machineLifecycleCommands();
     void machineCreateForwardAgent();
     void machineSsh();
@@ -784,6 +785,32 @@ void CliTest::machineCommands()
         QCOMPARE(result.code, 1);
         QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
     }
+}
+
+void CliTest::kubeCommands()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("kube")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("Uso: podstack kube")));
+
+    result = run({QStringLiteral("kube"), QStringLiteral("--help")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("env")));
+    QVERIFY(result.out.contains(QStringLiteral("info")));
+
+    result = run({QStringLiteral("kube"), QStringLiteral("env")}, env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("kubeconfig")));
+
+    result = run({QStringLiteral("kube"), QStringLiteral("info"), QStringLiteral("--json")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("\"state\": \"disabled\"")));
+
+    result = run({QStringLiteral("kube"), QStringLiteral("bogus")}, env);
+    QCOMPARE(result.code, 2);
+    QVERIFY(result.err.contains(QStringLiteral("desconhecido")));
 }
 
 void CliTest::machineLifecycleCommands()

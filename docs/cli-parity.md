@@ -204,11 +204,11 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 
 | `orb` | `podstack` | Flags | Notas |
 |---|---|---|---|
-| `k8s` | `kube info` | — | Instruções |
-| `orb start k8s` | `kube start` | — | k3s em VM |
-| `orb stop k8s` | `kube stop` | — | |
-| `orb delete k8s` | `kube disable` | `--force` | |
-| — | `kube env` | `--cluster` | `export KUBECONFIG=...` |
+| `k8s` | `kube info` | `--json`, `--cluster` | ✅ T5-02; estado/API/kubeconfig |
+| `orb start k8s` | `kube start` | — | T5-06 |
+| `orb stop k8s` | `kube stop` | — | T5-06 |
+| `orb delete k8s` | `kube disable` | `--force` | T5-06 |
+| — | `kube env` | `--cluster` | ✅ T5-02; `export KUBECONFIG=...` |
 | — | `kube pods/services` | `--namespace` | Atalhos de leitura |
 
 ### 2.6 Domínios

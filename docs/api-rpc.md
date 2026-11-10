@@ -589,7 +589,7 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 
 | Método | Params | Result |
 |---|---|---|
-| `k8s.status` | `{}` | `{state, context, apiPort, version, name, vmMachineId, enabled, error}` |
+| `k8s.status` | `{cluster?}` | `{state, context, apiPort, version, name, vmMachineId, enabled, error}` |
 | `k8s.enable` | `{cpus?, memoryBytes?, diskBytes?}` | `JobRef` |
 | `k8s.cancel` | `{jobId}` | `{jobId, cancelled}` |
 | `k8s.disable` | `{force?}` | `JobRef` |
@@ -609,8 +609,15 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > o SSH/cloud-init, instala o k3s server sem Traefik e só retorna quando o node está `Ready`,
 > emitindo `k8s.delta {jobId, stage, progress}` e `k8s.done {jobId, cluster|error}`. Em falha
 > a VM fica parada para permitir retry; `k8s.disable/reset`, pods/services/logs/port-forward e
-> contexto ficam nas tarefas seguintes (T5-02..T5-07). O estado do cluster é persistido na
+> contexto ficam nas tarefas seguintes (T5-03..T5-07). O estado do cluster é persistido na
 > tabela `clusters` do `podstack.db`.
+>
+> **T5-02:** depois do node `Ready`, o `enable` adiciona a porta `k8s-api` em loopback
+> (`guestPort` 6443), reinicia a VM, lê o kubeconfig do k3s por SSH e grava
+> `kubernetes.kubeconfigPath/<cluster>.yaml` (`0700/0600`) com o contexto
+> `kubernetes.contextPrefix + cluster` e `server: https://127.0.0.1:<apiPort>`. O arquivo
+> `~/.kube/config` não é alterado. `k8s.status` aceita `{cluster}` opcional e devolve
+> `apiPort`, `kubeconfigPath` e `contextName` preenchidos quando o acesso está pronto.
 
 ### 4.9 `domains.*` e `proxy.*`
 

@@ -117,7 +117,7 @@ private:
     QJsonObject machineFilesList(const QJsonObject &params, Error *error);
     QJsonObject machineFilesDownload(const QJsonObject &params, Error *error);
     QJsonObject machineFilesUpload(const QJsonObject &params, Error *error);
-    QJsonObject k8sStatus(Error *error);
+    QJsonObject k8sStatus(const QJsonObject &params, Error *error);
     QJsonObject k8sEnable(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject k8sCancel(const QJsonObject &params, Error *error);
     QJsonObject setupStatus();
