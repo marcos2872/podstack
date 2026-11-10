@@ -422,9 +422,10 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 | Etapa | Conteúdo | Bloqueia merge |
 |---|---|---|
 | `ci` (job único) | checkout + deps Fedora 44, build com `coverage`, testes, gcovr | ✅ |
-| Cobertura | relatório `src/` (XML/HTML) bloqueante; meta de **80%** informativa (warning) até a recuperação | parcial |
+| Cobertura | relatório `src/` (XML/HTML) bloqueante; gate bloqueante em **77%** (meta 80%) | ✅ |
+| Lint | `clang-format` nas linhas alteradas e `clang-tidy` nos fontes alterados (`scripts/check-format.sh`, `scripts/check-tidy.sh`) | ✅ |
 | Artefato | `coverage.xml`, `coverage/`, resumos | — |
-| Futuro | lint (`clang-format`/`clang-tidy`/`qmllint`), E2E GUI/CLI, segurança, performance, RPM | planejado |
+| Futuro | E2E GUI/CLI, segurança, performance, RPM | planejado |
 
 - Container: `fedora:44` com Qt 6.11, CMake/Ninja, libcurl e gcovr.
 - O teste de integração com Podman roda quando há socket disponível; caso contrário, é `QSKIP` (o contrato e o RPC cobrem o caminho sem engine).
@@ -437,7 +438,8 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 
 - **M3 (antes da bandeja):** **82,5%** de linhas no total (`src/`); gate do CI em **80%** sobre `src/`. O gcovr roda com `--gcov-ignore-parse-errors` e `--merge-mode-functions=separate` para contornar bugs conhecidos do gcov (negative hits e merge de `main.cpp` de targets diferentes). O CI repete `ctest -R rpc` antes do relatório porque o `.gcda` do `podstackd` é sobrescrito pelo último teste que inicia o daemon; o rpc cobre o maior conjunto de handlers.
 - **Bandeja (2026-11-08):** **79,7%** de linhas (`src/`), medido com o mesmo comando do CI (13 suítes + `rpc`). O gate de 80% **não** foi atingido por 0,3 p.p.; os maiores vazios são `src/helper` (0%, exige polkit/root), `SetupManager` jobs privilegiados e caminhos de erro de `SingleInstance`/`Autostart`. O código novo da bandeja está coberto: `Tray.cpp` 96%, `StatsCollector.cpp` 93,5%, `Backend.cpp` 79%, `Notifications.cpp` 76%. Follow-up recomendado: teste de integração do helper e dos jobs de setup para recuperar o gate.
-- **Machines/M4 + settings (2026-11-09):** **74,2%** de linhas (`src/`, 19.682/26.532) com as 14 suítes + `rpc`, medido com o mesmo comando do CI. O M4 adicionou ~3,2 mil linhas e o T7-01 mais ~700; a cobertura global caiu. O CI agora usa `set -o pipefail` no relatório (falha real do gcovr bloqueia), mas o **gate de 80% está temporariamente informativo**: o step emite `::warning::` quando fica abaixo da meta, para não travar o merge da PR #11. Recuperar a cobertura e voltar a bloquear o gate é pendência pré-M5, junto com testes do helper/`SetupManager` (polkit/root) e dos caminhos de erro de Daemon/CLI/GUI.
+- **Machines/M4 + settings (2026-11-09):** **74,2%** de linhas (`src/`) com as 14 suítes + `rpc`. O M4 adicionou ~3,2 mil linhas e o T7-01 mais ~700; a cobertura global caiu e o gate de 80% ficou temporariamente informativo.
+- **Pré-M5 (2026-11-10):** **77,3%** de linhas (`src/`, 17.796/23.017), medido com o mesmo comando do CI. Os testes novos cobrem `HelperService`/`SetupManager` (jobs, instalação/remoção e erros), `QemuProcessRuntime` com QEMU fake (start/stop/QMP/órfãos), `MachineArchive` (manifesto e extração), estados/erros de `MachineManager`, `PodmanClient` (catálogo completo), `Backend` e caminhos inválidos de RPC/CLI. O console serial usa `QStringDecoder` incremental e há teste de caractere UTF-8 dividido entre chunks. Testes QML reais foram habilitados (`test_terminal` carrega `Main.qml`, `ContainerDetail.qml` e `MachineDetail.qml`; antes eram `QSKIP`). O CI tem **gate bloqueante em 77%** (`--fail-under-line 77`) e `clang-format`/`clang-tidy` nos arquivos alterados. A meta de **80%** segue como pendência pré-M5; os maiores vazios são `MachineManager`, `cli/main.cpp`, `Daemon.cpp`, `Backend.cpp` e `PodmanClient` (caminhos de erro e operações raras).
 - **Meta v1.0:** manter ≥ 80% e buscar ≥ 85% em caminhos críticos; testes QML/terminal dedicados entram no M2.
 - Nenhum merge com teste vermelho.
 - Bug corrigido → teste de regressão obrigatório.
