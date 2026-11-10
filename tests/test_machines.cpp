@@ -828,6 +828,8 @@ private slots:
     void machineManagerExportImport();
     void machineArchiveManifestValidation();
     void machineArchiveExtractErrors();
+    void machineArchiveWriteErrors();
+    void machineManagerExportImportErrors();
     void machineManagerExportConcurrency();
     void machineManagerImportChecksum();
     void machineManagerCancelled();
@@ -4779,6 +4781,152 @@ void MachinesTest::machineArchiveExtractErrors()
     QVERIFY(rewriteArchiveEntry(archive, badChecksum, QStringLiteral("disk.qcow2"),
                                 QByteArrayLiteral("tampered-disk")));
     QCOMPARE(extractFrom(badChecksum).code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void MachinesTest::machineArchiveWriteErrors()
+{
+    const QString root = m_root + QStringLiteral("/archive-write-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString disk = root + QStringLiteral("/disk.qcow2");
+    const QString seed = root + QStringLiteral("/seed.iso");
+    const QString key = root + QStringLiteral("/id_ed25519");
+    const QString pub = root + QStringLiteral("/id_ed25519.pub");
+    QVERIFY(writeTestFile(disk, QByteArrayLiteral("disk")));
+    QVERIFY(writeTestFile(seed, QByteArrayLiteral("seed")));
+    QVERIFY(writeTestFile(key, QByteArrayLiteral("key")));
+    QVERIFY(writeTestFile(pub, QByteArrayLiteral("pub")));
+
+    MachineArchiveManifest manifest;
+    manifest.format = MachineArchiveManifest::formatId();
+    manifest.name = QStringLiteral("write-errors");
+    manifest.distro = QStringLiteral("ubuntu");
+    manifest.arch = QStringLiteral("amd64");
+    manifest.cpus = 2;
+    manifest.memoryBytes = 2LL * 1024 * 1024 * 1024;
+    manifest.diskBytes = 20LL * 1024 * 1024 * 1024;
+    manifest.sshUser = QStringLiteral("podstack");
+
+    PodStack::Error error;
+    QVERIFY(!MachineArchive::write(QString(), manifest, disk, seed, key, pub, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!MachineArchive::write(root + QStringLiteral("/missing.tar.zst"), manifest,
+                                   root + QStringLiteral("/missing-disk"), seed, key, pub, {},
+                                   {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    QVERIFY(!MachineArchive::write(root, manifest, disk, seed, key, pub, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    QVERIFY(!MachineArchive::write(root + QStringLiteral("/cancelled.tar.zst"), manifest, disk,
+                                   seed, key, pub, {}, [] { return true; }, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    const QString archive = root + QStringLiteral("/ok.tar.zst");
+    error = {};
+    int progress = 0;
+    QVERIFY2(MachineArchive::write(archive, manifest, disk, seed, key, pub,
+                                   [&progress](const QString &, int value) { progress = value; },
+                                   {}, &error),
+             qPrintable(error.message));
+    QCOMPARE(progress, 100);
+    QVERIFY(QFileInfo(archive).isFile());
+    QVERIFY(ownerOnly(QFileInfo(archive).permissions(), false));
+}
+
+void MachinesTest::machineManagerExportImportErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-export-import-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'x');
+    m_server.setResponse(QStringLiteral("/manager-export-import-errors.qcow2"), 200, payload);
+    const DistroImage image =
+        testImage(QStringLiteral("/manager-export-import-errors.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest base;
+    base.name = QStringLiteral("export-import-errors");
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/archive-dir")));
+    error = {};
+    manager.exportMachine(created.id, root + QStringLiteral("/archive-dir"), false, {}, {},
+                          &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QFile::remove(created.diskPath);
+    error = {};
+    manager.exportMachine(created.id, root + QStringLiteral("/missing-disk.tar.zst"), false, {},
+                          {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    CreateMachineRequest secondRequest = base;
+    secondRequest.name = QStringLiteral("export-import-source");
+    const MachineMeta second = manager.create(secondRequest, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const QString archive = root + QStringLiteral("/machine.tar.zst");
+    error = {};
+    manager.exportMachine(second.id, archive, false, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    error = {};
+    manager.importMachine(archive, QStringLiteral("Bad Name"), false, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    manager.importMachine(archive, second.name, false, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    error = {};
+    const MachineMeta imported = manager.importMachine(archive, second.name, true, {}, {},
+                                                       &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!imported.id.isEmpty());
+    QVERIFY(imported.id != second.id);
+
+    error = {};
+    manager.importMachine(root, QStringLiteral("invalid-archive"), false, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void MachinesTest::machineManagerExportConcurrency()
