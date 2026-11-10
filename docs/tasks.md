@@ -166,7 +166,7 @@
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
 | T6-01 | P0 | `*.localhost` + proxy por Host (porta alta) | T1-01 | ✅ — `HttpProxy` escuta só em loopback (`127.0.0.1`/`::1`) em `network.httpPort` (default 8080; `network.bridge=false` desliga), resolve `<nome>.localhost` e encaminha para a **primeira porta TCP publicada** do container; Host/nome inválido ou container sem porta → 404 HTML; `Connection: close` + `X-Forwarded-*`; sem root/`/etc/hosts`. Página de índice fica na T6-02 e detecção/cache de porta na T6-03. Evidência: `test_http_proxy` (16 casos), `ctest` 15/15 e E2E com nginx: `curl http://t601demo.localhost:18081/` → **200**, `missing.localhost` → **404**. |
-| T6-02 | P0 | Página de índice de serviços | T6-01 | Lista domínios/portas |
+| T6-02 | P0 | Página de índice de serviços | T6-01 | ✅ — `http://localhost:<network.httpPort>/` responde **200** com a lista de containers que publicam porta TCP (nome, estado, porta e URL `http://<nome>.localhost:<porta>/`), ordenada por nome; container desconhecido ou sem porta responde **404 com a mesma lista**, host inválido continua 404 sem expor o índice; só `GET`/`HEAD` (demais métodos → 405 com `Allow: GET, HEAD`); conteúdo escapado em HTML. Evidência: `test_http_proxy` (20 casos, 5 novos), `ctest` 15/15. |
 | T6-03 | P1 | Detecção automática de porta + cache | T6-01 | Funciona com 1 porta |
 | T6-04 | P1 | Helper: DNS userspace + drop-in resolved | T6-01 | `*.podstack.local` resolve |
 | T6-05 | P1 | Helper: socket activation :80/:443 | T6-04 | Sem porta no browser |
@@ -176,11 +176,12 @@
 | T6-09 | P1 | Exposição LAN de domínios/portas | T6-01 | Acesso externo |
 | T6-10 | P2 | Port forwarding de portas não publicadas | T6-04 | Via router/helper |
 
-**Status (2026-11-10): M6 iniciado com a T6-01 implementada.** O proxy HTTP de
+**Status (2026-11-10): M6 com T6-01 e T6-02 implementadas.** O proxy HTTP de
 entrada vive no daemon (`HttpProxy`), escuta apenas em loopback e mapeia
 `<nome>.localhost` para a porta TCP publicada do container `<nome>`; não há
-dependência de root, `/etc/hosts` ou DNS. A página de índice (T6-02) e a
-detecção/cache de porta (T6-03) seguem como próximas tarefas.
+dependência de root, `/etc/hosts` ou DNS. `http://localhost:<porta>/` lista os
+serviços publicados, e o 404 de container desconhecido reaproveita a lista. A
+detecção/cache de porta (T6-03) segue como próxima tarefa.
 
 **Saída M6:** G4 completo.
 

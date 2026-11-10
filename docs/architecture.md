@@ -299,7 +299,9 @@ sequenceDiagram
 - Escuta só em loopback na `network.httpPort`; `network.bridge=false` desliga.
 - Host/nome inválido, container inexistente ou sem porta TCP publicada → 404 HTML.
 - Adiciona `X-Forwarded-For/Proto/Host`; não reescreve `Location`.
-- Página de índice (T6-02), detecção/cache de porta (T6-03) e HTTPS/Caddy (T6-06).
+- `http://localhost:<porta>/` serve a página de índice (T6-02) e os 404 de
+  container desconhecido/sem porta reaproveitam a lista. Detecção/cache de porta
+  (T6-03) e HTTPS/Caddy (T6-06) seguem pendentes.
 
 ### 3.7 Requisição de domínio
 

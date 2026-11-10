@@ -40,6 +40,9 @@ public:
     /// Extrai o nome de `Host: <nome>.localhost[:porta]`.
     static bool hostName(const QByteArray &hostHeader, QString *name);
 
+    /// Indica se o `Host` é `localhost[:porta]` (página de índice de serviços).
+    static bool isIndexHost(const QByteArray &hostHeader);
+
     /// Primeira porta TCP publicada do container, no formato que o
     /// `PodmanClient` produz (`[ip:]porta->porta/tcp`).
     static bool publishedPort(const ContainerInfo &container, QString *host, quint16 *port);
