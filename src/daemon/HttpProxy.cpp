@@ -43,7 +43,7 @@ struct RequestHead {
 
 constexpr int kProbeTimeoutMs = 300;
 constexpr int kPortCacheLimit = 64;
-constexpr qint64 kPortCacheTtlMs = 10 * 60 * 1000;
+constexpr qint64 kPortCacheTtlMs = 10LL * 60 * 1000;
 
 /// Portas de container que costumam servir HTTP; usadas como preferência no
 /// probe concorrente e documentadas na spec §11.4.
