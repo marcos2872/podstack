@@ -438,7 +438,7 @@ QVariantMap HelperService::changeCaTrust(const QString &certPath, const QString 
     QByteArray pem;
     if (trustCa) {
         const QFileInfo info(QFileInfo(certPath).canonicalFilePath());
-        if (!info.isFile() || !info.isReadable() || info.size() > 1024 * 1024) {
+        if (!info.isFile() || !info.isReadable() || info.size() > 1024LL * 1024) {
             return result(false, QStringLiteral("Certificado inválido ou inacessível."));
         }
         const uint uid = callerUid();
