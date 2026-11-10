@@ -42,6 +42,7 @@ private slots:
     void machineStats();
     void machineFiles();
     void machineInvalidOperations();
+    void k8sStatusAndValidation();
     void composeProviderFallback();
     void composeAndBuilds();
     void multiPlatformBuild();
@@ -2170,6 +2171,41 @@ void RpcTest::machineInvalidOperations()
                                         QJsonObject{{QStringLiteral("id"), id}}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(ssh.value(QStringLiteral("user")).toString(), QStringLiteral("podstack"));
+}
+
+void RpcTest::k8sStatusAndValidation()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject status = client.call(QStringLiteral("k8s.status"), QJsonObject{}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(status.value(QStringLiteral("state")).toString(), QStringLiteral("disabled"));
+    QCOMPARE(status.value(QStringLiteral("name")).toString(), QStringLiteral("default"));
+    QCOMPARE(status.value(QStringLiteral("enabled")).toBool(), false);
+
+    error = {};
+    client.call(QStringLiteral("k8s.enable"), QJsonObject{{QStringLiteral("cpus"), 0}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("k8s.enable"),
+                QJsonObject{{QStringLiteral("cpus"), QStringLiteral("2")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("k8s.enable"), QJsonObject{{QStringLiteral("memoryBytes"), 1.5}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("k8s.cancel"), QJsonObject{}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("k8s.cancel"),
+                QJsonObject{{QStringLiteral("jobId"), QStringLiteral("missing")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 }
 
 void RpcTest::composeProviderFallback()

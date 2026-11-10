@@ -92,6 +92,17 @@ target_link_libraries(podstack_machines PUBLIC
 )
 
 # ---------------------------------------------------------------------------
+# Kubernetes: VM dedicada + k3s (M5)
+# ---------------------------------------------------------------------------
+add_library(podstack_k8s STATIC
+    src/k8s/K8sCluster.cpp
+    src/k8s/K8sStore.cpp
+    src/k8s/K8sManager.cpp
+)
+target_include_directories(podstack_k8s PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(podstack_k8s PUBLIC podstack_machines Qt6::Core SQLite::SQLite3)
+
+# ---------------------------------------------------------------------------
 # Daemon
 # ---------------------------------------------------------------------------
 add_executable(podstackd
@@ -108,6 +119,7 @@ add_executable(podstackd
 target_link_libraries(podstackd PRIVATE
     podstack_podman
     podstack_machines
+    podstack_k8s
     Qt6::Concurrent
     Qt6::DBus
     SQLite::SQLite3

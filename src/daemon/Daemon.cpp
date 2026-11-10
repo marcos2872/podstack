@@ -25,6 +25,7 @@
 #include <QtConcurrent>
 
 #include <chrono>
+#include <cmath>
 #include <thread>
 
 namespace PodStack {
@@ -277,9 +278,7 @@ Error helperRequiredError()
 
 } // namespace
 
-Daemon::Daemon()
-    : m_podman(selectedPodmanSocket())
-    , m_compose(&m_podman)
+Daemon::Daemon() : m_podman(selectedPodmanSocket()), m_compose(&m_podman), m_k8s(&m_machines)
 {
     Error error;
     if (!m_podman.ping(&error)) {
@@ -566,6 +565,15 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("machines.stats.subscribe")) {
         return subscribeMachineStats(params, notify, error);
+    }
+    if (method == QStringLiteral("k8s.status")) {
+        return k8sStatus(error);
+    }
+    if (method == QStringLiteral("k8s.enable")) {
+        return k8sEnable(params, notify, error);
+    }
+    if (method == QStringLiteral("k8s.cancel")) {
+        return k8sCancel(params, error);
     }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
@@ -3930,6 +3938,181 @@ QJsonObject Daemon::settingsReset(const QJsonObject &params, Error *error)
 QJsonObject Daemon::settingsSchema() const
 {
     return Settings::schemaJson();
+}
+
+QJsonObject Daemon::k8sStatus(Error *error)
+{
+    K8sCluster cluster = m_k8s.status(error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    QJsonObject result = cluster.toJson();
+    result.insert(QStringLiteral("enabled"),
+                  !cluster.state.isEmpty() && cluster.state != QStringLiteral("disabled"));
+    result.insert(QStringLiteral("version"), QString());
+    return result;
+}
+
+QJsonObject Daemon::k8sEnable(const QJsonObject &params, const Notify &notify, Error *error)
+{
+    K8sManager::EnableRequest request;
+
+    const auto readInt = [&](const QString &key, std::optional<int> *target) {
+        const QJsonValue value = params.value(key);
+        if (value.isUndefined() || value.isNull()) {
+            return true;
+        }
+        if (!value.isDouble()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("%1 deve ser um número inteiro.").arg(key));
+            }
+            return false;
+        }
+        const double raw = value.toDouble();
+        if (std::trunc(raw) != raw || raw < 1 || raw > 256) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("%1 fora do intervalo 1..256.").arg(key),
+                                     QString::number(raw));
+            }
+            return false;
+        }
+        *target = static_cast<int>(raw);
+        return true;
+    };
+
+    const auto readBytes = [&](const QString &key, std::optional<qint64> *target) {
+        const QJsonValue value = params.value(key);
+        if (value.isUndefined() || value.isNull()) {
+            return true;
+        }
+        if (!value.isDouble()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("%1 deve ser um número inteiro.").arg(key));
+            }
+            return false;
+        }
+        const double raw = value.toDouble();
+        if (std::trunc(raw) != raw || raw < 1) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("%1 inválido.").arg(key), QString::number(raw));
+            }
+            return false;
+        }
+        *target = static_cast<qint64>(raw);
+        return true;
+    };
+
+    if (!readInt(QStringLiteral("cpus"), &request.cpus) ||
+        !readBytes(QStringLiteral("memoryBytes"), &request.memoryBytes) ||
+        !readBytes(QStringLiteral("diskBytes"), &request.diskBytes)) {
+        return {};
+    }
+
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+        jobId =
+            QStringLiteral("k8s-%1-%2").arg(QDateTime::currentSecsSinceEpoch()).arg(m_nextK8sJob++);
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+        m_k8sSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, request, notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("k8s.delta"), payload);
+        };
+        const auto cancelled = [subscription] { return subscription->cancel.load(); };
+
+        Error enableError;
+        const K8sCluster cluster = m_k8s.enable(request, progress, cancelled, &enableError);
+        if (enableError.isEmpty() && cluster.id.isEmpty()) {
+            enableError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                      QStringLiteral("Falha ao habilitar o cluster."));
+        }
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        if (enableError.isEmpty()) {
+            payload.insert(QStringLiteral("cluster"), cluster.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), enableError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("k8s.done"), payload);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+            m_k8sSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::k8sCancel(const QJsonObject &params, Error *error)
+{
+    const QString jobId = params.value(QStringLiteral("jobId")).toString().trimmed();
+    if (jobId.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o job do cluster."));
+        }
+        return {};
+    }
+
+    QString subscriptionId;
+    {
+        std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+        subscriptionId = m_k8sSubscriptions.value(jobId);
+    }
+    if (subscriptionId.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Job de cluster não está em execução."), jobId);
+        }
+        return {};
+    }
+
+    std::shared_ptr<Subscription> subscription;
+    {
+        std::lock_guard<std::mutex> lock(m_subscriptionsMutex);
+        subscription = m_subscriptions.value(subscriptionId);
+    }
+    if (!subscription) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Job de cluster não está em execução."), jobId);
+        }
+        return {};
+    }
+
+    subscription->cancel.store(true);
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("cancelled"), true);
+    return result;
 }
 
 QJsonObject Daemon::setupStatus()

@@ -589,8 +589,9 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 
 | Método | Params | Result |
 |---|---|---|
-| `k8s.status` | `{}` | `{state, context, apiPort, version}` |
+| `k8s.status` | `{}` | `{state, context, apiPort, version, name, vmMachineId, enabled, error}` |
 | `k8s.enable` | `{cpus?, memoryBytes?, diskBytes?}` | `JobRef` |
+| `k8s.cancel` | `{jobId}` | `{jobId, cancelled}` |
 | `k8s.disable` | `{force?}` | `JobRef` |
 | `k8s.reset` | `{}` | `JobRef` |
 | `k8s.pods.list` | `{namespace?}` | `{items: Pod[]}` |
@@ -601,6 +602,15 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 | `k8s.portforward.start` | `{namespace, pod, localPort, remotePort}` | `{id}` |
 | `k8s.portforward.stop` | `{id}` | `{}` |
 | `k8s.context.use` | `{context}` | `{}` |
+
+> **Implementado na T5-01:** `k8s.status`, `k8s.enable` e `k8s.cancel`. O `enable` provisiona
+> uma machine dedicada `podstack-k8s` com SSH em loopback (CPUs/memória/disco das settings
+> `kubernetes.*`, sem exposição na LAN), aguarda
+> o SSH/cloud-init, instala o k3s server sem Traefik e só retorna quando o node está `Ready`,
+> emitindo `k8s.delta {jobId, stage, progress}` e `k8s.done {jobId, cluster|error}`. Em falha
+> a VM fica parada para permitir retry; `k8s.disable/reset`, pods/services/logs/port-forward e
+> contexto ficam nas tarefas seguintes (T5-02..T5-07). O estado do cluster é persistido na
+> tabela `clusters` do `podstack.db`.
 
 ### 4.9 `domains.*` e `proxy.*`
 

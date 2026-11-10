@@ -5,6 +5,7 @@
 #include "daemon/ComposeManager.h"
 #include "daemon/HelperClient.h"
 #include "daemon/SetupManager.h"
+#include "k8s/K8sManager.h"
 #include "machines/CloudImageCache.h"
 #include "machines/MachineManager.h"
 #include "machines/MachineStats.h"
@@ -116,6 +117,9 @@ private:
     QJsonObject machineFilesList(const QJsonObject &params, Error *error);
     QJsonObject machineFilesDownload(const QJsonObject &params, Error *error);
     QJsonObject machineFilesUpload(const QJsonObject &params, Error *error);
+    QJsonObject k8sStatus(Error *error);
+    QJsonObject k8sEnable(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject k8sCancel(const QJsonObject &params, Error *error);
     QJsonObject setupStatus();
     QJsonObject setupCheck(const QJsonObject &params);
     QJsonObject setupValidate();
@@ -146,6 +150,7 @@ private:
     SetupManager m_setup;
     HelperClient m_helper;
     MachineManager m_machines;
+    K8sManager m_k8s;
     MachineStatsCollector m_machineStats;
     CloudImageCache m_cloudImages;
     std::mutex m_subscriptionsMutex;
@@ -154,10 +159,13 @@ private:
     QHash<QString, QString> m_buildSubscriptions;
     std::mutex m_machineJobsMutex;
     QHash<QString, QString> m_machineSubscriptions; // jobId -> subscriptionId
+    std::mutex m_k8sJobsMutex;
+    QHash<QString, QString> m_k8sSubscriptions; // jobId -> subscriptionId
     std::mutex m_settingsMutex;
     int m_nextSubscription = 1;
     int m_nextBuild = 1;
     int m_nextMachineJob = 1;
+    int m_nextK8sJob = 1;
 };
 
 } // namespace PodStack

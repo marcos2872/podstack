@@ -71,7 +71,7 @@ add_test(NAME notifications COMMAND test_notifications)
 qt_add_executable(test_machines test_machines.cpp MockHttpServer.cpp MockQmpServer.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/BuildStore.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/StatsCollector.cpp)
-target_link_libraries(test_machines PRIVATE podstack_machines podstack_podman
+target_link_libraries(test_machines PRIVATE podstack_machines podstack_k8s podstack_podman
     LibArchive::LibArchive Qt6::Test)
 add_test(NAME machines COMMAND test_machines)
 
