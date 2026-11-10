@@ -67,13 +67,12 @@ jobs:
             --txt-metric line --print-summary | tee coverage-summary.txt
           cat coverage-summary.txt >> "$GITHUB_STEP_SUMMARY"
 
-      # Gate bloqueante no patamar atual; a meta de 80% segue como objetivo
-      # pré-M5 e deve subir junto com os testes adicionados.
+      # Gate bloqueante na meta de 80% sobre src/.
       - name: Cobertura (gate bloqueante)
         run: |
           set -o pipefail
           gcovr -r . --filter 'src/' --gcov-ignore-parse-errors \
-            --merge-mode-functions=separate --fail-under-line 78 \
+            --merge-mode-functions=separate --fail-under-line 80 \
             --txt-metric line --print-summary | tee coverage-gate.txt
           cat coverage-gate.txt >> "$GITHUB_STEP_SUMMARY"
 

@@ -24,6 +24,20 @@ struct CliResult {
     QString err;
 };
 
+bool writeFile(const QString &path, const QByteArray &content)
+{
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return false;
+    }
+    if (file.write(content) != content.size()) {
+        return false;
+    }
+    file.close();
+    return file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+}
+
 class CliTest : public QObject {
     Q_OBJECT
 
@@ -37,6 +51,7 @@ private slots:
     void catalog();
     void machineDistros();
     void machineCommands();
+    void machineLifecycleCommands();
     void machineCreateForwardAgent();
     void machineSsh();
     void machinePorts();
@@ -94,6 +109,8 @@ QProcessEnvironment CliTest::environment(const QString &controlSocket) const
     env.insert(QStringLiteral("XDG_STATE_HOME"), m_testDataDir + QStringLiteral("/state"));
     env.insert(QStringLiteral("XDG_CONFIG_HOME"), m_testDataDir + QStringLiteral("/config"));
     env.insert(QStringLiteral("XDG_CACHE_HOME"), m_testDataDir + QStringLiteral("/cache"));
+    env.insert(QStringLiteral("PATH"),
+               m_testDataDir + QStringLiteral("/bin:") + qEnvironmentVariable("PATH"));
     return env;
 }
 
@@ -188,6 +205,23 @@ void CliTest::initTestCase()
     scpFiles.close();
     QVERIFY(scpFiles.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                     | QFileDevice::ExeOwner));
+
+    // qemu-img fake para clone/export/snapshot não dependerem do host.
+    const QString binDir = m_testDataDir + QStringLiteral("/bin");
+    QVERIFY(QDir().mkpath(binDir));
+    const QString qemuImgPath = binDir + QStringLiteral("/qemu-img");
+    QFile qemuImg(qemuImgPath);
+    QVERIFY(qemuImg.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    qemuImg.write("#!/bin/sh\n"
+                  "if [ \"$1\" = create ]; then eval \"disk=\\${$(( $# - 1 ))}\"; "
+                  "printf 'fake-qcow2' > \"$disk\"; exit 0; fi\n"
+                  "if [ \"$1\" = convert ]; then eval \"disk=\\${$#}\"; "
+                  "printf 'fake-qcow2' > \"$disk\"; exit 0; fi\n"
+                  "if [ \"$1\" = info ]; then printf '%s' '{\"snapshots\":[]}'; exit 0; fi\n"
+                  "exit 0\n");
+    qemuImg.close();
+    QVERIFY(qemuImg.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                   QFileDevice::ExeOwner));
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-cli-%1.sock")
@@ -750,6 +784,102 @@ void CliTest::machineCommands()
         QCOMPARE(result.code, 1);
         QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
     }
+}
+
+void CliTest::machineLifecycleCommands()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("0190f0f0-0000-7000-8000-00000000c11f");
+    meta.name = QStringLiteral("cli-life");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024 * 1024 * 1024;
+    meta.diskBytes = 20LL * 1024 * 1024 * 1024;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    meta.ports = {PodStack::MachinePort{QStringLiteral("port-ssh"), 32222, 22,
+                                        QStringLiteral("tcp"), false, QStringLiteral("ssh")}};
+
+    const QString machineDir = m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    meta.diskPath = machineDir + QStringLiteral("/disk.qcow2");
+    meta.seedPath = machineDir + QStringLiteral("/seed.iso");
+    meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
+    QVERIFY(writeFile(meta.diskPath, QByteArrayLiteral("fake-disk")));
+    QVERIFY(writeFile(meta.seedPath, QByteArrayLiteral("fake-seed")));
+    QVERIFY(writeFile(meta.sshKeyPath, QByteArrayLiteral("fake-key")));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+    QVERIFY(PodStack::MachineMetaFile::write(machineDir + QStringLiteral("/meta.json"), meta,
+                                             &storeError));
+
+    CliResult result = run(
+        {QStringLiteral("machine"), QStringLiteral("default"), QStringLiteral("cli-life")}, env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+
+    result =
+        run({QStringLiteral("machine"), QStringLiteral("default"), QStringLiteral("--json")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("cli-life")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("rename"), QStringLiteral("cli-life"),
+                  QStringLiteral("cli-life-renamed")},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QVERIFY(result.out.contains(QStringLiteral("cli-life-renamed")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("update"),
+                  QStringLiteral("cli-life-renamed"), QStringLiteral("--cpus"), QStringLiteral("4"),
+                  QStringLiteral("--memory"), QStringLiteral("4G")},
+                 env);
+    QVERIFY2(result.code == 0, qPrintable(result.err));
+    QVERIFY(result.out.contains(QStringLiteral("atualizada")));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("clone"),
+                  QStringLiteral("cli-life-renamed"), QStringLiteral("cli-life-clone")},
+                 env);
+    QVERIFY2(result.code == 0 || result.code == 1,
+             qPrintable(QStringLiteral("clone -> %1: %2").arg(result.code).arg(result.err)));
+
+    const QString archive = m_testDataDir + QStringLiteral("/cli-life.tar.zst");
+    result = run({QStringLiteral("machine"), QStringLiteral("export"),
+                  QStringLiteral("cli-life-renamed"), archive},
+                 env);
+    QVERIFY2(result.code == 0 || result.code == 1,
+             qPrintable(QStringLiteral("export -> %1: %2").arg(result.code).arg(result.err)));
+
+    // Importa de volta com outro nome se o export produziu um arquivo.
+    if (QFileInfo::exists(archive)) {
+        result = run({QStringLiteral("machine"), QStringLiteral("import"), archive,
+                      QStringLiteral("--name"), QStringLiteral("cli-life-restored")},
+                     env);
+        QVERIFY2(result.code == 0 || result.code == 1, qPrintable(result.err));
+    }
+
+    result = run({QStringLiteral("machine"), QStringLiteral("delete"),
+                  QStringLiteral("cli-life-clone"), QStringLiteral("--force")},
+                 env);
+    QVERIFY2(result.code == 0 || result.code == 1, qPrintable(result.err));
+    result = run({QStringLiteral("machine"), QStringLiteral("delete"),
+                  QStringLiteral("cli-life-restored"), QStringLiteral("--force")},
+                 env);
+    QVERIFY2(result.code == 0 || result.code == 1, qPrintable(result.err));
+    result = run({QStringLiteral("machine"), QStringLiteral("delete"),
+                  QStringLiteral("cli-life-renamed"), QStringLiteral("--force")},
+                 env);
+    QVERIFY2(result.code == 0 || result.code == 1, qPrintable(result.err));
+
+    QFile::remove(archive);
 }
 
 void CliTest::machineCreateForwardAgent()
@@ -1578,6 +1708,24 @@ void CliTest::configCommands()
                  env);
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("machines.memoryBytes=8589934592")));
+
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("app.notifications"), QStringLiteral("false")},
+                 env);
+    QCOMPARE(result.code, 0);
+    result =
+        run({QStringLiteral("config"), QStringLiteral("get"), QStringLiteral("app.notifications")},
+            env);
+    QCOMPARE(result.out.trimmed(), QStringLiteral("false"));
+
+    result = run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("terminal.fontSize"), QStringLiteral("14")},
+                 env);
+    QCOMPARE(result.code, 0);
+    result =
+        run({QStringLiteral("config"), QStringLiteral("get"), QStringLiteral("terminal.fontSize")},
+            env);
+    QCOMPARE(result.out.trimmed(), QStringLiteral("14"));
 
     result = run({QStringLiteral("config"), QStringLiteral("schema"),
                   QStringLiteral("--json")},

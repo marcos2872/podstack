@@ -1,6 +1,7 @@
 #include "MockPodmanServer.h"
 
 #include "core/RpcClient.h"
+#include "daemon/ComposeManager.h"
 #include "machines/MachineStore.h"
 
 #include <QCoreApplication>
@@ -15,6 +16,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QScopeGuard>
+#include <QTemporaryDir>
 #include <QTest>
 
 namespace {
@@ -39,6 +41,8 @@ private slots:
     void machineSnapshots();
     void machineStats();
     void machineFiles();
+    void machineInvalidOperations();
+    void composeProviderFallback();
     void composeAndBuilds();
     void multiPlatformBuild();
     void setupFlow();
@@ -2059,6 +2063,186 @@ void RpcTest::machineStats()
     QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
 }
 
+void RpcTest::machineInvalidOperations()
+{
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    const QString id = QStringLiteral("machine-invalid-1");
+    const QString name = QStringLiteral("invalid-operations");
+    const QString directory = m_testDataDir + QStringLiteral("/data/podstack/machines/") + id;
+    QVERIFY(QDir().mkpath(directory));
+
+    const auto writeFile = [](const QString &path, const QByteArray &data) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return false;
+        }
+        if (file.write(data) != data.size()) {
+            return false;
+        }
+        file.close();
+        return file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    };
+
+    PodStack::MachineMeta meta;
+    meta.id = id;
+    meta.name = name;
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024 * 1024 * 1024;
+    meta.diskBytes = 20LL * 1024 * 1024 * 1024;
+    meta.diskPath = directory + QStringLiteral("/disk.qcow2");
+    meta.seedPath = directory + QStringLiteral("/seed.iso");
+    meta.sshKeyPath = directory + QStringLiteral("/id_ed25519");
+    meta.sshPort = 32222;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    meta.ports = {PodStack::MachinePort{QStringLiteral("ssh-port"), 32222, 22,
+                                        QStringLiteral("tcp"), false, QStringLiteral("ssh")}};
+    QVERIFY(writeFile(meta.diskPath, QByteArrayLiteral("disk")));
+    QVERIFY(writeFile(meta.seedPath, QByteArrayLiteral("seed")));
+    QVERIFY(writeFile(meta.sshKeyPath, QByteArrayLiteral("key")));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+    QVERIFY(PodStack::MachineMetaFile::write(directory + QStringLiteral("/meta.json"), meta,
+                                             &storeError));
+
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.get"), QJsonObject{{QStringLiteral("id"), id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    error = {};
+    client.call(QStringLiteral("machines.update"),
+                QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("cpus"), 0}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("machines.update"),
+                QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("memoryBytes"), 1}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(
+        QStringLiteral("machines.ports.set"),
+        QJsonObject{{QStringLiteral("id"), id},
+                    {QStringLiteral("ports"),
+                     QJsonArray{QJsonObject{{QStringLiteral("protocol"), QStringLiteral("sctp")},
+                                            {QStringLiteral("hostPort"), 18080},
+                                            {QStringLiteral("guestPort"), 80}}}}},
+        &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("machines.rename"),
+                QJsonObject{{QStringLiteral("id"), id},
+                            {QStringLiteral("name"), QStringLiteral("Bad Name")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("machines.snapshots.create"),
+                QJsonObject{{QStringLiteral("id"), id},
+                            {QStringLiteral("name"), QStringLiteral("bad name")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("machines.default"),
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("missing")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    const QJsonObject ports = client.call(QStringLiteral("machines.ports.list"),
+                                          QJsonObject{{QStringLiteral("id"), id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(ports.value(QStringLiteral("items")).isArray());
+
+    error = {};
+    const QJsonObject ssh = client.call(QStringLiteral("machines.ssh"),
+                                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(ssh.value(QStringLiteral("user")).toString(), QStringLiteral("podstack"));
+}
+
+void RpcTest::composeProviderFallback()
+{
+    PodStack::PodmanClient client(m_mock.socketPath());
+
+    PodStack::ComposeManager listManager(&client);
+    PodStack::Error listError;
+    const QVector<PodStack::ComposeProjectInfo> projects = listManager.listProjects(&listError);
+    QVERIFY2(listError.isEmpty(), qPrintable(listError.message));
+    QVERIFY(!projects.isEmpty());
+    QCOMPARE(projects.first().name, QStringLiteral("mock-project"));
+
+    const QByteArray previousPath = qgetenv("PATH");
+    const QByteArray previousProvider = qgetenv("PODSTACK_COMPOSE_PROVIDER");
+    qunsetenv("PODSTACK_COMPOSE_PROVIDER");
+    const auto restore = qScopeGuard([previousPath, previousProvider] {
+        qputenv("PATH", previousPath);
+        if (previousProvider.isEmpty()) {
+            qunsetenv("PODSTACK_COMPOSE_PROVIDER");
+        } else {
+            qputenv("PODSTACK_COMPOSE_PROVIDER", previousProvider);
+        }
+    });
+
+    const auto writeScript = [](const QString &path) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return false;
+        }
+        file.write("#!/bin/sh\n"
+                   "case \"$*\" in *fail*) echo 'compose falhou' >&2; exit 1;; esac\n"
+                   "exit 0\n");
+        file.close();
+        return file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                   QFileDevice::ExeOwner);
+    };
+
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    QVERIFY(writeScript(bin.filePath(QStringLiteral("podman"))));
+    qputenv("PATH", bin.path().toUtf8());
+    PodStack::ComposeManager podmanManager(&client);
+    PodStack::Error error;
+    QCOMPARE(podmanManager.provider(&error), QStringLiteral("podman compose"));
+
+    const QString project = m_testDataDir + QStringLiteral("/compose-project");
+    QVERIFY(QDir().mkpath(project));
+    QVERIFY2(podmanManager.up(project, true, &error), qPrintable(error.message));
+
+    const QString failProject = m_testDataDir + QStringLiteral("/compose-fail");
+    QVERIFY(QDir().mkpath(failProject));
+    error = {};
+    QVERIFY(!podmanManager.up(failProject, true, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_COMPOSE_ERROR"));
+
+    QTemporaryDir dockerBin;
+    QVERIFY(dockerBin.isValid());
+    QVERIFY(writeScript(dockerBin.filePath(QStringLiteral("docker"))));
+    qputenv("PATH", dockerBin.path().toUtf8());
+    PodStack::ComposeManager dockerManager(&client);
+    error = {};
+    QCOMPARE(dockerManager.provider(&error), QStringLiteral("docker compose"));
+
+    QTemporaryDir emptyBin;
+    QVERIFY(emptyBin.isValid());
+    qputenv("PATH", emptyBin.path().toUtf8());
+    PodStack::ComposeManager missingManager(&client);
+    error = {};
+    QVERIFY(missingManager.provider(&error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_COMPOSE_PROVIDER_MISSING"));
+}
+
 void RpcTest::composeAndBuilds()
 {
     PodStack::RpcClient client(m_controlSocket);
@@ -2763,6 +2947,16 @@ void RpcTest::invalidRequests()
     response = readMessage(socket, buffer);
     QCOMPARE(response.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toInt(),
              -32600);
+
+    sendMessage(socket, QJsonObject{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                                    {QStringLiteral("id"), 8},
+                                    {QStringLiteral("method"), QStringLiteral("does.not.exist")},
+                                    {QStringLiteral("params"), QJsonObject{}}});
+    response = readMessage(socket, buffer);
+    QVERIFY(response.contains(QStringLiteral("error")));
+    QCOMPARE(
+        response.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toInt(),
+        -32603);
 
     // Métodos que exigem parâmetros: sem eles o handler precisa recusar antes
     // de tocar no Podman/machines. Cobre os caminhos de validação do daemon.

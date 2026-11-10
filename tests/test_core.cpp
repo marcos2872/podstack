@@ -4,6 +4,7 @@
 #include "core/Paths.h"
 #include "core/Proxy.h"
 #include "core/RpcClient.h"
+#include "core/RpcStream.h"
 #include "core/Settings.h"
 #include "core/SetupActions.h"
 #include "core/SetupPolicy.h"
@@ -16,12 +17,16 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QMap>
 #include <QScopeGuard>
 #include <QSet>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <thread>
 
 #include <sqlite3.h>
 
@@ -51,6 +56,8 @@ private slots:
     void buildStorePlatforms();
     void buildStoreErrors();
     void manifestBuilderValidation();
+    void manifestBuilderBuild();
+    void rpcStreamProtocol();
     void rpcClientUnavailable();
     void loggingInit();
 };
@@ -682,6 +689,151 @@ void CoreTest::manifestBuilderValidation()
     QVERIFY(!ok);
     QCOMPARE(unsupported.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
     QVERIFY(!unsupported.remediation.isEmpty());
+}
+
+void CoreTest::manifestBuilderBuild()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QFile dockerfile(directory.filePath(QStringLiteral("Dockerfile")));
+    QVERIFY(dockerfile.open(QIODevice::WriteOnly));
+    dockerfile.write("FROM alpine:3.20\n");
+    dockerfile.close();
+
+    const QString logPath = directory.filePath(QStringLiteral("podman.log"));
+    const QString cli = directory.filePath(QStringLiteral("podman-fake.sh"));
+    QFile script(cli);
+    QVERIFY(script.open(QIODevice::WriteOnly));
+    script.write(QStringLiteral("#!/bin/sh\n"
+                                "for arg in \"$@\"; do printf '%s\\n' \"$arg\" >> \"%1\"; done\n"
+                                "if [ \"$1\" = 'build' ]; then\n"
+                                "  echo 'line one'\n"
+                                "  echo 'line two'\n"
+                                "fi\n"
+                                "exit 0\n")
+                     .arg(logPath)
+                     .toUtf8());
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
+
+    const QByteArray previous = qgetenv("PODSTACK_PODMAN_CLI");
+    qputenv("PODSTACK_PODMAN_CLI", cli.toUtf8());
+    const auto restore = qScopeGuard([previous] {
+        if (previous.isEmpty()) {
+            qunsetenv("PODSTACK_PODMAN_CLI");
+        } else {
+            qputenv("PODSTACK_PODMAN_CLI", previous);
+        }
+    });
+
+    PodStack::ManifestBuilder builder;
+    QStringList lines;
+    PodStack::Error error;
+    QVERIFY2(builder.build(
+                 directory.path(), QStringLiteral("Dockerfile"),
+                 QStringLiteral("localhost/test:multi"),
+                 {{QStringLiteral("A"), QStringLiteral("B")}},
+                 {QStringLiteral("linux/amd64"), QStringLiteral("linux/arm64")},
+                 [&lines](const QString &line) { lines.append(line); }, {}, &error),
+             qPrintable(error.message));
+    QCOMPARE(lines, QStringList({QStringLiteral("line one"), QStringLiteral("line two")}));
+
+    QFile log(logPath);
+    QVERIFY(log.open(QIODevice::ReadOnly));
+    const QStringList args =
+        QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    log.close();
+    QVERIFY(args.contains(QStringLiteral("build")));
+    QVERIFY(args.contains(QStringLiteral("--manifest")));
+    QVERIFY(args.contains(QStringLiteral("linux/amd64,linux/arm64")));
+    QVERIFY(args.contains(QStringLiteral("--build-arg")));
+    QVERIFY(args.contains(QStringLiteral("A=B")));
+
+    // Cancelamento antes de iniciar.
+    error = {};
+    QVERIFY(!builder.build(
+        directory.path(), QStringLiteral("Dockerfile"), QStringLiteral("localhost/test:multi"), {},
+        {QStringLiteral("linux/amd64")}, {}, [] { return true; }, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    // Contexto/Dockerfile/tag inválidos.
+    error = {};
+    QVERIFY(!builder.build(directory.filePath(QStringLiteral("missing")),
+                           QStringLiteral("Dockerfile"), QStringLiteral("tag"), {},
+                           {QStringLiteral("linux/amd64")}, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    error = {};
+    QVERIFY(!builder.build(directory.path(), QStringLiteral("Missingfile"), QStringLiteral("tag"),
+                           {}, {QStringLiteral("linux/amd64")}, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    error = {};
+    QVERIFY(!builder.build(directory.path(), QStringLiteral("Dockerfile"),
+                           QStringLiteral("-bad-tag"), {}, {QStringLiteral("linux/amd64")}, {}, {},
+                           &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void CoreTest::rpcStreamProtocol()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    const auto runServer = [](const QString &path, const QByteArray &payload) {
+        std::thread serverThread([path, payload] {
+            QLocalServer server;
+            if (!server.listen(path)) {
+                return;
+            }
+            if (!server.waitForNewConnection(5000)) {
+                return;
+            }
+            QLocalSocket *socket = server.nextPendingConnection();
+            if (!socket) {
+                return;
+            }
+            socket->waitForReadyRead(5000);
+            socket->write(payload);
+            socket->flush();
+            socket->waitForBytesWritten(5000);
+            socket->waitForDisconnected(1000);
+        });
+        for (int attempt = 0; attempt < 100 && !QFileInfo::exists(path); ++attempt) {
+            QTest::qWait(10);
+        }
+        return serverThread;
+    };
+
+    const QString successPath = directory.filePath(QStringLiteral("success.sock"));
+    const QByteArray successPayload =
+        QByteArrayLiteral("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"s\"}}\n"
+                          "{\"jsonrpc\":\"2.0\",\"method\":\"x.delta\",\"params\":{\"v\":1}}\n"
+                          "{\"jsonrpc\":\"2.0\",\"method\":\"x.done\",\"params\":{}}\n");
+    std::thread successServer = runServer(successPath, successPayload);
+
+    PodStack::RpcStream stream(successPath);
+    QStringList events;
+    PodStack::Error error;
+    const bool ok = stream.run(
+        QStringLiteral("x"), {},
+        [&events](const QString &method, const QJsonObject &) { events.append(method); }, &error,
+        5000);
+    successServer.join();
+    QVERIFY2(ok, qPrintable(error.message));
+    QCOMPARE(events, QStringList({QStringLiteral("x.delta"), QStringLiteral("x.done")}));
+
+    const QString errorPath = directory.filePath(QStringLiteral("error.sock"));
+    const QByteArray errorPayload =
+        QByteArrayLiteral("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"s\"}}\n"
+                          "{\"jsonrpc\":\"2.0\",\"method\":\"x.error\",\"params\":{\"error\":"
+                          "{\"code\":\"PODSTACK_IO_ERROR\",\"message\":\"falhou\"}}}\n");
+    std::thread errorServer = runServer(errorPath, errorPayload);
+
+    PodStack::RpcStream failing(errorPath);
+    error = {};
+    QVERIFY(!failing.run(QStringLiteral("x"), {}, {}, &error, 5000));
+    errorServer.join();
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
 }
 
 void CoreTest::rpcClientUnavailable()

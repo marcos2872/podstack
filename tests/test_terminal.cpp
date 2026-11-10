@@ -71,6 +71,7 @@ private slots:
     void machineDetailDialog();
     void machineDetailDialogFromList();
     void machineDetailDialogQml();
+    void machineDetailOverlayErrors();
     void mainWindowTerminalDock();
     void mainWindowQml();
 
@@ -743,6 +744,38 @@ void TerminalTest::machineDetailDialogQml()
     QVERIFY(overlay.findChild<PodStack::TerminalView *>() == nullptr);
 }
 
+void TerminalTest::machineDetailOverlayErrors()
+{
+    PodStack::Backend backend;
+    QWidget host;
+    host.resize(1200, 800);
+    PodStack::MachineDetailDialog overlay(&backend, &host, /*loadQml=*/true);
+    if (!overlay.qmlLoaded()) {
+        QSKIP("Módulo QML PodStack indisponível neste binário de teste.");
+    }
+
+    overlay.openMachine(QStringLiteral("missing"));
+    QVERIFY(overlay.isHidden());
+    QVERIFY(overlay.machineId().isEmpty());
+    overlay.openMachine(QVariantMap{});
+    QVERIFY(overlay.isHidden());
+    QVERIFY(overlay.machineId().isEmpty());
+
+    overlay.applyTerminalArea(QRectF(1, 1, 10, 10), true);
+    overlay.hideOverlay();
+    QVERIFY(overlay.isHidden());
+
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(0), QStringLiteral("info"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(1), QStringLiteral("logs"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(2), QStringLiteral("stats"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(3), QStringLiteral("terminal"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(4), QStringLiteral("files"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(99), QStringLiteral("info"));
+
+    overlay.closeOverlay();
+    QVERIFY(overlay.machineId().isEmpty());
+}
+
 void TerminalTest::mainWindowTerminalDock()
 {
     PodStack::Backend backend;
@@ -771,10 +804,16 @@ void TerminalTest::mainWindowTerminalDock()
     QTest::qWait(200);
 
     QVERIFY(QMetaObject::invokeMethod(window.terminalTabs(), "tabCloseRequested",
+                                      Qt::DirectConnection, Q_ARG(int, -1)));
+    QCOMPARE(window.terminalTabs()->count(), 1);
+    QVERIFY(QMetaObject::invokeMethod(window.terminalTabs(), "tabCloseRequested",
                                       Qt::DirectConnection, Q_ARG(int, 0)));
     QCOMPARE(window.terminalTabs()->count(), 0);
     QVERIFY(window.terminalDock()->isHidden());
     QVERIFY(window.findChild<QTermWidget *>() == nullptr);
+
+    window.close();
+    QVERIFY(!window.isVisible());
 }
 
 void TerminalTest::mainWindowQml()
@@ -804,6 +843,16 @@ void TerminalTest::mainWindowQml()
     // sem ReferenceError e o array de linhas existir.
     QVERIFY(settings->property("settingsRows").isValid());
     QVERIFY(QMetaObject::invokeMethod(settings, "close"));
+
+    window.reveal();
+    window.hideToTray();
+    window.openContainerDetail(QStringLiteral("missing"));
+    window.openContainerDetail(QString());
+    window.openContainerDetailTab(QString(), 0);
+    window.openMachineDetail(QStringLiteral("missing"));
+    window.openMachineDetail(QString());
+    window.showMinimized();
+    window.reveal();
 }
 
 } // namespace

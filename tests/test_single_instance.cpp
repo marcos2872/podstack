@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QLocalSocket>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -25,6 +26,7 @@ private slots:
     void secondInstanceForwardsQuit();
     void staleSocketIsReplaced();
     void socketPermissionsArePrivate();
+    void ignoresUnknownCommands();
 
 private:
     QString m_runtimeDir;
@@ -56,6 +58,7 @@ void SingleInstanceTest::primaryStartsAndListens()
     QVERIFY2(primary.start(QString(), &error), qPrintable(error));
     QVERIFY(primary.isPrimary());
     QVERIFY(QFile::exists(PodStack::SingleInstance::socketPath()));
+    QVERIFY(primary.start(QString(), &error));
 }
 
 void SingleInstanceTest::secondInstanceForwardsShow()
@@ -111,6 +114,29 @@ void SingleInstanceTest::socketPermissionsArePrivate()
     QVERIFY(!permissions.testFlag(QFileDevice::WriteGroup));
     QVERIFY(!permissions.testFlag(QFileDevice::ReadOther));
     QVERIFY(!permissions.testFlag(QFileDevice::WriteOther));
+}
+
+void SingleInstanceTest::ignoresUnknownCommands()
+{
+    PodStack::SingleInstance primary;
+    QString error;
+    QVERIFY2(primary.start(QString(), &error), qPrintable(error));
+
+    QLocalSocket socket;
+    socket.connectToServer(PodStack::SingleInstance::socketPath());
+    QVERIFY(socket.waitForConnected(2000));
+    socket.write("not-json\n");
+    QVERIFY(socket.waitForBytesWritten(2000));
+    QTest::qWait(50);
+    QVERIFY(primary.isPrimary());
+
+    QLocalSocket unknown;
+    unknown.connectToServer(PodStack::SingleInstance::socketPath());
+    QVERIFY(unknown.waitForConnected(2000));
+    unknown.write("{\"command\":\"bogus\"}\n");
+    QVERIFY(unknown.waitForBytesWritten(2000));
+    QTest::qWait(50);
+    QVERIFY(primary.isPrimary());
 }
 
 } // namespace

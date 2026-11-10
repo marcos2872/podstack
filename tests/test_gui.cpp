@@ -1586,6 +1586,9 @@ void GuiTest::streamClientProtocol()
     QSignalSpy statsSpy(&client, &PodStack::StreamClient::stats);
     QSignalSpy consoleSpy(&client, &PodStack::StreamClient::machineConsoleEvent);
     QSignalSpy buildSpy(&client, &PodStack::StreamClient::buildFinished);
+    QSignalSpy buildEventSpy(&client, &PodStack::StreamClient::buildEvent);
+    QSignalSpy composeLogSpy(&client, &PodStack::StreamClient::composeLog);
+    QSignalSpy machineJobSpy(&client, &PodStack::StreamClient::machineCreateFinished);
     QSignalSpy setupSpy(&client, &PodStack::StreamClient::setupFinished);
 
     client.subscribeLogs(QStringLiteral("abc"), 10, true);
@@ -1633,9 +1636,51 @@ void GuiTest::streamClientProtocol()
     QVERIFY(socket);
     socket->write(QByteArrayLiteral(
         "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-4\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"builds.delta\",\"params\":{\"stream\":\"step\"}}\n"
         "{\"jsonrpc\":\"2.0\",\"method\":\"builds.done\",\"params\":{\"state\":\"success\"}}\n"));
     socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(buildEventSpy.count() > 0, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(buildSpy.count() > 0, 5000);
+
+    client.subscribeComposeLogs(QStringLiteral("proj"), QStringLiteral("web"));
+    socket = accept(QByteArrayLiteral("compose.logs.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-9\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"compose.logs.delta\",\"params\":{"
+        "\"service\":\"web\",\"line\":\"oi\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(composeLogSpy.count() > 0, 5000);
+
+    const QList<QPair<QString, QString>> machineJobs = {
+        {QStringLiteral("machines.create"), QStringLiteral("create")},
+        {QStringLiteral("machines.export"), QStringLiteral("export")},
+        {QStringLiteral("machines.import"), QStringLiteral("import")},
+        {QStringLiteral("machines.clone"), QStringLiteral("clone")},
+    };
+    for (const auto &[method, label] : machineJobs) {
+        if (label == QStringLiteral("create")) {
+            client.startMachineCreate({});
+        } else if (label == QStringLiteral("export")) {
+            client.startMachineExport({});
+        } else if (label == QStringLiteral("import")) {
+            client.startMachineImport({});
+        } else {
+            client.startMachineClone({});
+        }
+        socket = accept(method.toUtf8());
+        QVERIFY2(socket, qPrintable(method));
+        socket->write(
+            QByteArrayLiteral("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{"
+                              "\"subscriptionId\":\"sub-job\"}}\n"
+                              "{\"jsonrpc\":\"2.0\",\"method\":\"machines.delta\",\"params\":{"
+                              "\"stage\":\"disk\",\"progress\":50}}\n"
+                              "{\"jsonrpc\":\"2.0\",\"method\":\"machines.done\",\"params\":{"
+                              "\"state\":\"success\"}}\n"));
+        socket->flush();
+        QTRY_VERIFY_WITH_TIMEOUT(machineJobSpy.count() > 0, 5000);
+        machineJobSpy.clear();
+    }
 
     client.startSetup(QJsonObject{{QStringLiteral("action"), QStringLiteral("enable-socket")}});
     socket = accept(QByteArrayLiteral("setup.apply"));
@@ -1645,6 +1690,42 @@ void GuiTest::streamClientProtocol()
         "{\"jsonrpc\":\"2.0\",\"method\":\"setup.done\",\"params\":{\"state\":\"success\"}}\n"));
     socket->flush();
     QTRY_VERIFY_WITH_TIMEOUT(setupSpy.count() > 0, 5000);
+
+    QSignalSpy pullSpy(&client, &PodStack::StreamClient::pullFinished);
+    client.pullImage(QStringLiteral("alpine"), {});
+    socket = accept(QByteArrayLiteral("images.pull"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-6\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"images.pull.delta\",\"params\":{"
+        "\"status\":\"Downloading\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"images.pull.done\",\"params\":{"
+        "\"images\":[\"img\"]}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(pullSpy.count() > 0, 5000);
+    QCOMPARE(pullSpy.last().at(0).toBool(), true);
+
+    QSignalSpy machineStatsSpy(&client, &PodStack::StreamClient::machineStats);
+    client.subscribeMachineStats(QStringLiteral("machine-1"), 2);
+    socket = accept(QByteArrayLiteral("machines.stats.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-7\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"machines.stats.delta\",\"params\":{"
+        "\"cpuPercent\":1.0}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(machineStatsSpy.count() > 0, 5000);
+
+    QSignalSpy eventSpy(&client, &PodStack::StreamClient::eventReceived);
+    client.subscribeEvents();
+    socket = accept(QByteArrayLiteral("events.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-8\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{"
+        "\"Action\":\"start\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(eventSpy.count() > 0, 5000);
 
     client.unsubscribe();
 }
