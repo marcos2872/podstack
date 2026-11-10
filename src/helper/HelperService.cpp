@@ -2,6 +2,8 @@
 
 #include "helper/HelperService.h"
 
+#include "core/Error.h"
+#include "helper/Firewall.h"
 #include "helper/Polkit.h"
 
 #include <QDBusConnection>
@@ -21,6 +23,8 @@ namespace {
 
 constexpr auto kInstallAction = "dev.podstack.helper.install-packages";
 constexpr auto kRemoveAction = "dev.podstack.helper.remove-packages";
+constexpr auto kOpenPortsAction = "dev.podstack.helper.open-ports";
+constexpr auto kClosePortsAction = "dev.podstack.helper.close-ports";
 
 const QStringList &installAllowlist()
 {
@@ -254,6 +258,74 @@ QVariantMap HelperService::RemovePackages(const QStringList &packages)
     }
     return result(true, QStringLiteral("Pacotes removidos: %1")
                             .arg(installed.join(QStringLiteral(", "))));
+}
+
+uint HelperService::callerUid() const
+{
+    if (!calledFromDBus()) {
+        return 0;
+    }
+    QDBusConnectionInterface *bus = QDBusConnection::systemBus().interface();
+    if (!bus) {
+        return 0;
+    }
+    const QDBusReply<uint> reply = bus->serviceUid(message().service());
+    return reply.isValid() ? reply.value() : 0;
+}
+
+QVariantMap HelperService::changePorts(const QStringList &ports, const QString &protocol,
+                                       const QString &actionId, bool open)
+{
+    QStringList normalized;
+    Error validationError;
+    if (!Firewall::validatePorts(ports, protocol, &normalized, &validationError)) {
+        return result(false, validationError.message);
+    }
+    const QString normalizedProtocol = protocol.trimmed().toLower();
+
+    QString error;
+    if (!authorize(actionId, &error)) {
+        qCWarning(lcHelper, "%s uid=%u ports=%s protocol=%s result=denied",
+                  open ? "OpenPorts" : "ClosePorts", callerUid(),
+                  qUtf8Printable(normalized.join(QLatin1Char(','))),
+                  qUtf8Printable(normalizedProtocol));
+        return result(false, error);
+    }
+
+    PodStack::Error firewallError;
+    const bool changed =
+        open ? Firewall::openPorts(normalized, normalizedProtocol, &firewallError)
+             : Firewall::closePorts(normalized, normalizedProtocol, &firewallError);
+    if (!changed) {
+        QString message = firewallError.message;
+        if (!firewallError.detail.isEmpty()) {
+            message += QLatin1Char(' ') + firewallError.detail;
+        }
+        qCWarning(lcHelper, "%s uid=%u ports=%s protocol=%s result=error code=%s",
+                  open ? "OpenPorts" : "ClosePorts", callerUid(),
+                  qUtf8Printable(normalized.join(QLatin1Char(','))),
+                  qUtf8Printable(normalizedProtocol), qUtf8Printable(firewallError.code));
+        return result(false, message);
+    }
+
+    qCInfo(lcHelper, "%s uid=%u ports=%s protocol=%s result=ok",
+           open ? "OpenPorts" : "ClosePorts", callerUid(),
+           qUtf8Printable(normalized.join(QLatin1Char(','))),
+           qUtf8Printable(normalizedProtocol));
+    return result(true, open ? QStringLiteral("Portas abertas no firewall: %1/%2")
+                                   .arg(normalized.join(QStringLiteral(", ")), normalizedProtocol)
+                             : QStringLiteral("Portas fechadas no firewall: %1/%2")
+                                   .arg(normalized.join(QStringLiteral(", ")), normalizedProtocol));
+}
+
+QVariantMap HelperService::OpenPorts(const QStringList &ports, const QString &protocol)
+{
+    return changePorts(ports, protocol, QString::fromLatin1(kOpenPortsAction), true);
+}
+
+QVariantMap HelperService::ClosePorts(const QStringList &ports, const QString &protocol)
+{
+    return changePorts(ports, protocol, QString::fromLatin1(kClosePortsAction), false);
 }
 
 } // namespace PodStack

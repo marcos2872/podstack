@@ -4,6 +4,7 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 #include <mutex>
@@ -37,6 +38,7 @@ struct BuildRecord {
     QString dockerfile;
     QString logPath;
     QString error;
+    QStringList platforms;
     QVector<BuildStepRecord> steps;
 
     QJsonObject toJson() const;

@@ -8,7 +8,7 @@
 
 | Pacote | Conteúdo | Dependências |
 |---|---|---|
-| `podstack` | GUI, CLI, daemon, QML, ícones, `.desktop`, AppStream | Qt 6.10+, libcurl, sqlite, podman |
+| `podstack` | GUI, CLI, daemon, QML, ícones, `.desktop`, AppStream | Qt 6.10+, libcurl, libarchive, libxcrypt, sqlite, podman, openssh-clients |
 | `podstack-helper` | helper root, unit system, polkit | systemd, polkit |
 | `podstack-selinux` | política SELinux | `selinux-policy-targeted` |
 | `podstack-devel` (opcional) | headers/libs para plugins | — |
@@ -248,11 +248,13 @@ BuildRequires:  kf6-kstatusnotifieritem-devel
 BuildRequires:  qtermwidget-devel
 BuildRequires:  libarchive-devel
 BuildRequires:  libcurl-devel
+BuildRequires:  libxcrypt-devel
 BuildRequires:  sqlite-devel
 Requires:       podman >= 5.8
 Requires:       systemd >= 257
 Requires:       qtermwidget
 Requires:       qt6-qtsvg
+Requires:       openssh-clients
 
 %description
 PodStack is a desktop app for Podman: containers, images, volumes, networks,

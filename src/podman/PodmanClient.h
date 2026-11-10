@@ -39,7 +39,7 @@ struct PortMapping {
     int hostPort = 0;
     int containerPort = 0;
     QString protocol = QStringLiteral("tcp");
-    QString hostIp = QStringLiteral("0.0.0.0");
+    QString hostIp = QStringLiteral("127.0.0.1");
 };
 
 struct MountMapping {

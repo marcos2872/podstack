@@ -10,6 +10,7 @@
 |---|---|
 | Containers, imagens e volumes do usuário | Alta (dados/código) |
 | Chaves SSH e `~/.ssh/config` | Alta |
+| SSH agent do host (quando encaminhado a uma machine) | Alta |
 | Credenciais de registry | Alta |
 | CA local e chave privada | Alta |
 | Configurações e histórico | Média |
@@ -97,8 +98,21 @@ flowchart TB
 | `SetSysctl` | `{key,value}` | Apenas allowlist (`ip_unprivileged_port_start`) |
 | `InstallPackages` | `{packages:[...], reason}` | Instala pacotes **allowlisted** (podman, qemu-kvm, virtiofsd, …) |
 | `RemovePackages` | `{packages:[...], reason}` | Remove pacotes **allowlisted** (ex.: docker-ce) |
+| `OpenPorts` | `{ports:[8080,8443], protocol:"tcp"\|"udp"}` | Abre portas no firewall em modo **runtime** (firewalld/ufw), reversível |
+| `ClosePorts` | `{ports:[...], protocol}` | Remove as regras runtime abertas por `OpenPorts` |
 
 **Proibido:** `Exec`, `Shell`, caminho arbitrário, escrita fora de paths allowlisted; instalação/remoção de pacotes só via `InstallPackages`/`RemovePackages`, com allowlist e consentimento.
+
+**Firewall runtime (LAN):** `OpenPorts`/`ClosePorts` só aceitam listas de portas
+(`1..65535`, até 32 por chamada, sem duplicatas) e `protocol` `tcp`/`udp`. O helper executa
+`firewall-cmd --add-port`/`--remove-port` ou `ufw allow`/`ufw delete allow` **sem**
+`--permanent`, com timeout de 5 s; a abertura parcial é revertida. As ações polkit são
+`dev.podstack.helper.open-ports` (`auth_admin_keep` na sessão ativa) e
+`dev.podstack.helper.close-ports` (`auth_admin`). A auditoria registra uid, método, portas,
+protocolo e resultado, sem comando/caminho sensível. No firewalld as regras são
+deliberadamente **runtime** (um reload/restart as remove); no ufw a regra é persistente
+até `ClosePorts`/`ufw delete allow`. O usuário pode fechá-las pelo inspector ou recriar o
+container em `127.0.0.1`.
 
 > `podman.socket` é habilitado no **systemd do usuário** pelo daemon; não requer root nem helper.
 
@@ -140,13 +154,39 @@ encerra a janela da instância já em execução.
 | Segredo | Armazenamento | Acesso |
 |---|---|---|
 | Credenciais de registry | `~/.config/containers/auth.json` (0600) ou keyring | Podman/daemon |
-| Chaves SSH das máquinas | `~/.local/share/podstack/machines/<id>/id_ed25519` (0600) | daemon, `ssh` |
+| Chaves SSH das máquinas | `~/.local/share/podstack/machines/<id>/id_ed25519` (0600) e `.pub` (0644) | daemon, `ssh` |
+| Bloco SSH gerenciado | `~/.ssh/config` (0600; `~/.ssh` 0700) | daemon, `ssh` |
 | Chave da CA | `~/.local/share/podstack/ca/key.pem` (0600) | Caddy/daemon |
 | Tokens de update | keyring | daemon |
-| Senhas de máquina | cloud-init seed (apagada após boot) / keyring | daemon |
+| Senhas de máquina | cloud-init seed (`seed.iso` e arquivos internos `0600`, senha só como hash SHA-512 crypt; apagada após o boot) / keyring | daemon |
 
 - Nunca em `config.json`, logs, relatório ou argv (visível em `ps`).
+- `machines.create` aceita `password` apenas no corpo JSON-RPC; o daemon não devolve o campo,
+  não o inclui em `machines.delta`/`machines.done` e não o registra em log. A GUI envia a
+  senha no corpo do RPC (campo `echoMode: Password`); o CLI não expõe
+  `--password`/`--set-password`, mantendo a senha fora de `ps` e do histórico do shell. O
+  acesso padrão do CLI é por chave ed25519 gerada pelo daemon.
 - Redaction: chaves que casam `(?i)(token|password|secret|authorization|key)` em env/labels são mascaradas.
+- SSH de machines: a chave privada é gerada pelo daemon com `ssh-keygen` (sem shell), fica
+  `0600` e a pública `0644`; o bloco em `~/.ssh/config` é gravado atomicamente com `0600`
+  (`~/.ssh` `0700`) e preserva blocos de terceiros. `machines.ssh` devolve apenas
+  `host/port/user/identityFile/forwardAgent`; o conteúdo da chave nunca aparece em log, UI
+  ou resposta. O CLI usa `StrictHostKeyChecking=accept-new` e `IdentitiesOnly=yes`.
+- SSH agent forwarding (`forwardSshAgent`) é **off por padrão**. Quando ativado, o bloco
+  gerenciado recebe `ForwardAgent yes` e o `ssh` aberto pelo PodStack (CLI e terminal
+  embutido/externo) recebe `-A`: o guest passa a poder usar as chaves carregadas no agent do
+  host. O toggle no Info deixa isso explícito com aviso; ative só em machines confiáveis e
+  desligue quando não precisar. A mudança é persistida sem parar a machine e, se o config
+  SSH não puder ser sincronizado, o valor anterior é restaurado.
+- Métricas de machines (`machines.stats`/`stats.subscribe`) usam SSH one-shot **sem shell
+  local**, com comando remoto fixo (somente leitura de `/proc` e `df`), `BatchMode=yes`,
+  `IdentitiesOnly=yes`, `StrictHostKeyChecking=accept-new` e `ConnectTimeout=3`. A saída
+  bruta e os caminhos internos não são registrados em log; erros expõem apenas stderr
+  truncado e o id da machine.
+- Proxy: a URL de `network.proxy` pode conter usuário/senha. Ela **nunca** é registrada em
+  log, ecoada em erro de validação ou incluída em diagnóstico; os erros são genéricos. O
+  `config.json` é `0600`, e as variáveis vão ao container/machine pelo ambiente/cloud-init,
+  não por argv.
 - `podstack report` mostra prévia e exige confirmação.
 
 ### 6.1 Telemetria (opt-in por categoria)
@@ -162,12 +202,35 @@ encerra a janela da instância já em execução.
 ## 7. Rede, DNS e proxy
 
 - Proxy/DNS escutam **somente loopback** por padrão.
+- O proxy global é aplicado por variáveis de ambiente na criação de containers e por
+  `/etc/environment` (cloud-init) em machines novas; credenciais da URL não aparecem em logs,
+  erros ou argv. Recursos existentes exigem recriação.
 - Exposição LAN é opt-in, com aviso e firewall (firewalld/ufw).
+- Port forwarding de machines: o bind padrão é `127.0.0.1`; `exposeLan=true` faz o QEMU
+  escutar em `0.0.0.0` e expõe a porta a qualquer dispositivo da rede. A GUI avisa no
+  diálogo **Portas da machine**, a CLI usa `--lan` e o firewall do host precisa ser liberado
+  separadamente (o PodStack não abre buracos automaticamente).
 - `*.localhost` não requer privilégio e não altera o sistema.
 - `*.podstack.local` via helper: drop-in gerenciado, reversível, com backup.
 - Não usar mDNS/Avahi por padrão (conflito na LAN e spoofing).
 - HTTPS: CA local com chave protegida; certificados on-the-fly; remoção fácil.
 - Containers recebem a CA apenas se opt-in; documentar implicações.
+
+### 7.1 Modo isolado de machines (T4-14)
+
+- `isolated:true`/`--isolated` força `isolateNetwork=true`, `forwardSshAgent=false` e nenhum
+  mount do host; `mounts`/`forwardSshAgent` enviados junto retornam
+  `PODSTACK_INVALID_PARAMS`. Nenhuma porta pode usar `exposeLan=true` (recusado por
+  `machines.ports.set` antes de persistir/parar).
+- O QEMU usa rede user-mode com `restrict=on`: o guest não contata o host nem roteia
+  pacotes para fora, e nenhuma máquina/host da rede local é alcançável. A única exceção é
+  o `hostfwd` de administração, publicado **somente** em `127.0.0.1` (SSH), que continua
+  disponível para o dono do host.
+- **O que não isola:** não é sandbox contra malware nem fronteira contra falhas do QEMU ou
+  do kernel do host; o usuário do daemon continua podendo ler o disco, o `console.log`, o
+  seed e a chave SSH da machine, e o host pode iniciar/parar/exportar a machine. Canais
+  laterais de CPU e a imagem base compartilhada (backing file somente leitura) também não
+  são isolados. Para dados não confiáveis, trate o guest como comprometível.
 
 ---
 
@@ -175,9 +238,33 @@ encerra a janela da instância já em execução.
 
 - Paths resolvidos com `realpath` e confinados ao escopo (container/volume/máquina).
 - Rejeitar `..`, paths absolutos em archives, symlinks que escapam, hardlinks.
+- `machines.logs` e o console serial (`machines.console.read`/`machines.console`) leem
+  somente `machines/<id>/console.log`: arquivo regular, symlink rejeitado, caminho canônico
+  confinado ao diretório da machine e sem expor o path na resposta ou em erro. A leitura é
+  limitada aos últimos **512 KiB** (tail default de 64 KiB) e o follow revalida o arquivo a
+  cada 300 ms; se ele virar symlink/não regular, o stream encerra com
+  `machines.console.error`. O conteúdo é dado não confiável do guest, convertido como UTF-8
+  aproximado (lossy), e nunca é interpretado como instrução pelo daemon/CLI/GUI.
 - Uploads: validar tamanho, tipo e destino; gravar em tmp e mover atomicamente.
 - Downloads: gerar em tmp com nome seguro; nunca sobrescrever sem confirmação.
-- Import de máquina/volume: validar manifest/checksum; extrair em dir temporário e mover.
+- Imagens cloud: URLs do registry pinado são **HTTPS obrigatório**; o checksum
+  (**SHA-256/SHA-512**) é obrigatório e verificado antes de usar a imagem. O cache em
+  `~/.cache/podstack/images/` é `0700` e os arquivos/sidecars são `0600`; download em
+  `.part` com rename atômico e lock por imagem.
+- Export/import de máquina: o `.tar.zst` contém o disco, o seed cloud-init e o par de
+  chaves SSH da machine; o `.part` e o arquivo final são criados com `0600` e o
+  arquivo só é renomeado no sucesso. O import valida o formato `podstack.machine/1`,
+  rejeita entradas fora da lista (`disk.qcow2`, `seed.iso`, `id_ed25519`,
+  `id_ed25519.pub`, `manifest.json`), links (hardlink/symlink), tamanhos e checksums
+  SHA-256 do manifesto antes de mover o diretório temporário (0700, arquivos 0600)
+  para `machines/<id>`. Mounts do host não são exportados.
+- Import de volume: validar manifest/checksum; extrair em dir temporário e mover.
+- Snapshots de machine: nomes validados por `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` e passados
+  ao `qemu-img` como argumento (sem shell); o snapshot é interno ao qcow2 e não cria arquivo
+  novo. **Restaurar substitui o disco atual** e **remover** apaga o snapshot: ambos são
+  destrutivos, exigem confirmação explícita na GUI e a CLI imprime aviso no restore. O daemon
+  para a machine antes da operação e a reinicia ao final (inclusive em falha), sempre sob o
+  lock da machine e sem expor o caminho do disco nas respostas/erros.
 - `O_NOFOLLOW`/`openat2(RESOLVE_BENEATH)` quando disponível.
 
 ---

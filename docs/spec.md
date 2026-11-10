@@ -307,22 +307,56 @@ Formato único:
 
 ### 6.2 Exposição LAN
 
-- Toggle por container/rede.
-- Implementação: bind em `0.0.0.0` + regra de firewall (firewalld/ufw) com aviso.
-- Mostrar IPs da LAN e URL de acesso.
+- **Padrão seguro:** portas publicadas em containers novos usam `hostIp=127.0.0.1`
+  (acessíveis só pelo host). O checkbox **“Expor portas na LAN”** do diálogo de criação troca
+  o bind para `0.0.0.0` e pede ao helper a abertura das portas no firewall.
+- **Firewall runtime:** o helper (`OpenPorts`/`ClosePorts`, allowlist + polkit) usa
+  `firewall-cmd --add-port=<porta>/<proto>` ou `ufw allow <porta>/<proto>` **sem**
+  `--permanent`; fechar remove a mesma regra (`--remove-port` / `ufw delete allow`). Só
+  `tcp`/`udp`, 1..65535, no máximo 32 portas por chamada. No firewalld as regras são
+  runtime e não sobrevivem a um reload/restart; no ufw a regra é persistente até
+  `ClosePorts`/`ufw delete allow`.
+- **Container já criado:** `containers.exposeLan {id, expose}` inspeciona o bind. Se as portas
+  estiverem em `0.0.0.0`, abre/fecha o firewall e devolve `{id, expose, ports}`. Se estiverem
+  em `127.0.0.1` (ou IP específico), retorna `PODSTACK_UNSUPPORTED` com a remediação de
+  **recriar o container com “Expor na LAN”** — o bind não é alterado em runtime.
+- **Sem helper:** criar com `exposeLan:true` ou alternar a exposição retorna
+  `PODSTACK_HELPER_REQUIRED` antes de criar/alterar o container. Se a abertura falhar depois
+  da criação, o container novo é removido e o erro é `PODSTACK_IO_ERROR`.
+- **Aviso de segurança:** obrigatório no diálogo de criação e no inspector, informando que só
+  as portas publicadas são afetadas e que containers antigos em `127.0.0.1` exigem recriação.
+- Mostrar IPs da LAN e URL de acesso (o inspector já exibe as portas publicadas).
 
 **Critérios:**
 
-- [ ] Acesso de outro dispositivo funciona após toggle.
-- [ ] Desligar remove a exposição.
+- [ ] Acesso de outro dispositivo funciona após toggle (validação manual em outra máquina).
+- [ ] Desligar remove a exposição (regra runtime removida; bind permanece `0.0.0.0`).
 - [ ] Aviso de segurança exibido na primeira ativação.
 
 ### 6.3 Proxy e VPN
 
 - Proxy global: `none`, `auto` (env do sistema), URL (`http://`, `https://`, `socks5://`, `socks5h://`).
-- Exclusões por host/CIDR.
-- Aplicar a novos containers/máquinas; indicar quais exigem recriação.
-- VPN do host é herdada pelo Podman rootless (documentar limitações).
+- Exclusões por host/domínio/`*.domínio`/CIDR, separadas por vírgula na UI.
+- **Containers novos:** o daemon insere as variáveis de proxy em `env` na criação
+  (`containers.create`) e na duplicação (`containers.duplicate`). Variáveis definidas
+  explicitamente pelo usuário ou herdadas do container original têm precedência e nunca são
+  sobrescritas. A URL do proxy não é registrada em log (pode conter credenciais).
+- **Machines novas:** cloud-init grava as variáveis em `/etc/environment` (`write_files` com
+  `append: true`). Se o usuário forneceu `user-data` próprio, o PodStack não mescla o proxy —
+  o arquivo do usuário é usado verbatim.
+- **Limitações:** a configuração vale para novos recursos; containers, machines e projetos
+  Compose existentes exigem recriação. Projetos Compose sobem pelo provider externo e não são
+  alterados pelo PodStack nesta versão. A VPN do host é herdada pelo Podman rootless.
+
+**Critérios:**
+
+- [x] `none` não define variáveis; `auto` copia somente chaves já presentes; URL define
+  `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` (e minúsculas).
+- [x] `NO_PROXY` contém defaults + exclusões + valor existente, sem duplicatas.
+- [x] Exclusão inválida ou URL sem host/esquema permitido retorna `PODSTACK_VALIDATION` e não
+  é salva.
+- [x] A UI indica que containers, machines e projetos Compose existentes exigem recriação
+  (não há fluxo automático de recriação).
 
 ---
 
@@ -336,10 +370,14 @@ Formato único:
 
 1. Resolver imagem cloud (URL + checksum) e cache local.
 2. Criar disco qcow2 (mínimo 1 GiB; default 20 GiB).
-3. Gerar seed ISO (cloud-init NoCloud): `meta-data`, `user-data`, `network-config`.
+3. Gerar seed ISO (cloud-init NoCloud) com label `cidata`: `meta-data` (`instance-id`,
+   `local-hostname`), `user-data` (`#cloud-config`, usuário com sudo NOPASSWD, chaves SSH e senha
+   apenas como hash SHA-512 crypt) e `network-config` v2 (DHCP em `en*`). O arquivo é `0600` e os
+   três nomes ficam na raiz da ISO.
 4. Iniciar QEMU (KVM se disponível) com:
    - `-M q35 -cpu host -smp N -m M`
-   - disco virtio, seed ISO, virtiofs (se mounts), rede user/passt com hostfwd SSH.
+   - disco virtio, seed ISO, virtiofs (se mounts), rede user/passt com `hostfwd` de cada
+     porta configurada (SSH 22/tcp sempre presente; extras em §11.5).
    - QMP socket para controle.
 5. Aguardar SSH (timeout 120 s); validar cloud-init (`cloud-init status --wait`).
 6. Registrar em SQLite; retornar.
@@ -359,12 +397,48 @@ Estados: `provisioning → running → stopping → stopped → starting → run
 - Start: QEMU + QMP; aguardar SSH.
 - Stop: ACPI shutdown (`system_powerdown`) com timeout; fallback `quit`.
 - Delete: parar, remover disco/seed/definição; `--force` remove mesmo em erro.
-- Nenhum processo QEMU órfão após crash (limpeza por PID/arquivo de lock).
+- PID: o `qemu.pid` é a fonte primária; se ele sumir ou ficar inválido, o runtime localiza o
+  processo pelo `cmdline` (`/proc/<pid>/cmdline`) com o marcador `podstack:<id>`, sempre no
+  mesmo uid. Sem pidfile, `isRunning`, `status`, `stop` e o `start` (para não duplicar QEMU)
+  usam esse fallback.
+- Reconciliação no start do daemon: para cada machine `running`/`starting`/`stopping`,
+  adota o processo encontrado como `running` (preenchendo `lastBootAt` quando vazio) ou marca
+  `stopped` quando não há processo. Processos com `podstack:<id>` sem machine no store e que
+  pertencem ao diretório de machines da instalação são encerrados (SIGTERM, espera curta,
+  SIGKILL) e logados; prefixos diferentes e processos de outro uid nunca são tocados.
+- Nenhum processo QEMU órfão após crash (limpeza por PID/arquivo de lock e reconciliação por
+  `cmdline` no start do daemon).
+
+### 7.2.1 Console serial (T4-15)
+
+- O QEMU grava o serial em `machines/<id>/console.log` (`-serial file:`). O daemon expõe:
+  - `machines.console.read {id, tailBytes?}` one-shot, default 64 KiB e máximo 512 KiB,
+    devolvendo `{id, data}`; arquivo ausente → `{data:""}`.
+  - `machines.console {id, tailBytes?}` subscription com tail inicial (`reset:true`) e
+    polling de 300 ms dos bytes novos (`reset:false`); truncate/rotação/reaparecimento
+    reinicia do offset 0 com `reset:true`; symlink/arquivo não regular encerra com
+    `machines.console.error`.
+  - `machines.console.unsubscribe {subscriptionId}` cancela o loop e libera a subscription.
+- As validações são as mesmas de `machines.logs`: arquivo regular, sem symlink, caminho
+  canônico confinado ao diretório da machine e path nunca exposto na resposta.
+- Os bytes são convertidos com `QString::fromUtf8` (lossy); o console é tratado como texto
+  UTF-8 aproximado, não como terminal interativo. Não há VNC nesta tarefa.
+- CLI: `machine console <id|nome> [--tail BYTES] [--no-follow]`; sem `--no-follow` usa o
+  stream até Ctrl+C/erro, com `--no-follow` imprime o tail one-shot. GUI: a aba **Logs** do
+  inspetor tem **Seguir console**, que concatena os deltas em um buffer de até ~512 KiB,
+  rola para o fim e para ao sair da aba/fechar o inspetor.
+
+**Critérios:**
+
+- [x] Console serial acessível quando o SSH falha (read one-shot e follow).
+- [x] Truncate/rotação reinicia o stream com `reset:true`; symlink → erro e fim.
+- [x] Follow para ao trocar de aba/fechar o inspetor.
 
 ### 7.3 SSH
 
-- Chave ed25519 por máquina em `~/.local/share/podstack/machines/<id>/id_ed25519` (0600).
-- Bloco gerenciado em `~/.ssh/config`:
+- Chave ed25519 por máquina em `~/.local/share/podstack/machines/<id>/id_ed25519` (0600),
+  gerada por `ssh-keygen` na criação; a pública (`.pub`, 0644) vai para o seed cloud-init.
+- Bloco gerenciado em `~/.ssh/config` (0600; diretório `~/.ssh` 0700):
 
 ```
 # >>> podstack: <name>
@@ -373,41 +447,115 @@ Host <name>.podstack <name>
   Port <porta>
   User <user>
   IdentityFile <path>
+  IdentitiesOnly yes
 # <<< podstack: <name>
 ```
 
-- Comando `podstack ssh <name> [-- cmd]`.
-- Agent forwarding opcional (`ForwardAgent yes` no bloco).
-- Nunca sobrescrever blocos de terceiros; backup antes de alterar.
+- Comando `podstack ssh <name> [-- cmd]` (alias `machine ssh`), com
+  `StrictHostKeyChecking=accept-new` e `IdentitiesOnly=yes`.
+- Agent forwarding opcional (`forwardSshAgent`, desligado por padrão; grava
+  `ForwardAgent yes` no bloco). O toggle fica no **Info** do inspetor e pode ser
+  alterado depois da criação sem parar/reiniciar a machine; o CLI expõe
+  `--forward-ssh-agent` no `create` e `--forward-agent`/`--no-forward-agent` no
+  `update`. O próprio `podstack ssh`/`machine ssh` acrescenta `-A` quando o flag
+  está ativo. Aviso: com forwarding, processos no guest podem usar as chaves do
+  SSH agent do host — ative só em machines confiáveis.
+- Blocos de terceiros e o restante do arquivo são preservados; a escrita é atômica
+  (`QSaveFile`). O bloco é substituído pelo nome, sem duplicação.
+- `PODSTACK_SSH_CONFIG` sobrescreve o caminho do config (dev/teste).
 
 **Critérios:**
 
-- [ ] `ssh <name>` funciona após criação.
-- [ ] Remover máquina remove o bloco e a chave.
-- [ ] Bloco idempotente (sem duplicação).
+- [x] `ssh <name>` funciona após criação.
+- [x] Remover máquina remove o bloco e a chave.
+- [x] Bloco idempotente (sem duplicação).
+- [x] Toggle do SSH agent pós-criação atualiza metadado/config sem reiniciar e o
+  SSH do PodStack usa `-A` quando ativo.
 
 ### 7.4 Arquivos
 
-- virtiofs: montar host paths no guest em `/mnt/podstack/<nome>`.
-- pull/push via `scp`/`rsync` com progresso.
-- File manager lista ambos os lados.
+- Virtiofs (T4-07): cada mount tem `source` (diretório absoluto do host,
+  canonicalizado), `target` (caminho absoluto no guest, sem `..`, por exemplo
+  `/mnt/podstack/<nome>`), `readOnly` e `tag` (`[a-z0-9-]{1,32}`, única,
+  default `host<N>`). Limite de **8 mounts** por machine.
+- O daemon inicia um `virtiofsd` por mount **antes** do QEMU:
+  `virtiofsd --shared-dir <source> --socket-path <machineDir>/virtiofs-<tag>.sock
+  --tag <tag> --cache=auto --xattr --sandbox=<chroot|namespace> [--readonly]`.
+  O virtiofsd 1.14 só aceita `--sandbox=chroot` como root; no modo rootless
+  (padrão do PodStack) usa-se `--sandbox=namespace`. O binário vem de
+  `Options.virtiofsdBinary`, `PODSTACK_VIRTIOFSD_BINARY`, PATH ou do fallback
+  `/usr/libexec/virtiofsd`; ausente → `PODSTACK_UNSUPPORTED` com remediação.
+- QEMU recebe, por mount, `-chardev socket,id=vfs<N>,path=<socket>` e
+  `-device vhost-user-fs-pci,chardev=vfs<N>,tag=<tag>`.
+- Ciclo de vida: o virtiofsd sobe antes do QEMU; `stop`/`remove` encerram os
+  processos (SIGTERM, espera e SIGKILL) e removem os sockets. Falha em qualquer
+  mount para os já iniciados, limpa os sockets e marca a machine como `error`.
+- pull/push via `scp` com SSH/SCP one-shot (T4-08); a operação é síncrona e não tem barra
+  de progresso nesta versão.
+- File manager lista o lado remoto via SSH e baixa/envia com `scp -r` (T4-08); o lado local
+  é o filesystem do host (`~/Downloads` para downloads na GUI).
 
 ### 7.5 Export/import
 
-- Export: parar/pausar máquina; tar.zst de disco + metadata + seed; checksum.
-- Import: validar manifest/checksum; criar nova máquina; não sobrescrever existente sem `--force`.
-- Progresso e cancelamento; limpeza em falha.
+- Export: parar a máquina (se estiver rodando), converter o disco para um qcow2
+  autocontido e gravar `.tar.zst` (zstd) com `disk.qcow2`, `seed.iso`, o par de
+  chaves SSH e `manifest.json`; checksum SHA-256 por artefato no manifesto.
+  Destino absoluto, gravação em `.part` e rename atômico; ao terminar, reiniciar
+  a máquina se ela estava rodando. Mounts do host não entram no arquivo.
+- Import: extrair em diretório temporário dentro de `machinesRoot`, validar o
+  formato `podstack.machine/1`, os nomes de entrada, os tamanhos e os checksums
+  antes de mover para o diretório definitivo; criar uma nova máquina com ID,
+  porta SSH e bloco SSH próprios e estado `stopped`. Nome vazio usa o do
+  manifesto; nome existente retorna `PODSTACK_CONFLICT` sem `force`.
+- Progresso (`machines.delta`/`machines.done`) e cancelamento por checkpoints;
+  em falha/cancelamento, remover `.part`/diretório temporário e restaurar o
+  estado anterior da máquina exportada.
+- Snapshots internos do qcow2 não são preservados: o `qemu-img convert` produz um disco
+  autocontido sem os snapshots, e o import/export `.tar.zst` também não os leva (§7.8).
 
 ### 7.6 Limites e recursos
 
-- `--cpus` (1..n), `--memory` (≥ 1 GiB), `--disk` (≥ 1 GiB, resize online quando suportado).
-- Alterações exigem restart da máquina (exceto disco, se suportado).
+- `--cpus` (1..256), `--memory` (≥ 1 GiB), `--disk` (≥ 1 GiB).
+- `machine update`/`machines.update` alteram recursos de uma máquina existente:
+  CPUs e memória valem no próximo boot; se a máquina estiver rodando, ela é parada
+  e reiniciada ao final (inclusive quando a atualização falha). O disco só cresce:
+  o qcow2 é redimensionado offline com `qemu-img resize` e não há shrink.
+- Crescer o disco não expande a partição/filesystem do guest; `growpart`/`resize2fs`
+  (ou equivalente) continuam manuais dentro da máquina.
 - Mostrar uso real (QMP/cgroup do processo QEMU) no Activity Monitor.
 
 ### 7.7 Isolamento
 
-- `--isolated`: sem mounts do host, sem SSH agent, sem rede para host/outras máquinas (opcional `--isolate-network`).
+- `--isolated` (CLI) / `isolated:true` (RPC/GUI): sem mounts do host, sem SSH agent e
+  sem rede para o host ou outras máquinas. Implica `isolateNetwork=true`,
+  `forwardSshAgent=false` e `mounts` vazio; o backend força essa combinação.
+- Rejeitar com `PODSTACK_INVALID_PARAMS` e remediação quando `isolated=true` vier junto
+  com mounts ou com `forwardSshAgent=true`; `isolateNetwork` é aceito (redundante).
+- A porta SSH local continua ativa: o `hostfwd` da administração fica em `127.0.0.1`
+  e não é afetado pelo isolamento. Nenhuma porta pode ter `exposeLan=true`;
+  `machines.ports.set`/`machine port add` recusam essa combinação na machine isolada.
+- Clone preserva `isolated`/`isolateNetwork` e zera o agent/mounts; export/import leva o
+  campo `isolated` no manifesto `podstack.machine/1` (opcional, default `false`) e o
+  import força `isolateNetwork=true`, `forwardSshAgent=false` e mounts vazio.
 - Aviso: não é fronteira de segurança contra malware (kernel do guest é separado; QEMU é o limite).
+
+### 7.8 Snapshots
+
+- Snapshots são **internos do qcow2** e não têm tabela no SQLite; nome, data e tamanho vêm do
+  `qemu-img info --output=json`. Não há snapshot de memória/VM state: o disco é sempre
+  fotografado com a máquina parada.
+- Listar (`machine snapshot ls`/`machines.snapshots.list`) funciona com a máquina parada ou
+  rodando; criar/restaurar/remover param a máquina quando ela está rodando e a reiniciam ao
+  final, inclusive quando a operação falha.
+- Nome do snapshot: `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, único na máquina; duplicado retorna
+  `PODSTACK_CONFLICT`, inválido `PODSTACK_INVALID_PARAMS` e inexistente `PODSTACK_NOT_FOUND`.
+- Restaurar **substitui o estado atual do disco** com o conteúdo do snapshot; alterações
+  posteriores são descartadas. A GUI pede confirmação explícita e a CLI imprime um aviso
+  antes de executar (o comando `restore` já é a confirmação; não existe `--force`).
+- Remover apaga o snapshot do qcow2; a operação é destrutiva e a GUI confirma.
+- Limitações: `qemu-img convert` (export e clone) não preserva snapshots internos, e o
+  export/import `.tar.zst` também não os leva. O snapshot referencia o disco overlay (com
+  backing da imagem cloud); manter o backing disponível é responsabilidade do cache de imagens.
 
 ---
 
@@ -465,9 +613,16 @@ Host <name>.podstack <name>
 
 - Build via `POST /libpod/build` (tar do contexto) com `dockerfile`, `t`, `buildargs`, `platform`, `cache`.
 - Progresso NDJSON; steps e logs.
-- Persistir metadados em SQLite: id, imagem, status, início/fim, duração, trigger, log path.
+- Persistir metadados em SQLite: id, imagem, status, início/fim, duração, trigger, log path, plataformas.
 - Histórico com filtro; apagar registros (não imagens).
-- Buildx: detectar `docker buildx`/`podman buildx`; multi-plataforma quando suportado.
+- **Multi-plataforma (≥ 2):** manifest list via CLI do Podman
+  (`podman build --platform p1,p2 --manifest <tag> -f <dockerfile> [--build-arg K=V] <contexto>`),
+  com `podman manifest rm <tag>` antes para rebuild determinístico; progresso linha a linha em
+  `builds.delta` e sem steps. O CLI é executado sem shell, com timeout total (padrão 30 min) e
+  cancelamento que mata o processo.
+- **Uma ou nenhuma plataforma:** o fluxo continua via Libpod, sem manifest list.
+- Arquiteturas estrangeiras exigem `binfmt_misc` (`qemu-user-static`) no host; sem ele o Podman
+  falha com a mensagem do próprio runtime no log do build.
 
 ---
 
@@ -515,9 +670,16 @@ Domains=~podstack.local
 
 ### 11.5 Port forwarding de máquinas
 
-- Hostfwd QEMU para portas configuradas (HTTP/HTTPS/SSH).
+- Cada porta configurada vira um `hostfwd` do `-netdev user` do QEMU:
+  `hostfwd=<tcp|udp>:<bind>:<hostPort>-:<guestPort>`. A porta SSH (22/tcp) é gerenciada
+  automaticamente e sempre existe; as demais são adicionadas/removidas pelo usuário.
+- Bind padrão em `127.0.0.1` (acessível só pelo host). O toggle **Expor na LAN** usa
+  `0.0.0.0`, com aviso de segurança; o firewall do host ainda precisa liberar a porta.
+- Protocolos `tcp` e `udp`; `hostPort` único por protocolo entre todas as machines.
+- Alterar as portas exige reiniciar a machine: o `hostfwd` é parte da linha de comando do
+  QEMU. O daemon para e reinicia automaticamente quando a machine está rodando e persiste
+  `meta.json`+SQLite antes do restart.
 - Detectar serviços no guest via `ss`/`netstat` (opcional) e sugerir.
-- Expor na LAN com toggle.
 
 ---
 

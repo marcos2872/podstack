@@ -36,27 +36,50 @@
 
 ### 2.1 Máquinas
 
-| `orb` | `podstack` | Flags | Notas Linux |
-|---|---|---|---|
-| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] [NAME]` **e** alias `create` | `--arch`, `--cpus`, `--memory`, `--disk`, `--user`, `--set-password`, `-c/--user-data`, `--mount`, `--isolated`, `--isolate-network`, `--forward-ssh-agent` | QEMU/KVM + cloud-init; sem Rosetta |
-| `start [MACHINE...]` | `machine start [MACHINE...]` | `--all` | Sem args: máquinas que estavam rodando |
-| `stop [MACHINE...]` | `machine stop [MACHINE...]` | `--all`, `--force` | Sem args: para tudo (engine + machines) |
-| `restart [MACHINE...]` | `machine restart [MACHINE...]` | `--all` | |
-| `delete [MACHINE...]` | `machine delete [MACHINE...]` | `--all`, `--force` | Dados perdidos; confirmação |
-| `list` | `machine list` | `--format`, `--quiet`, `--running` | |
-| `info M` | `machine info M` | `--format` | |
-| `logs [M]` | `machine logs [M]` | `--all` | Console/boot |
-| `ssh` | `machine ssh` / `ssh M` | `-u`, `-m` | Escreve `~/.ssh/config` |
-| `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | |
-| `pull [-m M] SRC [DST]` | `machine pull` | `-m` | Host→guest? Ver §3 |
-| `push [-m M] SRC [DST]` | `machine push` | `-m` | Guest→host? Ver §3 |
-| `export M FILE.tar.zst` | `machine export M FILE` | — | Pausa a máquina |
-| `import FILE [-n NAME]` | `machine import FILE` | `--name` | Valida manifest/checksum |
-| `clone SRC DST` | `machine clone SRC DST` | — | CoW quando possível |
-| `rename M NEW` | `machine rename M NEW` | — | Atualiza SSH config |
-| `default [M]` | `machine default [M]` | — | Get/set |
-| `serial list` | `device serial list` | `--format` | |
-| `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host |
+| `orb` | `podstack` | Flags | Notas Linux | Status |
+|---|---|---|---|---|
+| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` | `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network`, `--forward-ssh-agent`, `--isolated` | QEMU/KVM + cloud-init; sem Rosetta. Senha via GUI/JSON-RPC (nunca argv); mounts via GUI/JSON-RPC na T4-07; `--arch` e flags de mounts no CLI ficam pendentes (T4-07) | ✅ T4-03 (SSH/chave na T4-04; mounts na T4-07; agent na T4-13; isolado na T4-14) |
+| `start [MACHINE...]` | `machine start <id\|nome>` | — | Uma machine por vez nesta etapa | ✅ T4-03 |
+| `stop [MACHINE...]` | `machine stop <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
+| `restart [MACHINE...]` | `machine restart <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
+| `delete [MACHINE...]` | `machine delete <id\|nome>` | `--force` | Dados perdidos; sem confirmação interativa no CLI (use `--force` para ignorar erro) | ✅ T4-03 |
+| `list` | `machine list` | `--json` | Colunas NOME, DISTRO, ARCH, STATE e SSH | ✅ T4-03 |
+| `info M` | `machine info M` | `--json` | Aceita ID ou nome | ✅ T4-03 |
+| `logs [M]` | `machine logs <id\|nome>` | `--tail N` | Console/boot one-shot (sem follow) | ✅ T4-06 |
+| `serial [M]` | `machine console <id\|nome>` | `--tail BYTES`, `--no-follow`, `--json` (só com `--no-follow`) | Console serial: follow por padrão até Ctrl+C/erro; `--no-follow` imprime o tail one-shot (default 64 KiB, máximo 512 KiB) | ✅ T4-15 |
+| `ssh` | `machine ssh` / `ssh M` | `-- cmd...` | Chave + bloco gerenciado em `~/.ssh/config`; `--` anexa comando; `-A` quando o SSH agent está encaminhado | ✅ T4-04 (agent na T4-13) |
+| — | `machine files ls <id\|nome>` | `--path`, `--json` | Lista arquivos via SSH; `.`/`..` omitidos, caminho remoto escapado | ✅ T4-08 |
+| `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | | ⬜ |
+| `pull [-m M] SRC [DST]` | `machine pull <id\|nome> <remoto> <local>` | — | Guest → host via `scp -r`; o local precisa existir como diretório ou arquivo | ✅ T4-08 |
+| `push [-m M] SRC [DST]` | `machine push <id\|nome> <local> <remoto>` | — | Host → guest via `scp -r` | ✅ T4-08 |
+| `export M FILE.tar.zst` | `machine export <id\|nome> <arquivo>` | `--force`, `--json` | Pausa/reinicia a máquina; `--force` substitui o arquivo | ✅ T4-09 |
+| `import FILE [-n NAME]` | `machine import <arquivo>` | `--name`, `--force`, `--json` | Valida manifesto/checksums; `--force` substitui a machine de mesmo nome | ✅ T4-09 |
+| `clone SRC DST` | `machine clone SRC DST` | `--json` | qemu-img convert (disco independente), chave/seed copiados | ✅ T4-10 |
+| `rename M NEW` | `machine rename M NEW` | `--json` | Atualiza o bloco SSH e a default | ✅ T4-10 |
+| `default [M]` | `machine default [M]` | `--json` | Get/set; `machine ssh` sem id usa a default | ✅ T4-10 |
+| — | `machine update <id\|nome>` | `--cpus`, `--memory`, `--disk`, `--forward-agent`, `--no-forward-agent`, `--json` | Ao menos um recurso **ou** o agent; para/reinicia só quando recursos mudam; disco só cresce (`qemu-img resize` offline); agent só sincroniza metadado/`~/.ssh/config` | ✅ T4-11 (agent na T4-13) |
+| — | `machine port ls <id\|nome>` | `--json` | Lista host/guest/protocolo/bind/rótulo; a SSH aparece mas é gerenciada | ✅ T4-12 |
+| — | `machine port add <id\|nome>` | `--host N`, `--guest N`, `--udp`, `--lan`, `--label L`, `--json` | Envia a lista completa não-SSH; para/reinicia se rodando | ✅ T4-12 |
+| — | `machine port rm <id\|nome> <portId\|hostPort>` | `--json` | Remove por ID ou hostPort; recusa a porta SSH e hostPort ambíguo | ✅ T4-12 |
+| — | `machine snapshot ls <id\|nome>` | `--json` | Lista snapshots internos do qcow2 (nome/data/tamanho); funciona com a machine parada ou rodando | ✅ T4-16 |
+| — | `machine snapshot create <id\|nome> <nome>` | `--json` | Cria snapshot offline; para/reinicia a machine se rodando; nome único `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` | ✅ T4-16 |
+| — | `machine snapshot restore <id\|nome> <nome>` | `--json` | Restaura o disco (substitui o estado atual); imprime aviso e para/reinicia se rodando | ✅ T4-16 |
+| — | `machine snapshot rm <id\|nome> <nome>` | `--json` | Remove o snapshot; para/reinicia se rodando | ✅ T4-16 |
+| — | `machine distros` | `--json` | Lista imagens cloud pinadas (ubuntu/debian/fedora), checksum e cache local; não baixa | ✅ T4-01 |
+| `serial list` | — | — | Não implementado; o troubleshooting serial é feito por `machine console` | ⬜ fora do v1 |
+| `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
+
+> No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11/T4-12/T4-13/T4-14/T4-15) o CLI cobre `distros`,
+> `list`, `info`, `create`, `start`, `stop`, `restart`, `delete`, `logs`, `console`, `ssh`
+> (alias `machine ssh`), `export`/`import`, `rename`, `clone`, `default`, `update`,
+> `port ls/add/rm`, `files ls`, `pull` e `push`. A criação aceita `--cpus`, `--memory`
+> (bytes ou K/M/G/T), `--disk`, `--user`, `--user-data ARQUIVO`, `--isolate-network`,
+> `--forward-ssh-agent` e `--isolated` (sem mounts/agent, rede restrita e SSH local);
+> `machine update` aceita `--forward-agent`/`--no-forward-agent`,
+> `machine console` segue o serial por padrão (`--no-follow` para one-shot e `--json` só
+> nesse modo) e `machine ssh` acrescenta `-A` quando o agent está encaminhado. A senha continua **fora**
+> de argv (visível em `ps`/histórico) e o acesso padrão é por chave ed25519 gerada pelo
+> daemon. `files`, `pull` e `push` usam SSH/SCP reais (o daemon nunca abre shell local).
 
 ### 2.2 Serviços e sistema
 
@@ -70,7 +93,8 @@
 | `update` | `update` | `--check` | Pacote/assinatura |
 | `version` | `version` | `--format` | |
 | `report` | `report` | `--include-logs` | Redaction |
-| `top` | `top` | `--interval` | TUI |
+| `top` | `top` | `--once`, `--interval S`, `--json`, `--plain` | ✅ T7-04 — `top --once` espera duas amostras (taxas reais); contínuo até Ctrl+C |
+| — | `system df` | `--detailed`, `--json` | ✅ T2-18 — resumo por seção; `--detailed` lista imagens/containers/volumes e o total recuperável estimado |
 | `completion` | `completion` | `--shell` | bash/zsh/fish |
 
 ### 2.3 Docker/Compose/Builds
@@ -143,10 +167,14 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 | `podstack compose down <dir>` | `--volumes` | |
 | `podstack compose restart|stop|start <dir> [serviço]` | | |
 | `podstack compose logs <projeto> [serviço]` | | Stream agregado ou por serviço |
-| `podstack build <contexto> -t <tag>` | `-f`, `--build-arg`, `--platform` | Via Libpod |
-| `podstack builds [ls|rm <id>]` | | Histórico SQLite |
+| `podstack build <contexto> -t <tag>` | `-f`, `--build-arg`, `--platform p1,p2` | Uma plataforma via Libpod; duas ou mais via manifest list (CLI do Podman) |
+| `podstack builds [ls|rm <id>]` | | Histórico SQLite; coluna `PLATFORMS` quando houver |
 
 > O provider Compose é detectado em `docker-compose`, `podman compose` ou `docker compose`; `PODSTACK_COMPOSE_PROVIDER` força um binário.
+>
+> `--platform` aceita uma ou várias plataformas separadas por vírgula (`os/arch[/variant]`).
+> Com duas ou mais, o daemon cria uma manifest list pelo CLI do Podman (arquiteturas
+> estrangeiras exigem `binfmt_misc` no host). Com uma, o build continua via Libpod.
 
 ### 2.3.4 Setup (implementado)
 
@@ -162,13 +190,14 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 
 | `orb` | `podstack` | Flags | Notas |
 |---|---|---|---|
-| `config show` | `config show` | `--format` | Lista chaves |
-| `config get K` | `config get K` | `--format` | |
-| `config set K V` | `config set K V` | — | Validação |
-| `config add K V` | `config add K V` | — | Listas (proxy exclude) |
-| `config remove K V` | `config remove K V` | — | |
-| `config reset` | `config reset` | `--yes` | |
-| `config docker` | `config engine` | — | Abre `daemon.json`/`containers.conf` |
+| `config show` | `config show` | `--json` | ✅ T7-01; lista chave=valor ou mapa JSON |
+| `config get K` | `config get K` | `--json` | ✅ T7-01 |
+| `config set K V` | `config set K V` | — | ✅ T7-01; valida tipo/enum/faixa no daemon |
+| `config add K V` | `config add K V` | — | ✅ T7-01; listas (`proxyExclude`, `tlsSan`, `setup.components`) |
+| `config remove K V` | `config remove K V` | — | ✅ T7-01 |
+| `config reset` | `config reset [K]` | `--all`, `--yes` | ✅ T7-01; sem `--yes` exige TTY; reset total preserva `setup.*` |
+| `config docker` | `config engine` | — | não implementado no v1 (edite `docker.daemonJsonPath` via `config set`) |
+| — | `config schema` | `--json` | ✅ T7-01; 82 chaves com tipo/default/enum/faixa/restart |
 | `login` / `logout` | `login` / `logout` | `--domain`, `--force` | Opcional (P2) |
 
 ### 2.5 Kubernetes
@@ -209,11 +238,13 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 
 No OrbStack, `orb pull` copia **de Linux para macOS** e `orb push` **de macOS para Linux**. No PodStack, para evitar ambiguidade:
 
-- `podstack machine pull <machine>:<src> <host-dst>` — guest → host.
-- `podstack machine push <host-src> <machine>:<dst>` — host → guest.
+- `podstack machine pull <id|nome> <remoto> <local>` — guest → host.
+- `podstack machine push <id|nome> <local> <remoto>` — host → guest.
 - Aliases `podstack pull`/`push` mantêm a semântica original quando `-m` é usado.
+- `podstack machine files ls <id|nome> [--path P] [--json]` lista o diretório remoto
+  (default `/`) sem transferir arquivos.
 
-Ajuda exibe exemplos; nunca infere direção silenciosamente.
+A direção é explícita na posição dos argumentos; o CLI nunca a infere silenciosamente.
 
 ---
 
@@ -283,6 +314,17 @@ Apenas IDs ou nomes, um por linha.
 ```bash
 # criar máquina
 podstack machine create ubuntu:24.04 dev --cpus 2 --memory 4G --disk 20G
+podstack machine create debian:12 sandbox --isolated
+podstack machine port add dev --host 8080 --guest 80 --label web
+podstack machine port add dev --host 5353 --guest 53 --udp --lan
+podstack machine port ls dev
+podstack machine port rm dev 8080
+
+# snapshots do disco
+podstack machine snapshot ls dev
+podstack machine snapshot create dev antes-upgrade
+podstack machine snapshot restore dev antes-upgrade
+podstack machine snapshot rm dev antes-upgrade
 
 # listar e inspecionar
 podstack machine list
@@ -293,8 +335,10 @@ podstack machine run -m dev -- uname -a
 podstack ssh dev -- htop
 
 # arquivos
-podstack machine push ./app.tar dev:/home/marcos/
-podstack machine pull dev:/var/log/app.log ./app.log
+podstack machine files ls dev
+podstack machine files ls dev --path /var/log --json
+podstack machine push dev ./app.tar /home/marcos/
+podstack machine pull dev /var/log/app.log ./app.log
 
 # backup
 podstack machine export dev dev-backup.tar.zst

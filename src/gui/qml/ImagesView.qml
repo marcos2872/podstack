@@ -6,6 +6,39 @@ import PodStack
 ColumnLayout {
     id: imagesView
 
+    readonly property var pruneImageSection: backend.prunePreview.images
+                                             ? backend.prunePreview.images : null
+    readonly property var pruneImageItems: pruneImageSection && pruneImageSection.items
+                                           ? pruneImageSection.items : []
+
+    function formatBytes(bytes) {
+        var value = Number(bytes) || 0
+        var units = ["B", "KiB", "MiB", "GiB", "TiB"]
+        var unit = 0
+        while (value >= 1024 && unit < units.length - 1) {
+            value /= 1024
+            ++unit
+        }
+        return (unit === 0 ? value.toFixed(0) : value.toFixed(1)) + " " + units[unit]
+    }
+
+    function imageName(item) {
+        var repository = item.repository || ""
+        var tag = item.tag || ""
+        if (!repository || repository === "<none>") {
+            return "<none>:<none>"
+        }
+        return tag.length > 0 ? repository + ":" + tag : repository
+    }
+
+    function imageFlags(item) {
+        var flags = []
+        if (item.dangling) {
+            flags.push(qsTr("dangling"))
+        }
+        flags.push(item.unused ? qsTr("sem uso") : qsTr("em uso"))
+        return flags.join(" · ")
+    }
 
     spacing: 0
 
@@ -140,10 +173,12 @@ ColumnLayout {
                 placeholderText: "nginx:alpine"
             }
 
-            FormField {
+            AppSelect {
                 id: pullPlatform
                 Layout.fillWidth: true
-                placeholderText: "plataforma (opcional, ex.: linux/arm64)"
+                model: [qsTr("Automático"), "linux/amd64", "linux/arm64",
+                        "linux/arm/v7", "linux/ppc64le", "linux/s390x"]
+                currentIndex: 0
             }
 
             Label {
@@ -179,7 +214,9 @@ ColumnLayout {
                 text: "Pull"
                 enabled: pullReference.text.length > 0 && !backend.pullActive
                 onClicked: {
-                    backend.pullImage(pullReference.text, pullPlatform.text)
+                    backend.pullImage(pullReference.text,
+                                      pullPlatform.currentIndex > 0
+                                      ? pullPlatform.currentText : "")
                 }
             }
         }
@@ -203,9 +240,11 @@ ColumnLayout {
                 font.pixelSize: 11
                 font.bold: true
             }
-            FormField {
+            PathField {
                 id: importPath
                 Layout.fillWidth: true
+                title: qsTr("Importar imagem")
+                filter: qsTr("Imagens (*.tar *.tar.gz *.tar.zst);;Todos os arquivos (*)")
                 placeholderText: "/caminho/imagem.tar"
             }
         }
@@ -253,17 +292,82 @@ ColumnLayout {
         id: pruneDialog
         title: "Limpar imagens?"
         modal: true
+        implicitWidth: 560
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
             border.color: Theme.border
         }
-        contentItem: Label {
-            text: "Remove imagens sem uso (dangling). Containers existentes não são afetados."
-            color: Theme.textPrimary
-            wrapMode: Text.WordWrap
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Label {
+                Layout.fillWidth: true
+                text: "Remove imagens sem uso (dangling). Containers existentes não são afetados."
+                color: Theme.textPrimary
+                wrapMode: Text.WordWrap
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Total recuperável estimado: %1").arg(
+                          imagesView.formatBytes(imagesView.pruneImageSection
+                                                 ? imagesView.pruneImageSection.reclaimableBytes : 0))
+                color: Theme.cyan
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                font.bold: true
+            }
+
+            ListView {
+                id: pruneImageList
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? Math.min(180, Math.max(44, contentHeight)) : 0
+                visible: imagesView.pruneImageItems.length > 0
+                clip: true
+                model: imagesView.pruneImageItems
+                spacing: 4
+
+                delegate: RowLayout {
+                    width: pruneImageList.width
+                    spacing: 8
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: imagesView.imageName(modelData)
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideMiddle
+                    }
+
+                    Label {
+                        text: imagesView.imageFlags(modelData)
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Label {
+                        text: imagesView.formatBytes(modelData.sizeBytes)
+                        color: Theme.textSecondary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMeta
+                    }
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: imagesView.pruneImageItems.length === 0
+                text: qsTr("Nenhuma imagem sem uso encontrada.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
         }
+        onOpened: backend.refreshDiskUsage()
         onAccepted: backend.pruneImages(false)
     }
 

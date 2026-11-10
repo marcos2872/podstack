@@ -192,17 +192,92 @@ sequenceDiagram
   participant Q as QEMU
   participant G as Guest (cloud-init)
   UI->>D: machines.create {distro, cpus, mem, disk, userData}
+  D->>D: validar parâmetros (síncrono)
+  D-->>UI: {jobId, subscriptionId}
   D->>D: baixar/verificar imagem cloud
+  D-->>UI: machines.delta {stage:image}
   D->>D: criar disco qcow2 + seed ISO
+  D-->>UI: machines.delta {stage:disk/seed}
   D->>Q: iniciar com QMP
+  D-->>UI: machines.delta {stage:starting}
   Q->>G: boot + cloud-init
   D->>G: aguardar SSH (timeout 120s)
   G-->>D: SSH ok
-  D-->>UI: machine ready
-  D-->>UI: notification machine.state
+  D-->>UI: machines.done {machine}
 ```
 
-### 3.5 Requisição de domínio
+O `machines.create` roda em `QtConcurrent` e devolve `{jobId, subscriptionId}`; a validação
+(`MachineManager::validate`) acontece antes de iniciar o job, então nome, distro, CPUs,
+memória e disco inválidos retornam `PODSTACK_INVALID_PARAMS` na própria resposta RPC. O
+progresso é publicado em `machines.delta` e o resultado em `machines.done` (com `machine` ou
+`error`). `machines.cancel` marca o `Subscription::cancel`, observado pelo download, pela
+criação do disco/seed e pelo início do QEMU, e o job termina com `PODSTACK_CANCELLED`. A
+subscription e o mapa `jobId → subscriptionId` são limpos ao final; a senha nunca entra em
+log ou notificação.
+
+### 3.5 Controle por QMP
+
+O `QmpClient` (`src/machines/QmpClient.{h,cpp}`) fala QMP sobre socket Unix em
+**NDJSON**: uma mensagem JSON compacta por linha, com limite de 1 MiB por linha.
+Ao conectar, lê a saudação `{"QMP": {...}}` e envia `qmp_capabilities`; as
+respostas são casadas pelo `id` incremental. Eventos assíncronos
+(`{"event": ...}`) que chegam antes da resposta são ignorados. Erros QMP
+(`{"error": {"class", "desc"}}`) viram `PODSTACK_INTERNAL` com o detalhe;
+timeout vira `PODSTACK_TIMEOUT` e socket fechado/erro vira `PODSTACK_IO_ERROR`.
+Os timeouts padrão são 5 s para conexão e 2 s por comando. No `quit`, o QEMU
+responde com o evento `SHUTDOWN` e pode fechar o socket; o cliente trata o
+fechamento após o envio como sucesso, desde que nenhum erro tenha sido
+recebido. A montagem da linha de comando fica em `QemuCommand`
+(`src/machines/QemuCommand.{h,cpp}`), que valida arquitetura, CPUs, memória,
+caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
+
+#### Runtime e ciclo de vida
+
+O `QemuProcessRuntime` (`src/machines/QemuRuntime.{h,cpp}`) inicia o binário
+resolvido por `QStandardPaths::findExecutable` com `QProcess::startDetached` e
+`-daemonize`, sem shell. A execução é considerada viva quando há um pidfile
+(limite de 64 bytes) cujo PID existe em `/proc/<pid>/cmdline` com o marcador
+`podstack:<machineId>`; isso evita aceitar um PID reciclado. Se o pidfile sumir
+ou ficar inválido, o runtime varre `/proc` e usa o processo do mesmo uid cujo
+argv contém exatamente `podstack:<machineId>`; assim `isRunning`, `status`,
+`stop` e o `start` continuam funcionando sem pidfile e sem lançar um QEMU
+duplicado. O start espera o pidfile e o socket QMP por até 5 s cada e valida
+`query-status`. O stop usa `system_powerdown` e aguarda até 60 s; depois tenta
+`quit` (5 s), `SIGTERM` (2 s) e, por fim, `SIGKILL`. O modo forçado vai direto
+para `quit` e, se necessário, para os sinais. `isRunning` e `pid` repetem a
+validação de `/proc` e caem no fallback por cmdline.
+
+No start do daemon, `MachineManager::reconcile` compara o store com os
+processos vivos: adota como `running` (e preenche `lastBootAt`) quem tem
+processo, marca `stopped` quem está em `running`/`starting`/`stopping` sem
+processo e encerra processos com `podstack:<id>` sem machine no store, desde
+que pertençam ao `machinesRoot` desta instalação (SIGTERM, espera curta,
+SIGKILL). O filtro por uid e diretório impede que um daemon de teste ou outra
+instalação do usuário mate QEMUs alheios.
+
+O `MachineManager` (`src/machines/MachineManager.{h,cpp}`) orquestra o
+provisionamento: valida nome RFC 1123 (1..63, `[a-z0-9-]`), CPUs (1..256),
+memória e disco (≥ 1 GiB), resolve a distro pelo `DistroRegistry` (injetável
+para testes), garante a imagem no `CloudImageCache`, cria o qcow2 com
+`qemu-img` (`-f qcow2 -F qcow2 -b <cache>`), copia o `OVMF_VARS.fd` para o
+diretório da machine em `0600`, grava o seed NoCloud e escolhe a primeira
+porta SSH livre a partir de `sshPortStart` (bind em `127.0.0.1`, até 20
+tentativas, ignorando portas já registradas). Os estados seguem
+`provisioning → starting → running → stopping → stopped`; qualquer falha
+persiste `error` no `meta.json` e no SQLite, e o create remove disco, seed e
+OVMF vars parciais, mantendo o diretório com `meta.json`/`console.log` para
+diagnóstico.
+
+Cada transição grava `meta.json` (0600 em diretório 0700) e o índice SQLite.
+`meta.json` é a fonte de verdade recuperável; `machines`/`machine_ports`/
+`machine_mounts` são o índice de listagem. Sem `/dev/kvm` legível a machine
+sobe em TCG (`-accel tcg -cpu max`) com a lentidão esperada; sem OVMF para
+amd64 (ou AAVMF para arm64) o create falha com `PODSTACK_UNSUPPORTED` e a
+remediação de instalação do firmware. A remoção valida o caminho canônico
+dentro de `machinesRoot`, rejeita symlink/`..`, encerra o runtime e apaga o
+diretório e a linha do índice.
+
+### 3.6 Requisição de domínio
 
 ```mermaid
 sequenceDiagram
@@ -221,7 +296,7 @@ sequenceDiagram
   C-->>B: response
 ```
 
-### 3.6 Habilitar Kubernetes
+### 3.7 Habilitar Kubernetes
 
 ```mermaid
 sequenceDiagram
@@ -272,6 +347,7 @@ erDiagram
 ```
 
 - **Fonte de verdade:** Podman para containers/imagens/volumes/redes/pods; `meta.json` + SQLite para machines/builds/clusters/settings/jobs.
+- **Machines:** `~/.local/share/podstack/machines/<id>/meta.json` é a fonte de verdade recuperável da machine (formato em `data-model.md` §6), gravado de forma atômica com permissão `0600` em diretório `0700`. O SQLite mantém `machines`, `machine_ports` e `machine_mounts` como índice para listagem/consulta; se o índice faltar ou divergir, pode ser reconstruído a partir dos `meta.json`.
 - **SQLite (WAL):** tabelas `machines`, `machine_ports`, `machine_mounts`, `builds`, `build_steps`, `clusters`, `jobs`, `job_events`, `settings`, `domains`.
 - **Migrações:** `user_version` + scripts idempotentes; backup `.bak` antes.
 - **Config:** `config.json` com `schemaVersion`; leitura tolerante a campos desconhecidos.

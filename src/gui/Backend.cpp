@@ -1,18 +1,26 @@
 #include "gui/Backend.h"
 
-#include "core/Config.h"
+#include "core/DiskUsage.h"
 #include "core/Error.h"
+#include "core/Proxy.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
 #include "core/SetupPolicy.h"
 #include "gui/Autostart.h"
 #include "gui/TerminalWindow.h"
 
+#include <QClipboard>
+#include <QCoreApplication>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFileDialog>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
+#include <QMetaMethod>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStringList>
@@ -35,6 +43,57 @@ QString humanBytes(qint64 bytes)
     }
     return QString::number(value, 'f', unit == 0 ? 0 : 1) + QLatin1Char(' ')
            + QString::fromLatin1(units[unit]);
+}
+
+double parsePercent(const QString &text)
+{
+    QString copy = text.trimmed();
+    copy.remove(QLatin1Char('%'));
+    bool ok = false;
+    const double value = copy.toDouble(&ok);
+    return ok ? value : 0.0;
+}
+
+qint64 parseHumanBytes(const QString &text)
+{
+    static const QRegularExpression pattern(
+        QStringLiteral(R"(^\s*([0-9]+(?:\.[0-9]+)?)\s*([kKmMgGtT]?[bB])\s*$)"));
+    const QRegularExpressionMatch match = pattern.match(text);
+    if (!match.hasMatch()) {
+        return 0;
+    }
+
+    double value = match.captured(1).toDouble();
+    const QString unit = match.captured(2).toLower();
+    if (unit == QStringLiteral("kb")) {
+        value *= 1000.0;
+    } else if (unit == QStringLiteral("mb")) {
+        value *= 1000.0 * 1000.0;
+    } else if (unit == QStringLiteral("gb")) {
+        value *= 1000.0 * 1000.0 * 1000.0;
+    } else if (unit == QStringLiteral("tb")) {
+        value *= 1000.0 * 1000.0 * 1000.0 * 1000.0;
+    }
+    return static_cast<qint64>(value);
+}
+
+void parseBytePair(const QString &text, qint64 *first, qint64 *second)
+{
+    const int separator = text.indexOf(QStringLiteral(" / "));
+    if (first) {
+        *first = parseHumanBytes(separator >= 0 ? text.left(separator) : text);
+    }
+    if (second) {
+        *second = separator >= 0 ? parseHumanBytes(text.mid(separator + 3)) : 0;
+    }
+}
+
+void appendHistory(QVariantList &list, double value)
+{
+    list.append(value);
+    if (list.size() > 60) {
+        list.removeFirst();
+    }
 }
 
 QJsonObject runBatchAction(const QString &action, const QStringList &ids)
@@ -65,6 +124,25 @@ QJsonObject runBatchAction(const QString &action, const QStringList &ids)
     return result;
 }
 
+QVariantMap machineVariant(const QJsonObject &machine)
+{
+    QVariantMap item = machine.toVariantMap();
+    const QString distro = machine.value(QStringLiteral("distro")).toString();
+    const QString version = machine.value(QStringLiteral("distroVersion")).toString();
+    item.insert(QStringLiteral("distroLabel"),
+                version.isEmpty() ? distro : distro + QLatin1Char(':') + version);
+    const int sshPort = machine.value(QStringLiteral("sshPort")).toInt();
+    QString sshUser = machine.value(QStringLiteral("sshUser")).toString();
+    if (sshUser.isEmpty()) {
+        sshUser = QStringLiteral("podstack");
+    }
+    item.insert(QStringLiteral("ssh"),
+                sshPort > 0
+                    ? QStringLiteral("%1@127.0.0.1:%2").arg(sshUser).arg(sshPort)
+                    : QStringLiteral("-"));
+    return item;
+}
+
 } // namespace
 
 Backend::Backend(QObject *parent)
@@ -74,12 +152,80 @@ Backend::Backend(QObject *parent)
             &Backend::onRefreshFinished);
     connect(&m_actionWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onActionFinished);
+    connect(&m_containerDetailWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onContainerDetailFinished);
     connect(&m_filesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onFilesFinished);
     connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onCatalogFinished);
     connect(&m_setupWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onSetupFinished);
+    connect(&m_settingsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onSettingsFinished);
+    connect(&m_settingsActionWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onSettingsActionFinished);
+    connect(&m_machinesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachinesFinished);
+    connect(&m_machineDistrosWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineDistrosFinished);
+    connect(&m_machineInfoWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineInfoFinished);
+    connect(&m_machineLogsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineLogsFinished);
+    connect(&m_machineFilesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineFilesFinished);
+    connect(&m_machineSnapshotsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineSnapshotsFinished);
+    connect(&m_machineSshWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            [this] {
+                const QJsonObject result = m_machineSshWatcher.result();
+                if (result.contains(QStringLiteral("error"))) {
+                    const QJsonObject errorObject =
+                        result.value(QStringLiteral("error")).toObject();
+                    m_lastError = errorObject.value(QStringLiteral("message")).toString();
+                    emit lastErrorChanged();
+                    return;
+                }
+
+                const QString host = result.value(QStringLiteral("host")).toString();
+                const int port = result.value(QStringLiteral("port")).toInt();
+                const QString user = result.value(QStringLiteral("user")).toString();
+                const QString identityFile =
+                    result.value(QStringLiteral("identityFile")).toString();
+                const bool forwardAgent =
+                    result.value(QStringLiteral("forwardAgent")).toBool();
+                if (host.isEmpty() || port <= 0 || user.isEmpty()
+                    || identityFile.isEmpty()) {
+                    m_lastError = QStringLiteral("Resposta SSH inválida do daemon.");
+                    emit lastErrorChanged();
+                    return;
+                }
+
+                QString title = m_machineSshTitle;
+                if (title.isEmpty()) {
+                    title = QStringLiteral("machine");
+                }
+                QStringList arguments;
+                if (forwardAgent) {
+                    arguments << QStringLiteral("-A");
+                }
+                arguments << QStringLiteral("-i") << identityFile << QStringLiteral("-p")
+                          << QString::number(port) << QStringLiteral("-o")
+                          << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
+                          << QStringLiteral("StrictHostKeyChecking=accept-new")
+                          << QStringLiteral("%1@%2").arg(user, host);
+                if (isSignalConnected(
+                        QMetaMethod::fromSignal(&Backend::terminalRequested))) {
+                    emit terminalRequested(title, QStringLiteral("ssh"), arguments);
+                } else {
+                    // Fallback para uso do Backend sem a MainWindow.
+                    auto *window =
+                        new TerminalWindow(title, QStringLiteral("ssh"), arguments);
+                    window->show();
+                    window->raise();
+                    window->activateWindow();
+                }
+            });
 
     connect(&m_setupStream, &StreamClient::setupEvent, this,
             [this](const QJsonObject &event) { applySetupJob(event); });
@@ -149,6 +295,71 @@ Backend::Backend(QObject *parent)
         emit lastErrorChanged();
     });
 
+    m_detailLogsTimer.setSingleShot(true);
+    m_detailLogsTimer.setInterval(50);
+    connect(&m_detailLogsTimer, &QTimer::timeout, this, [this] {
+        m_detailLogsPending = false;
+        emit containerDetailLogsChanged();
+    });
+
+    connect(&m_detailStatsStream, &StreamClient::stats, this,
+            [this](const QJsonObject &stats) {
+                m_containerDetailStats = stats.toVariantMap();
+
+                qint64 memUsed = 0;
+                qint64 memLimit = 0;
+                parseBytePair(stats.value(QStringLiteral("mem_usage")).toString(),
+                              &memUsed, &memLimit);
+                m_containerDetailStats.insert(QStringLiteral("memUsedBytes"), memUsed);
+                m_containerDetailStats.insert(QStringLiteral("memLimitBytes"), memLimit);
+
+                qint64 netRx = 0;
+                qint64 netTx = 0;
+                parseBytePair(stats.value(QStringLiteral("net_io")).toString(), &netRx,
+                              &netTx);
+                m_containerDetailStats.insert(QStringLiteral("netRxBytes"), netRx);
+                m_containerDetailStats.insert(QStringLiteral("netTxBytes"), netTx);
+
+                qint64 diskRead = 0;
+                qint64 diskWrite = 0;
+                parseBytePair(stats.value(QStringLiteral("block_io")).toString(), &diskRead,
+                              &diskWrite);
+                m_containerDetailStats.insert(QStringLiteral("diskReadBytes"), diskRead);
+                m_containerDetailStats.insert(QStringLiteral("diskWriteBytes"), diskWrite);
+
+                appendHistory(m_containerDetailCpuHistory,
+                              parsePercent(stats.value(QStringLiteral("cpu_percent")).toString()));
+                appendHistory(m_containerDetailMemHistory,
+                              parsePercent(stats.value(QStringLiteral("mem_percent")).toString()));
+                appendHistory(m_containerDetailNetRxHistory, static_cast<double>(netRx));
+                appendHistory(m_containerDetailNetTxHistory, static_cast<double>(netTx));
+                appendHistory(m_containerDetailDiskReadHistory, static_cast<double>(diskRead));
+                appendHistory(m_containerDetailDiskWriteHistory, static_cast<double>(diskWrite));
+                m_containerDetailStatsError.clear();
+                emit containerDetailStatsChanged();
+            });
+    connect(&m_detailStatsStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                m_containerDetailStatsError = message;
+                emit containerDetailStatsChanged();
+            });
+
+    connect(&m_detailLogsStream, &StreamClient::logLine, this, [this](const QString &line) {
+        m_containerDetailLogLines.append(line);
+        if (m_containerDetailLogLines.size() > 5000) {
+            m_containerDetailLogLines = m_containerDetailLogLines.mid(1000);
+        }
+        if (!m_detailLogsPending) {
+            m_detailLogsPending = true;
+            m_detailLogsTimer.start();
+        }
+    });
+    connect(&m_detailLogsStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                m_containerDetailLogsError = message;
+                emit containerDetailLogsChanged();
+            });
+
     connect(&m_activityStream, &StreamClient::systemStats, this,
             [this](const QJsonObject &sample) {
                 m_activityStats = sample.toVariantMap();
@@ -169,6 +380,57 @@ Backend::Backend(QObject *parent)
         emit lastErrorChanged();
         emit activityChanged();
     });
+
+    connect(&m_machineStatsStream, &StreamClient::machineStats, this,
+            [this](const QJsonObject &sample) {
+                m_machineStats = sample.toVariantMap();
+                const auto append = [](QVariantList &list, double value) {
+                    list.append(value);
+                    if (list.size() > 60) {
+                        list.removeFirst();
+                    }
+                };
+                append(m_machineCpuHistory,
+                       sample.value(QStringLiteral("cpuPercent")).toDouble());
+                append(m_machineMemHistory,
+                       sample.value(QStringLiteral("memPercent")).toDouble());
+                append(m_machineNetRxHistory,
+                       sample.value(QStringLiteral("netRx")).toDouble());
+                append(m_machineNetTxHistory,
+                       sample.value(QStringLiteral("netTx")).toDouble());
+                m_machineStatsError.clear();
+                emit machineStatsChanged();
+            });
+    connect(&m_machineStatsStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                m_machineStatsError = message;
+                emit machineStatsChanged();
+            });
+
+    connect(&m_machineConsoleStream, &StreamClient::machineConsoleEvent, this,
+            [this](const QJsonObject &event) {
+                const QString data = event.value(QStringLiteral("data")).toString();
+                if (event.value(QStringLiteral("reset")).toBool()) {
+                    m_machineConsoleText = data;
+                } else {
+                    m_machineConsoleText += data;
+                }
+                constexpr int kMaxConsoleChars = 512 * 1024;
+                if (m_machineConsoleText.size() > kMaxConsoleChars) {
+                    m_machineConsoleText.remove(0,
+                                                m_machineConsoleText.size()
+                                                    - kMaxConsoleChars);
+                }
+                m_machineConsoleActive = true;
+                m_machineConsoleError.clear();
+                emit machineConsoleChanged();
+            });
+    connect(&m_machineConsoleStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                m_machineConsoleActive = false;
+                m_machineConsoleError = message;
+                emit machineConsoleChanged();
+            });
 
     connect(&m_pullStream, &StreamClient::pullEvent, this,
             [this](const QJsonObject &event) {
@@ -286,6 +548,78 @@ Backend::Backend(QObject *parent)
         emit lastErrorChanged();
     });
 
+    connect(&m_machineCreateStream, &StreamClient::subscriptionReady, this,
+            [this](const QJsonObject &result) {
+                const QString jobId = result.value(QStringLiteral("jobId")).toString();
+                if (!jobId.isEmpty()) {
+                    m_machineCreateJobId = jobId;
+                    emit machineCreateStateChanged();
+                }
+            });
+
+    connect(&m_machineCreateStream, &StreamClient::machineCreateEvent, this,
+            [this](const QJsonObject &event) {
+                const QString jobId = event.value(QStringLiteral("jobId")).toString();
+                if (!jobId.isEmpty()) {
+                    m_machineCreateJobId = jobId;
+                }
+                const QString stage = event.value(QStringLiteral("stage")).toString();
+                if (!stage.isEmpty()) {
+                    m_machineCreateStage = stage;
+                }
+                m_machineCreateProgress =
+                    qMax(m_machineCreateProgress,
+                         qBound(0, event.value(QStringLiteral("progress")).toInt(), 100));
+                emit machineCreateStateChanged();
+            });
+
+    connect(&m_machineCreateStream, &StreamClient::machineCreateFinished, this,
+            [this](const QJsonObject &result) {
+                const QJsonObject errorObject =
+                    result.value(QStringLiteral("error")).toObject();
+                const QString code = errorObject.value(QStringLiteral("code")).toString();
+                m_machineCreateActive = false;
+                m_machineCreateProgress = 100;
+                m_machineCreateError.clear();
+                if (!errorObject.isEmpty() && code != QStringLiteral("PODSTACK_CANCELLED")) {
+                    m_machineCreateStage = QStringLiteral("error");
+                    m_machineCreateError =
+                        errorObject.value(QStringLiteral("message")).toString();
+                    const QString remediation =
+                        errorObject.value(QStringLiteral("remediation")).toString();
+                    if (!remediation.isEmpty()) {
+                        m_machineCreateError += QLatin1Char(' ') + remediation;
+                    }
+                } else if (code == QStringLiteral("PODSTACK_CANCELLED")) {
+                    m_machineCreateStage = QStringLiteral("cancelled");
+                } else {
+                    m_machineCreateStage = QStringLiteral("done");
+                }
+                emit machineCreateStateChanged();
+                refreshMachines();
+                if (!m_machineCreateError.isEmpty()) {
+                    m_lastError = m_machineCreateError;
+                    emit lastErrorChanged();
+                    emit actionFinished(false, m_machineCreateError);
+                } else {
+                    emit actionFinished(true, {});
+                }
+            });
+
+    connect(&m_machineCreateStream, &StreamClient::error, this,
+            [this](const QString &message) {
+                if (!m_machineCreateActive) {
+                    return;
+                }
+                m_machineCreateActive = false;
+                m_machineCreateStage = QStringLiteral("error");
+                m_machineCreateError = message;
+                emit machineCreateStateChanged();
+                m_lastError = message;
+                emit lastErrorChanged();
+                emit actionFinished(false, message);
+            });
+
     connect(&m_eventsStream, &StreamClient::eventReceived, this,
             [this](const QJsonObject &event) {
                 if (event.value(QStringLiteral("Type")).toString()
@@ -363,6 +697,8 @@ Backend::Backend(QObject *parent)
 
     QTimer::singleShot(0, this, &Backend::refresh);
     QTimer::singleShot(0, this, &Backend::refreshCatalog);
+    QTimer::singleShot(0, this, &Backend::refreshMachines);
+    QTimer::singleShot(0, this, &Backend::refreshSettings);
 }
 
 QString Backend::version() const
@@ -399,6 +735,11 @@ void Backend::refreshCatalog()
     refreshVolumes();
     refreshNetworks();
     refreshPods();
+    refreshSection(QStringLiteral("df"));
+}
+
+void Backend::refreshDiskUsage()
+{
     refreshSection(QStringLiteral("df"));
 }
 
@@ -458,10 +799,15 @@ void Backend::startNextCatalog()
         return;
     }
 
-    m_catalogWatcher.setFuture(QtConcurrent::run([method] {
+    QJsonObject params;
+    if (m_catalogSection == QStringLiteral("df")) {
+        params.insert(QStringLiteral("detailed"), true);
+    }
+
+    m_catalogWatcher.setFuture(QtConcurrent::run([method, params] {
         RpcClient client;
         Error error;
-        const QJsonObject result = client.call(method, {}, &error);
+        const QJsonObject result = client.call(method, params, &error);
         if (!error.isEmpty()) {
             QJsonObject payload;
             payload.insert(QStringLiteral("error"), error.toJson());
@@ -478,6 +824,10 @@ void Backend::onCatalogFinished()
         const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
         m_lastError = errorObject.value(QStringLiteral("message")).toString();
         emit lastErrorChanged();
+        if (m_catalogSection == QStringLiteral("df")) {
+            m_prunePreview.clear();
+            emit prunePreviewChanged();
+        }
         startNextCatalog();
         return;
     }
@@ -566,6 +916,19 @@ void Backend::onCatalogFinished()
         m_diskUsage.insert(QStringLiteral("volumes"), humanBytes(volumesSize));
         m_diskUsage.insert(QStringLiteral("containers"), humanBytes(containersSize));
         emit diskUsageChanged();
+
+        QJsonObject sections = result.value(QStringLiteral("sections")).toObject();
+        double totalReclaimable =
+            result.value(QStringLiteral("totalReclaimableBytes")).toDouble();
+        if (sections.isEmpty()) {
+            const QJsonObject normalized = normalizeDiskUsage(df, true);
+            sections = normalized.value(QStringLiteral("sections")).toObject();
+            totalReclaimable =
+                normalized.value(QStringLiteral("totalReclaimableBytes")).toDouble();
+        }
+        m_prunePreview = sections.toVariantMap();
+        m_prunePreview.insert(QStringLiteral("totalReclaimableBytes"), totalReclaimable);
+        emit prunePreviewChanged();
     } else if (m_catalogSection == QStringLiteral("compose")) {
         m_composeProjects.clear();
         for (const QJsonValue &value : items) {
@@ -615,6 +978,16 @@ void Backend::onCatalogFinished()
                         build.value(QStringLiteral("trigger")).toString());
             item.insert(QStringLiteral("contextPath"),
                         build.value(QStringLiteral("contextPath")).toString());
+            QStringList platforms;
+            for (const QJsonValue &platform :
+                 build.value(QStringLiteral("platforms")).toArray()) {
+                const QString value = platform.toString();
+                if (!value.isEmpty()) {
+                    platforms.append(value);
+                }
+            }
+            item.insert(QStringLiteral("platforms"),
+                        platforms.join(QStringLiteral(", ")));
             m_builds.append(item);
         }
         emit buildsChanged();
@@ -895,6 +1268,167 @@ void Backend::removeContainer(const QString &id, bool force, bool volumes)
     runAction(QStringLiteral("containers.remove"), params);
 }
 
+void Backend::loadContainerDetail(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_containerDetail.clear();
+        m_containerDetailJson = {};
+        m_containerDetailError = QStringLiteral("Container inválido.");
+        m_containerDetailLoading = false;
+        emit containerDetailChanged();
+        return;
+    }
+
+    if (m_containerDetailWatcher.isRunning()) {
+        m_pendingContainerDetailId = id;
+        return;
+    }
+
+    m_containerDetail.clear();
+    m_containerDetailJson = {};
+    m_containerDetailError.clear();
+    m_containerDetailLoading = true;
+    emit containerDetailChanged();
+
+    m_containerDetailWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("containers.inspect"),
+                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onContainerDetailFinished()
+{
+    const QJsonObject result = m_containerDetailWatcher.result();
+    m_containerDetailLoading = false;
+
+    if (result.value(QStringLiteral("error")).isObject()) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_containerDetailError = errorObject.value(QStringLiteral("message")).toString();
+        if (m_containerDetailError.isEmpty()) {
+            m_containerDetailError = QStringLiteral("Falha ao carregar o inspect.");
+        }
+    } else {
+        const QJsonObject json = result.value(QStringLiteral("json")).toObject();
+        if (json.isEmpty()) {
+            m_containerDetailError = QStringLiteral("Inspect vazio ou inválido.");
+        } else {
+            m_containerDetailJson = json;
+            m_containerDetail = json.toVariantMap();
+            m_containerDetailError.clear();
+        }
+    }
+    emit containerDetailChanged();
+
+    if (!m_pendingContainerDetailId.isEmpty()) {
+        const QString next = m_pendingContainerDetailId;
+        m_pendingContainerDetailId.clear();
+        loadContainerDetail(next);
+    }
+}
+
+void Backend::copyContainerInspect()
+{
+    if (m_containerDetailJson.isEmpty()) {
+        return;
+    }
+    // Sem QGuiApplication (ex.: suíte guiless) o clipboard não existe.
+    if (!qobject_cast<QGuiApplication *>(QCoreApplication::instance())) {
+        return;
+    }
+    if (QClipboard *clipboard = QGuiApplication::clipboard()) {
+        clipboard->setText(QJsonDocument(m_containerDetailJson).toJson(QJsonDocument::Indented));
+    }
+    emit actionFinished(true, {});
+}
+
+void Backend::startContainerDetailStats(const QString &id)
+{
+    m_containerDetailStats.clear();
+    m_containerDetailCpuHistory.clear();
+    m_containerDetailMemHistory.clear();
+    m_containerDetailNetRxHistory.clear();
+    m_containerDetailNetTxHistory.clear();
+    m_containerDetailDiskReadHistory.clear();
+    m_containerDetailDiskWriteHistory.clear();
+    m_containerDetailStatsError.clear();
+    emit containerDetailStatsChanged();
+
+    if (id.isEmpty()) {
+        m_containerDetailStatsError = QStringLiteral("Container inválido.");
+        emit containerDetailStatsChanged();
+        return;
+    }
+
+    m_detailStatsStream.subscribeStats(id);
+}
+
+void Backend::stopContainerDetailStats()
+{
+    m_detailStatsStream.unsubscribe();
+}
+
+void Backend::startContainerDetailLogs(const QString &id, int tail, bool follow)
+{
+    m_detailLogsTimer.stop();
+    m_containerDetailLogLines.clear();
+    m_containerDetailLogsError.clear();
+    m_detailLogsPending = false;
+    emit containerDetailLogsChanged();
+
+    if (id.isEmpty()) {
+        m_containerDetailLogsError = QStringLiteral("Container inválido.");
+        emit containerDetailLogsChanged();
+        return;
+    }
+
+    if (tail <= 0) {
+        tail = 200;
+    }
+    tail = qBound(1, tail, 2000);
+    m_detailLogsStream.subscribeLogs(id, tail, follow);
+}
+
+void Backend::stopContainerDetailLogs()
+{
+    m_detailLogsTimer.stop();
+    m_detailLogsPending = false;
+    m_detailLogsStream.unsubscribe();
+}
+
+void Backend::clearContainerDetailLogs()
+{
+    m_detailLogsTimer.stop();
+    m_containerDetailLogLines.clear();
+    m_detailLogsPending = false;
+    emit containerDetailLogsChanged();
+}
+
+void Backend::containerDetailLifecycle(const QString &action, const QString &id)
+{
+    if (id.isEmpty()
+        || (action != QStringLiteral("start") && action != QStringLiteral("stop")
+            && action != QStringLiteral("restart") && action != QStringLiteral("pause")
+            && action != QStringLiteral("unpause") && action != QStringLiteral("kill"))) {
+        m_lastError = QStringLiteral("Ação ou container inválido.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+    lifecycle(action, id);
+}
+
+void Backend::removeContainerDetail(const QString &id, bool force)
+{
+    removeContainer(id, force, false);
+}
+
 void Backend::createContainer(const QVariantMap &spec, bool start)
 {
     QJsonObject params;
@@ -907,6 +1441,8 @@ void Backend::createContainer(const QVariantMap &spec, bool start)
     params.insert(QStringLiteral("init"), spec.value(QStringLiteral("init")).toBool());
     params.insert(QStringLiteral("privileged"),
                   spec.value(QStringLiteral("privileged")).toBool());
+    const bool exposeLan = spec.value(QStringLiteral("exposeLan")).toBool();
+    params.insert(QStringLiteral("exposeLan"), exposeLan);
     params.insert(QStringLiteral("start"), start);
 
     QJsonObject env;
@@ -948,9 +1484,11 @@ void Backend::createContainer(const QVariantMap &spec, bool start)
         port.insert(QStringLiteral("protocol"), protocol);
         if (parts.size() == 2) {
             port.insert(QStringLiteral("hostPort"), parts.at(0).toInt());
-            port.insert(QStringLiteral("hostIp"), QStringLiteral("0.0.0.0"));
+            port.insert(QStringLiteral("hostIp"), exposeLan ? QStringLiteral("0.0.0.0")
+                                                            : QStringLiteral("127.0.0.1"));
         } else {
-            port.insert(QStringLiteral("hostIp"), parts.at(0));
+            port.insert(QStringLiteral("hostIp"),
+                        exposeLan ? QStringLiteral("0.0.0.0") : parts.at(0));
             port.insert(QStringLiteral("hostPort"), parts.at(1).toInt());
         }
         ports.append(port);
@@ -975,6 +1513,21 @@ void Backend::createContainer(const QVariantMap &spec, bool start)
     params.insert(QStringLiteral("mounts"), mounts);
 
     runAction(QStringLiteral("containers.create"), params);
+}
+
+void Backend::exposeContainerLan(const QString &id, bool expose)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Container inválido.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    params.insert(QStringLiteral("expose"), expose);
+    runAction(QStringLiteral("containers.exposeLan"), params);
 }
 
 void Backend::subscribeLogs(const QString &id, int tail, bool follow)
@@ -1026,99 +1579,345 @@ void Backend::stopActivityMonitor()
     emit activityChanged();
 }
 
+void Backend::startMachineStats(const QString &id)
+{
+    m_machineStats.clear();
+    m_machineCpuHistory.clear();
+    m_machineMemHistory.clear();
+    m_machineNetRxHistory.clear();
+    m_machineNetTxHistory.clear();
+    m_machineStatsError.clear();
+    emit machineStatsChanged();
+
+    if (id.isEmpty()) {
+        m_machineStatsError = QStringLiteral("Machine inválida.");
+        m_lastError = m_machineStatsError;
+        emit lastErrorChanged();
+        emit machineStatsChanged();
+        return;
+    }
+
+    m_machineStatsStream.subscribeMachineStats(id, 2);
+}
+
+void Backend::stopMachineStats()
+{
+    m_machineStatsStream.unsubscribe();
+
+    const bool clearGlobalError = !m_machineStatsError.isEmpty()
+                                  && m_lastError == m_machineStatsError;
+    m_machineStatsError.clear();
+    emit machineStatsChanged();
+    if (clearGlobalError) {
+        m_lastError.clear();
+        emit lastErrorChanged();
+    }
+}
+
+void Backend::followMachineConsole(const QString &id, int tailBytes)
+{
+    if (id.isEmpty()) {
+        m_machineConsoleActive = false;
+        m_machineConsoleError = QStringLiteral("Machine inválida.");
+        m_machineConsoleText.clear();
+        emit machineConsoleChanged();
+        return;
+    }
+
+    if (tailBytes <= 0) {
+        tailBytes = 64 * 1024;
+    }
+    tailBytes = qBound(1, tailBytes, 512 * 1024);
+
+    m_machineConsoleText.clear();
+    m_machineConsoleError.clear();
+    m_machineConsoleActive = true;
+    emit machineConsoleChanged();
+    m_machineConsoleStream.startMachineConsole(id, tailBytes);
+}
+
+void Backend::stopMachineConsole()
+{
+    m_machineConsoleStream.stopMachineConsole();
+    m_machineConsoleActive = false;
+    m_machineConsoleText.clear();
+    m_machineConsoleError.clear();
+    emit machineConsoleChanged();
+}
+
 QVariantMap Backend::settings() const
 {
-    const Config config = Config::load();
     QVariantMap values;
     values.insert(QStringLiteral("engineMode"),
-                  config.get(QStringLiteral("engine.mode")).toString());
+                  m_settingsValues.value(QStringLiteral("engine.mode"),
+                                         QStringLiteral("rootless")));
     values.insert(QStringLiteral("theme"),
-                  config.get(QStringLiteral("app.theme")).toString());
+                  m_settingsValues.value(QStringLiteral("app.theme"),
+                                         QStringLiteral("system")));
     values.insert(QStringLiteral("keepRunningInTray"),
-                  config.get(QStringLiteral("app.keepRunningInTray")).toBool(true));
+                  m_settingsValues.value(QStringLiteral("app.keepRunningInTray"), true));
     values.insert(QStringLiteral("showInTray"),
-                  config.get(QStringLiteral("app.showInTray")).toBool(true));
+                  m_settingsValues.value(QStringLiteral("app.showInTray"), true));
     values.insert(QStringLiteral("startAtLogin"),
-                  config.get(QStringLiteral("app.startAtLogin")).toBool(false));
+                  m_settingsValues.value(QStringLiteral("app.startAtLogin"), false));
     values.insert(QStringLiteral("notifications"),
-                  config.get(QStringLiteral("app.notifications")).toBool(true));
+                  m_settingsValues.value(QStringLiteral("app.notifications"), true));
+    values.insert(QStringLiteral("proxy"),
+                  m_settingsValues.value(QStringLiteral("network.proxy"),
+                                         QStringLiteral("auto")));
+    QStringList proxyExclude;
+    const QVariantList excludeList =
+        m_settingsValues.value(QStringLiteral("network.proxyExclude")).toList();
+    for (const QVariant &entry : excludeList) {
+        const QString text = entry.toString();
+        if (!text.isEmpty()) {
+            proxyExclude.append(text);
+        }
+    }
+    values.insert(QStringLiteral("proxyExclude"), proxyExclude);
     return values;
+}
+
+void Backend::refreshSettings()
+{
+    if (m_settingsWatcher.isRunning()) {
+        m_settingsRefreshAgain = true;
+        return;
+    }
+
+    m_settingsWatcher.setFuture(QtConcurrent::run([] {
+        RpcClient client;
+        Error error;
+        const QJsonObject values =
+            client.call(QStringLiteral("settings.get"), {}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        const QJsonObject schema =
+            client.call(QStringLiteral("settings.schema"), {}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        QJsonObject result;
+        result.insert(QStringLiteral("values"), values.value(QStringLiteral("values")));
+        result.insert(QStringLiteral("schema"), schema.value(QStringLiteral("schema")));
+        return result;
+    }));
+}
+
+void Backend::onSettingsFinished()
+{
+    const QJsonObject result = m_settingsWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_settingsError = errorObject.value(QStringLiteral("message")).toString();
+        if (m_settingsError.isEmpty()) {
+            m_settingsError = QStringLiteral("Falha ao carregar as configurações.");
+        }
+        emit settingsErrorChanged();
+    } else {
+        m_settingsValues = result.value(QStringLiteral("values")).toObject().toVariantMap();
+        m_settingsSchema = result.value(QStringLiteral("schema")).toArray().toVariantList();
+        const bool hadError = !m_settingsError.isEmpty();
+        m_settingsError.clear();
+        emit settingsSchemaChanged();
+        emit settingsValuesChanged();
+        emit settingsChanged();
+        if (hadError) {
+            emit settingsErrorChanged();
+        }
+    }
+
+    if (m_settingsRefreshAgain) {
+        m_settingsRefreshAgain = false;
+        refreshSettings();
+    }
+}
+
+void Backend::setSettingsError(const QString &error)
+{
+    m_settingsError = error;
+    m_lastError = error;
+    emit settingsErrorChanged();
+    emit lastErrorChanged();
+}
+
+void Backend::setSetting(const QString &key, const QVariant &value)
+{
+    const bool applyAutostart = key == QStringLiteral("app.startAtLogin");
+    setSettingInternal(key, value, applyAutostart);
+}
+
+void Backend::setSettingInternal(const QString &key, const QVariant &value,
+                                 bool applyAutostart)
+{
+    if (key.isEmpty()) {
+        setSettingsError(QStringLiteral("Chave de configuração inválida."));
+        emit actionFinished(false, m_settingsError);
+        return;
+    }
+
+    QJsonValue json = QJsonValue::fromVariant(value);
+    if (!value.isValid() || value.isNull()) {
+        json = QJsonValue(QJsonValue::Null);
+    }
+    const QJsonObject params{{QStringLiteral("key"), key},
+                             {QStringLiteral("value"), json}};
+    enqueueSettingsRequest(QStringLiteral("settings.set"), params, applyAutostart);
+}
+
+void Backend::resetSetting(const QString &key)
+{
+    QJsonObject params;
+    if (!key.isEmpty()) {
+        params.insert(QStringLiteral("key"), key);
+    }
+    const bool applyAutostart =
+        key.isEmpty() || key == QStringLiteral("app.startAtLogin");
+    enqueueSettingsRequest(QStringLiteral("settings.reset"), params, applyAutostart);
+}
+
+void Backend::enqueueSettingsRequest(const QString &method, const QJsonObject &params,
+                                     bool applyAutostart)
+{
+    SettingsRequest request;
+    request.method = method;
+    request.params = params;
+    request.applyAutostart = applyAutostart;
+    m_settingsQueue.enqueue(request);
+    startNextSettingsRequest();
+}
+
+void Backend::startNextSettingsRequest()
+{
+    if (m_settingsActionActive || m_settingsQueue.isEmpty()) {
+        return;
+    }
+
+    m_settingsCurrentRequest = m_settingsQueue.dequeue();
+    m_settingsActionActive = true;
+    const QString method = m_settingsCurrentRequest.method;
+    const QJsonObject params = m_settingsCurrentRequest.params;
+    m_settingsActionWatcher.setFuture(QtConcurrent::run([method, params] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(method, params, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onSettingsActionFinished()
+{
+    const QJsonObject result = m_settingsActionWatcher.result();
+    const SettingsRequest request = m_settingsCurrentRequest;
+    const QString key = request.params.value(QStringLiteral("key")).toString();
+    bool ok = true;
+    QString message;
+
+    if (result.contains(QStringLiteral("error"))) {
+        ok = false;
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        message = errorObject.value(QStringLiteral("message")).toString();
+        const QString remediation =
+            errorObject.value(QStringLiteral("remediation")).toString();
+        if (!remediation.isEmpty()) {
+            message += QLatin1Char(' ') + remediation;
+        }
+    } else {
+        if (result.contains(QStringLiteral("values"))) {
+            m_settingsValues =
+                result.value(QStringLiteral("values")).toObject().toVariantMap();
+            emit settingsValuesChanged();
+            emit settingsChanged();
+        }
+
+        if (request.applyAutostart) {
+            QString autostartError;
+            const bool enabled =
+                request.params.value(QStringLiteral("value")).toBool();
+            if (!Autostart::setEnabled(enabled, &autostartError)) {
+                ok = false;
+                message = autostartError;
+            }
+        }
+    }
+
+    if (ok) {
+        if (!m_settingsError.isEmpty()) {
+            m_settingsError.clear();
+            emit settingsErrorChanged();
+        }
+    } else {
+        setSettingsError(message);
+    }
+
+    emit settingFinished(key, ok, message);
+    emit actionFinished(ok, message);
+    m_settingsActionActive = false;
+    startNextSettingsRequest();
 }
 
 void Backend::saveEngineMode(const QString &mode)
 {
     if (mode != QStringLiteral("rootless") && mode != QStringLiteral("rootful")) {
-        m_lastError = QStringLiteral("Modo de engine inválido.");
-        emit lastErrorChanged();
+        setSettingsError(QStringLiteral("Modo de engine inválido."));
+        emit actionFinished(false, m_settingsError);
         return;
     }
 
-    Config config = Config::load();
-    config.set(QStringLiteral("engine.mode"), mode);
-
-    QString error;
-    if (!config.save(&error)) {
-        m_lastError = error;
-        emit lastErrorChanged();
-        return;
-    }
-
-    m_lastError.clear();
-    emit lastErrorChanged();
-    emit actionFinished(true, {});
+    setSettingInternal(QStringLiteral("engine.mode"), mode);
 }
 
 void Backend::saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
                                bool notifications)
 {
-    Config config = Config::load();
-    config.set(QStringLiteral("app.keepRunningInTray"), keepRunning);
-    config.set(QStringLiteral("app.showInTray"), showInTray);
-    config.set(QStringLiteral("app.startAtLogin"), startAtLogin);
-    config.set(QStringLiteral("app.notifications"), notifications);
+    setSettingInternal(QStringLiteral("app.keepRunningInTray"), keepRunning);
+    setSettingInternal(QStringLiteral("app.showInTray"), showInTray);
+    setSettingInternal(QStringLiteral("app.startAtLogin"), startAtLogin, true);
+    setSettingInternal(QStringLiteral("app.notifications"), notifications);
+}
 
-    QString error;
-    if (!config.save(&error)) {
-        m_lastError = error;
-        emit lastErrorChanged();
-        emit actionFinished(false, error);
+void Backend::saveProxySettings(const QString &proxy, const QString &excludeText)
+{
+    const QString normalizedProxy = proxy.trimmed();
+    QStringList excludes;
+    const QStringList parts = excludeText.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        const QString entry = part.trimmed();
+        if (!entry.isEmpty()) {
+            excludes.append(entry);
+        }
+    }
+
+    Error validation;
+    if (!Proxy::validate(normalizedProxy, excludes, &validation)) {
+        setSettingsError(validation.message);
+        emit actionFinished(false, m_settingsError);
         return;
     }
 
-    if (!Autostart::setEnabled(startAtLogin, &error)) {
-        m_lastError = error;
-        emit lastErrorChanged();
-        emit actionFinished(false, error);
-        return;
+    QJsonArray excludeArray;
+    for (const QString &entry : excludes) {
+        excludeArray.append(entry);
     }
 
-    m_lastError.clear();
-    emit lastErrorChanged();
-    emit settingsChanged();
-    emit actionFinished(true, {});
+    setSettingInternal(QStringLiteral("network.proxy"), normalizedProxy);
+    setSettingInternal(QStringLiteral("network.proxyExclude"), excludeArray.toVariantList());
 }
 
 void Backend::saveTheme(const QString &theme)
 {
     if (theme != QStringLiteral("system") && theme != QStringLiteral("dark")
         && theme != QStringLiteral("light")) {
-        m_lastError = QStringLiteral("Tema inválido.");
-        emit lastErrorChanged();
+        setSettingsError(QStringLiteral("Tema inválido."));
+        emit actionFinished(false, m_settingsError);
         return;
     }
 
-    Config config = Config::load();
-    config.set(QStringLiteral("app.theme"), theme);
-    QString error;
-    if (!config.save(&error)) {
-        m_lastError = error;
-        emit lastErrorChanged();
-        return;
-    }
-
-    m_lastError.clear();
-    emit lastErrorChanged();
-    emit actionFinished(true, {});
+    setSettingInternal(QStringLiteral("app.theme"), theme);
 }
 
 void Backend::runSetupRequest(const QString &method, const QJsonObject &params)
@@ -1357,10 +2156,66 @@ void Backend::openTerminal(const QString &id)
         return;
     }
 
-    auto *window = new TerminalWindow(id);
+    QString title = id;
+    for (const QVariant &value : m_containers) {
+        const QVariantMap container = value.toMap();
+        if (container.value(QStringLiteral("id")).toString() == id) {
+            const QString name = container.value(QStringLiteral("name")).toString();
+            if (!name.isEmpty()) {
+                title = name;
+            }
+            break;
+        }
+    }
+
+    const QStringList arguments{QStringLiteral("exec"), QStringLiteral("-it"), id,
+                                QStringLiteral("/bin/sh")};
+    if (isSignalConnected(QMetaMethod::fromSignal(&Backend::terminalRequested))) {
+        emit terminalRequested(title, QStringLiteral("podman"), arguments);
+        return;
+    }
+
+    // Fallback para uso do Backend sem a MainWindow.
+    auto *window = new TerminalWindow(id, QStringLiteral("podman"), arguments);
     window->show();
     window->raise();
     window->activateWindow();
+}
+
+void Backend::openMachineSsh(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        return;
+    }
+    if (m_machineSshWatcher.isRunning()) {
+        return;
+    }
+
+    m_machineSshTitle = id;
+    for (const QVariant &value : m_machines) {
+        const QVariantMap machine = value.toMap();
+        if (machine.value(QStringLiteral("id")).toString() == id) {
+            const QString name = machine.value(QStringLiteral("name")).toString();
+            if (!name.isEmpty()) {
+                m_machineSshTitle = name;
+            }
+            break;
+        }
+    }
+
+    m_machineSshWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.ssh"),
+                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
 }
 
 void Backend::listFiles(const QString &id, const QString &path)
@@ -1581,6 +2436,24 @@ void Backend::openPath(const QString &path)
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
+QString Backend::choosePath(const QString &mode, const QString &title,
+                            const QString &filter, const QString &initialPath)
+{
+    const QString resolvedTitle =
+        title.isEmpty() ? QStringLiteral("Selecionar arquivo") : title;
+    const QString resolvedFilter =
+        filter.isEmpty() ? QStringLiteral("Todos os arquivos (*)") : filter;
+    if (mode == QStringLiteral("save")) {
+        return QFileDialog::getSaveFileName(nullptr, resolvedTitle, initialPath,
+                                            resolvedFilter);
+    }
+    if (mode == QStringLiteral("directory")) {
+        return QFileDialog::getExistingDirectory(nullptr, resolvedTitle, initialPath);
+    }
+    return QFileDialog::getOpenFileName(nullptr, resolvedTitle, initialPath,
+                                        resolvedFilter);
+}
+
 void Backend::refreshBuilds()
 {
     refreshSection(QStringLiteral("builds"));
@@ -1612,12 +2485,49 @@ void Backend::startBuild(const QVariantMap &spec)
         dockerfile = QStringLiteral("Dockerfile");
     }
 
+    QStringList platforms;
+    const auto appendPlatform = [&platforms](const QString &value) {
+        const QString platform = value.trimmed();
+        if (!platform.isEmpty() && !platforms.contains(platform)) {
+            platforms.append(platform);
+        }
+    };
+    const QVariant platformsValue = spec.value(QStringLiteral("platforms"));
+    if (platformsValue.metaType().id() == QMetaType::QStringList) {
+        for (const QString &platform : platformsValue.toStringList()) {
+            appendPlatform(platform);
+        }
+    } else if (platformsValue.metaType().id() == QMetaType::QVariantList) {
+        for (const QVariant &value : platformsValue.toList()) {
+            appendPlatform(value.toString());
+        }
+    } else {
+        for (const QString &part : platformsValue.toString().split(QLatin1Char(','),
+                                                                    Qt::SkipEmptyParts)) {
+            appendPlatform(part);
+        }
+    }
+    if (platforms.isEmpty()) {
+        for (const QString &part : spec.value(QStringLiteral("platform"))
+                                       .toString()
+                                       .split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            appendPlatform(part);
+        }
+    }
+
+    QJsonArray platformArray;
+    for (const QString &platform : platforms) {
+        platformArray.append(platform);
+    }
+
     QJsonObject params;
     params.insert(QStringLiteral("contextPath"), contextPath);
     params.insert(QStringLiteral("tag"), tag);
     params.insert(QStringLiteral("dockerfile"), dockerfile);
-    params.insert(QStringLiteral("platform"),
-                  spec.value(QStringLiteral("platform")).toString());
+    params.insert(QStringLiteral("platforms"), platformArray);
+    if (platforms.size() == 1) {
+        params.insert(QStringLiteral("platform"), platforms.first());
+    }
     params.insert(QStringLiteral("buildArgs"), buildArgs);
     params.insert(QStringLiteral("trigger"), QStringLiteral("gui"));
 
@@ -1642,6 +2552,950 @@ void Backend::removeBuild(const QString &id)
     runAction(QStringLiteral("builds.remove"), QJsonObject{{QStringLiteral("id"), id}});
 }
 
+void Backend::refreshMachines()
+{
+    if (m_machinesWatcher.isRunning()) {
+        m_machinesRefreshAgain = true;
+        return;
+    }
+
+    m_machinesWatcher.setFuture(QtConcurrent::run([] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(QStringLiteral("machines.list"), {}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachinesFinished()
+{
+    const QJsonObject result = m_machinesWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+    } else {
+        QVariantList items;
+        const QJsonArray array = result.value(QStringLiteral("items")).toArray();
+        items.reserve(array.size());
+        for (const QJsonValue &value : array) {
+            items.append(machineVariant(value.toObject()));
+        }
+        m_machines = items;
+        emit machinesChanged();
+    }
+
+    if (m_machinesRefreshAgain) {
+        m_machinesRefreshAgain = false;
+        refreshMachines();
+    }
+}
+
+void Backend::refreshMachineDistros()
+{
+    if (m_machineDistrosLoaded || m_machineDistrosWatcher.isRunning()) {
+        return;
+    }
+
+    m_machineDistrosWatcher.setFuture(QtConcurrent::run([] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.distros"), {}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineDistrosFinished()
+{
+    const QJsonObject result = m_machineDistrosWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+        return;
+    }
+
+    QVariantList items;
+    const QJsonArray array = result.value(QStringLiteral("items")).toArray();
+    items.reserve(array.size());
+    for (const QJsonValue &value : array) {
+        const QJsonObject distro = value.toObject();
+        QVariantMap item = distro.toVariantMap();
+        const QString name = distro.value(QStringLiteral("distro")).toString();
+        const QString version = distro.value(QStringLiteral("version")).toString();
+        item.insert(QStringLiteral("label"),
+                    version.isEmpty() ? name : name + QLatin1Char(':') + version);
+        items.append(item);
+    }
+    m_machineDistros = items;
+    m_machineDistrosLoaded = true;
+    emit machineDistrosChanged();
+}
+
+void Backend::loadMachineInfo(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        return;
+    }
+
+    if (m_machineInfoWatcher.isRunning()) {
+        m_pendingMachineInfoId = id;
+        return;
+    }
+
+    m_machineInfoWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.get"),
+                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineInfoFinished()
+{
+    const QJsonObject result = m_machineInfoWatcher.result();
+    // O objeto Machine tem um campo "error" (string) que não é um erro de RPC.
+    if (result.value(QStringLiteral("error")).isObject()) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+    } else if (!result.value(QStringLiteral("id")).toString().isEmpty()) {
+        m_machineInfo = machineVariant(result);
+        emit machineInfoChanged();
+    }
+
+    if (!m_pendingMachineInfoId.isEmpty()) {
+        const QString next = m_pendingMachineInfoId;
+        m_pendingMachineInfoId.clear();
+        loadMachineInfo(next);
+    }
+}
+
+void Backend::loadMachineLogs(const QString &id, int tail)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        return;
+    }
+
+    if (tail <= 0) {
+        tail = 200;
+    }
+    tail = qBound(1, tail, 2000);
+
+    if (m_machineLogsWatcher.isRunning()) {
+        m_pendingMachineLogsId = id;
+        m_pendingMachineLogsTail = tail;
+        return;
+    }
+
+    m_machineLogsWatcher.setFuture(QtConcurrent::run([id, tail] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.logs"),
+                        QJsonObject{{QStringLiteral("id"), id},
+                                    {QStringLiteral("tail"), tail}},
+                        &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineLogsFinished()
+{
+    const QJsonObject result = m_machineLogsWatcher.result();
+    if (result.contains(QStringLiteral("error"))) {
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        emit lastErrorChanged();
+    } else {
+        QStringList lines;
+        const QJsonArray array = result.value(QStringLiteral("lines")).toArray();
+        lines.reserve(array.size());
+        for (const QJsonValue &value : array) {
+            lines.append(value.toString());
+        }
+        m_machineLogLines = lines;
+        m_machineLogsCapturedAt =
+            QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+        emit machineLogsChanged();
+    }
+
+    if (!m_pendingMachineLogsId.isEmpty()) {
+        const QString next = m_pendingMachineLogsId;
+        const int tail = m_pendingMachineLogsTail;
+        m_pendingMachineLogsId.clear();
+        loadMachineLogs(next, tail);
+    }
+}
+
+void Backend::refreshMachineFiles(const QString &id, const QString &path)
+{
+    if (id.isEmpty()) {
+        m_machineFilesError = QStringLiteral("Machine inválida.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    const QString target = path.isEmpty() ? QStringLiteral("/") : path;
+    m_machineFilesPath = target;
+    if (!m_machineFilesWatcher.isRunning()) {
+        m_machineFiles.clear();
+    }
+    startMachineFilesRequest(QStringLiteral("list"), id,
+                             QStringLiteral("machines.files.list"),
+                             QJsonObject{{QStringLiteral("id"), id},
+                                         {QStringLiteral("path"), target}},
+                             30000);
+}
+
+void Backend::downloadMachineFile(const QString &id, const QString &path,
+                                  const QString &fileName)
+{
+    if (id.isEmpty() || path.isEmpty()) {
+        m_machineFilesError = QStringLiteral("Informe a machine e o arquivo remoto.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    QString name = fileName;
+    if (name.isEmpty()) {
+        name = QFileInfo(path).fileName();
+    }
+    if (name.isEmpty() || name == QStringLiteral(".") || name == QStringLiteral("..")
+        || name.contains(QLatin1Char('/')) || name.contains(QLatin1Char('\\'))) {
+        m_machineFilesError = QStringLiteral("Nome de arquivo remoto inválido.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    QString directory = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (directory.isEmpty()) {
+        directory = QDir::homePath();
+    }
+    if (!QDir().mkpath(directory)) {
+        m_machineFilesError = QStringLiteral("Não foi possível criar a pasta de downloads.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    const QString destination = directory + QLatin1Char('/') + name;
+    startMachineFilesRequest(QStringLiteral("download"), id,
+                             QStringLiteral("machines.files.download"),
+                             QJsonObject{{QStringLiteral("id"), id},
+                                         {QStringLiteral("path"), path},
+                                         {QStringLiteral("destination"), destination}},
+                             600000);
+}
+
+void Backend::uploadMachineFile(const QString &id, const QString &remoteDir,
+                                const QString &localPath)
+{
+    if (id.isEmpty() || remoteDir.isEmpty() || localPath.isEmpty()) {
+        m_machineFilesError = QStringLiteral("Informe a machine, o destino e o arquivo local.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    const QFileInfo source(localPath);
+    const QString name = source.fileName();
+    if (name.isEmpty()) {
+        m_machineFilesError = QStringLiteral("Arquivo local inválido.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    const QString base = remoteDir.endsWith(QLatin1Char('/')) ? remoteDir
+                                                              : remoteDir + QLatin1Char('/');
+    startMachineFilesRequest(QStringLiteral("upload"), id,
+                             QStringLiteral("machines.files.upload"),
+                             QJsonObject{{QStringLiteral("id"), id},
+                                         {QStringLiteral("path"), base + name},
+                                         {QStringLiteral("sourcePath"), localPath}},
+                             600000);
+}
+
+void Backend::startMachineFilesRequest(const QString &operation, const QString &id,
+                                       const QString &method, const QJsonObject &params,
+                                       int timeoutMs)
+{
+    if (m_machineFilesWatcher.isRunning()) {
+        m_machineFilesError =
+            QStringLiteral("Aguarde a operação de arquivos atual terminar.");
+        emit machineFilesChanged();
+        return;
+    }
+
+    m_machineFilesMachineId = id;
+    m_machineFilesOperation = operation;
+    m_machineFilesBusy = true;
+    m_machineFilesError.clear();
+    emit machineFilesChanged();
+
+    m_machineFilesWatcher.setFuture(QtConcurrent::run([method, params, timeoutMs] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(method, params, &error, timeoutMs);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineFilesFinished()
+{
+    const QJsonObject result = m_machineFilesWatcher.result();
+    const QString operation = m_machineFilesOperation;
+    m_machineFilesOperation.clear();
+    m_machineFilesBusy = false;
+
+    if (result.value(QStringLiteral("error")).isObject()) {
+        m_machineFilesError =
+            result.value(QStringLiteral("error")).toObject().value(QStringLiteral("message"))
+                .toString();
+        if (m_machineFilesError.isEmpty()) {
+            m_machineFilesError = QStringLiteral("A operação de arquivos da machine falhou.");
+        }
+        if (operation == QStringLiteral("list")) {
+            m_machineFiles.clear();
+        }
+        emit machineFilesChanged();
+        return;
+    }
+
+    m_machineFilesError.clear();
+    if (operation == QStringLiteral("list")) {
+        m_machineFilesPath = result.value(QStringLiteral("path"))
+                                 .toString(m_machineFilesPath);
+        m_machineFiles.clear();
+        const QJsonArray entries = result.value(QStringLiteral("items")).toArray();
+        for (const QJsonValue &value : entries) {
+            const QJsonObject entry = value.toObject();
+            QVariantMap item;
+            item.insert(QStringLiteral("name"),
+                        entry.value(QStringLiteral("name")).toString());
+            item.insert(QStringLiteral("path"),
+                        entry.value(QStringLiteral("path")).toString());
+            item.insert(QStringLiteral("directory"),
+                        entry.value(QStringLiteral("directory")).toBool());
+            item.insert(QStringLiteral("size"),
+                        entry.value(QStringLiteral("size")).toDouble());
+            item.insert(QStringLiteral("modified"),
+                        entry.value(QStringLiteral("modified")).toString());
+            m_machineFiles.append(item);
+        }
+        emit machineFilesChanged();
+        return;
+    }
+
+    emit machineFilesChanged();
+    if (operation == QStringLiteral("upload") && !m_machineFilesMachineId.isEmpty()) {
+        const QString machineId = m_machineFilesMachineId;
+        const QString path = m_machineFilesPath;
+        QTimer::singleShot(0, this, [this, machineId, path] {
+            refreshMachineFiles(machineId, path);
+        });
+    }
+}
+
+void Backend::copyMachineLogs()
+{
+    if (m_machineLogLines.isEmpty()) {
+        return;
+    }
+    if (QClipboard *clipboard = QGuiApplication::clipboard()) {
+        clipboard->setText(m_machineLogLines.join(QLatin1Char('\n')));
+    }
+    emit actionFinished(true, {});
+}
+
+void Backend::machineLifecycle(const QString &action, const QString &id, bool force)
+{
+    if (id.isEmpty()
+        || (action != QStringLiteral("start") && action != QStringLiteral("stop")
+            && action != QStringLiteral("restart"))) {
+        m_lastError = QStringLiteral("Ação ou machine inválida.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+    runAction(QStringLiteral("machines.") + action, params, 120000);
+}
+
+void Backend::removeMachine(const QString &id, bool force)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    runAction(QStringLiteral("machines.delete"),
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}},
+              120000);
+}
+
+void Backend::renameMachine(const QString &id, const QString &name)
+{
+    if (id.isEmpty() || name.trimmed().isEmpty()) {
+        m_lastError = QStringLiteral("Informe a machine e o novo nome.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    runAction(QStringLiteral("machines.rename"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("name"), name.trimmed()}});
+}
+
+void Backend::cloneMachine(const QString &id, const QString &name)
+{
+    const auto fail = [this](const QString &message) {
+        m_machineCreateActive = false;
+        m_machineCreateStage = QStringLiteral("error");
+        m_machineCreateProgress = 0;
+        m_machineCreateError = message;
+        emit machineCreateStateChanged();
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (m_machineCreateActive) {
+        fail(QStringLiteral("Já existe uma operação de machine em andamento."));
+        return;
+    }
+    if (id.isEmpty() || name.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe a machine de origem e o nome da cópia."));
+        return;
+    }
+
+    m_machineCreateActive = true;
+    m_machineJobKind = QStringLiteral("clone");
+    m_machineCreateJobId.clear();
+    m_machineCreateStage = QStringLiteral("validating");
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    emit machineCreateStateChanged();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    params.insert(QStringLiteral("name"), name.trimmed());
+    m_machineCreateStream.startMachineClone(params);
+}
+
+void Backend::updateMachine(const QVariantMap &spec)
+{
+    const QString id = spec.value(QStringLiteral("id")).toString().trimmed();
+    const bool hasCpus = spec.contains(QStringLiteral("cpus"));
+    const bool hasMemory = spec.contains(QStringLiteral("memoryGiB"));
+    const bool hasDisk = spec.contains(QStringLiteral("diskGiB"));
+    const bool hasForwardAgent = spec.contains(QStringLiteral("forwardSshAgent"));
+    if (id.isEmpty() || (!hasCpus && !hasMemory && !hasDisk && !hasForwardAgent)) {
+        m_lastError = QStringLiteral("Informe a machine e ao menos um recurso ou o SSH agent.");
+        emit lastErrorChanged();
+        emit actionFinished(false, m_lastError);
+        return;
+    }
+
+    constexpr qint64 kGiB = 1024LL * 1024LL * 1024LL;
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    if (hasCpus) {
+        const int cpus = spec.value(QStringLiteral("cpus")).toInt();
+        if (cpus < 1 || cpus > 256) {
+            m_lastError = QStringLiteral("Número de CPUs fora do intervalo 1..256.");
+            emit lastErrorChanged();
+            emit actionFinished(false, m_lastError);
+            return;
+        }
+        params.insert(QStringLiteral("cpus"), cpus);
+    }
+    if (hasMemory) {
+        const int memoryGiB = spec.value(QStringLiteral("memoryGiB")).toInt();
+        if (memoryGiB < 1) {
+            m_lastError = QStringLiteral("Memória insuficiente (mínimo 1 GiB).");
+            emit lastErrorChanged();
+            emit actionFinished(false, m_lastError);
+            return;
+        }
+        params.insert(QStringLiteral("memoryBytes"), static_cast<qint64>(memoryGiB) * kGiB);
+    }
+    if (hasDisk) {
+        const int diskGiB = spec.value(QStringLiteral("diskGiB")).toInt();
+        if (diskGiB < 1) {
+            m_lastError = QStringLiteral("Disco insuficiente (mínimo 1 GiB).");
+            emit lastErrorChanged();
+            emit actionFinished(false, m_lastError);
+            return;
+        }
+        params.insert(QStringLiteral("diskBytes"), static_cast<qint64>(diskGiB) * kGiB);
+    }
+    if (hasForwardAgent) {
+        params.insert(QStringLiteral("forwardSshAgent"),
+                      spec.value(QStringLiteral("forwardSshAgent")).toBool());
+    }
+
+    runAction(QStringLiteral("machines.update"), params, 180000);
+}
+
+void Backend::setMachinePorts(const QString &id, const QVariantList &ports)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (id.isEmpty()) {
+        fail(QStringLiteral("Machine inválida."));
+        return;
+    }
+
+    QJsonArray array;
+    for (const QVariant &value : ports) {
+        const QVariantMap entry = value.toMap();
+        bool hostOk = false;
+        bool guestOk = false;
+        const int hostPort = entry.value(QStringLiteral("hostPort")).toInt(&hostOk);
+        const int guestPort = entry.value(QStringLiteral("guestPort")).toInt(&guestOk);
+        if (!hostOk || hostPort < 1 || hostPort > 65535) {
+            fail(QStringLiteral("Porta do host fora do intervalo 1..65535."));
+            return;
+        }
+        if (!guestOk || guestPort < 1 || guestPort > 65535) {
+            fail(QStringLiteral("Porta do guest fora do intervalo 1..65535."));
+            return;
+        }
+
+        QString protocol =
+            entry.value(QStringLiteral("protocol"), QStringLiteral("tcp")).toString().trimmed()
+                .toLower();
+        if (protocol.isEmpty()) {
+            protocol = QStringLiteral("tcp");
+        }
+        if (protocol != QStringLiteral("tcp") && protocol != QStringLiteral("udp")) {
+            fail(QStringLiteral("Protocolo de porta inválido; use tcp ou udp."));
+            return;
+        }
+
+        QJsonObject object;
+        const QString portId = entry.value(QStringLiteral("id")).toString().trimmed();
+        if (!portId.isEmpty()) {
+            object.insert(QStringLiteral("id"), portId);
+        }
+        object.insert(QStringLiteral("hostPort"), hostPort);
+        object.insert(QStringLiteral("guestPort"), guestPort);
+        object.insert(QStringLiteral("protocol"), protocol);
+        object.insert(QStringLiteral("exposeLan"),
+                      entry.value(QStringLiteral("exposeLan")).toBool());
+        object.insert(QStringLiteral("label"),
+                      entry.value(QStringLiteral("label")).toString());
+        array.append(object);
+    }
+
+    runAction(QStringLiteral("machines.ports.set"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("ports"), array}},
+              180000);
+}
+
+void Backend::createMachineSnapshot(const QString &id, const QString &name)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (id.isEmpty()) {
+        fail(QStringLiteral("Machine inválida."));
+        return;
+    }
+    if (name.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe o nome do snapshot."));
+        return;
+    }
+    runAction(QStringLiteral("machines.snapshots.create"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("name"), name.trimmed()}},
+              180000);
+}
+
+void Backend::restoreMachineSnapshot(const QString &id, const QString &name)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (id.isEmpty()) {
+        fail(QStringLiteral("Machine inválida."));
+        return;
+    }
+    if (name.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe o nome do snapshot."));
+        return;
+    }
+    runAction(QStringLiteral("machines.snapshots.restore"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("name"), name.trimmed()}},
+              180000);
+}
+
+void Backend::removeMachineSnapshot(const QString &id, const QString &name)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (id.isEmpty()) {
+        fail(QStringLiteral("Machine inválida."));
+        return;
+    }
+    if (name.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe o nome do snapshot."));
+        return;
+    }
+    runAction(QStringLiteral("machines.snapshots.remove"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("name"), name.trimmed()}},
+              180000);
+}
+
+void Backend::refreshMachineSnapshots(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_machineSnapshotsError = QStringLiteral("Machine inválida.");
+        emit machineSnapshotsChanged();
+        return;
+    }
+
+    if (m_machineSnapshotsWatcher.isRunning()) {
+        m_pendingMachineSnapshotsId = id;
+        return;
+    }
+
+    m_machineSnapshotsError.clear();
+    m_machineSnapshotsWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.snapshots.list"),
+                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineSnapshotsFinished()
+{
+    const QJsonObject result = m_machineSnapshotsWatcher.result();
+    if (result.value(QStringLiteral("error")).isObject()) {
+        m_machineSnapshotsError =
+            result.value(QStringLiteral("error")).toObject().value(QStringLiteral("message"))
+                .toString();
+        if (m_machineSnapshotsError.isEmpty()) {
+            m_machineSnapshotsError =
+                QStringLiteral("Não foi possível listar os snapshots da machine.");
+        }
+    } else {
+        m_machineSnapshotsError.clear();
+        QVariantList items;
+        const QJsonArray array = result.value(QStringLiteral("items")).toArray();
+        items.reserve(array.size());
+        for (const QJsonValue &value : array) {
+            items.append(value.toObject().toVariantMap());
+        }
+        m_machineSnapshots = items;
+    }
+    emit machineSnapshotsChanged();
+
+    if (!m_pendingMachineSnapshotsId.isEmpty()) {
+        const QString next = m_pendingMachineSnapshotsId;
+        m_pendingMachineSnapshotsId.clear();
+        refreshMachineSnapshots(next);
+    }
+}
+
+void Backend::createMachine(const QVariantMap &spec)
+{
+    const auto fail = [this](const QString &message) {
+        m_machineCreateActive = false;
+        m_machineCreateStage = QStringLiteral("error");
+        m_machineCreateProgress = 0;
+        m_machineCreateError = message;
+        emit machineCreateStateChanged();
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    const QString name = spec.value(QStringLiteral("name")).toString().trimmed();
+    static const QRegularExpression namePattern(
+        QStringLiteral("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"));
+    if (name.isEmpty() || !namePattern.match(name).hasMatch()) {
+        fail(QStringLiteral("Nome de machine inválido."));
+        return;
+    }
+
+    const QString distro = spec.value(QStringLiteral("distro")).toString().trimmed();
+    if (distro.isEmpty()) {
+        fail(QStringLiteral("Informe a distro da machine."));
+        return;
+    }
+    const bool isolated = spec.value(QStringLiteral("isolated")).toBool();
+
+    const int cpus = spec.value(QStringLiteral("cpus"), 2).toInt();
+    if (cpus < 1 || cpus > 256) {
+        fail(QStringLiteral("Número de CPUs fora do intervalo 1..256."));
+        return;
+    }
+
+    const int memoryGiB = spec.value(QStringLiteral("memoryGiB"), 4).toInt();
+    const int diskGiB = spec.value(QStringLiteral("diskGiB"), 20).toInt();
+    if (memoryGiB < 1) {
+        fail(QStringLiteral("Memória insuficiente (mínimo 1 GiB)."));
+        return;
+    }
+    if (diskGiB < 1) {
+        fail(QStringLiteral("Disco insuficiente (mínimo 1 GiB)."));
+        return;
+    }
+
+    constexpr qint64 kGiB = 1024LL * 1024LL * 1024LL;
+    QJsonObject params;
+    params.insert(QStringLiteral("name"), name);
+    params.insert(QStringLiteral("distro"), distro);
+    const QString version = spec.value(QStringLiteral("version")).toString().trimmed();
+    if (!version.isEmpty()) {
+        params.insert(QStringLiteral("version"), version);
+    }
+    params.insert(QStringLiteral("cpus"), cpus);
+    params.insert(QStringLiteral("memoryBytes"), static_cast<qint64>(memoryGiB) * kGiB);
+    params.insert(QStringLiteral("diskBytes"), static_cast<qint64>(diskGiB) * kGiB);
+    const QString user = spec.value(QStringLiteral("user")).toString();
+    if (!user.isEmpty()) {
+        params.insert(QStringLiteral("user"), user);
+    }
+    const QString userData = spec.value(QStringLiteral("userData")).toString();
+    if (!userData.isEmpty()) {
+        params.insert(QStringLiteral("userData"), userData);
+    }
+    const QString password = spec.value(QStringLiteral("password")).toString();
+    if (!password.isEmpty()) {
+        params.insert(QStringLiteral("password"), password);
+    }
+    params.insert(QStringLiteral("isolated"), isolated);
+    // O modo isolado implica rede restrita e sem SSH agent; o daemon reforça.
+    params.insert(QStringLiteral("isolateNetwork"),
+                  isolated
+                      || spec.value(QStringLiteral("isolateNetwork")).toBool());
+    params.insert(QStringLiteral("forwardSshAgent"),
+                  isolated
+                      ? false
+                      : spec.value(QStringLiteral("forwardSshAgent")).toBool());
+
+    QJsonArray mounts;
+    const QString mountsText = spec.value(QStringLiteral("mountsText")).toString();
+    const QStringList mountLines = mountsText.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &rawLine : mountLines) {
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) {
+            continue;
+        }
+        const QStringList parts = line.split(QLatin1Char(':'));
+        if (parts.size() < 2 || parts.size() > 3) {
+            fail(QStringLiteral("Mount inválido: use origem:destino[:ro]."));
+            return;
+        }
+        const QString source = parts.at(0).trimmed();
+        const QString target = parts.at(1).trimmed();
+        const QString mode = parts.size() == 3 ? parts.at(2).trimmed() : QString();
+        if (source.isEmpty() || target.isEmpty() || !source.startsWith(QLatin1Char('/'))
+            || !target.startsWith(QLatin1Char('/'))) {
+            fail(QStringLiteral("Mount inválido: origem e destino precisam ser absolutos."));
+            return;
+        }
+        if (!mode.isEmpty() && mode != QStringLiteral("ro")) {
+            fail(QStringLiteral("Mount inválido: o modo deve ser 'ro'."));
+            return;
+        }
+        QJsonObject mount;
+        mount.insert(QStringLiteral("source"), source);
+        mount.insert(QStringLiteral("target"), target);
+        mount.insert(QStringLiteral("readOnly"), mode == QStringLiteral("ro"));
+        mounts.append(mount);
+    }
+    if (!mounts.isEmpty()) {
+        if (isolated) {
+            fail(QStringLiteral("O modo isolado não permite mounts do host."));
+            return;
+        }
+        params.insert(QStringLiteral("mounts"), mounts);
+    }
+
+    m_machineCreateActive = true;
+    m_machineJobKind = QStringLiteral("create");
+    m_machineCreateJobId.clear();
+    m_machineCreateStage = QStringLiteral("validating");
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    emit machineCreateStateChanged();
+    m_machineCreateStream.startMachineCreate(params);
+}
+
+void Backend::cancelMachineCreate()
+{
+    if (m_machineCreateJobId.isEmpty()) {
+        return;
+    }
+
+    const QString jobId = m_machineCreateJobId;
+    m_machineCreateStage = QStringLiteral("cancelling");
+    emit machineCreateStateChanged();
+    (void)QtConcurrent::run([jobId] {
+        RpcClient client;
+        Error error;
+        client.call(QStringLiteral("machines.cancel"),
+                    QJsonObject{{QStringLiteral("jobId"), jobId}}, &error, 30000);
+    });
+}
+
+void Backend::resetMachineCreateState()
+{
+    if (m_machineCreateActive) {
+        return;
+    }
+    m_machineCreateStage.clear();
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    m_machineCreateJobId.clear();
+    m_machineJobKind.clear();
+    emit machineCreateStateChanged();
+}
+
+void Backend::exportMachine(const QString &id, const QString &path, bool force)
+{    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (m_machineCreateActive) {
+        fail(QStringLiteral("Já existe uma operação de machine em andamento."));
+        return;
+    }
+    if (id.isEmpty() || path.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe a machine e o arquivo de destino do export."));
+        return;
+    }
+
+    m_machineCreateActive = true;
+    m_machineJobKind = QStringLiteral("export");
+    m_machineCreateJobId.clear();
+    m_machineCreateStage = QStringLiteral("validating");
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    emit machineCreateStateChanged();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+    params.insert(QStringLiteral("path"), path.trimmed());
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+    m_machineCreateStream.startMachineExport(params);
+}
+
+void Backend::importMachine(const QString &path, const QString &name, bool force)
+{
+    const auto fail = [this](const QString &message) {
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    };
+
+    if (m_machineCreateActive) {
+        fail(QStringLiteral("Já existe uma operação de machine em andamento."));
+        return;
+    }
+    if (path.trimmed().isEmpty()) {
+        fail(QStringLiteral("Informe o arquivo de machine para importar."));
+        return;
+    }
+
+    m_machineCreateActive = true;
+    m_machineJobKind = QStringLiteral("import");
+    m_machineCreateJobId.clear();
+    m_machineCreateStage = QStringLiteral("validating");
+    m_machineCreateProgress = 0;
+    m_machineCreateError.clear();
+    emit machineCreateStateChanged();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("path"), path.trimmed());
+    if (!name.trimmed().isEmpty()) {
+        params.insert(QStringLiteral("name"), name.trimmed());
+    }
+    if (force) {
+        params.insert(QStringLiteral("force"), true);
+    }
+    m_machineCreateStream.startMachineImport(params);
+}
+
+QString Backend::machineArchivePath(const QString &id) const
+{
+    QString name;
+    for (const QVariant &value : m_machines) {
+        const QVariantMap machine = value.toMap();
+        if (machine.value(QStringLiteral("id")).toString() == id) {
+            name = machine.value(QStringLiteral("name")).toString();
+            break;
+        }
+    }
+    QString directory = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (directory.isEmpty()) {
+        directory = QDir::homePath();
+    }
+    if (name.isEmpty()) {
+        name = QStringLiteral("machine");
+    }
+    return directory + QLatin1Char('/') + name + QStringLiteral(".tar.zst");
+}
+
 void Backend::runAction(const QString &method, const QJsonObject &params, int timeoutMs)
 {
     const PendingAction pending{method, params, timeoutMs};
@@ -1655,6 +3509,8 @@ void Backend::runAction(const QString &method, const QJsonObject &params, int ti
 void Backend::startAction(const PendingAction &action)
 {
     m_actionActive = true;
+    m_activeActionMethod = action.method;
+    m_activeActionParams = action.params;
     emit actionStateChanged();
 
     if (action.method == QStringLiteral("__batch__")) {
@@ -1696,9 +3552,21 @@ void Backend::enqueueAction(const PendingAction &action)
 void Backend::onActionFinished()
 {
     const QJsonObject result = m_actionWatcher.result();
-    if (result.contains(QStringLiteral("error"))) {
+    // Resultados de machines trazem um campo "error" (string) do próprio
+    // metadado; só é erro de RPC quando o valor é um objeto.
+    if (result.value(QStringLiteral("error")).isObject()) {
         const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
-        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        QString message = errorObject.value(QStringLiteral("message")).toString();
+        const QString detail = errorObject.value(QStringLiteral("detail")).toString();
+        if (!detail.isEmpty() && !message.contains(detail)) {
+            message += QLatin1Char(' ') + detail;
+        }
+        const QString remediation =
+            errorObject.value(QStringLiteral("remediation")).toString();
+        if (!remediation.isEmpty()) {
+            message += QLatin1Char(' ') + remediation;
+        }
+        m_lastError = message;
         emit lastErrorChanged();
         emit actionFinished(false, m_lastError);
     } else {
@@ -1710,6 +3578,22 @@ void Backend::onActionFinished()
         refresh();
         refreshCatalog();
     }
+
+    if (m_activeActionMethod.startsWith(QStringLiteral("machines."))) {
+        refreshMachines();
+        const QString machineId = m_activeActionParams.value(QStringLiteral("id")).toString();
+        if (!machineId.isEmpty()
+            && m_activeActionMethod != QStringLiteral("machines.delete")) {
+            // Revalida o estado/portas depois de start/stop/restart.
+            loadMachineInfo(machineId);
+        }
+        if (!machineId.isEmpty()
+            && m_activeActionMethod.startsWith(QStringLiteral("machines.snapshots."))) {
+            // Criação/restauração/remoção alteram o disco: relê os snapshots.
+            refreshMachineSnapshots(machineId);
+        }
+    }
+    m_activeActionParams = {};
 
     if (!m_actionQueue.isEmpty()) {
         const PendingAction next = m_actionQueue.takeFirst();

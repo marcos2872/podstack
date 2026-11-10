@@ -5,6 +5,7 @@
 #include <QFutureWatcher>
 #include <QJsonObject>
 #include <QObject>
+#include <QQueue>
 #include <QString>
 #include <QStringList>
 #include <QSet>
@@ -24,6 +25,30 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantMap stats READ stats NOTIFY statsChanged)
     Q_PROPERTY(QVariantList cpuHistory READ cpuHistory NOTIFY statsChanged)
     Q_PROPERTY(QVariantList memHistory READ memHistory NOTIFY statsChanged)
+    Q_PROPERTY(QVariantMap containerDetail READ containerDetail NOTIFY containerDetailChanged)
+    Q_PROPERTY(QString containerDetailError READ containerDetailError NOTIFY containerDetailChanged)
+    Q_PROPERTY(bool containerDetailLoading READ containerDetailLoading
+               NOTIFY containerDetailChanged)
+    Q_PROPERTY(QVariantMap containerDetailStats READ containerDetailStats
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailCpuHistory READ containerDetailCpuHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailMemHistory READ containerDetailMemHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailNetRxHistory READ containerDetailNetRxHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailNetTxHistory READ containerDetailNetTxHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailDiskReadHistory READ containerDetailDiskReadHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QVariantList containerDetailDiskWriteHistory READ containerDetailDiskWriteHistory
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QString containerDetailStatsError READ containerDetailStatsError
+               NOTIFY containerDetailStatsChanged)
+    Q_PROPERTY(QStringList containerDetailLogLines READ containerDetailLogLines
+               NOTIFY containerDetailLogsChanged)
+    Q_PROPERTY(QString containerDetailLogsError READ containerDetailLogsError
+               NOTIFY containerDetailLogsChanged)
     Q_PROPERTY(QVariantMap activityStats READ activityStats NOTIFY activityChanged)
     Q_PROPERTY(QVariantList activityCpuHistory READ activityCpuHistory NOTIFY activityChanged)
     Q_PROPERTY(QVariantList activityMemHistory READ activityMemHistory NOTIFY activityChanged)
@@ -39,6 +64,7 @@ class Backend : public QObject {
     Q_PROPERTY(bool pullActive READ pullActive NOTIFY pullStateChanged)
     Q_PROPERTY(QString pullStatus READ pullStatus NOTIFY pullStateChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
+    Q_PROPERTY(QVariantMap prunePreview READ prunePreview NOTIFY prunePreviewChanged)
     Q_PROPERTY(QVariantList composeProjects READ composeProjects NOTIFY composeProjectsChanged)
     Q_PROPERTY(QStringList composeLogLines READ composeLogLines NOTIFY composeLogsChanged)
     Q_PROPERTY(QVariantList builds READ builds NOTIFY buildsChanged)
@@ -46,6 +72,41 @@ class Backend : public QObject {
     Q_PROPERTY(bool buildActive READ buildActive NOTIFY buildStateChanged)
     Q_PROPERTY(QString buildStatus READ buildStatus NOTIFY buildStateChanged)
     Q_PROPERTY(QString activeBuildId READ activeBuildId NOTIFY buildStateChanged)
+    Q_PROPERTY(QVariantList machines READ machines NOTIFY machinesChanged)
+    Q_PROPERTY(QVariantList machineDistros READ machineDistros NOTIFY machineDistrosChanged)
+    Q_PROPERTY(QVariantMap machineInfo READ machineInfo NOTIFY machineInfoChanged)
+    Q_PROPERTY(QStringList machineLogLines READ machineLogLines NOTIFY machineLogsChanged)
+    Q_PROPERTY(QString machineLogsCapturedAt READ machineLogsCapturedAt
+               NOTIFY machineLogsChanged)
+    Q_PROPERTY(QVariantMap machineStats READ machineStats NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineCpuHistory READ machineCpuHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineMemHistory READ machineMemHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineNetRxHistory READ machineNetRxHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineNetTxHistory READ machineNetTxHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QString machineStatsError READ machineStatsError NOTIFY machineStatsChanged)
+    Q_PROPERTY(bool machineConsoleActive READ machineConsoleActive NOTIFY machineConsoleChanged)
+    Q_PROPERTY(QString machineConsoleText READ machineConsoleText NOTIFY machineConsoleChanged)
+    Q_PROPERTY(QString machineConsoleError READ machineConsoleError NOTIFY machineConsoleChanged)
+    Q_PROPERTY(QVariantList machineFiles READ machineFiles NOTIFY machineFilesChanged)
+    Q_PROPERTY(QString machineFilesPath READ machineFilesPath NOTIFY machineFilesChanged)
+    Q_PROPERTY(bool machineFilesBusy READ machineFilesBusy NOTIFY machineFilesChanged)
+    Q_PROPERTY(QString machineFilesError READ machineFilesError NOTIFY machineFilesChanged)
+    Q_PROPERTY(QVariantList machineSnapshots READ machineSnapshots
+               NOTIFY machineSnapshotsChanged)
+    Q_PROPERTY(QString machineSnapshotsError READ machineSnapshotsError
+               NOTIFY machineSnapshotsChanged)
+    Q_PROPERTY(bool machineCreateActive READ machineCreateActive NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineJobKind READ machineJobKind NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineCreateJobId READ machineCreateJobId NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineCreateStage READ machineCreateStage NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(int machineCreateProgress READ machineCreateProgress
+               NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineCreateError READ machineCreateError
+               NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
     Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
     Q_PROPERTY(bool setupCompleted READ setupCompleted NOTIFY setupChanged)
@@ -63,6 +124,9 @@ class Backend : public QObject {
     Q_PROPERTY(QString setupError READ setupError NOTIFY setupChanged)
     Q_PROPERTY(bool setupBusy READ setupBusy NOTIFY setupChanged)
     Q_PROPERTY(bool setupLoaded READ setupLoaded NOTIFY setupChanged)
+    Q_PROPERTY(QVariantList settingsSchema READ settingsSchema NOTIFY settingsSchemaChanged)
+    Q_PROPERTY(QVariantMap settingsValues READ settingsValues NOTIFY settingsValuesChanged)
+    Q_PROPERTY(QString settingsError READ settingsError NOTIFY settingsErrorChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -75,6 +139,25 @@ public:
     QVariantMap stats() const { return m_stats; }
     QVariantList cpuHistory() const { return m_cpuHistory; }
     QVariantList memHistory() const { return m_memHistory; }
+    QVariantMap containerDetail() const { return m_containerDetail; }
+    QString containerDetailError() const { return m_containerDetailError; }
+    bool containerDetailLoading() const { return m_containerDetailLoading; }
+    QVariantMap containerDetailStats() const { return m_containerDetailStats; }
+    QVariantList containerDetailCpuHistory() const { return m_containerDetailCpuHistory; }
+    QVariantList containerDetailMemHistory() const { return m_containerDetailMemHistory; }
+    QVariantList containerDetailNetRxHistory() const { return m_containerDetailNetRxHistory; }
+    QVariantList containerDetailNetTxHistory() const { return m_containerDetailNetTxHistory; }
+    QVariantList containerDetailDiskReadHistory() const
+    {
+        return m_containerDetailDiskReadHistory;
+    }
+    QVariantList containerDetailDiskWriteHistory() const
+    {
+        return m_containerDetailDiskWriteHistory;
+    }
+    QString containerDetailStatsError() const { return m_containerDetailStatsError; }
+    QStringList containerDetailLogLines() const { return m_containerDetailLogLines; }
+    QString containerDetailLogsError() const { return m_containerDetailLogsError; }
     QVariantMap activityStats() const { return m_activityStats; }
     QVariantList activityCpuHistory() const { return m_activityCpuHistory; }
     QVariantList activityMemHistory() const { return m_activityMemHistory; }
@@ -90,6 +173,7 @@ public:
     bool pullActive() const { return m_pullActive; }
     QString pullStatus() const { return m_pullStatus; }
     QVariantMap diskUsage() const { return m_diskUsage; }
+    QVariantMap prunePreview() const { return m_prunePreview; }
     QVariantList composeProjects() const { return m_composeProjects; }
     QStringList composeLogLines() const { return m_composeLogLines; }
     QVariantList builds() const { return m_builds; }
@@ -97,6 +181,32 @@ public:
     bool buildActive() const { return m_buildActive; }
     QString buildStatus() const { return m_buildStatus; }
     QString activeBuildId() const { return m_activeBuildId; }
+    QVariantList machines() const { return m_machines; }
+    QVariantList machineDistros() const { return m_machineDistros; }
+    QVariantMap machineInfo() const { return m_machineInfo; }
+    QStringList machineLogLines() const { return m_machineLogLines; }
+    QString machineLogsCapturedAt() const { return m_machineLogsCapturedAt; }
+    QVariantMap machineStats() const { return m_machineStats; }
+    QVariantList machineCpuHistory() const { return m_machineCpuHistory; }
+    QVariantList machineMemHistory() const { return m_machineMemHistory; }
+    QVariantList machineNetRxHistory() const { return m_machineNetRxHistory; }
+    QVariantList machineNetTxHistory() const { return m_machineNetTxHistory; }
+    QString machineStatsError() const { return m_machineStatsError; }
+    bool machineConsoleActive() const { return m_machineConsoleActive; }
+    QString machineConsoleText() const { return m_machineConsoleText; }
+    QString machineConsoleError() const { return m_machineConsoleError; }
+    QVariantList machineFiles() const { return m_machineFiles; }
+    QString machineFilesPath() const { return m_machineFilesPath; }
+    bool machineFilesBusy() const { return m_machineFilesBusy; }
+    QString machineFilesError() const { return m_machineFilesError; }
+    QVariantList machineSnapshots() const { return m_machineSnapshots; }
+    QString machineSnapshotsError() const { return m_machineSnapshotsError; }
+    bool machineCreateActive() const { return m_machineCreateActive; }
+    QString machineJobKind() const { return m_machineJobKind; }
+    QString machineCreateJobId() const { return m_machineCreateJobId; }
+    QString machineCreateStage() const { return m_machineCreateStage; }
+    int machineCreateProgress() const { return m_machineCreateProgress; }
+    QString machineCreateError() const { return m_machineCreateError; }
     QString eventMessage() const { return m_eventMessage; }
     QString eventKind() const { return m_eventKind; }
     bool setupCompleted() const { return m_setupCompleted; }
@@ -113,10 +223,14 @@ public:
     QString setupStatus() const { return m_setupStatus; }
     QString setupError() const { return m_setupError; }
     bool setupBusy() const { return m_setupBusy; }
+    QString settingsError() const { return m_settingsError; }
+    QVariantList settingsSchema() const { return m_settingsSchema; }
+    QVariantMap settingsValues() const { return m_settingsValues; }
     bool setupLoaded() const { return m_setupLoaded; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
+    Q_INVOKABLE void refreshDiskUsage();
     Q_INVOKABLE void refreshImages();
     Q_INVOKABLE void refreshVolumes();
     Q_INVOKABLE void refreshNetworks();
@@ -151,13 +265,60 @@ public:
     Q_INVOKABLE void subscribeComposeLogs(const QString &project, const QString &service);
     Q_INVOKABLE void unsubscribeComposeLogs();
     Q_INVOKABLE void openPath(const QString &path);
+    Q_INVOKABLE QString choosePath(const QString &mode, const QString &title,
+                                   const QString &filter = QString(),
+                                   const QString &initialPath = QString());
     Q_INVOKABLE void refreshBuilds();
     Q_INVOKABLE void startBuild(const QVariantMap &spec);
     Q_INVOKABLE void cancelBuild();
     Q_INVOKABLE void removeBuild(const QString &id);
+    Q_INVOKABLE void refreshMachines();
+    Q_INVOKABLE void refreshMachineDistros();
+    Q_INVOKABLE void loadMachineInfo(const QString &id);
+    Q_INVOKABLE void loadMachineLogs(const QString &id, int tail = 200);
+    Q_INVOKABLE void startMachineStats(const QString &id);
+    Q_INVOKABLE void stopMachineStats();
+    Q_INVOKABLE void followMachineConsole(const QString &id, int tailBytes = 64 * 1024);
+    Q_INVOKABLE void stopMachineConsole();
+    Q_INVOKABLE void refreshMachineFiles(const QString &id, const QString &path);
+    Q_INVOKABLE void refreshMachineSnapshots(const QString &id);
+    Q_INVOKABLE void createMachineSnapshot(const QString &id, const QString &name);
+    Q_INVOKABLE void restoreMachineSnapshot(const QString &id, const QString &name);
+    Q_INVOKABLE void removeMachineSnapshot(const QString &id, const QString &name);
+    Q_INVOKABLE void downloadMachineFile(const QString &id, const QString &path,
+                                         const QString &fileName);
+    Q_INVOKABLE void uploadMachineFile(const QString &id, const QString &remoteDir,
+                                       const QString &localPath);
+    Q_INVOKABLE void copyMachineLogs();
+    Q_INVOKABLE void openMachineSsh(const QString &id);
+    Q_INVOKABLE void machineLifecycle(const QString &action, const QString &id,
+                                      bool force = false);
+    Q_INVOKABLE void removeMachine(const QString &id, bool force);
+    Q_INVOKABLE void renameMachine(const QString &id, const QString &name);
+    Q_INVOKABLE void cloneMachine(const QString &id, const QString &name);
+    Q_INVOKABLE void updateMachine(const QVariantMap &spec);
+    Q_INVOKABLE void setMachinePorts(const QString &id, const QVariantList &ports);
+    Q_INVOKABLE void createMachine(const QVariantMap &spec);
+    Q_INVOKABLE void cancelMachineCreate();
+    Q_INVOKABLE void resetMachineCreateState();
+    Q_INVOKABLE void exportMachine(const QString &id, const QString &path, bool force = false);
+    Q_INVOKABLE void importMachine(const QString &path, const QString &name = QString(),
+                                   bool force = false);
+    Q_INVOKABLE QString machineArchivePath(const QString &id) const;
     Q_INVOKABLE void lifecycle(const QString &action, const QString &id);
     Q_INVOKABLE void removeContainer(const QString &id, bool force, bool volumes);
+    Q_INVOKABLE void loadContainerDetail(const QString &id);
+    Q_INVOKABLE void copyContainerInspect();
+    Q_INVOKABLE void startContainerDetailStats(const QString &id);
+    Q_INVOKABLE void stopContainerDetailStats();
+    Q_INVOKABLE void startContainerDetailLogs(const QString &id, int tail = 200,
+                                              bool follow = true);
+    Q_INVOKABLE void stopContainerDetailLogs();
+    Q_INVOKABLE void clearContainerDetailLogs();
+    Q_INVOKABLE void containerDetailLifecycle(const QString &action, const QString &id);
+    Q_INVOKABLE void removeContainerDetail(const QString &id, bool force);
     Q_INVOKABLE void createContainer(const QVariantMap &spec, bool start);
+    Q_INVOKABLE void exposeContainerLan(const QString &id, bool expose);
     Q_INVOKABLE void batchAll(const QString &action);
     Q_INVOKABLE void batchIds(const QStringList &ids, const QString &action);
     Q_INVOKABLE void renameContainer(const QString &id, const QString &name);
@@ -173,10 +334,14 @@ public:
     Q_INVOKABLE void downloadFile(const QString &id, const QString &path);
     Q_INVOKABLE void uploadFile(const QString &id, const QString &path, const QString &sourcePath);
     Q_INVOKABLE QVariantMap settings() const;
+    Q_INVOKABLE void refreshSettings();
+    Q_INVOKABLE void setSetting(const QString &key, const QVariant &value);
+    Q_INVOKABLE void resetSetting(const QString &key);
     Q_INVOKABLE void saveEngineMode(const QString &mode);
     Q_INVOKABLE void saveTheme(const QString &theme);
     Q_INVOKABLE void saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
                                       bool notifications = true);
+    Q_INVOKABLE void saveProxySettings(const QString &proxy, const QString &excludeText);
     Q_INVOKABLE void openTerminal(const QString &id);
     Q_INVOKABLE void setupRefresh();
     Q_INVOKABLE void setupCheck();
@@ -195,6 +360,9 @@ signals:
     void actionFinished(bool ok, const QString &error);
     void logsChanged();
     void statsChanged();
+    void containerDetailChanged();
+    void containerDetailStatsChanged();
+    void containerDetailLogsChanged();
     void activityChanged();
     void filesChanged();
     void imagesChanged();
@@ -203,23 +371,57 @@ signals:
     void podsChanged();
     void pullStateChanged();
     void diskUsageChanged();
+    void prunePreviewChanged();
     void composeProjectsChanged();
     void composeLogsChanged();
     void buildsChanged();
     void buildLogChanged();
     void buildStateChanged();
+    void machinesChanged();
+    void machineDistrosChanged();
+    void machineInfoChanged();
+    void machineLogsChanged();
+    void machineStatsChanged();
+    void machineConsoleChanged();
+    void machineFilesChanged();
+    void machineSnapshotsChanged();
+    void machineCreateStateChanged();
     void eventsChanged();
     void containerEvent(const QVariantMap &event);
+    void terminalRequested(const QString &title, const QString &program,
+                           const QStringList &args);
     void settingsChanged();
+    void settingsSchemaChanged();
+    void settingsValuesChanged();
+    void settingsErrorChanged();
+    void settingFinished(const QString &key, bool ok, const QString &error);
     void setupChanged();
     void setupJobChanged();
 
 private:
     void onRefreshFinished();
     void onActionFinished();
+    void onContainerDetailFinished();
     void onFilesFinished();
     void onCatalogFinished();
     void onSetupFinished();
+    void onSettingsFinished();
+    void onSettingsActionFinished();
+    void setSettingInternal(const QString &key, const QVariant &value,
+                            bool applyAutostart = false);
+    void enqueueSettingsRequest(const QString &method, const QJsonObject &params,
+                                bool applyAutostart = false);
+    void startNextSettingsRequest();
+    void setSettingsError(const QString &error);
+    void onMachinesFinished();
+    void onMachineDistrosFinished();
+    void onMachineInfoFinished();
+    void onMachineLogsFinished();
+    void onMachineFilesFinished();
+    void onMachineSnapshotsFinished();
+    void startMachineFilesRequest(const QString &operation, const QString &id,
+                                  const QString &method, const QJsonObject &params,
+                                  int timeoutMs);
     void applySetupStatus(const QJsonObject &status);
     void applySetupJob(const QJsonObject &job);
     void runSetupRequest(const QString &method, const QJsonObject &params);
@@ -238,21 +440,46 @@ private:
 
     QFutureWatcher<QJsonObject> m_watcher;
     QFutureWatcher<QJsonObject> m_actionWatcher;
+    QFutureWatcher<QJsonObject> m_containerDetailWatcher;
     QFutureWatcher<QJsonObject> m_filesWatcher;
     QFutureWatcher<QJsonObject> m_catalogWatcher;
     QFutureWatcher<QJsonObject> m_setupWatcher;
+    QFutureWatcher<QJsonObject> m_machinesWatcher;
+    QFutureWatcher<QJsonObject> m_machineDistrosWatcher;
+    QFutureWatcher<QJsonObject> m_machineInfoWatcher;
+    QFutureWatcher<QJsonObject> m_machineLogsWatcher;
+    QFutureWatcher<QJsonObject> m_machineFilesWatcher;
+    QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
+    QFutureWatcher<QJsonObject> m_machineSshWatcher;
+    QFutureWatcher<QJsonObject> m_settingsWatcher;
+    QFutureWatcher<QJsonObject> m_settingsActionWatcher;
+    struct SettingsRequest {
+        QString method;
+        QJsonObject params;
+        bool applyAutostart = false;
+    };
+    QQueue<SettingsRequest> m_settingsQueue;
+    SettingsRequest m_settingsCurrentRequest;
+    bool m_settingsActionActive = false;
+    bool m_settingsRefreshAgain = false;
     QString m_setupPendingMethod;
     QString m_catalogSection;
     QStringList m_catalogQueue;
     StreamClient m_stream;
+    StreamClient m_detailStatsStream;
+    StreamClient m_detailLogsStream;
     StreamClient m_activityStream;
     StreamClient m_pullStream;
     StreamClient m_composeStream;
     StreamClient m_buildStream;
+    StreamClient m_machineCreateStream;
+    StreamClient m_machineStatsStream;
+    StreamClient m_machineConsoleStream;
     StreamClient m_setupStream;
     StreamClient m_eventsStream;
     QTimer m_eventTimer;
     QTimer m_logsTimer;
+    QTimer m_detailLogsTimer;
     QTimer m_refreshTimer;
     QTimer m_eventsRetryTimer;
     int m_eventsRetryDelayMs = 1000;
@@ -267,6 +494,22 @@ private:
     QVariantMap m_stats;
     QVariantList m_cpuHistory;
     QVariantList m_memHistory;
+    QVariantMap m_containerDetail;
+    QJsonObject m_containerDetailJson;
+    QString m_containerDetailError;
+    bool m_containerDetailLoading = false;
+    QString m_pendingContainerDetailId;
+    QVariantMap m_containerDetailStats;
+    QVariantList m_containerDetailCpuHistory;
+    QVariantList m_containerDetailMemHistory;
+    QVariantList m_containerDetailNetRxHistory;
+    QVariantList m_containerDetailNetTxHistory;
+    QVariantList m_containerDetailDiskReadHistory;
+    QVariantList m_containerDetailDiskWriteHistory;
+    QString m_containerDetailStatsError;
+    QStringList m_containerDetailLogLines;
+    QString m_containerDetailLogsError;
+    bool m_detailLogsPending = false;
     QVariantMap m_activityStats;
     QVariantList m_activityCpuHistory;
     QVariantList m_activityMemHistory;
@@ -281,6 +524,7 @@ private:
     bool m_pullActive = false;
     QString m_pullStatus;
     QVariantMap m_diskUsage;
+    QVariantMap m_prunePreview;
     QVariantList m_composeProjects;
     QStringList m_composeLogLines;
     QVariantList m_builds;
@@ -288,6 +532,43 @@ private:
     bool m_buildActive = false;
     QString m_buildStatus;
     QString m_activeBuildId;
+    QVariantList m_machines;
+    QVariantList m_machineDistros;
+    QVariantMap m_machineInfo;
+    QStringList m_machineLogLines;
+    QString m_machineLogsCapturedAt;
+    QVariantMap m_machineStats;
+    QVariantList m_machineCpuHistory;
+    QVariantList m_machineMemHistory;
+    QVariantList m_machineNetRxHistory;
+    QVariantList m_machineNetTxHistory;
+    QString m_machineStatsError;
+    bool m_machineConsoleActive = false;
+    QString m_machineConsoleText;
+    QString m_machineConsoleError;
+    QVariantList m_machineFiles;
+    QString m_machineFilesPath = QStringLiteral("/");
+    bool m_machineFilesBusy = false;
+    QString m_machineFilesError;
+    QVariantList m_machineSnapshots;
+    QString m_machineSnapshotsError;
+    QString m_pendingMachineSnapshotsId;
+    QString m_machineFilesMachineId;
+    QString m_machineFilesOperation;
+    QString m_pendingMachineInfoId;
+    QString m_pendingMachineLogsId;
+    int m_pendingMachineLogsTail = 200;
+    QString m_machineSshTitle;
+    bool m_machineDistrosLoaded = false;
+    bool m_machinesRefreshAgain = false;
+    bool m_machineCreateActive = false;
+    QString m_machineJobKind;
+    QString m_machineCreateJobId;
+    QString m_machineCreateStage;
+    int m_machineCreateProgress = 0;
+    QString m_machineCreateError;
+    QString m_activeActionMethod;
+    QJsonObject m_activeActionParams;
     QString m_eventMessage;
     QString m_eventKind;
     QSet<QString> m_recentEvents;
@@ -304,6 +585,9 @@ private:
     QString m_setupError;
     bool m_setupBusy = false;
     bool m_setupLoaded = false;
+    QVariantList m_settingsSchema;
+    QVariantMap m_settingsValues;
+    QString m_settingsError;
 };
 
 } // namespace PodStack

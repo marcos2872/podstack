@@ -23,6 +23,8 @@ public:
 public slots:
     Q_SCRIPTABLE QVariantMap InstallPackages(const QStringList &packages);
     Q_SCRIPTABLE QVariantMap RemovePackages(const QStringList &packages);
+    Q_SCRIPTABLE QVariantMap OpenPorts(const QStringList &ports, const QString &protocol);
+    Q_SCRIPTABLE QVariantMap ClosePorts(const QStringList &ports, const QString &protocol);
 
 private:
     bool authorize(const QString &actionId, QString *error) const;
@@ -31,6 +33,9 @@ private:
     QVariantMap install(const QStringList &packages, const QString &actionId,
                         const QStringList &allowed);
     QVariantMap remove(const QStringList &packages);
+    QVariantMap changePorts(const QStringList &ports, const QString &protocol,
+                            const QString &actionId, bool open);
+    uint callerUid() const;
 
     static QVariantMap result(bool ok, const QString &message);
     static QStringList installedPackages(const QStringList &packages);

@@ -4,15 +4,21 @@
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
+#include "machines/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QScopeGuard>
 #include <QSignalSpy>
+#include <QStandardPaths>
+#include <QStringList>
 #include <QTest>
 #include <QVariantList>
 #include <QVariantMap>
@@ -29,11 +35,20 @@ private slots:
     void backendSuccess();
     void backendError();
     void backendActions();
+    void backendExposeLan();
     void backendStreams();
+    void backendContainerDetail();
     void backendCatalog();
+    void backendMachines();
+    void backendMachineStats();
+    void backendMachineConsole();
+    void backendMachineFiles();
+    void backendTerminal();
     void backendM3();
     void backendErrors();
     void backendTheme();
+    void backendSettings();
+    void backendProxy();
     void backendSetup();
     void backendTray();
     void backendActivityMonitor();
@@ -47,6 +62,9 @@ private:
     QString m_controlSocket;
     QString m_testDataDir;
     QString m_fakeProvider;
+    QString m_fakePodman;
+    QString m_fakeSsh;
+    QString m_fakeScp;
 };
 
 QProcessEnvironment GuiTest::daemonEnvironment() const
@@ -55,6 +73,14 @@ QProcessEnvironment GuiTest::daemonEnvironment() const
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    env.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
+    env.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeSsh);
+    env.insert(QStringLiteral("PODSTACK_SCP_BINARY"), m_fakeScp);
+    // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
+    env.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
+               QStringLiteral("unix:path=/tmp/podstack-gui-no-system-bus.sock"));
+    env.insert(QStringLiteral("PODSTACK_SSH_CONFIG"),
+               m_testDataDir + QStringLiteral("/ssh/config"));
     env.insert(QStringLiteral("XDG_DATA_HOME"), m_testDataDir + QStringLiteral("/data"));
     env.insert(QStringLiteral("XDG_STATE_HOME"), m_testDataDir + QStringLiteral("/state"));
     env.insert(QStringLiteral("XDG_CONFIG_HOME"), m_testDataDir + QStringLiteral("/config"));
@@ -85,6 +111,75 @@ void GuiTest::initTestCase()
     provider.close();
     QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                     | QFileDevice::ExeOwner));
+
+    m_fakePodman = m_testDataDir + QStringLiteral("/podman-fake.sh");
+    QFile podman(m_fakePodman);
+    QVERIFY(podman.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    const QString fakePodman =
+        QStringLiteral("#!/bin/sh\n"
+                       "echo \"$@\" >> \"%1\"\n"
+                       "if [ \"$1\" = \"build\" ]; then\n"
+                       "  echo \"line one\"\n"
+                       "  echo \"line two\"\n"
+                       "fi\n"
+                       "exit 0\n")
+            .arg(m_testDataDir + QStringLiteral("/podman-args.log"));
+    podman.write(fakePodman.toUtf8());
+    podman.close();
+    QVERIFY(podman.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                  | QFileDevice::ExeOwner));
+
+    m_fakeSsh = m_testDataDir + QStringLiteral("/ssh-fake.sh");
+    QFile ssh(m_fakeSsh);
+    QVERIFY(ssh.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    const QString fakeSsh =
+        QStringLiteral("#!/bin/sh\n"
+                       "echo \"$@\" >> \"%1\"\n"
+                       "case \"$*\" in\n"
+                       "  *\"ls -la --time-style=long-iso\"*)\n"
+                       "    echo \"total 4\"\n"
+                       "    echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
+                       "    echo \"-rw-r--r-- 1 podstack podstack 12 2026-11-09 10:05 gui.txt\"\n"
+                       "    exit 0;;\n"
+                       "esac\n"
+                       "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
+                       "echo \"__PODSTACK_MEM__\"\n"
+                       "echo \"MemTotal:        2097152 kB\"\n"
+                       "echo \"MemAvailable:    1048576 kB\"\n"
+                       "echo \"__PODSTACK_NET__\"\n"
+                       "echo \"  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\"\n"
+                       "echo \"__PODSTACK_DISK__\"\n"
+                       "echo \"   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\"\n"
+                       "echo \"__PODSTACK_DF__\"\n"
+                       "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
+                       "echo \"/dev/vda1    10000000000  2500000000  7500000000      25% /\"\n")
+            .arg(m_testDataDir + QStringLiteral("/ssh-args.log"));
+    ssh.write(fakeSsh.toUtf8());
+    ssh.close();
+    QVERIFY(ssh.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                               | QFileDevice::ExeOwner));
+
+    const QString downloadDir = m_testDataDir + QStringLiteral("/Downloads");
+    QVERIFY(QDir().mkpath(downloadDir));
+    QFile userDirs(m_testDataDir + QStringLiteral("/config/user-dirs.dirs"));
+    QVERIFY(userDirs.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    userDirs.write(QStringLiteral("XDG_DOWNLOAD_DIR=\"%1\"\n").arg(downloadDir).toUtf8());
+    userDirs.close();
+
+    m_fakeScp = m_testDataDir + QStringLiteral("/scp-fake.sh");
+    QFile scp(m_fakeScp);
+    QVERIFY(scp.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    scp.write(QStringLiteral("#!/bin/sh\n"
+                             "for last in \"$@\"; do :; done\n"
+                             "case \"$last\" in\n"
+                             "  \"%1\"/*) : > \"$last\";;\n"
+                             "esac\n"
+                             "exit 0\n")
+                  .arg(downloadDir)
+                  .toUtf8());
+    scp.close();
+    QVERIFY(scp.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                               | QFileDevice::ExeOwner));
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-gui-%1.sock")
@@ -267,6 +362,45 @@ void GuiTest::backendActions()
     QCOMPARE(actionSpy.count(), before);
 }
 
+void GuiTest::backendExposeLan()
+{
+    PodStack::Backend backend;
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    const QVariantMap settingsBefore = backend.settings();
+
+    QVariantMap spec;
+    spec.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    spec.insert(QStringLiteral("name"), QStringLiteral("lan"));
+    spec.insert(QStringLiteral("portsText"), QStringLiteral("8080:80"));
+    spec.insert(QStringLiteral("exposeLan"), true);
+
+    const int createsBefore = m_mock.createCount();
+    backend.createContainer(spec, true);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QVERIFY(!backend.lastError().isEmpty());
+    QCOMPARE(m_mock.createCount(), createsBefore);
+
+    backend.exposeContainerLan(QStringLiteral("abc123"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QVERIFY(!backend.lastError().isEmpty());
+    QVERIFY(backend.settings() == settingsBefore);
+
+    QVariantMap plain;
+    plain.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    plain.insert(QStringLiteral("name"), QStringLiteral("local"));
+    plain.insert(QStringLiteral("portsText"), QStringLiteral("8081:81"));
+    backend.createContainer(plain, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    const QJsonObject body = QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    const QJsonArray mappings = body.value(QStringLiteral("portmappings")).toArray();
+    QCOMPARE(mappings.size(), 1);
+    QCOMPARE(mappings.first().toObject().value(QStringLiteral("host_ip")).toString(),
+             QStringLiteral("127.0.0.1"));
+}
+
 void GuiTest::backendStreams()
 {
     PodStack::Backend backend;
@@ -290,9 +424,85 @@ void GuiTest::backendStreams()
     QCOMPARE(backend.files().size(), 2);
 }
 
-void GuiTest::backendCatalog()
+void GuiTest::backendContainerDetail()
 {
     PodStack::Backend backend;
+    QSignalSpy detailSpy(&backend, &PodStack::Backend::containerDetailChanged);
+
+    backend.loadContainerDetail(QStringLiteral("abc123"));
+    QVERIFY(backend.containerDetailLoading());
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.containerDetailLoading(), 5000);
+    QVERIFY2(backend.containerDetailError().isEmpty(),
+             qPrintable(backend.containerDetailError()));
+    QVERIFY(detailSpy.count() > 0);
+
+    const QVariantMap detail = backend.containerDetail();
+    QCOMPARE(detail.value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
+    const QVariantMap config = detail.value(QStringLiteral("Config")).toMap();
+    const QVariantList env = config.value(QStringLiteral("Env")).toList();
+    QCOMPARE(env.size(), 3);
+    QCOMPARE(env.first().toString(), QStringLiteral("A=B"));
+    QCOMPARE(env.at(1).toString(), QStringLiteral("TOKEN=super-secret"));
+
+    const QVariantList mounts = detail.value(QStringLiteral("Mounts")).toList();
+    QCOMPARE(mounts.size(), 2);
+    QCOMPARE(mounts.first().toMap().value(QStringLiteral("Destination")).toString(),
+             QStringLiteral("/mnt"));
+    QCOMPARE(mounts.at(1).toMap().value(QStringLiteral("Name")).toString(),
+             QStringLiteral("data"));
+
+    const QVariantMap networks =
+        detail.value(QStringLiteral("NetworkSettings"))
+            .toMap()
+            .value(QStringLiteral("Networks"))
+            .toMap();
+    QVERIFY(networks.contains(QStringLiteral("podman")));
+    QCOMPARE(networks.value(QStringLiteral("podman"))
+                 .toMap()
+                 .value(QStringLiteral("Gateway"))
+                 .toString(),
+             QStringLiteral("10.0.0.1"));
+
+    // Sem QGuiApplication (suíte guiless) o clipboard é nulo; a chamada não pode quebrar.
+    backend.copyContainerInspect();
+
+    backend.loadContainerDetail(QStringLiteral("missing123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.containerDetailLoading(), 5000);
+    QVERIFY(!backend.containerDetailError().isEmpty());
+
+    backend.startContainerDetailStats(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        backend.containerDetailStats().value(QStringLiteral("cpu_percent")).toString().contains(
+            QStringLiteral("1.5")),
+        5000);
+    QCOMPARE(backend.containerDetailCpuHistory().size(), 1);
+    QCOMPARE(backend.containerDetailMemHistory().size(), 1);
+    QCOMPARE(backend.containerDetailNetRxHistory().size(), 1);
+    QCOMPARE(backend.containerDetailNetTxHistory().size(), 1);
+    QCOMPARE(backend.containerDetailDiskReadHistory().size(), 1);
+    QCOMPARE(backend.containerDetailDiskWriteHistory().size(), 1);
+    QVERIFY(backend.containerDetailStats()
+                .value(QStringLiteral("netRxBytes"))
+                .toLongLong()
+            > 0);
+    QVERIFY(backend.containerDetailStatsError().isEmpty());
+    backend.stopContainerDetailStats();
+
+    QSignalSpy logsSpy(&backend, &PodStack::Backend::containerDetailLogsChanged);
+    backend.startContainerDetailLogs(QStringLiteral("abc123"), 10, false);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.containerDetailLogLines().size() >= 2, 5000);
+    QVERIFY(logsSpy.count() > 0);
+    QVERIFY(backend.containerDetailLogsError().isEmpty());
+    backend.clearContainerDetailLogs();
+    QVERIFY(backend.containerDetailLogLines().isEmpty());
+    backend.stopContainerDetailLogs();
+
+    backend.containerDetailLifecycle(QStringLiteral("invalid"), QStringLiteral("abc123"));
+    QVERIFY(!backend.lastError().isEmpty());
+}
+
+void GuiTest::backendCatalog()
+{    PodStack::Backend backend;
     QSignalSpy imagesSpy(&backend, &PodStack::Backend::imagesChanged);
     QSignalSpy volumesSpy(&backend, &PodStack::Backend::volumesChanged);
     QSignalSpy networksSpy(&backend, &PodStack::Backend::networksChanged);
@@ -308,6 +518,31 @@ void GuiTest::backendCatalog()
     QTRY_VERIFY_WITH_TIMEOUT(podsSpy.count() > 0, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(diskSpy.count() > 0, 5000);
     QVERIFY(backend.diskUsage().contains(QStringLiteral("images")));
+
+    const QVariantMap preview = backend.prunePreview();
+    QVERIFY(preview.contains(QStringLiteral("images")));
+    QVERIFY(preview.contains(QStringLiteral("volumes")));
+    QCOMPARE(preview.value(QStringLiteral("images"))
+                 .toMap()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(preview.value(QStringLiteral("volumes"))
+                 .toMap()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QVERIFY(preview.value(QStringLiteral("totalReclaimableBytes")).toDouble() > 0);
+
+    const int diskCount = diskSpy.count();
+    backend.refreshDiskUsage();
+    QTRY_VERIFY_WITH_TIMEOUT(diskSpy.count() > diskCount, 5000);
+    QCOMPARE(backend.prunePreview()
+                 .value(QStringLiteral("images"))
+                 .toMap()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
 
     QCOMPARE(backend.images().size(), 2);
     QCOMPARE(backend.volumes().size(), 1);
@@ -397,6 +632,421 @@ void GuiTest::backendCatalog()
     QDir(hostDir).removeRecursively();
 }
 
+void GuiTest::backendMachines()
+{
+    PodStack::Backend backend;
+    QSignalSpy machinesSpy(&backend, &PodStack::Backend::machinesChanged);
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    QTRY_VERIFY_WITH_TIMEOUT(machinesSpy.count() > 0, 5000);
+    QCOMPARE(backend.machines().size(), 0);
+
+    QSignalSpy distrosSpy(&backend, &PodStack::Backend::machineDistrosChanged);
+    backend.refreshMachineDistros();
+    QTRY_VERIFY_WITH_TIMEOUT(distrosSpy.count() > 0, 5000);
+    QVERIFY(backend.machineDistros().size() >= 3);
+    QVERIFY(backend.machineDistros()
+                .first()
+                .toMap()
+                .contains(QStringLiteral("label")));
+
+    backend.loadMachineInfo(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.lastError().isEmpty(), 5000);
+
+    int errorsBefore = errorSpy.count();
+    backend.loadMachineLogs(QStringLiteral("missing-machine"), 10);
+    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
+
+    backend.machineLifecycle(QStringLiteral("start"), QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    backend.removeMachine(QStringLiteral("missing-machine"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    backend.openMachineSsh(QString());
+    QCOMPARE(backend.lastError(), QStringLiteral("Machine inválida."));
+    backend.openMachineSsh(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(backend.lastError().contains(QStringLiteral("não encontrada")),
+                             5000);
+
+    backend.createMachine({});
+    QVERIFY(!backend.machineCreateActive());
+    QVERIFY(!backend.machineCreateError().isEmpty());
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("gui-machine-logs");
+    meta.name = QStringLiteral("gui-logs");
+    meta.distro = QStringLiteral("debian");
+    meta.distroVersion = QStringLiteral("12");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.state = QStringLiteral("stopped");
+    meta.forwardSshAgent = true;
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
+    QFile keyFile(meta.sshKeyPath);
+    QVERIFY(keyFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    keyFile.write("test-key\n");
+    keyFile.close();
+    QVERIFY(keyFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    QFile console(machineDir + QStringLiteral("/console.log"));
+    QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    console.write("gui boot 1\ngui boot 2\ngui boot 3\n");
+    console.close();
+
+    backend.refreshMachines();
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machines().size(), 1, 5000);
+    const QVariantMap item = backend.machines().first().toMap();
+    QCOMPARE(item.value(QStringLiteral("name")).toString(), QStringLiteral("gui-logs"));
+    QCOMPARE(item.value(QStringLiteral("distroLabel")).toString(),
+             QStringLiteral("debian:12"));
+    QCOMPARE(item.value(QStringLiteral("ssh")).toString(),
+             QStringLiteral("podstack@127.0.0.1:32222"));
+
+    backend.loadMachineInfo(meta.id);
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineInfo()
+                                  .value(QStringLiteral("id"))
+                                  .toString(),
+                              meta.id, 5000);
+    QCOMPARE(backend.machineInfo().value(QStringLiteral("state")).toString(),
+             QStringLiteral("stopped"));
+
+    backend.loadMachineLogs(meta.id, 2);
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineLogLines().size(), 2, 5000);
+    QCOMPARE(backend.machineLogLines().first(), QStringLiteral("gui boot 2"));
+    QCOMPARE(backend.machineLogLines().last(), QStringLiteral("gui boot 3"));
+
+    // Compatibilidade: o Backend continua emitindo `terminalRequested` (dock/
+    // TerminalWindow); a GUI usa `MainWindow::openMachineDetail`, coberto em
+    // `test_terminal::machineDetailDialog*`.
+    QSignalSpy terminalSpy(&backend, &PodStack::Backend::terminalRequested);
+    backend.openMachineSsh(meta.id);
+    QTRY_COMPARE_WITH_TIMEOUT(terminalSpy.count(), 1, 5000);
+    const QList<QVariant> request = terminalSpy.takeFirst();
+    QCOMPARE(request.at(0).toString(), QStringLiteral("gui-logs"));
+    QCOMPARE(request.at(1).toString(), QStringLiteral("ssh"));
+    const QStringList sshArgs = request.at(2).toStringList();
+    QVERIFY(sshArgs.contains(QStringLiteral("-A")));
+    QVERIFY(sshArgs.contains(QStringLiteral("-i")));
+    QVERIFY(sshArgs.contains(meta.sshKeyPath));
+    QVERIFY(sshArgs.contains(QStringLiteral("-p")));
+    QVERIFY(sshArgs.contains(QStringLiteral("32222")));
+    QCOMPARE(sshArgs.last(), QStringLiteral("podstack@127.0.0.1"));
+
+    // updateMachine aceita só o agent, sem CPU/memória/disco.
+    const int actionsBeforeUpdate = actionSpy.count();
+    backend.updateMachine(QVariantMap{{QStringLiteral("id"), meta.id},
+                                      {QStringLiteral("forwardSshAgent"), false}});
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > actionsBeforeUpdate, 5000);
+    QVERIFY2(actionSpy.last().at(0).toBool(),
+             qPrintable(actionSpy.last().at(1).toString()));
+    backend.loadMachineInfo(meta.id);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machineInfo().value(QStringLiteral("forwardSshAgent")).toBool(), 5000);
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
+}
+
+void GuiTest::backendMachineStats()
+{
+    PodStack::Backend backend;
+    QSignalSpy statsSpy(&backend, &PodStack::Backend::machineStatsChanged);
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+
+    backend.startMachineStats(QString());
+    QVERIFY(!backend.machineStatsError().isEmpty());
+    QVERIFY(errorSpy.count() > 0);
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("gui-machine-stats");
+    meta.name = QStringLiteral("gui-stats");
+    meta.distro = QStringLiteral("debian");
+    meta.distroVersion = QStringLiteral("12");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.state = QStringLiteral("running");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
+    QFile keyFile(meta.sshKeyPath);
+    QVERIFY(keyFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    keyFile.write("test-key\n");
+    keyFile.close();
+    QVERIFY(keyFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    backend.startMachineStats(meta.id);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        backend.machineStats().value(QStringLiteral("memTotal")).toLongLong() > 0, 7000);
+    QVERIFY(statsSpy.count() > 0);
+    QCOMPARE(backend.machineStats().value(QStringLiteral("memTotal")).toLongLong(),
+             2147483648LL);
+    QCOMPARE(backend.machineStats().value(QStringLiteral("diskPercent")).toDouble(), 25.0);
+    QCOMPARE(backend.machineCpuHistory().size(), 1);
+    QCOMPARE(backend.machineMemHistory().size(), 1);
+    QCOMPARE(backend.machineNetRxHistory().size(), 1);
+    QCOMPARE(backend.machineNetTxHistory().size(), 1);
+    QVERIFY(backend.machineStatsError().isEmpty());
+
+    backend.stopMachineStats();
+    const int samplesAfterStop = backend.machineCpuHistory().size();
+    QTest::qWait(2300);
+    QCOMPARE(backend.machineCpuHistory().size(), samplesAfterStop);
+
+    // Erros do stream de stats da machine não vazam para o lastError global
+    // (o inspector lateral de containers exibe backend.lastError).
+    PodStack::Backend statsOnly;
+    QSignalSpy statsOnlyErrorSpy(&statsOnly, &PodStack::Backend::lastErrorChanged);
+    statsOnly.startMachineStats(QStringLiteral("missing-machine-stats"));
+    QTRY_VERIFY_WITH_TIMEOUT(!statsOnly.machineStatsError().isEmpty(), 5000);
+    QVERIFY(statsOnly.lastError().isEmpty());
+    QCOMPARE(statsOnlyErrorSpy.count(), 0);
+    statsOnly.stopMachineStats();
+    QVERIFY(statsOnly.machineStatsError().isEmpty());
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
+}
+
+void GuiTest::backendMachineConsole()
+{
+    PodStack::Backend backend;
+    QSignalSpy consoleSpy(&backend, &PodStack::Backend::machineConsoleChanged);
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+
+    backend.followMachineConsole(QString(), 1024);
+    QVERIFY(!backend.machineConsoleActive());
+    QVERIFY(!backend.machineConsoleError().isEmpty());
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("gui-machine-console");
+    meta.name = QStringLiteral("gui-console");
+    meta.distro = QStringLiteral("debian");
+    meta.distroVersion = QStringLiteral("12");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.state = QStringLiteral("running");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString consolePath = machineDir + QStringLiteral("/console.log");
+    QFile console(consolePath);
+    QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    console.write("serial 1\nserial 2\n");
+    console.close();
+
+    backend.followMachineConsole(meta.id, 1024);
+    QVERIFY(backend.machineConsoleActive());
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineConsoleText(),
+                              QStringLiteral("serial 1\nserial 2\n"), 5000);
+    QVERIFY(backend.machineConsoleError().isEmpty());
+    QVERIFY(consoleSpy.count() > 0);
+
+    QFile appendConsole(consolePath);
+    QVERIFY(appendConsole.open(QIODevice::Append));
+    appendConsole.write("serial 3\n");
+    appendConsole.close();
+    QTRY_VERIFY_WITH_TIMEOUT(backend.machineConsoleText().contains(
+                                 QStringLiteral("serial 3")),
+                             5000);
+
+    backend.stopMachineConsole();
+    QVERIFY(!backend.machineConsoleActive());
+    QVERIFY(backend.machineConsoleText().isEmpty());
+    QVERIFY(backend.machineConsoleError().isEmpty());
+
+    QFile afterStop(consolePath);
+    QVERIFY(afterStop.open(QIODevice::Append));
+    afterStop.write("serial 4\n");
+    afterStop.close();
+    QTest::qWait(700);
+    QVERIFY(backend.machineConsoleText().isEmpty());
+
+    backend.followMachineConsole(QStringLiteral("missing-machine-console"), 1024);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineConsoleError().isEmpty(), 5000);
+    QVERIFY(!backend.machineConsoleActive());
+    QVERIFY(backend.lastError().isEmpty());
+    QCOMPARE(errorSpy.count(), 0);
+    backend.stopMachineConsole();
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
+}
+
+void GuiTest::backendMachineFiles()
+{
+    PodStack::Backend backend;
+    QSignalSpy filesSpy(&backend, &PodStack::Backend::machineFilesChanged);
+
+    backend.refreshMachineFiles(QString(), QStringLiteral("/"));
+    QVERIFY(!backend.machineFilesError().isEmpty());
+    QVERIFY(!backend.machineFilesBusy());
+
+    backend.refreshMachineFiles(QStringLiteral("missing-machine"), QStringLiteral("/"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY(backend.machineFilesError().contains(QStringLiteral("não encontrada")));
+
+    backend.downloadMachineFile(QStringLiteral("missing-machine"),
+                                QStringLiteral("/tmp/report.txt"),
+                                QStringLiteral("report.txt"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY(backend.machineFilesError().contains(QStringLiteral("não encontrada")));
+
+    const QString uploadSource = m_testDataDir + QStringLiteral("/gui-upload.txt");
+    QFile upload(uploadSource);
+    QVERIFY(upload.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    upload.write("gui upload");
+    upload.close();
+
+    backend.uploadMachineFile(QStringLiteral("missing-machine"), QStringLiteral("/tmp"),
+                              uploadSource);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY(backend.machineFilesError().contains(QStringLiteral("não encontrada")));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("gui-machine-files");
+    meta.name = QStringLiteral("gui-files");
+    meta.distro = QStringLiteral("fedora");
+    meta.distroVersion = QStringLiteral("44");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+
+    const QString machineDir =
+        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
+    QFile keyFile(meta.sshKeyPath);
+    QVERIFY(keyFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    keyFile.write("test-key\n");
+    keyFile.close();
+    QVERIFY(keyFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    backend.refreshMachineFiles(meta.id, QStringLiteral("/home"));
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineFiles().size(), 2, 5000);
+    QVERIFY(!backend.machineFilesBusy());
+    QVERIFY2(backend.machineFilesError().isEmpty(),
+             qPrintable(backend.machineFilesError()));
+    QCOMPARE(backend.machineFilesPath(), QStringLiteral("/home"));
+    QVERIFY(filesSpy.count() > 0);
+
+    QStringList names;
+    for (const QVariant &value : backend.machineFiles()) {
+        const QVariantMap item = value.toMap();
+        names.append(item.value(QStringLiteral("name")).toString());
+        QVERIFY(item.contains(QStringLiteral("path")));
+        QVERIFY(item.contains(QStringLiteral("directory")));
+        QVERIFY(item.contains(QStringLiteral("size")));
+        QVERIFY(item.contains(QStringLiteral("modified")));
+    }
+    QVERIFY(names.contains(QStringLiteral("docs")));
+    QVERIFY(names.contains(QStringLiteral("gui.txt")));
+
+    backend.downloadMachineFile(meta.id, QStringLiteral("/home/podstack/gui.txt"),
+                                QStringLiteral("gui.txt"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY2(backend.machineFilesError().isEmpty(),
+             qPrintable(backend.machineFilesError()));
+    const QString downloadDir =
+        QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    QVERIFY2(downloadDir.startsWith(m_testDataDir), qPrintable(downloadDir));
+    const QString downloaded = downloadDir + QStringLiteral("/gui.txt");
+    QVERIFY(QFileInfo::exists(downloaded));
+
+    backend.downloadMachineFile(meta.id, QStringLiteral("/home/podstack/gui.txt"),
+                                QStringLiteral("../escape.txt"));
+    QVERIFY(backend.machineFilesError().contains(QStringLiteral("inválido")));
+    QVERIFY(!backend.machineFilesBusy());
+
+    backend.uploadMachineFile(meta.id, QStringLiteral("/home/podstack"), uploadSource);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
+    QVERIFY2(backend.machineFilesError().isEmpty(),
+             qPrintable(backend.machineFilesError()));
+
+    QVERIFY(store.remove(meta.id));
+    QDir(machineDir).removeRecursively();
+    QFile::remove(uploadSource);
+    QFile::remove(downloaded);
+}
+
+void GuiTest::backendTerminal()
+{
+    PodStack::Backend backend;
+    QSignalSpy terminalSpy(&backend, &PodStack::Backend::terminalRequested);
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+
+    backend.openTerminal(QStringLiteral("abc123"));
+    QCOMPARE(terminalSpy.count(), 1);
+    const QList<QVariant> request = terminalSpy.takeFirst();
+    QCOMPARE(request.at(0).toString(), QStringLiteral("abc123"));
+    QCOMPARE(request.at(1).toString(), QStringLiteral("podman"));
+    QCOMPARE(request.at(2).toStringList(),
+             QStringList({QStringLiteral("exec"), QStringLiteral("-it"),
+                          QStringLiteral("abc123"), QStringLiteral("/bin/sh")}));
+
+    backend.openTerminal(QString());
+    QCOMPARE(terminalSpy.count(), 0);
+    QCOMPARE(backend.lastError(), QStringLiteral("Container inválido."));
+    QVERIFY(errorSpy.count() > 0);
+
+    const int errorsBefore = errorSpy.count();
+    backend.openMachineSsh(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
+    QVERIFY(backend.lastError().contains(QStringLiteral("não encontrada")));
+    // O caminho de erro não abre sessão; o sucesso visual do QTermWidget é manual.
+    QCOMPARE(terminalSpy.count(), 0);
+}
+
 void GuiTest::backendM3()
 {
     PodStack::Backend backend;
@@ -433,6 +1083,31 @@ void GuiTest::backendM3()
 
     QTRY_VERIFY_WITH_TIMEOUT(buildsSpy.count() > 0, 5000);
     QVERIFY(backend.builds().size() >= 1);
+
+    QFile::remove(m_testDataDir + QStringLiteral("/podman-args.log"));
+    QVariantMap multiSpec = spec;
+    multiSpec.insert(QStringLiteral("tag"), QStringLiteral("localhost/mock:multi"));
+    multiSpec.insert(QStringLiteral("platforms"),
+                     QStringLiteral("linux/amd64,linux/arm64"));
+    backend.startBuild(multiSpec);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.buildActive() && backend.builds().size() >= 2, 5000);
+    bool foundPlatforms = false;
+    for (const QVariant &value : backend.builds()) {
+        const QVariantMap build = value.toMap();
+        if (build.value(QStringLiteral("imageRef")).toString()
+            == QStringLiteral("localhost/mock:multi")) {
+            foundPlatforms = build.value(QStringLiteral("platforms")).toString()
+                             == QStringLiteral("linux/amd64, linux/arm64");
+            break;
+        }
+    }
+    QVERIFY(foundPlatforms);
+    QFile argsFile(m_testDataDir + QStringLiteral("/podman-args.log"));
+    QVERIFY(argsFile.open(QIODevice::ReadOnly));
+    const QString args = QString::fromUtf8(argsFile.readAll());
+    argsFile.close();
+    QVERIFY2(args.contains(QStringLiteral("--platform linux/amd64,linux/arm64")),
+             qPrintable(args));
 
     QTRY_VERIFY_WITH_TIMEOUT(eventsSpy.count() > 0, 5000);
     QVERIFY(backend.eventMessage().contains(QStringLiteral("start")));
@@ -497,19 +1172,77 @@ void GuiTest::backendTheme()
     QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
 
     backend.saveTheme(QStringLiteral("light"));
-    QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
-             QStringLiteral("light"));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+                 QStringLiteral("light"));
 
     backend.saveTheme(QStringLiteral("system"));
-    QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
-             QStringLiteral("system"));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+                 QStringLiteral("system"));
 
     backend.saveTheme(QStringLiteral("bogus"));
     QVERIFY(!backend.lastError().isEmpty());
     QVERIFY(errorSpy.count() > 0);
     QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
              QStringLiteral("system"));
-    QVERIFY(actionSpy.count() >= 2);
+    QTRY_VERIFY(actionSpy.count() >= 2);
+}
+
+void GuiTest::backendSettings()
+{
+    PodStack::Backend backend;
+    QSignalSpy schemaSpy(&backend, &PodStack::Backend::settingsSchemaChanged);
+    QSignalSpy valuesSpy(&backend, &PodStack::Backend::settingsValuesChanged);
+    QSignalSpy finishedSpy(&backend, &PodStack::Backend::settingFinished);
+
+    backend.refreshSettings();
+    QTRY_COMPARE(backend.settingsSchema().size(), 82);
+    QVERIFY(schemaSpy.count() > 0);
+    QVERIFY(backend.settingsValues().contains(QStringLiteral("engine.mode")));
+    QVERIFY(valuesSpy.count() > 0);
+
+    backend.setSetting(QStringLiteral("app.theme"), QStringLiteral("light"));
+    QTRY_COMPARE(backend.settingsValues()
+                     .value(QStringLiteral("app.theme"))
+                     .toString(),
+                 QStringLiteral("light"));
+    QTRY_VERIFY(finishedSpy.count() > 0);
+    bool themeSaved = false;
+    for (const QList<QVariant> &entry : finishedSpy) {
+        if (entry.at(0).toString() == QStringLiteral("app.theme")) {
+            themeSaved = entry.at(1).toBool();
+        }
+    }
+    QVERIFY(themeSaved);
+
+    backend.setSetting(QStringLiteral("terminal.fontSize"), 99);
+    QTRY_VERIFY(!backend.settingsError().isEmpty());
+    QCOMPARE(backend.settingsValues()
+                 .value(QStringLiteral("terminal.fontSize"))
+                 .toInt(),
+             12);
+
+    backend.setSetting(QStringLiteral("engine.mode"), QStringLiteral("rootful"));
+    QTRY_COMPARE(backend.settingsValues()
+                     .value(QStringLiteral("engine.mode"))
+                     .toString(),
+                 QStringLiteral("rootful"));
+    QTRY_VERIFY(backend.settingsError().isEmpty());
+
+    backend.resetSetting(QStringLiteral("app.theme"));
+    QTRY_COMPARE(backend.settingsValues()
+                     .value(QStringLiteral("app.theme"))
+                     .toString(),
+                 QStringLiteral("system"));
+    backend.resetSetting(QStringLiteral("engine.mode"));
+    QTRY_COMPARE(backend.settingsValues()
+                     .value(QStringLiteral("engine.mode"))
+                     .toString(),
+                 QStringLiteral("rootless"));
+
+    backend.setSetting(QStringLiteral("app.startAtLogin"), true);
+    QTRY_VERIFY(QFile::exists(PodStack::Autostart::filePath()));
+    backend.setSetting(QStringLiteral("app.startAtLogin"), false);
+    QTRY_VERIFY(!QFile::exists(PodStack::Autostart::filePath()));
 }
 
 void GuiTest::backendTray()
@@ -529,15 +1262,20 @@ void GuiTest::backendTray()
     QTRY_VERIFY_WITH_TIMEOUT(!backend.actionActive(), 5000);
 
     backend.saveTraySettings(false, false, true, false);
-    const QVariantMap settings = backend.settings();
-    QCOMPARE(settings.value(QStringLiteral("keepRunningInTray")).toBool(), false);
-    QCOMPARE(settings.value(QStringLiteral("showInTray")).toBool(), false);
-    QCOMPARE(settings.value(QStringLiteral("startAtLogin")).toBool(), true);
-    QCOMPARE(settings.value(QStringLiteral("notifications")).toBool(), false);
-    QVERIFY(QFile::exists(PodStack::Autostart::filePath()));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("keepRunningInTray")).toBool(),
+                 false);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("showInTray")).toBool(), false);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("startAtLogin")).toBool(), true);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("notifications")).toBool(), false);
+    QTRY_VERIFY(QFile::exists(PodStack::Autostart::filePath()));
 
     backend.saveTraySettings(true, true, false, true);
-    QVERIFY(!QFile::exists(PodStack::Autostart::filePath()));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("keepRunningInTray")).toBool(),
+                 true);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("showInTray")).toBool(), true);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("startAtLogin")).toBool(), false);
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("notifications")).toBool(), true);
+    QTRY_VERIFY(!QFile::exists(PodStack::Autostart::filePath()));
 }
 
 void GuiTest::guiStartsAndQuits()
@@ -606,6 +1344,47 @@ void GuiTest::backendActivityMonitor()
 
     backend.stopActivityMonitor();
     QVERIFY(!backend.activityActive());
+}
+
+void GuiTest::backendProxy()
+{
+    PodStack::Backend backend;
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    QSignalSpy settingsSpy(&backend, &PodStack::Backend::settingsChanged);
+
+    backend.saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
+                              QStringLiteral("localhost, .internal"));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
+                 QStringLiteral("http://127.0.0.1:3128"));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("proxyExclude")).toStringList(),
+                 QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
+    QTRY_VERIFY(actionSpy.count() >= 2);
+    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    QVERIFY(settingsSpy.count() > 0);
+
+    const int errorsBefore = errorSpy.count();
+    backend.saveProxySettings(QStringLiteral("ftp://127.0.0.1:21"),
+                              QStringLiteral("localhost"));
+    QVERIFY(!backend.lastError().isEmpty());
+    QVERIFY(errorSpy.count() > errorsBefore);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QCOMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
+             QStringLiteral("http://127.0.0.1:3128"));
+    QCOMPARE(backend.settings().value(QStringLiteral("proxyExclude")).toStringList(),
+             QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
+
+    backend.saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
+                              QStringLiteral("bad host"));
+    QVERIFY(!backend.lastError().isEmpty());
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QCOMPARE(backend.settings().value(QStringLiteral("proxyExclude")).toStringList(),
+             QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
+
+    backend.saveProxySettings(QStringLiteral("auto"),
+                              QStringLiteral("localhost, .internal"));
+    QTRY_COMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
+                 QStringLiteral("auto"));
 }
 
 void GuiTest::backendSetup()

@@ -1,9 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "gui/TerminalWindow.h"
+
+#include "gui/TerminalView.h"
 
 #include <QStandardPaths>
 #include <QVBoxLayout>
-
-#include <qtermwidget.h>
 
 namespace PodStack {
 
@@ -19,21 +20,15 @@ TerminalWindow::TerminalWindow(const QString &containerId, const QString &progra
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
-    auto *terminal = new QTermWidget(0, this);
-    terminal->setColorScheme(QStringLiteral("DarkPastels"));
-    terminal->setTerminalSizeHint(true);
-    terminal->setScrollBarPosition(QTermWidgetInterface::ScrollBarRight);
-
-    if (program.isEmpty()) {
-        terminal->setShellProgram(QStandardPaths::findExecutable(QStringLiteral("podman")));
-        terminal->setArgs({QStringLiteral("exec"), QStringLiteral("-it"), containerId,
-                           QStringLiteral("/bin/sh")});
-    } else {
-        terminal->setShellProgram(program);
-        terminal->setArgs(args);
+    QString executable = program;
+    QStringList arguments = args;
+    if (executable.isEmpty()) {
+        executable = QStandardPaths::findExecutable(QStringLiteral("podman"));
+        arguments = {QStringLiteral("exec"), QStringLiteral("-it"), containerId,
+                     QStringLiteral("/bin/sh")};
     }
-    terminal->startShellProgram();
-
+    auto *terminal = new TerminalView(containerId, executable, arguments, this);
+    terminal->setTitleVisible(false);
     layout->addWidget(terminal);
 }
 

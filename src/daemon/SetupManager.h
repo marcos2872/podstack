@@ -3,6 +3,7 @@
 #pragma once
 
 #include "core/Error.h"
+#include "daemon/HelperClient.h"
 
 #include <QDateTime>
 #include <QHash>
@@ -91,6 +92,7 @@ private:
                                 int timeoutMs = 2000);
 
     mutable std::mutex m_mutex;
+    HelperClient m_helper;
     QHash<QString, std::shared_ptr<Job>> m_jobs;
     QString m_activeJobId;
     int m_nextJob = 1;

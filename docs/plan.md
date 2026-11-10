@@ -212,7 +212,16 @@ src/
 ### 7.1 Provisionamento
 
 - Imagens cloud (qcow2) por distro/versão; cache em `~/.cache/podstack/images/`.
-- seed ISO via `cloud-localds` com `meta-data`, `user-data`, `network-config`.
+- Registry **pinado no código** (ubuntu 24.04, debian 12 e fedora 44, amd64) com URL HTTPS e
+  checksum SHA-256/SHA-512 verificados; sem fetch de manifesto em runtime. O cache usa
+  `<distro>-<version>-<arch>-<checksum[0..12]>.qcow2` + sidecar `.json`, lock por imagem,
+  `.part` e rename atômico. Ubuntu/Debian não publicam tamanho fixo; o sidecar registra o
+  tamanho real após o download.
+- seed ISO **NoCloud** gerada com **libarchive** (formato ISO9660, label `cidata`, Rock Ridge
+  `strict` + Joliet), contendo `meta-data`, `user-data` e `network-config` na raiz. Motivo: não
+  depender do `cloud-localds`/`genisoimage` no host; libarchive já é usada pelo projeto e é a
+  única dependência adicional. Os arquivos entram como `0600` (preservados pelo Rock Ridge
+  `strict`), a ISO final é publicada por rename atômico e fica `0600`.
 - QEMU:
 
 ```bash
@@ -227,7 +236,13 @@ qemu-system-x86_64 \
   -display none -serial file:console.log
 ```
 
-- virtiofs (se mounts): `virtiofsd --socket-path=... --shared-dir=...` + `-device vhost-user-fs-pci,chardev=vfs0,tag=host`.
+- virtiofs (se mounts): um `virtiofsd` por mount com
+  `--shared-dir <source> --socket-path <machineDir>/virtiofs-<tag>.sock --tag <tag>
+  --cache=auto --xattr` (+ `--readonly`), usando `--sandbox=chroot` como root e
+  `--sandbox=namespace` no rootless; socket absoluto dentro do diretório da machine.
+  QEMU recebe `-chardev socket,id=vfs<N>,path=...` + `-device
+  vhost-user-fs-pci,chardev=vfs<N>,tag=<tag>`. Limite de 8 mounts e tags
+  `[a-z0-9-]{1,32}` únicas (default `host<N>`).
 - Controle por QMP: `system_powerdown`, `quit`, `query-status`, `human-monitor-command`.
 
 ### 7.2 Estado e metadados

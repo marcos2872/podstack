@@ -13,6 +13,18 @@ QString dataDir();
 /// ~/.local/state/podstack
 QString stateDir();
 
+/// ~/.cache/podstack (respeita XDG_CACHE_HOME)
+QString cacheDir();
+
+/// ~/.cache/podstack/images
+QString cloudImagesDir();
+
+/// ~/.local/share/podstack/machines
+QString machinesDir();
+
+/// ~/.local/share/podstack/machines/<id>; vazio se o id não for seguro para path.
+QString machineDir(const QString &id);
+
 /// $XDG_RUNTIME_DIR/podstack (fallback /tmp/podstack-$UID)
 QString runtimeDir();
 

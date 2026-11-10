@@ -6,6 +6,8 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QLocalSocket>
+#include <QPair>
+#include <QVector>
 
 #include <utility>
 
@@ -77,6 +79,10 @@ bool RpcStream::run(const QString &method, const QJsonObject &params, const Even
     timer.start();
     QByteArray buffer;
     bool subscribed = false;
+    // O daemon pode emitir o primeiro delta antes da resposta da subscription
+    // (o handle roda em outra thread). Guarda e reenvia em ordem para não
+    // perder, por exemplo, o tail inicial do console serial.
+    QVector<QPair<QString, QJsonObject>> pendingEvents;
 
     while (true) {
         int newline = -1;
@@ -109,14 +115,31 @@ bool RpcStream::run(const QString &method, const QJsonObject &params, const Even
                                   .value(QStringLiteral("subscriptionId"))
                                   .toString()
                                   .isEmpty();
-                continue;
-            }
-
-            if (!subscribed) {
+                if (subscribed && !pendingEvents.isEmpty()) {
+                    for (const auto &pending : pendingEvents) {
+                        if (onEvent) {
+                            onEvent(pending.first, pending.second);
+                        }
+                        if (requireDone && pending.first.endsWith(QStringLiteral(".done"))) {
+                            return true;
+                        }
+                        if (pending.first.endsWith(QStringLiteral(".error"))) {
+                            fillErrorFromObject(
+                                pending.second.value(QStringLiteral("error")).toObject(),
+                                error);
+                            return false;
+                        }
+                    }
+                    pendingEvents.clear();
+                }
                 continue;
             }
 
             const QJsonObject messageParams = message.value(QStringLiteral("params")).toObject();
+            if (!subscribed) {
+                pendingEvents.append(qMakePair(messageMethod, messageParams));
+                continue;
+            }
             if (onEvent) {
                 onEvent(messageMethod, messageParams);
             }

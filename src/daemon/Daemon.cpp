@@ -1,14 +1,21 @@
 #include "daemon/Daemon.h"
 
 #include "core/Config.h"
+#include "core/DiskUsage.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
+#include "core/Proxy.h"
+#include "core/Settings.h"
+#include "daemon/ManifestBuilder.h"
 #include "daemon/StatsCollector.h"
+#include "machines/DistroRegistry.h"
+#include "machines/MachineFiles.h"
 
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -37,6 +44,20 @@ QString engineMode()
     return config.get(QStringLiteral("engine.mode")).toString(QStringLiteral("rootless"));
 }
 
+bool portNumberFromJson(const QJsonValue &value, int *number)
+{
+    if (!value.isDouble()) {
+        return false;
+    }
+    const double raw = value.toDouble();
+    if (raw < 1.0 || raw > 65535.0
+        || raw != static_cast<double>(static_cast<int>(raw))) {
+        return false;
+    }
+    *number = static_cast<int>(raw);
+    return true;
+}
+
 QMap<QString, QString> labelsFromParams(const QJsonObject &params)
 {
     QMap<QString, QString> labels;
@@ -60,6 +81,199 @@ QStringList aliasesFromParams(const QJsonObject &params)
     return aliases;
 }
 
+QStringList proxyExcludesFromConfig(const Config &config)
+{
+    QStringList excludes;
+    const QJsonArray array =
+        config.get(QStringLiteral("network.proxyExclude")).toArray();
+    for (const QJsonValue &value : array) {
+        const QString entry = value.toString();
+        if (!entry.isEmpty()) {
+            excludes.append(entry);
+        }
+    }
+    return excludes;
+}
+
+/// Aplica o proxy global sem sobrescrever variáveis definidas pelo usuário.
+void applyProxyEnvironment(ContainerCreateSpec &spec)
+{
+    const Config config = Config::load();
+    const QString proxy =
+        config.get(QStringLiteral("network.proxy")).toString(QStringLiteral("auto"));
+    const QStringList excludes = proxyExcludesFromConfig(config);
+
+    Error proxyError;
+    if (!Proxy::validate(proxy, excludes, &proxyError)) {
+        qCWarning(lcRpc) << "Configuração de proxy inválida; não aplicada aos containers.";
+        return;
+    }
+
+    const QMap<QString, QString> values = Proxy::environment(proxy, excludes);
+    for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
+        if (!spec.env.contains(it.key())) {
+            spec.env.insert(it.key(), it.value());
+        }
+    }
+}
+
+bool isWildcardHostIp(const QString &hostIp)
+{
+    return hostIp.isEmpty() || hostIp == QStringLiteral("0.0.0.0")
+           || hostIp == QStringLiteral("::");
+}
+
+constexpr qint64 kMachineConsoleDefaultTail = 64 * 1024;
+constexpr qint64 kMachineConsoleMaxBytes = 512 * 1024;
+
+qint64 consoleTailBytes(const QJsonObject &params)
+{
+    qint64 tail = params.value(QStringLiteral("tailBytes")).toInteger(kMachineConsoleDefaultTail);
+    if (tail <= 0) {
+        tail = kMachineConsoleDefaultTail;
+    }
+    return qBound<qint64>(1, tail, kMachineConsoleMaxBytes);
+}
+
+/// Valida `machines/<id>/console.log` sem seguir symlink e sem sair do diretório.
+/// `exists` fica falso quando o arquivo ainda não foi criado (machine sem boot).
+bool checkMachineConsoleFile(const QString &directory, bool *exists, Error *error)
+{
+    if (exists) {
+        *exists = false;
+    }
+
+    const QString path = directory + QStringLiteral("/console.log");
+    const QFileInfo info(path);
+    if (info.isSymLink()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O console da machine não pode ser lido."),
+                                 QStringLiteral("symlink rejeitado"));
+        }
+        return false;
+    }
+    if (!info.exists()) {
+        return true;
+    }
+    if (!info.isFile()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O console da machine não é um arquivo regular."));
+        }
+        return false;
+    }
+
+    const QString canonicalDir = QFileInfo(directory).canonicalFilePath();
+    const QString canonicalFile = info.canonicalFilePath();
+    if (canonicalDir.isEmpty() || canonicalFile.isEmpty()
+        || !canonicalFile.startsWith(canonicalDir + QLatin1Char('/'))) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O console da machine está fora do diretório "
+                                                "esperado."));
+        }
+        return false;
+    }
+
+    if (exists) {
+        *exists = true;
+    }
+    return true;
+}
+
+bool readMachineConsoleTail(const QString &path, qint64 tailBytes, QByteArray *data,
+                            qint64 *endOffset, Error *error)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível ler o console da machine."));
+        }
+        return false;
+    }
+
+    const qint64 size = file.size();
+    const qint64 start = qMax<qint64>(0, size - tailBytes);
+    if (start > 0 && !file.seek(start)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível posicionar no console da "
+                                                "machine."));
+        }
+        return false;
+    }
+
+    if (data) {
+        *data = file.readAll();
+    }
+    if (endOffset) {
+        *endOffset = file.pos();
+    }
+    return true;
+}
+
+/// Lê até `maxBytes` a partir de `offset`. Se o arquivo encolheu, devolve
+/// `endOffset < offset` e nenhum dado para o chamador reiniciar do zero.
+bool readMachineConsoleChunk(const QString &path, qint64 offset, qint64 maxBytes,
+                             QByteArray *data, qint64 *endOffset, Error *error)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível ler o console da machine."));
+        }
+        return false;
+    }
+
+    const qint64 size = file.size();
+    if (size < offset) {
+        if (data) {
+            data->clear();
+        }
+        if (endOffset) {
+            *endOffset = size;
+        }
+        return true;
+    }
+    if (size == offset) {
+        if (data) {
+            data->clear();
+        }
+        if (endOffset) {
+            *endOffset = offset;
+        }
+        return true;
+    }
+    if (!file.seek(offset)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível posicionar no console da "
+                                                "machine."));
+        }
+        return false;
+    }
+
+    if (data) {
+        *data = file.read(qMin(maxBytes, size - offset));
+    }
+    if (endOffset) {
+        *endOffset = file.pos();
+    }
+    return true;
+}
+
+Error helperRequiredError()
+{
+    return Error::make(
+        QStringLiteral("PODSTACK_HELPER_REQUIRED"),
+        QStringLiteral("O helper privilegiado é necessário para alterar o firewall da LAN."),
+        QStringLiteral("Serviço dev.podstack.Helper1 indisponível ou sem autorização."),
+        QStringLiteral("Instale o podstack-helper e autorize a operação no polkit."));
+}
+
 } // namespace
 
 Daemon::Daemon()
@@ -79,6 +293,13 @@ Daemon::Daemon()
         qCWarning(lcPodman) << "Histórico de builds indisponível:" << storeError.message
                             << storeError.detail;
     }
+
+    Error machineError;
+    m_machines.reconcile(&machineError);
+    if (!machineError.isEmpty()) {
+        qCWarning(lcRpc) << "Reconciliação de machines incompleta:" << machineError.code
+                         << machineError.message << machineError.detail;
+    }
 }
 
 QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
@@ -96,6 +317,18 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("system.doctor")) {
         return systemDoctor();
+    }
+    if (method == QStringLiteral("settings.get")) {
+        return settingsGet(params, error);
+    }
+    if (method == QStringLiteral("settings.set")) {
+        return settingsSet(params, error);
+    }
+    if (method == QStringLiteral("settings.reset")) {
+        return settingsReset(params, error);
+    }
+    if (method == QStringLiteral("settings.schema")) {
+        return settingsSchema();
     }
     if (method == QStringLiteral("containers.list")) {
         return containersList(params, error);
@@ -118,6 +351,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("containers.create")) {
         return containerCreate(params, error);
     }
+    if (method == QStringLiteral("containers.exposeLan")) {
+        return containerExposeLan(params, error);
+    }
     if (method == QStringLiteral("containers.duplicate")) {
         return containerDuplicate(params, error);
     }
@@ -131,7 +367,7 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
         return containerFilesUpload(params, error);
     }
     if (method == QStringLiteral("system.df")) {
-        return systemDf(error);
+        return systemDf(params, error);
     }
     if (method == QStringLiteral("images.list")) {
         return imagesList(params, error);
@@ -245,6 +481,91 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("builds.remove")) {
         return buildRemove(params, error);
     }
+    if (method == QStringLiteral("machines.distros")) {
+        return machinesDistros();
+    }
+    if (method == QStringLiteral("machines.list")) {
+        return machinesList(error);
+    }
+    if (method == QStringLiteral("machines.get")) {
+        return machineGet(params, error);
+    }
+    if (method == QStringLiteral("machines.create")) {
+        return machineCreate(params, notify, error);
+    }
+    if (method == QStringLiteral("machines.cancel")) {
+        return machineCancel(params, error);
+    }
+    if (method == QStringLiteral("machines.export")) {
+        return machineExport(params, notify, error);
+    }
+    if (method == QStringLiteral("machines.import")) {
+        return machineImport(params, notify, error);
+    }
+    if (method == QStringLiteral("machines.rename")) {
+        return machineRename(params, error);
+    }
+    if (method == QStringLiteral("machines.update")) {
+        return machineUpdate(params, error);
+    }
+    if (method == QStringLiteral("machines.ports.list")) {
+        return machinePortsList(params, error);
+    }
+    if (method == QStringLiteral("machines.ports.set")) {
+        return machinePortsSet(params, error);
+    }
+    if (method == QStringLiteral("machines.snapshots.list")) {
+        return machineSnapshotsList(params, error);
+    }
+    if (method == QStringLiteral("machines.snapshots.create")) {
+        return machineSnapshotCreate(params, error);
+    }
+    if (method == QStringLiteral("machines.snapshots.restore")) {
+        return machineSnapshotRestore(params, error);
+    }
+    if (method == QStringLiteral("machines.snapshots.remove")) {
+        return machineSnapshotRemove(params, error);
+    }
+    if (method == QStringLiteral("machines.clone")) {
+        return machineClone(params, notify, error);
+    }
+    if (method == QStringLiteral("machines.default")) {
+        return machineDefault(params, error);
+    }
+    if (method == QStringLiteral("machines.start") || method == QStringLiteral("machines.stop")
+        || method == QStringLiteral("machines.restart")) {
+        return machineAction(method, params, error);
+    }
+    if (method == QStringLiteral("machines.delete")) {
+        return machineDelete(params, error);
+    }
+    if (method == QStringLiteral("machines.logs")) {
+        return machineLogs(params, error);
+    }
+    if (method == QStringLiteral("machines.console.read")) {
+        return machineConsoleRead(params, error);
+    }
+    if (method == QStringLiteral("machines.console")) {
+        return subscribeMachineConsole(params, notify, error);
+    }
+    if (method == QStringLiteral("machines.files.list")) {
+        return machineFilesList(params, error);
+    }
+    if (method == QStringLiteral("machines.files.download")) {
+        return machineFilesDownload(params, error);
+    }
+    if (method == QStringLiteral("machines.files.upload")) {
+        return machineFilesUpload(params, error);
+    }
+    if (method == QStringLiteral("machines.ssh")) {
+        return machineSsh(params, error);
+    }
+    if (method == QStringLiteral("machines.stats")) {
+        return machineStats(params, error);
+    }
+    if (method == QStringLiteral("machines.stats.subscribe")) {
+        return subscribeMachineStats(params, notify, error);
+    }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
     }
@@ -286,6 +607,8 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
         || method == QStringLiteral("compose.logs.unsubscribe")
         || method == QStringLiteral("builds.unsubscribe")
         || method == QStringLiteral("setup.unsubscribe")
+        || method == QStringLiteral("machines.stats.unsubscribe")
+        || method == QStringLiteral("machines.console.unsubscribe")
         || method == QStringLiteral("events.unsubscribe")) {
         return unsubscribe(params);
     }
@@ -298,6 +621,1215 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
                              QStringLiteral("Método RPC desconhecido: %1").arg(method));
     }
     return {};
+}
+
+QJsonObject Daemon::machinesDistros()
+{
+    QJsonArray items;
+    const QVector<DistroImage> images = DistroRegistry::images();
+    for (const DistroImage &image : images) {
+        QJsonObject item;
+        item.insert(QStringLiteral("distro"), image.distro);
+        item.insert(QStringLiteral("version"), image.version);
+        item.insert(QStringLiteral("arch"), image.arch);
+        item.insert(QStringLiteral("default"), image.isDefault);
+        item.insert(QStringLiteral("url"), image.url);
+        item.insert(QStringLiteral("checksum"), image.checksum);
+        item.insert(QStringLiteral("algorithm"), DistroRegistry::algorithmName(image.algorithm));
+        item.insert(QStringLiteral("size"), static_cast<double>(image.size));
+        item.insert(QStringLiteral("cached"), m_cloudImages.isCached(image));
+        items.append(item);
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("items"), items);
+    return result;
+}
+
+QJsonObject Daemon::machinesList(Error *error)
+{
+    const QVector<MachineMeta> machines = m_machines.list(error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    QJsonArray items;
+    for (const MachineMeta &machine : machines) {
+        items.append(machine.toJson());
+    }
+    return QJsonObject{{QStringLiteral("items"), items}};
+}
+
+QJsonObject Daemon::machineGet(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notify,
+                                  Error *error)
+{
+    CreateMachineRequest request;
+    request.name = params.value(QStringLiteral("name")).toString().trimmed();
+    request.distro = params.value(QStringLiteral("distro")).toString().trimmed();
+    request.version = params.value(QStringLiteral("version")).toString().trimmed();
+    request.arch = params.value(QStringLiteral("arch")).toString().trimmed();
+    request.user = params.value(QStringLiteral("user")).toString();
+    request.password = params.value(QStringLiteral("password")).toString();
+    request.userData = params.value(QStringLiteral("userData")).toString();
+    request.cpus = params.value(QStringLiteral("cpus")).toInt(request.cpus);
+    request.memoryBytes =
+        params.value(QStringLiteral("memoryBytes")).toInteger(request.memoryBytes);
+    request.diskBytes = params.value(QStringLiteral("diskBytes")).toInteger(request.diskBytes);
+    request.isolateNetwork =
+        params.value(QStringLiteral("isolateNetwork")).toBool(request.isolateNetwork);
+    request.forwardSshAgent =
+        params.value(QStringLiteral("forwardSshAgent")).toBool(request.forwardSshAgent);
+    request.isolated = params.value(QStringLiteral("isolated")).toBool(request.isolated);
+
+    const QJsonValue mountsValue = params.value(QStringLiteral("mounts"));
+    if (!mountsValue.isUndefined() && !mountsValue.isNull()) {
+        if (!mountsValue.isArray()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("mounts deve ser um array de objetos."));
+            }
+            return {};
+        }
+        const QJsonArray mounts = mountsValue.toArray();
+        for (const QJsonValue &value : mounts) {
+            if (!value.isObject()) {
+                if (error) {
+                    *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                         QStringLiteral("Cada mount deve ser um objeto."));
+                }
+                return {};
+            }
+            const QJsonObject object = value.toObject();
+            MachineMount mount;
+            mount.source = object.value(QStringLiteral("source")).toString().trimmed();
+            mount.target = object.value(QStringLiteral("target")).toString().trimmed();
+            mount.readOnly = object.value(QStringLiteral("readOnly")).toBool(false);
+            mount.tag = object.value(QStringLiteral("tag")).toString().trimmed();
+            request.mounts.append(mount);
+        }
+    }
+
+    if (!m_machines.validate(request, error)) {
+        return {};
+    }
+
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        jobId = QStringLiteral("machine-%1-%2")
+                    .arg(QDateTime::currentSecsSinceEpoch())
+                    .arg(m_nextMachineJob++);
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        m_machineSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, request, notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("machines.delta"), payload);
+        };
+        const auto cancelled = [subscription] {
+            return subscription->cancel.load();
+        };
+
+        Error createError;
+        MachineMeta machine = m_machines.create(request, progress, cancelled, &createError);
+        if (createError.isEmpty() && machine.id.isEmpty()) {
+            createError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                      QStringLiteral("Falha ao criar a machine."));
+        }
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        if (createError.isEmpty()) {
+            payload.insert(QStringLiteral("machine"), machine.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), createError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("machines.done"), payload);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+            m_machineSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::machineExport(const QJsonObject &params, const Notify &notify,
+                                  Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString path = params.value(QStringLiteral("path")).toString().trimmed();
+    if (path.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o arquivo de destino do export."));
+        }
+        return {};
+    }
+    if (!QFileInfo(path).isAbsolute()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("O arquivo de export precisa ser absoluto."),
+                                 path);
+        }
+        return {};
+    }
+    const bool force = params.value(QStringLiteral("force")).toBool();
+
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        jobId = QStringLiteral("machine-export-%1-%2")
+                    .arg(QDateTime::currentSecsSinceEpoch())
+                    .arg(m_nextMachineJob++);
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        m_machineSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, id, path, force,
+                             notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("machines.delta"), payload);
+        };
+        const auto cancelled = [subscription] {
+            return subscription->cancel.load();
+        };
+
+        Error exportError;
+        MachineMeta machine =
+            m_machines.exportMachine(id, path, force, progress, cancelled, &exportError);
+        if (exportError.isEmpty() && machine.id.isEmpty()) {
+            exportError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                      QStringLiteral("Falha ao exportar a machine."));
+        }
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        payload.insert(QStringLiteral("path"), path);
+        if (exportError.isEmpty()) {
+            payload.insert(QStringLiteral("machine"), machine.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), exportError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("machines.done"), payload);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+            m_machineSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::machineImport(const QJsonObject &params, const Notify &notify,
+                                  Error *error)
+{
+    const QString path = params.value(QStringLiteral("path")).toString().trimmed();
+    if (path.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o arquivo de machine para importar."));
+        }
+        return {};
+    }
+    if (!QFileInfo(path).isAbsolute()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("O arquivo de import precisa ser absoluto."),
+                                 path);
+        }
+        return {};
+    }
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    const bool force = params.value(QStringLiteral("force")).toBool();
+
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        jobId = QStringLiteral("machine-import-%1-%2")
+                    .arg(QDateTime::currentSecsSinceEpoch())
+                    .arg(m_nextMachineJob++);
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        m_machineSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, path, name, force,
+                             notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("machines.delta"), payload);
+        };
+        const auto cancelled = [subscription] {
+            return subscription->cancel.load();
+        };
+
+        Error importError;
+        MachineMeta machine =
+            m_machines.importMachine(path, name, force, progress, cancelled, &importError);
+        if (importError.isEmpty() && machine.id.isEmpty()) {
+            importError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                      QStringLiteral("Falha ao importar a machine."));
+        }
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        payload.insert(QStringLiteral("path"), path);
+        if (importError.isEmpty()) {
+            payload.insert(QStringLiteral("machine"), machine.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), importError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("machines.done"), payload);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+            m_machineSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::machineRename(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o novo nome da machine."));
+        }
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.rename(id, name, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineUpdate(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    UpdateMachineRequest request;
+    const QJsonValue cpusValue = params.value(QStringLiteral("cpus"));
+    if (!cpusValue.isUndefined() && !cpusValue.isNull()) {
+        request.cpus = cpusValue.toInt();
+    }
+    const QJsonValue memoryValue = params.value(QStringLiteral("memoryBytes"));
+    if (!memoryValue.isUndefined() && !memoryValue.isNull()) {
+        request.memoryBytes = memoryValue.toInteger();
+    }
+    const QJsonValue diskValue = params.value(QStringLiteral("diskBytes"));
+    if (!diskValue.isUndefined() && !diskValue.isNull()) {
+        request.diskBytes = diskValue.toInteger();
+    }
+    const QJsonValue forwardValue = params.value(QStringLiteral("forwardSshAgent"));
+    if (!forwardValue.isUndefined() && !forwardValue.isNull()) {
+        if (!forwardValue.isBool()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("forwardSshAgent deve ser booleano."));
+            }
+            return {};
+        }
+        request.forwardSshAgent = forwardValue.toBool();
+    }
+
+    const MachineMeta machine = m_machines.update(id, request, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machinePortsList(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("items"),
+                        machine.toJson().value(QStringLiteral("ports")).toArray()}};
+}
+
+QJsonObject Daemon::machinePortsSet(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QJsonValue portsValue = params.value(QStringLiteral("ports"));
+    if (!portsValue.isArray()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("O campo ports deve ser um array."),
+                                 QStringLiteral("Envie a lista completa de portas não-SSH."));
+        }
+        return {};
+    }
+
+    QVector<MachinePort> ports;
+    const QJsonArray array = portsValue.toArray();
+    ports.reserve(array.size());
+    for (int index = 0; index < array.size(); ++index) {
+        const QJsonValue entry = array.at(index);
+        if (!entry.isObject()) {
+            if (error) {
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                    QStringLiteral("Cada item de ports deve ser um objeto."),
+                    QStringLiteral("ports[%1]").arg(index));
+            }
+            return {};
+        }
+        const QJsonObject object = entry.toObject();
+        const auto invalidField = [error, index](const QString &field,
+                                                 const QString &expected) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("Campo inválido em ports."),
+                                     QStringLiteral("ports[%1].%2 (esperado %3)")
+                                         .arg(index)
+                                         .arg(field, expected));
+            }
+            return QJsonObject{};
+        };
+
+        MachinePort port;
+        const QJsonValue idValue = object.value(QStringLiteral("id"));
+        if (!idValue.isUndefined() && !idValue.isNull()) {
+            if (!idValue.isString()) {
+                return invalidField(QStringLiteral("id"), QStringLiteral("string"));
+            }
+            port.id = idValue.toString();
+        }
+        if (!portNumberFromJson(object.value(QStringLiteral("hostPort")), &port.hostPort)) {
+            return invalidField(QStringLiteral("hostPort"),
+                                QStringLiteral("inteiro 1..65535"));
+        }
+        if (!portNumberFromJson(object.value(QStringLiteral("guestPort")), &port.guestPort)) {
+            return invalidField(QStringLiteral("guestPort"),
+                                QStringLiteral("inteiro 1..65535"));
+        }
+
+        const QJsonValue protocolValue = object.value(QStringLiteral("protocol"));
+        if (!protocolValue.isUndefined() && !protocolValue.isNull()) {
+            if (!protocolValue.isString()) {
+                return invalidField(QStringLiteral("protocol"),
+                                    QStringLiteral("string tcp|udp"));
+            }
+            port.protocol = protocolValue.toString();
+        }
+        const QJsonValue exposeValue = object.value(QStringLiteral("exposeLan"));
+        if (!exposeValue.isUndefined() && !exposeValue.isNull()) {
+            if (!exposeValue.isBool()) {
+                return invalidField(QStringLiteral("exposeLan"), QStringLiteral("boolean"));
+            }
+            port.exposeLan = exposeValue.toBool();
+        }
+        const QJsonValue labelValue = object.value(QStringLiteral("label"));
+        if (!labelValue.isUndefined() && !labelValue.isNull()) {
+            if (!labelValue.isString()) {
+                return invalidField(QStringLiteral("label"), QStringLiteral("string"));
+            }
+            port.label = labelValue.toString();
+        }
+        ports.append(port);
+    }
+
+    const MachineMeta machine = m_machines.setPorts(id, ports, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineSnapshotsList(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QVector<MachineSnapshot> snapshots = m_machines.snapshots(id, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    QJsonArray items;
+    for (const MachineSnapshot &snapshot : snapshots) {
+        items.append(snapshot.toJson());
+    }
+    return QJsonObject{{QStringLiteral("items"), items}};
+}
+
+QJsonObject Daemon::machineSnapshotCreate(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o nome do snapshot."));
+        }
+        return {};
+    }
+
+    const MachineSnapshot snapshot = m_machines.createSnapshot(id, name, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    return snapshot.toJson();
+}
+
+QJsonObject Daemon::machineSnapshotRestore(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o nome do snapshot."));
+        }
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.restoreSnapshot(id, name, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineSnapshotRemove(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o nome do snapshot."));
+        }
+        return {};
+    }
+
+    if (!m_machines.removeSnapshot(id, name, error)) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("removed"), true}};
+}
+
+QJsonObject Daemon::machineClone(const QJsonObject &params, const Notify &notify,
+                                 Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o nome da machine clonada."));
+        }
+        return {};
+    }
+
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        jobId = QStringLiteral("machine-clone-%1-%2")
+                    .arg(QDateTime::currentSecsSinceEpoch())
+                    .arg(m_nextMachineJob++);
+    }
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        m_machineSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, id, name, notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("machines.delta"), payload);
+        };
+        const auto cancelled = [subscription] {
+            return subscription->cancel.load();
+        };
+
+        Error cloneError;
+        MachineMeta machine = m_machines.clone(id, name, progress, cancelled, &cloneError);
+        if (cloneError.isEmpty() && machine.id.isEmpty()) {
+            cloneError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                     QStringLiteral("Falha ao clonar a machine."));
+        }
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        payload.insert(QStringLiteral("name"), name);
+        if (cloneError.isEmpty()) {
+            payload.insert(QStringLiteral("machine"), machine.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), cloneError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("machines.done"), payload);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+            m_machineSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    return result;
+}
+
+QJsonObject Daemon::machineDefault(const QJsonObject &params, Error *error)
+{
+    const QJsonValue nameValue = params.value(QStringLiteral("name"));
+    if (!nameValue.isUndefined() && !nameValue.isNull()) {
+        if (!nameValue.isString() || nameValue.toString().trimmed().isEmpty()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("O nome da machine default é inválido."));
+            }
+            return {};
+        }
+        if (!m_machines.setDefaultMachine(nameValue.toString().trimmed(), error)) {
+            return {};
+        }
+    }
+
+    const QString name = m_machines.defaultMachine(error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("name"), name}};
+}
+
+QJsonObject Daemon::machineCancel(const QJsonObject &params, Error *error)
+{
+    const QString jobId = params.value(QStringLiteral("jobId")).toString().trimmed();
+    if (jobId.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o job da machine."));
+        }
+        return {};
+    }
+
+    QString subscriptionId;
+    {
+        std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+        subscriptionId = m_machineSubscriptions.value(jobId);
+    }
+    if (subscriptionId.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Job de machine não está em execução."), jobId);
+        }
+        return {};
+    }
+
+    std::shared_ptr<Subscription> subscription;
+    {
+        std::lock_guard<std::mutex> lock(m_subscriptionsMutex);
+        subscription = m_subscriptions.value(subscriptionId);
+    }
+    if (!subscription) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Job de machine não está em execução."), jobId);
+        }
+        return {};
+    }
+
+    subscription->cancel.store(true);
+    QJsonObject result;
+    result.insert(QStringLiteral("jobId"), jobId);
+    result.insert(QStringLiteral("cancelled"), true);
+    return result;
+}
+
+QJsonObject Daemon::machineAction(const QString &method, const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const bool force = params.value(QStringLiteral("force")).toBool();
+    MachineMeta machine;
+    if (method == QStringLiteral("machines.start")) {
+        machine = m_machines.start(id, error);
+    } else if (method == QStringLiteral("machines.stop")) {
+        machine = m_machines.stop(id, force, error);
+    } else if (force) {
+        machine = m_machines.stop(id, true, error);
+        if (error && !error->isEmpty()) {
+            return {};
+        }
+        machine = m_machines.start(id, error);
+    } else {
+        machine = m_machines.restart(id, error);
+    }
+
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineDelete(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const bool force = params.value(QStringLiteral("force")).toBool();
+    if (!m_machines.remove(id, force, error)) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("deleted"), true}};
+}
+
+QJsonObject Daemon::machineLogs(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    int tail = params.value(QStringLiteral("tail")).toInt(200);
+    if (tail <= 0) {
+        tail = 200;
+    }
+    tail = qBound(1, tail, 2000);
+
+    const QString directory = Paths::machineDir(machine.id);
+    if (directory.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                 QStringLiteral("Identificador de machine inválido."));
+        }
+        return {};
+    }
+
+    bool consoleExists = false;
+    if (!checkMachineConsoleFile(directory, &consoleExists, error)) {
+        return {};
+    }
+    if (!consoleExists) {
+        return QJsonObject{{QStringLiteral("lines"), QJsonArray{}}};
+    }
+
+    const QString path = directory + QStringLiteral("/console.log");
+    QByteArray consoleData;
+    qint64 start = 0;
+    if (!readMachineConsoleTail(path, kMachineConsoleMaxBytes, &consoleData, &start, error)) {
+        return {};
+    }
+    start = qMax<qint64>(0, start - consoleData.size());
+
+    QString text = QString::fromUtf8(consoleData);
+    if (start > 0) {
+        const int newline = text.indexOf(QLatin1Char('\n'));
+        if (newline >= 0) {
+            text.remove(0, newline + 1);
+        } else {
+            text.clear();
+        }
+    }
+
+    QStringList lines = text.split(QLatin1Char('\n'));
+    if (!lines.isEmpty() && lines.last().isEmpty()) {
+        lines.removeLast();
+    }
+    for (QString &line : lines) {
+        if (line.endsWith(QLatin1Char('\r'))) {
+            line.chop(1);
+        }
+    }
+    if (lines.size() > tail) {
+        lines = lines.mid(lines.size() - tail);
+    }
+
+    QJsonArray array;
+    for (const QString &line : lines) {
+        array.append(line);
+    }
+    return QJsonObject{{QStringLiteral("lines"), array}};
+}
+
+QJsonObject Daemon::machineConsoleRead(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    const QString directory = Paths::machineDir(machine.id);
+    if (directory.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                 QStringLiteral("Identificador de machine inválido."));
+        }
+        return {};
+    }
+
+    bool consoleExists = false;
+    if (!checkMachineConsoleFile(directory, &consoleExists, error)) {
+        return {};
+    }
+
+    QByteArray data;
+    if (consoleExists) {
+        const QString path = directory + QStringLiteral("/console.log");
+        if (!readMachineConsoleTail(path, consoleTailBytes(params), &data, nullptr, error)) {
+            return {};
+        }
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), machine.id);
+    // O serial é binário; o stream expõe uma aproximação textual em UTF-8
+    // (bytes inválidos viram U+FFFD).
+    result.insert(QStringLiteral("data"), QString::fromUtf8(data));
+    return result;
+}
+
+QJsonObject Daemon::subscribeMachineConsole(const QJsonObject &params, const Notify &notify,
+                                            Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    const QString directory = Paths::machineDir(machine.id);
+    if (directory.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                 QStringLiteral("Identificador de machine inválido."));
+        }
+        return {};
+    }
+
+    bool consoleExists = false;
+    if (!checkMachineConsoleFile(directory, &consoleExists, error)) {
+        return {};
+    }
+
+    const QString path = directory + QStringLiteral("/console.log");
+    QByteArray initial;
+    qint64 offset = 0;
+    if (consoleExists
+        && !readMachineConsoleTail(path, consoleTailBytes(params), &initial, &offset, error)) {
+        return {};
+    }
+    bool pendingReset = !consoleExists;
+
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+
+    (void)QtConcurrent::run([this, machineId = machine.id, path, offset, pendingReset, initial,
+                             subscriptionId, subscription, notify]() mutable {
+        const auto sendDelta = [&](const QByteArray &bytes, bool reset) {
+            QJsonObject payload;
+            payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+            payload.insert(QStringLiteral("id"), machineId);
+            payload.insert(QStringLiteral("data"), QString::fromUtf8(bytes));
+            payload.insert(QStringLiteral("reset"), reset);
+            notify(QStringLiteral("machines.console.delta"), payload);
+        };
+        const auto sendError = [&](const Error &streamError) {
+            QJsonObject payload;
+            payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+            payload.insert(QStringLiteral("id"), machineId);
+            payload.insert(QStringLiteral("error"), streamError.toJson());
+            notify(QStringLiteral("machines.console.error"), payload);
+        };
+
+        sendDelta(initial, true);
+
+        while (!subscription->cancel.load()) {
+            for (int tick = 0; tick < 3; ++tick) {
+                if (subscription->cancel.load()) {
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            if (subscription->cancel.load()) {
+                break;
+            }
+
+            bool exists = false;
+            Error checkError;
+            if (!checkMachineConsoleFile(QFileInfo(path).absolutePath(), &exists, &checkError)) {
+                sendError(checkError);
+                break;
+            }
+            if (!exists) {
+                offset = 0;
+                pendingReset = true;
+                continue;
+            }
+
+            QByteArray chunk;
+            qint64 nextOffset = offset;
+            Error readError;
+            if (!readMachineConsoleChunk(path, offset, kMachineConsoleMaxBytes, &chunk,
+                                         &nextOffset, &readError)) {
+                sendError(readError);
+                break;
+            }
+            if (nextOffset < offset) {
+                offset = 0;
+                pendingReset = true;
+                continue;
+            }
+            if (chunk.isEmpty()) {
+                continue;
+            }
+
+            const bool reset = pendingReset;
+            pendingReset = false;
+            offset = nextOffset;
+            sendDelta(chunk, reset);
+        }
+
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    result.insert(QStringLiteral("id"), machine.id);
+    return result;
+}
+
+QJsonObject Daemon::machineSsh(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(id, &info, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("host"), info.host);
+    result.insert(QStringLiteral("port"), info.port);
+    result.insert(QStringLiteral("user"), info.user);
+    result.insert(QStringLiteral("identityFile"), info.identityFile);
+    result.insert(QStringLiteral("forwardAgent"), info.forwardAgent);
+    return result;
+}
+
+QJsonObject Daemon::machineFilesList(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+
+    const QString path = params.value(QStringLiteral("path")).toString(QStringLiteral("/"));
+    QJsonArray items;
+    if (!MachineFiles::list(info, path, &items, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("path"), path);
+    result.insert(QStringLiteral("items"), items);
+    return result;
+}
+
+QJsonObject Daemon::machineFilesDownload(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+
+    const QString path = params.value(QStringLiteral("path")).toString();
+    const QString destination = params.value(QStringLiteral("destination")).toString();
+    if (!MachineFiles::download(info, path, destination, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("path"), path);
+    result.insert(QStringLiteral("destination"), destination);
+    return result;
+}
+
+QJsonObject Daemon::machineFilesUpload(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+
+    const QString path = params.value(QStringLiteral("path")).toString();
+    const QString sourcePath = params.value(QStringLiteral("sourcePath")).toString();
+    if (!MachineFiles::upload(info, sourcePath, path, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("path"), path);
+    result.insert(QStringLiteral("sourcePath"), sourcePath);
+    result.insert(QStringLiteral("ok"), true);
+    return result;
+}
+
+QJsonObject Daemon::machineStats(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+    return m_machineStats.sample(machine, info, error);
+}
+
+QJsonObject Daemon::subscribeMachineStats(const QJsonObject &params, const Notify &notify,
+                                          Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty()) {
+        return {};
+    }
+
+    SshInfo info;
+    if (!m_machines.sshInfo(machine.id, &info, error)) {
+        return {};
+    }
+
+    const int interval = qBound(1, params.value(QStringLiteral("intervalSeconds")).toInt(2), 10);
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+
+    (void)QtConcurrent::run([this, machine, info, interval, subscriptionId, subscription,
+                             notify] {
+        MachineStatsCollector collector;
+        while (!subscription->cancel.load()) {
+            Error sampleError;
+            QJsonObject sample = collector.sample(machine, info, &sampleError);
+            if (!sample.isEmpty()) {
+                sample.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                sample.insert(QStringLiteral("id"), machine.id);
+                notify(QStringLiteral("machines.stats.delta"), sample);
+            } else if (!sampleError.isEmpty()) {
+                QJsonObject payload;
+                payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                payload.insert(QStringLiteral("id"), machine.id);
+                payload.insert(QStringLiteral("error"), sampleError.toJson());
+                notify(QStringLiteral("machines.stats.error"), payload);
+                break;
+            }
+
+            for (int tick = 0; tick < interval * 10; ++tick) {
+                if (subscription->cancel.load()) {
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    QJsonObject result;
+    result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+    result.insert(QStringLiteral("id"), machine.id);
+    return result;
 }
 
 QJsonObject Daemon::systemHello() const
@@ -503,6 +2035,7 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
     spec.remove = params.value(QStringLiteral("remove")).toBool(false);
     spec.init = params.value(QStringLiteral("init")).toBool(false);
     spec.privileged = params.value(QStringLiteral("privileged")).toBool(false);
+    const bool exposeLan = params.value(QStringLiteral("exposeLan")).toBool(false);
 
     if (spec.image.isEmpty()) {
         if (error) {
@@ -517,16 +2050,75 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
         spec.env.insert(it.key(), it.value().toString());
     }
 
+    QMap<QString, QStringList> publishedByProtocol;
     const QJsonArray ports = params.value(QStringLiteral("ports")).toArray();
     for (const QJsonValue &value : ports) {
         const QJsonObject port = value.toObject();
         PortMapping mapping;
         mapping.hostPort = port.value(QStringLiteral("hostPort")).toInt();
         mapping.containerPort = port.value(QStringLiteral("containerPort")).toInt();
-        mapping.protocol = port.value(QStringLiteral("protocol")).toString(QStringLiteral("tcp"));
-        mapping.hostIp = port.value(QStringLiteral("hostIp")).toString(QStringLiteral("0.0.0.0"));
+        mapping.protocol = port.value(QStringLiteral("protocol"))
+                               .toString(QStringLiteral("tcp"))
+                               .trimmed()
+                               .toLower();
+        mapping.hostIp = port.value(QStringLiteral("hostIp"))
+                             .toString(exposeLan ? QStringLiteral("0.0.0.0")
+                                                 : QStringLiteral("127.0.0.1"));
+        if (exposeLan) {
+            mapping.hostIp = QStringLiteral("0.0.0.0");
+        }
         if (mapping.hostPort > 0 && mapping.containerPort > 0) {
+            if (exposeLan) {
+                if (mapping.protocol != QStringLiteral("tcp")
+                    && mapping.protocol != QStringLiteral("udp")) {
+                    if (error) {
+                        *error = Error::make(
+                            QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                            QStringLiteral("Expor na LAN aceita apenas portas tcp ou udp."));
+                    }
+                    return {};
+                }
+                if (mapping.hostPort > 65535) {
+                    if (error) {
+                        *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                             QStringLiteral("Porta do host inválida: %1.")
+                                                 .arg(mapping.hostPort));
+                    }
+                    return {};
+                }
+                publishedByProtocol[mapping.protocol].append(
+                    QString::number(mapping.hostPort));
+            }
             spec.ports.append(mapping);
+        }
+    }
+
+    if (exposeLan) {
+        if (publishedByProtocol.isEmpty()) {
+            if (error) {
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                    QStringLiteral("Informe ao menos uma porta publicada para expor na LAN."));
+            }
+            return {};
+        }
+        int totalPorts = 0;
+        for (const QStringList &hostPorts : publishedByProtocol) {
+            totalPorts += hostPorts.size();
+        }
+        if (totalPorts > 32) {
+            if (error) {
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                    QStringLiteral("No máximo 32 portas podem ser expostas por container."));
+            }
+            return {};
+        }
+        if (!m_helper.available()) {
+            if (error) {
+                *error = helperRequiredError();
+            }
+            return {};
         }
     }
 
@@ -547,6 +2139,8 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
         spec.labels.insert(it.key(), it.value().toString());
     }
 
+    applyProxyEnvironment(spec);
+
     const QString id = m_podman.createContainer(spec, error);
     if (id.isEmpty()) {
         return {};
@@ -557,9 +2151,163 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
         return {};
     }
 
+    if (exposeLan) {
+        QStringList openedProtocols;
+        for (auto it = publishedByProtocol.constBegin(); it != publishedByProtocol.constEnd();
+             ++it) {
+            QString helperError;
+            const bool ok = m_helper.call(
+                QStringLiteral("OpenPorts"),
+                QVariantList{QVariant::fromValue(it.value()), it.key()}, &helperError);
+            if (!ok) {
+                for (const QString &protocol : openedProtocols) {
+                    QString ignored;
+                    (void)m_helper.call(
+                        QStringLiteral("ClosePorts"),
+                        QVariantList{QVariant::fromValue(publishedByProtocol.value(protocol)),
+                                     protocol},
+                        &ignored);
+                }
+                Error cleanupError;
+                (void)m_podman.removeContainer(id, true, false, &cleanupError);
+                if (error) {
+                    *error = Error::make(
+                        QStringLiteral("PODSTACK_IO_ERROR"),
+                        QStringLiteral("O container foi criado, mas o firewall não abriu as "
+                                       "portas; a criação foi desfeita."),
+                        helperError,
+                        QStringLiteral("Verifique o firewalld/ufw e tente novamente."));
+                }
+                return {};
+            }
+            openedProtocols.append(it.key());
+        }
+    }
+
     QJsonObject result;
     result.insert(QStringLiteral("id"), id);
     result.insert(QStringLiteral("started"), start);
+    result.insert(QStringLiteral("exposeLan"), exposeLan);
+    return result;
+}
+
+QJsonObject Daemon::containerExposeLan(const QJsonObject &params, Error *error)
+{
+    const QString id = requireId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const bool expose = params.value(QStringLiteral("expose")).toBool(false);
+
+    const QJsonObject json = m_podman.inspectContainer(id, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+
+    const QJsonObject bindings =
+        json.value(QStringLiteral("HostConfig"))
+            .toObject()
+            .value(QStringLiteral("PortBindings"))
+            .toObject();
+
+    QMap<QString, QStringList> portsByProtocol;
+    QJsonArray portSpecs;
+    bool anyPort = false;
+    bool wildcardOnly = true;
+    for (auto it = bindings.constBegin(); it != bindings.constEnd(); ++it) {
+        const QStringList keyParts = it.key().split(QLatin1Char('/'));
+        if (keyParts.size() != 2) {
+            continue;
+        }
+        const QString protocol = keyParts.at(1).trimmed().toLower();
+        const QJsonArray hosts = it.value().toArray();
+        for (const QJsonValue &hostValue : hosts) {
+            const QJsonObject host = hostValue.toObject();
+            const int hostPort = host.value(QStringLiteral("HostPort")).toString().toInt();
+            if (hostPort <= 0) {
+                continue;
+            }
+            anyPort = true;
+            const QString hostIp = host.value(QStringLiteral("HostIp")).toString();
+            if (!isWildcardHostIp(hostIp)) {
+                wildcardOnly = false;
+            }
+            if (protocol != QStringLiteral("tcp") && protocol != QStringLiteral("udp")) {
+                if (error) {
+                    *error = Error::make(
+                        QStringLiteral("PODSTACK_UNSUPPORTED"),
+                        QStringLiteral("O firewall da LAN só gerencia portas tcp e udp."));
+                }
+                return {};
+            }
+            portsByProtocol[protocol].append(QString::number(hostPort));
+            portSpecs.append(QStringLiteral("%1/%2").arg(hostPort).arg(protocol));
+        }
+    }
+
+    if (!anyPort) {
+        if (error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                QStringLiteral("O container não publica portas."),
+                QString(), QStringLiteral("Publique portas ao criar o container."));
+        }
+        return {};
+    }
+
+    if (!wildcardOnly) {
+        if (error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_UNSUPPORTED"),
+                QStringLiteral("As portas publicadas não estão em 0.0.0.0. Recrie o container "
+                               "com a opção 'Expor na LAN'."),
+                QStringLiteral("O bind atual aponta para o loopback ou um IP específico."),
+                QStringLiteral("Remova o container e crie-o novamente com 'Expor na LAN'."));
+        }
+        return {};
+    }
+
+    if (!m_helper.available()) {
+        if (error) {
+            *error = helperRequiredError();
+        }
+        return {};
+    }
+
+    const QString method = expose ? QStringLiteral("OpenPorts") : QStringLiteral("ClosePorts");
+    QStringList changedProtocols;
+    for (auto it = portsByProtocol.constBegin(); it != portsByProtocol.constEnd(); ++it) {
+        QString helperError;
+        const bool ok = m_helper.call(
+            method, QVariantList{QVariant::fromValue(it.value()), it.key()}, &helperError);
+        if (!ok) {
+            if (expose) {
+                for (const QString &protocol : changedProtocols) {
+                    QString ignored;
+                    (void)m_helper.call(
+                        QStringLiteral("ClosePorts"),
+                        QVariantList{QVariant::fromValue(portsByProtocol.value(protocol)),
+                                     protocol},
+                        &ignored);
+                }
+            }
+            if (error) {
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_IO_ERROR"),
+                    QStringLiteral("Não foi possível %1 as portas no firewall.")
+                        .arg(expose ? QStringLiteral("abrir") : QStringLiteral("fechar")),
+                    helperError,
+                    QStringLiteral("Verifique o firewalld/ufw e tente novamente."));
+            }
+            return {};
+        }
+        changedProtocols.append(it.key());
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), id);
+    result.insert(QStringLiteral("expose"), expose);
+    result.insert(QStringLiteral("ports"), portSpecs);
     return result;
 }
 
@@ -609,6 +2357,8 @@ QJsonObject Daemon::containerDuplicate(const QJsonObject &params, Error *error)
             spec.env.insert(entry.left(equals), entry.mid(equals + 1));
         }
     }
+
+    applyProxyEnvironment(spec);
 
     const QJsonObject bindings = json.value(QStringLiteral("HostConfig"))
                                      .toObject()
@@ -1485,16 +3235,14 @@ QJsonObject Daemon::podRemove(const QJsonObject &params, Error *error)
     return result;
 }
 
-QJsonObject Daemon::systemDf(Error *error)
+QJsonObject Daemon::systemDf(const QJsonObject &params, Error *error)
 {
     const QJsonObject json = m_podman.systemDf(error);
     if (error && !error->isEmpty()) {
         return {};
     }
 
-    QJsonObject result;
-    result.insert(QStringLiteral("json"), json);
-    return result;
+    return normalizeDiskUsage(json, params.value(QStringLiteral("detailed")).toBool(true));
 }
 
 QJsonObject Daemon::composeProjects(Error *error)
@@ -1649,7 +3397,6 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
     const QString tag = params.value(QStringLiteral("tag")).toString();
     const QString dockerfile =
         params.value(QStringLiteral("dockerfile")).toString(QStringLiteral("Dockerfile"));
-    const QString platform = params.value(QStringLiteral("platform")).toString();
     const QString trigger =
         params.value(QStringLiteral("trigger")).toString(QStringLiteral("gui"));
 
@@ -1659,6 +3406,45 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
                                  QStringLiteral("Informe o contexto e a tag do build."));
         }
         return {};
+    }
+
+    QStringList platforms;
+    const QJsonValue platformsValue = params.value(QStringLiteral("platforms"));
+    if (platformsValue.isArray()) {
+        for (const QJsonValue &value : platformsValue.toArray()) {
+            const QString platform = value.toString().trimmed();
+            if (!platform.isEmpty() && !platforms.contains(platform)) {
+                platforms.append(platform);
+            }
+        }
+    } else if (platformsValue.isString()) {
+        for (const QString &part :
+             platformsValue.toString().split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            const QString platform = part.trimmed();
+            if (!platform.isEmpty() && !platforms.contains(platform)) {
+                platforms.append(platform);
+            }
+        }
+    }
+    // Compatibilidade com clientes antigos: `platform` single ou separado por vírgula.
+    if (platforms.isEmpty()) {
+        for (const QString &part : params.value(QStringLiteral("platform"))
+                                       .toString()
+                                       .split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            const QString platform = part.trimmed();
+            if (!platform.isEmpty() && !platforms.contains(platform)) {
+                platforms.append(platform);
+            }
+        }
+    }
+    if (!platforms.isEmpty()) {
+        Error platformError;
+        if (!ManifestBuilder::validatePlatforms(platforms, &platformError)) {
+            if (error) {
+                *error = platformError;
+            }
+            return {};
+        }
     }
 
     QMap<QString, QString> buildArgs;
@@ -1683,6 +3469,7 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
     record.contextPath = contextPath;
     record.dockerfile = dockerfile;
     record.logPath = logPath;
+    record.platforms = platforms;
     if (!m_buildStore.insert(record, error)) {
         return {};
     }
@@ -1694,6 +3481,76 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
         m_buildSubscriptions.insert(buildId, subscriptionId);
     }
 
+    if (platforms.size() > 1) {
+        // Manifest list: o Libpod REST não cria manifest lists, então usamos o CLI.
+        (void)QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs,
+                                 platforms, logPath, subscriptionId, subscription, notify] {
+            QElapsedTimer timer;
+            timer.start();
+
+            QFile logFile(logPath);
+            if (!logFile.open(QIODevice::WriteOnly | QIODevice::Append)) {
+                qCWarning(lcPodman) << "Não foi possível abrir o log do build:"
+                                    << logFile.errorString();
+            }
+
+            const auto onLine = [&](const QString &line) {
+                if (logFile.isOpen()) {
+                    logFile.write(line.toUtf8());
+                    logFile.write("\n");
+                    logFile.flush();
+                }
+                QJsonObject payload;
+                payload.insert(QStringLiteral("buildId"), buildId);
+                payload.insert(QStringLiteral("line"), line);
+                notify(QStringLiteral("builds.delta"), payload);
+            };
+            const auto cancelled = [subscription] {
+                return subscription->cancel.load();
+            };
+
+            ManifestBuilder builder;
+            Error buildError;
+            const bool ok = builder.build(contextPath, dockerfile, tag, buildArgs, platforms,
+                                          onLine, cancelled, &buildError);
+            if (logFile.isOpen()) {
+                logFile.close();
+            }
+
+            const bool wasCancelled = subscription->cancel.load();
+            const QString status = wasCancelled
+                                       ? QStringLiteral("cancelled")
+                                       : (ok ? QStringLiteral("success")
+                                             : QStringLiteral("failed"));
+            const int durationMs = static_cast<int>(timer.elapsed());
+            const QString errorText = ok ? QString() : buildError.message;
+
+            m_buildStore.finish(buildId, status, errorText, durationMs);
+
+            QJsonObject payload;
+            payload.insert(QStringLiteral("buildId"), buildId);
+            payload.insert(QStringLiteral("status"), status);
+            payload.insert(QStringLiteral("imageId"), QString());
+            payload.insert(QStringLiteral("error"), errorText);
+            payload.insert(QStringLiteral("durationMs"), durationMs);
+            payload.insert(QStringLiteral("steps"), 0);
+            notify(QStringLiteral("builds.done"), payload);
+
+            {
+                std::lock_guard<std::mutex> lock(m_buildMutex);
+                m_buildSubscriptions.remove(buildId);
+            }
+            removeSubscription(subscriptionId);
+        });
+
+        QJsonObject result;
+        result.insert(QStringLiteral("buildId"), buildId);
+        result.insert(QStringLiteral("subscriptionId"), subscriptionId);
+        result.insert(QStringLiteral("logPath"), logPath);
+        return result;
+    }
+
+    const QString platform = platforms.isEmpty() ? QString() : platforms.first();
     (void)QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs,
                              platform, logPath, subscriptionId, subscription, notify] {
         QElapsedTimer timer;
@@ -1908,6 +3765,165 @@ QJsonObject Daemon::buildRemove(const QJsonObject &params, Error *error)
     return result;
 }
 
+QJsonObject Daemon::settingsGet(const QJsonObject &params, Error *error)
+{
+    QString key;
+    const QJsonValue keyValue = params.value(QStringLiteral("key"));
+    if (!keyValue.isUndefined() && !keyValue.isNull()) {
+        if (!keyValue.isString() || keyValue.toString().trimmed().isEmpty()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("O campo key deve ser uma string."),
+                                     QStringLiteral("key"));
+            }
+            return {};
+        }
+        key = keyValue.toString().trimmed();
+        if (!Settings::find(key)) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_VALIDATION"),
+                                     QStringLiteral("Chave de configuração desconhecida: %1.")
+                                         .arg(key),
+                                     key,
+                                     QStringLiteral("Consulte `podstack config schema`."));
+            }
+            return {};
+        }
+    }
+
+    std::lock_guard<std::mutex> lock(m_settingsMutex);
+    const Config config = Config::load();
+    return QJsonObject{{QStringLiteral("values"), config.flatValues(key)}};
+}
+
+QJsonObject Daemon::settingsSet(const QJsonObject &params, Error *error)
+{
+    const QJsonValue keyValue = params.value(QStringLiteral("key"));
+    if (!keyValue.isString() || keyValue.toString().trimmed().isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("O campo key é obrigatório."),
+                                 QStringLiteral("key"));
+        }
+        return {};
+    }
+    if (!params.contains(QStringLiteral("value"))) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("O campo value é obrigatório."),
+                                 QStringLiteral("value"));
+        }
+        return {};
+    }
+
+    const QString key = keyValue.toString().trimmed();
+    const QJsonValue value = params.value(QStringLiteral("value"));
+
+    std::lock_guard<std::mutex> lock(m_settingsMutex);
+    Config config = Config::load();
+
+    Error validation;
+    if (!Config::validate(key, value, &validation)) {
+        if (error) {
+            *error = validation;
+        }
+        return {};
+    }
+
+    const QJsonValue previous = config.get(key);
+    config.set(key, value);
+
+    QString saveError;
+    if (!config.save(&saveError)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível salvar a configuração."),
+                                 saveError,
+                                 QStringLiteral("Verifique as permissões de ~/.config/podstack."));
+        }
+        return {};
+    }
+
+    const SettingDef *definition = Settings::find(key);
+    const bool restartRequired = definition && definition->restartRequired
+                                 && !(previous == value);
+    QJsonObject result;
+    result.insert(QStringLiteral("values"), config.flatValues());
+    result.insert(QStringLiteral("restartRequired"), restartRequired);
+    result.insert(QStringLiteral("key"), key);
+    return result;
+}
+
+QJsonObject Daemon::settingsReset(const QJsonObject &params, Error *error)
+{
+    QString key;
+    const QJsonValue keyValue = params.value(QStringLiteral("key"));
+    if (!keyValue.isUndefined() && !keyValue.isNull()) {
+        if (!keyValue.isString() || keyValue.toString().trimmed().isEmpty()) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("O campo key deve ser uma string."),
+                                     QStringLiteral("key"));
+            }
+            return {};
+        }
+        key = keyValue.toString().trimmed();
+    }
+
+    std::lock_guard<std::mutex> lock(m_settingsMutex);
+    Config config = Config::load();
+    bool restartRequired = false;
+
+    if (!key.isEmpty()) {
+        const SettingDef *definition = Settings::find(key);
+        if (!definition) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_VALIDATION"),
+                                     QStringLiteral("Chave de configuração desconhecida: %1.")
+                                         .arg(key),
+                                     key,
+                                     QStringLiteral("Consulte `podstack config schema`."));
+            }
+            return {};
+        }
+        const QJsonValue previous = config.get(key);
+        config.reset(key);
+        restartRequired = definition->restartRequired
+                          && !(previous == definition->defaultValue);
+    } else {
+        const QJsonObject previous = config.flatValues();
+        config.resetAll();
+        for (const SettingDef &definition : Settings::definitions()) {
+            if (definition.restartRequired
+                && !(previous.value(definition.key) == definition.defaultValue)) {
+                restartRequired = true;
+                break;
+            }
+        }
+    }
+
+    QString saveError;
+    if (!config.save(&saveError)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível salvar a configuração."),
+                                 saveError,
+                                 QStringLiteral("Verifique as permissões de ~/.config/podstack."));
+        }
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("values"), config.flatValues());
+    result.insert(QStringLiteral("restartRequired"), restartRequired);
+    return result;
+}
+
+QJsonObject Daemon::settingsSchema() const
+{
+    return Settings::schemaJson();
+}
+
 QJsonObject Daemon::setupStatus()
 {
     return m_setup.status();
@@ -2009,6 +4025,16 @@ QString Daemon::requireId(const QJsonObject &params, Error *error) const
     if (id.isEmpty() && error) {
         *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
                              QStringLiteral("Informe o ID ou nome do container."));
+    }
+    return id;
+}
+
+QString Daemon::requireMachineId(const QJsonObject &params, Error *error) const
+{
+    const QString id = params.value(QStringLiteral("id")).toString().trimmed();
+    if (id.isEmpty() && error) {
+        *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                             QStringLiteral("Informe o ID ou nome da machine."));
     }
     return id;
 }

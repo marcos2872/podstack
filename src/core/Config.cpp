@@ -1,10 +1,10 @@
 #include "core/Config.h"
 
 #include "core/Paths.h"
+#include "core/Settings.h"
 
 #include <QDir>
 #include <QFile>
-#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QSaveFile>
@@ -43,55 +43,14 @@ Config::Config()
 
 QJsonObject Config::defaults()
 {
-    QJsonObject app;
-    app.insert(QStringLiteral("startAtLogin"), false);
-    app.insert(QStringLiteral("waitForContainerStop"), true);
-    app.insert(QStringLiteral("keepRunningInTray"), true);
-    app.insert(QStringLiteral("showInTray"), true);
-    app.insert(QStringLiteral("notifications"), true);
-    app.insert(QStringLiteral("theme"), QStringLiteral("system"));
-    app.insert(QStringLiteral("language"), QStringLiteral("pt-BR"));
-    app.insert(QStringLiteral("showOnboarding"), true);
-
-    QJsonObject setup;
-    setup.insert(QStringLiteral("completed"), false);
-    setup.insert(QStringLiteral("completedAt"), QJsonValue::Null);
-    setup.insert(QStringLiteral("dockerPolicy"), QStringLiteral("keep"));
-    setup.insert(QStringLiteral("components"), QJsonArray{});
-    setup.insert(QStringLiteral("lastValidation"), QJsonValue::Null);
-
-    QJsonObject engine;
-    engine.insert(QStringLiteral("mode"), QStringLiteral("rootless"));
-
-    QJsonObject network;
-    network.insert(QStringLiteral("https"), false);
-    network.insert(QStringLiteral("proxy"), QStringLiteral("auto"));
-    network.insert(QStringLiteral("domainsMode"), QStringLiteral("localhost"));
-
-    QJsonObject machines;
-    machines.insert(QStringLiteral("forwardPorts"), true);
-    machines.insert(QStringLiteral("exposePortsToLan"), false);
-
-    QJsonObject kubernetes;
-    kubernetes.insert(QStringLiteral("enabled"), false);
-
-    QJsonObject telemetry;
-    telemetry.insert(QStringLiteral("enabled"), false);
-    telemetry.insert(QStringLiteral("crashReports"), false);
-    telemetry.insert(QStringLiteral("usage"), false);
-    telemetry.insert(QStringLiteral("performance"), false);
-    telemetry.insert(QStringLiteral("errors"), false);
-
-    QJsonObject root;
+    QJsonObject root = Settings::defaults();
     root.insert(QStringLiteral("schemaVersion"), 1);
-    root.insert(QStringLiteral("app"), app);
-    root.insert(QStringLiteral("setup"), setup);
-    root.insert(QStringLiteral("engine"), engine);
-    root.insert(QStringLiteral("network"), network);
-    root.insert(QStringLiteral("machines"), machines);
-    root.insert(QStringLiteral("kubernetes"), kubernetes);
-    root.insert(QStringLiteral("telemetry"), telemetry);
     return root;
+}
+
+QJsonObject Config::schema()
+{
+    return Settings::schemaJson();
 }
 
 Config Config::load()
@@ -186,6 +145,70 @@ void Config::set(const QString &key, const QJsonValue &value)
         object.insert(parts.at(index), child);
     };
     assign(m_values, 0);
+}
+
+bool Config::validate(const QString &key, const QJsonValue &value, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    const SettingDef *definition = Settings::find(key);
+    if (!definition) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_VALIDATION"),
+                                 QStringLiteral("Chave de configuração desconhecida: %1.")
+                                     .arg(key),
+                                 key,
+                                 QStringLiteral("Consulte `podstack config schema`."));
+        }
+        return false;
+    }
+    return Settings::validate(*definition, value, error);
+}
+
+bool Config::reset(const QString &key, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    const SettingDef *definition = Settings::find(key);
+    if (!definition) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_VALIDATION"),
+                                 QStringLiteral("Chave de configuração desconhecida: %1.")
+                                     .arg(key),
+                                 key,
+                                 QStringLiteral("Consulte `podstack config schema`."));
+        }
+        return false;
+    }
+    set(key, definition->defaultValue);
+    return true;
+}
+
+void Config::resetAll()
+{
+    const QJsonValue schemaVersion = m_values.value(QStringLiteral("schemaVersion"));
+    const QJsonValue setup = m_values.value(QStringLiteral("setup"));
+    m_values = defaults();
+    if (!schemaVersion.isUndefined()) {
+        m_values.insert(QStringLiteral("schemaVersion"), schemaVersion);
+    }
+    if (setup.isObject()) {
+        m_values.insert(QStringLiteral("setup"), setup);
+    }
+}
+
+QJsonObject Config::flatValues(const QString &onlyKey) const
+{
+    QJsonObject values;
+    for (const SettingDef &definition : Settings::definitions()) {
+        if (!onlyKey.isEmpty() && definition.key != onlyKey) {
+            continue;
+        }
+        values.insert(definition.key, get(definition.key));
+    }
+    return values;
 }
 
 } // namespace PodStack

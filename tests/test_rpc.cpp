@@ -1,6 +1,7 @@
 #include "MockPodmanServer.h"
 
 #include "core/RpcClient.h"
+#include "machines/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -25,10 +26,23 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
     void lifecycle();
+    void proxyEnvironment();
+    void exposeLan();
     void subscriptions();
     void catalog();
+    void machinesDistros();
+    void machinesFlow();
+    void machineLogs();
+    void machineConsole();
+    void machineSsh();
+    void machinePorts();
+    void machineSnapshots();
+    void machineStats();
+    void machineFiles();
     void composeAndBuilds();
+    void multiPlatformBuild();
     void setupFlow();
+    void settingsFlow();
     void invalidRequests();
 
 private:
@@ -40,6 +54,10 @@ private:
     QString m_controlSocket;
     QString m_testDataDir;
     QString m_fakeProvider;
+    QString m_fakePodman;
+    QString m_fakeSsh;
+    QString m_fakeScp;
+    QString m_downloadDir;
 };
 
 namespace {
@@ -50,6 +68,85 @@ void writeFakeProvider(const QString &path)
         return;
     }
     file.write("#!/bin/sh\ncase \"$*\" in *fail*) echo \"fake failure\" >&2; exit 1;; esac\necho \"fake compose $@\"\nexit 0\n");
+    file.close();
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                        | QFileDevice::ExeOwner);
+}
+
+void writeFakePodman(const QString &path, const QString &logPath)
+{    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    const QString script = QStringLiteral(
+        "#!/bin/sh\n"
+        "echo \"$@\" >> \"%1\"\n"
+        "if [ \"$1\" = \"build\" ]; then\n"
+        "  case \"$*\" in\n"
+        "    *slow*) sleep 10; echo \"slow line\"; exit 0;;\n"
+        "    *fail-multi*) echo \"fake multi failure\" >&2; exit 1;;\n"
+        "  esac\n"
+        "  echo \"line one\"\n"
+        "  echo \"line two\"\n"
+        "fi\n"
+        "exit 0\n")
+                               .arg(logPath);
+    file.write(script.toUtf8());
+    file.close();
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                        | QFileDevice::ExeOwner);
+}
+
+void writeFakeSsh(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    const QString script = QStringLiteral(
+        "#!/bin/sh\n"
+        "echo \"$@\" >> \"%1\"\n"
+        "case \"$*\" in\n"
+        "  *\"ls -la --time-style=long-iso\"*)\n"
+        "    echo \"total 8\"\n"
+        "    echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
+        "    echo \"-rw-r--r-- 1 podstack podstack 42 2026-11-09 10:05 rpc.txt\"\n"
+        "    exit 0;;\n"
+        "esac\n"
+        "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
+        "echo \"__PODSTACK_MEM__\"\n"
+        "echo \"MemTotal:        2097152 kB\"\n"
+        "echo \"MemAvailable:    1048576 kB\"\n"
+        "echo \"__PODSTACK_NET__\"\n"
+        "echo \"  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\"\n"
+        "echo \"__PODSTACK_DISK__\"\n"
+        "echo \"   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\"\n"
+        "echo \"__PODSTACK_DF__\"\n"
+        "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
+        "echo \"/dev/vda1    10000000000  2500000000  7500000000      25% /\"\n")
+                               .arg(path + QStringLiteral(".args.log"));
+    file.write(script.toUtf8());
+    file.close();
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                        | QFileDevice::ExeOwner);
+}
+
+void writeFakeScp(const QString &path, const QString &downloadDir)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    const QString script = QStringLiteral(
+        "#!/bin/sh\n"
+        "echo \"$@\" >> \"%1\"\n"
+        "for last in \"$@\"; do :; done\n"
+        "case \"$last\" in\n"
+        "  \"%2\"/*) : > \"$last\";;\n"
+        "esac\n"
+        "exit 0\n")
+                               .arg(path + QStringLiteral(".args.log"), downloadDir);
+    file.write(script.toUtf8());
     file.close();
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                         | QFileDevice::ExeOwner);
@@ -73,6 +170,14 @@ void RpcTest::initTestCase()
     QDir().mkpath(m_testDataDir);
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     writeFakeProvider(m_fakeProvider);
+    m_fakePodman = m_testDataDir + QStringLiteral("/podman-fake.sh");
+    writeFakePodman(m_fakePodman, m_testDataDir + QStringLiteral("/podman-args.log"));
+    m_fakeSsh = m_testDataDir + QStringLiteral("/ssh-fake.sh");
+    writeFakeSsh(m_fakeSsh);
+    m_downloadDir = m_testDataDir + QStringLiteral("/downloads");
+    QVERIFY(QDir().mkpath(m_downloadDir));
+    m_fakeScp = m_testDataDir + QStringLiteral("/scp-fake.sh");
+    writeFakeScp(m_fakeScp, m_downloadDir);
 
     m_controlSocket = QDir::tempPath()
                       + QStringLiteral("/podstack-rpc-%1.sock")
@@ -86,12 +191,22 @@ void RpcTest::initTestCase()
     environment.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     environment.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     environment.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
+    environment.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
+    environment.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeSsh);
+    environment.insert(QStringLiteral("PODSTACK_SCP_BINARY"), m_fakeScp);
+    // Garante que o helper esteja indisponível mesmo em hosts com o serviço instalado.
+    environment.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"),
+                       QStringLiteral("unix:path=/tmp/podstack-rpc-no-system-bus.sock"));
+    environment.insert(QStringLiteral("PODSTACK_SSH_CONFIG"),
+                       m_testDataDir + QStringLiteral("/ssh/config"));
     environment.insert(QStringLiteral("XDG_DATA_HOME"),
                        m_testDataDir + QStringLiteral("/data"));
     environment.insert(QStringLiteral("XDG_STATE_HOME"),
                        m_testDataDir + QStringLiteral("/state"));
     environment.insert(QStringLiteral("XDG_CONFIG_HOME"),
                        m_testDataDir + QStringLiteral("/config"));
+    environment.insert(QStringLiteral("XDG_CACHE_HOME"),
+                       m_testDataDir + QStringLiteral("/cache"));
     m_daemon.setProcessEnvironment(environment);
     m_daemon.setProcessChannelMode(QProcess::ForwardedChannels);
     m_daemon.start(daemonPath, {QStringLiteral("--socket"), m_controlSocket});
@@ -309,6 +424,156 @@ void RpcTest::lifecycle()
     PodStack::Error unknownError;
     client.call(QStringLiteral("no.such.method"), {}, &unknownError);
     QCOMPARE(unknownError.code, QStringLiteral("PODSTACK_METHOD_NOT_FOUND"));
+}
+
+void RpcTest::proxyEnvironment()
+{
+    const QString configDir =
+        m_testDataDir + QStringLiteral("/config/podstack");
+    QVERIFY(QDir().mkpath(configDir));
+    const QString configPath = configDir + QStringLiteral("/config.json");
+    const auto writeConfig = [&configPath](const QByteArray &data) {
+        QFile file(configPath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return false;
+        }
+        const bool ok = file.write(data) == data.size();
+        file.close();
+        return ok;
+    };
+    const QByteArray proxyConfig =
+        QByteArrayLiteral("{\"network\":{\"proxy\":\"http://127.0.0.1:3128\","
+                          "\"proxyExclude\":[\".internal\",\"10.0.0.0/8\"]}}");
+    QVERIFY(writeConfig(proxyConfig));
+
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+    QJsonObject createParams;
+    createParams.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    createParams.insert(QStringLiteral("start"), false);
+    const QJsonObject created =
+        client.call(QStringLiteral("containers.create"), createParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.value(QStringLiteral("id")).toString(), QStringLiteral("created123"));
+
+    const QJsonObject body =
+        QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    const QJsonObject env = body.value(QStringLiteral("env")).toObject();
+    const QString proxy = QStringLiteral("http://127.0.0.1:3128");
+    QCOMPARE(env.value(QStringLiteral("HTTP_PROXY")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("HTTPS_PROXY")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("ALL_PROXY")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("http_proxy")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("https_proxy")).toString(), proxy);
+    QCOMPARE(env.value(QStringLiteral("all_proxy")).toString(), proxy);
+    const QString noProxy = env.value(QStringLiteral("NO_PROXY")).toString();
+    QCOMPARE(env.value(QStringLiteral("no_proxy")).toString(), noProxy);
+    const QStringList entries = noProxy.split(QLatin1Char(','));
+    QCOMPARE(entries.count(QStringLiteral("localhost")), 1);
+    QCOMPARE(entries.count(QStringLiteral("127.0.0.1")), 1);
+    QCOMPARE(entries.count(QStringLiteral("::1")), 1);
+    QCOMPARE(entries.count(QStringLiteral("*.localhost")), 1);
+    QCOMPARE(entries.count(QStringLiteral(".internal")), 1);
+    QCOMPARE(entries.count(QStringLiteral("10.0.0.0/8")), 1);
+
+    QJsonObject duplicateParams;
+    duplicateParams.insert(QStringLiteral("id"), QStringLiteral("abc123"));
+    const QJsonObject duplicated =
+        client.call(QStringLiteral("containers.duplicate"), duplicateParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(duplicated.value(QStringLiteral("id")).toString(),
+             QStringLiteral("created123"));
+    QCOMPARE(duplicated.value(QStringLiteral("source")).toString(),
+             QStringLiteral("abc123"));
+    const QJsonObject duplicatedEnv = QJsonDocument::fromJson(m_mock.lastCreateBody())
+                                          .object()
+                                          .value(QStringLiteral("env"))
+                                          .toObject();
+    QCOMPARE(duplicatedEnv.value(QStringLiteral("A")).toString(), QStringLiteral("B"));
+    QCOMPARE(duplicatedEnv.value(QStringLiteral("HTTP_PROXY")).toString(), proxy);
+
+    QJsonObject explicitEnv;
+    explicitEnv.insert(QStringLiteral("HTTP_PROXY"),
+                       QStringLiteral("http://explicit:9999"));
+    explicitEnv.insert(QStringLiteral("NO_PROXY"), QStringLiteral("custom.local"));
+    createParams.insert(QStringLiteral("env"), explicitEnv);
+    const QJsonObject explicitCreated =
+        client.call(QStringLiteral("containers.create"), createParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(explicitCreated.value(QStringLiteral("id")).toString(),
+             QStringLiteral("created123"));
+    const QJsonObject explicitBody =
+        QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    const QJsonObject explicitValues =
+        explicitBody.value(QStringLiteral("env")).toObject();
+    QCOMPARE(explicitValues.value(QStringLiteral("HTTP_PROXY")).toString(),
+             QStringLiteral("http://explicit:9999"));
+    QCOMPARE(explicitValues.value(QStringLiteral("NO_PROXY")).toString(),
+             QStringLiteral("custom.local"));
+    QCOMPARE(explicitValues.value(QStringLiteral("HTTPS_PROXY")).toString(), proxy);
+    QCOMPARE(explicitValues.value(QStringLiteral("ALL_PROXY")).toString(), proxy);
+
+    QVERIFY(writeConfig(
+        QByteArrayLiteral("{\"network\":{\"proxy\":\"auto\",\"proxyExclude\":[]}}")));
+}
+
+void RpcTest::exposeLan()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    QJsonObject port;
+    port.insert(QStringLiteral("hostPort"), 18080);
+    port.insert(QStringLiteral("containerPort"), 80);
+    port.insert(QStringLiteral("protocol"), QStringLiteral("tcp"));
+    QJsonArray ports;
+    ports.append(port);
+
+    QJsonObject createParams;
+    createParams.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    createParams.insert(QStringLiteral("start"), false);
+    createParams.insert(QStringLiteral("ports"), ports);
+
+    const QJsonObject created =
+        client.call(QStringLiteral("containers.create"), createParams, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.value(QStringLiteral("id")).toString(), QStringLiteral("created123"));
+    const QJsonObject body = QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    const QJsonArray mappings =
+        body.value(QStringLiteral("portmappings")).toArray();
+    QCOMPARE(mappings.size(), 1);
+    QCOMPARE(mappings.first().toObject().value(QStringLiteral("host_ip")).toString(),
+             QStringLiteral("127.0.0.1"));
+
+    const int createsBefore = m_mock.createCount();
+    createParams.insert(QStringLiteral("exposeLan"), true);
+    error = {};
+    const QJsonObject exposed =
+        client.call(QStringLiteral("containers.create"), createParams, &error);
+    QVERIFY(exposed.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_HELPER_REQUIRED"));
+    QCOMPARE(m_mock.createCount(), createsBefore);
+
+    QJsonObject exposeParams;
+    exposeParams.insert(QStringLiteral("id"), QStringLiteral("abc123"));
+    exposeParams.insert(QStringLiteral("expose"), true);
+    error = {};
+    const QJsonObject exposeResult =
+        client.call(QStringLiteral("containers.exposeLan"), exposeParams, &error);
+    QVERIFY(exposeResult.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_HELPER_REQUIRED"));
+
+    exposeParams.insert(QStringLiteral("id"), QStringLiteral("loopback123"));
+    error = {};
+    (void)client.call(QStringLiteral("containers.exposeLan"), exposeParams, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    QVERIFY(error.message.contains(QStringLiteral("Recrie o container")));
+    QVERIFY(!error.remediation.isEmpty());
+
+    exposeParams.insert(QStringLiteral("id"), QStringLiteral("missing"));
+    error = {};
+    (void)client.call(QStringLiteral("containers.exposeLan"), exposeParams, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 }
 
 void RpcTest::subscriptions()
@@ -581,6 +846,102 @@ void RpcTest::catalog()
                                      .value(QStringLiteral("ImagesSize"))
                                      .toDouble()),
              7001000);
+    QVERIFY(result.value(QStringLiteral("detailed")).toBool());
+    QJsonObject sections = result.value(QStringLiteral("sections")).toObject();
+    QCOMPARE(sections.value(QStringLiteral("images"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(sections.value(QStringLiteral("images"))
+                 .toObject()
+                 .value(QStringLiteral("items"))
+                 .toArray()
+                 .size(),
+             1);
+    const QJsonObject imageItem = sections.value(QStringLiteral("images"))
+                                      .toObject()
+                                      .value(QStringLiteral("items"))
+                                      .toArray()
+                                      .first()
+                                      .toObject();
+    QVERIFY(imageItem.value(QStringLiteral("dangling")).toBool());
+    QVERIFY(imageItem.value(QStringLiteral("unused")).toBool());
+    QCOMPARE(static_cast<qint64>(
+                 imageItem.value(QStringLiteral("uniqueSizeBytes")).toDouble()),
+             6000000);
+    QCOMPARE(static_cast<qint64>(sections.value(QStringLiteral("images"))
+                                     .toObject()
+                                     .value(QStringLiteral("reclaimableBytes"))
+                                     .toDouble()),
+             6000000);
+    QCOMPARE(sections.value(QStringLiteral("containers"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(static_cast<qint64>(sections.value(QStringLiteral("containers"))
+                                     .toObject()
+                                     .value(QStringLiteral("reclaimableBytes"))
+                                     .toDouble()),
+             1234);
+    QCOMPARE(sections.value(QStringLiteral("volumes"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QVERIFY(sections.value(QStringLiteral("volumes"))
+                .toObject()
+                .value(QStringLiteral("items"))
+                .toArray()
+                .first()
+                .toObject()
+                .value(QStringLiteral("inUse"))
+                .toBool());
+    QCOMPARE(static_cast<qint64>(sections.value(QStringLiteral("volumes"))
+                                     .toObject()
+                                     .value(QStringLiteral("reclaimableBytes"))
+                                     .toDouble()),
+             0);
+    QCOMPARE(static_cast<qint64>(sections.value(QStringLiteral("volumes"))
+                                     .toObject()
+                                     .value(QStringLiteral("items"))
+                                     .toArray()
+                                     .first()
+                                     .toObject()
+                                     .value(QStringLiteral("reclaimableBytes"))
+                                     .toDouble()),
+             0);
+    QCOMPARE(static_cast<qint64>(
+                 result.value(QStringLiteral("totalReclaimableBytes")).toDouble()),
+             6001234);
+
+    result = client.call(QStringLiteral("system.df"),
+                         QJsonObject{{QStringLiteral("detailed"), false}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!result.value(QStringLiteral("detailed")).toBool());
+    sections = result.value(QStringLiteral("sections")).toObject();
+    QCOMPARE(sections.value(QStringLiteral("images"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(sections.value(QStringLiteral("containers"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QCOMPARE(sections.value(QStringLiteral("volumes"))
+                 .toObject()
+                 .value(QStringLiteral("count"))
+                 .toInt(),
+             1);
+    QVERIFY(!sections.value(QStringLiteral("images"))
+                 .toObject()
+                 .contains(QStringLiteral("items")));
+    QCOMPARE(static_cast<qint64>(
+                 result.value(QStringLiteral("totalReclaimableBytes")).toDouble()),
+             6001234);
 
     QLocalSocket socket;
     socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
@@ -620,6 +981,1054 @@ void RpcTest::catalog()
 
     QDir(sourceDir).removeRecursively();
     QDir(destinationDir).removeRecursively();
+}
+
+void RpcTest::machinesDistros()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject result = client.call(QStringLiteral("machines.distros"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+    QVERIFY(items.size() >= 3);
+
+    QStringList distros;
+    for (const QJsonValue &value : items) {
+        const QJsonObject item = value.toObject();
+        distros.append(item.value(QStringLiteral("distro")).toString());
+        QVERIFY(!item.value(QStringLiteral("version")).toString().isEmpty());
+        QCOMPARE(item.value(QStringLiteral("arch")).toString(), QStringLiteral("amd64"));
+        QVERIFY(!item.value(QStringLiteral("url")).toString().isEmpty());
+        QVERIFY(!item.value(QStringLiteral("checksum")).toString().isEmpty());
+        QVERIFY(!item.value(QStringLiteral("algorithm")).toString().isEmpty());
+        QVERIFY(item.contains(QStringLiteral("size")));
+        QVERIFY(item.contains(QStringLiteral("default")));
+        QVERIFY(item.contains(QStringLiteral("cached")));
+    }
+    QVERIFY(distros.contains(QStringLiteral("ubuntu")));
+    QVERIFY(distros.contains(QStringLiteral("debian")));
+    QVERIFY(distros.contains(QStringLiteral("fedora")));
+}
+
+void RpcTest::machinesFlow()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject list = client.call(QStringLiteral("machines.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(list.value(QStringLiteral("items")).toArray().size(), 0);
+
+    PodStack::Error missing;
+    client.call(QStringLiteral("machines.get"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &missing);
+    QCOMPARE(missing.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::Error invalid;
+    client.call(QStringLiteral("machines.create"), {}, &invalid);
+    QCOMPARE(invalid.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    invalid = {};
+    client.call(QStringLiteral("machines.create"),
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
+                            {QStringLiteral("cpus"), 0}},
+                &invalid);
+    QCOMPARE(invalid.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    invalid = {};
+    client.call(QStringLiteral("machines.create"),
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
+                            {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+                            {QStringLiteral("memoryBytes"), 1}},
+                &invalid);
+    QCOMPARE(invalid.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QString sharedSource = m_testDataDir + QStringLiteral("/shared");
+    QVERIFY(QDir().mkpath(sharedSource));
+
+    const auto expectInvalidMounts = [&client](const QJsonArray &mounts) {
+        PodStack::Error mountError;
+        client.call(QStringLiteral("machines.create"),
+                    QJsonObject{{QStringLiteral("name"), QStringLiteral("valid-name")},
+                                {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+                                {QStringLiteral("mounts"), mounts}},
+                    &mountError);
+        QCOMPARE(mountError.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    };
+
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), sharedSource}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), QStringLiteral("shared")},
+        {QStringLiteral("target"), QStringLiteral("/mnt/shared")}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), m_testDataDir + QStringLiteral("/missing")},
+        {QStringLiteral("target"), QStringLiteral("/mnt/shared")}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), sharedSource},
+        {QStringLiteral("target"), QStringLiteral("mnt/shared")}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), sharedSource},
+        {QStringLiteral("target"), QStringLiteral("/mnt/../etc")}}});
+    expectInvalidMounts(QJsonArray{QJsonObject{
+        {QStringLiteral("source"), sharedSource},
+        {QStringLiteral("target"), QStringLiteral("/mnt/a")},
+        {QStringLiteral("tag"), QStringLiteral("Host 0")}}});
+
+    QJsonArray duplicateTags{
+        QJsonObject{{QStringLiteral("source"), sharedSource},
+                    {QStringLiteral("target"), QStringLiteral("/mnt/a")},
+                    {QStringLiteral("tag"), QStringLiteral("dados")}},
+        QJsonObject{{QStringLiteral("source"), sharedSource},
+                    {QStringLiteral("target"), QStringLiteral("/mnt/b")},
+                    {QStringLiteral("tag"), QStringLiteral("dados")}}};
+    expectInvalidMounts(duplicateTags);
+
+    QJsonArray tooManyMounts;
+    for (int i = 0; i < 9; ++i) {
+        tooManyMounts.append(QJsonObject{
+            {QStringLiteral("source"), sharedSource},
+            {QStringLiteral("target"), QStringLiteral("/mnt/%1").arg(i)}});
+    }
+    expectInvalidMounts(tooManyMounts);
+
+    PodStack::Error isolatedAgent;
+    client.call(QStringLiteral("machines.create"),
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("isolated-agent")},
+                            {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+                            {QStringLiteral("isolated"), true},
+                            {QStringLiteral("forwardSshAgent"), true}},
+                &isolatedAgent);
+    QCOMPARE(isolatedAgent.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY(!isolatedAgent.remediation.isEmpty());
+
+    PodStack::Error isolatedMount;
+    client.call(QStringLiteral("machines.create"),
+                QJsonObject{
+                    {QStringLiteral("name"), QStringLiteral("isolated-mount")},
+                    {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+                    {QStringLiteral("isolated"), true},
+                    {QStringLiteral("mounts"),
+                     QJsonArray{QJsonObject{
+                         {QStringLiteral("source"), sharedSource},
+                         {QStringLiteral("target"), QStringLiteral("/mnt/isolated")}}}}},
+                &isolatedMount);
+    QCOMPARE(isolatedMount.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY(!isolatedMount.remediation.isEmpty());
+
+    // `isolated` não é mais recusado de forma síncrona: o job inicia e falha
+    // depois na resolução da distro desconhecida.
+    PodStack::Error isolatedAcceptedError;
+    const QJsonObject isolatedJob =
+        client.call(QStringLiteral("machines.create"),
+                    QJsonObject{{QStringLiteral("name"), QStringLiteral("isolated-accepted")},
+                                {QStringLiteral("distro"),
+                                 QStringLiteral("distro-inexistente")},
+                                {QStringLiteral("isolated"), true}},
+                    &isolatedAcceptedError);
+    QVERIFY2(isolatedAcceptedError.isEmpty(), qPrintable(isolatedAcceptedError.message));
+    QVERIFY(!isolatedJob.value(QStringLiteral("jobId")).toString().isEmpty());
+
+    // Com mounts válidos o create síncrono precisa aceitar o array e iniciar o
+    // job. A distro desconhecida falha antes de qualquer download/QEMU.
+    QLocalSocket mountSocket;
+    mountSocket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(mountSocket.waitForConnected(3000));
+    QByteArray mountBuffer;
+    sendMessage(mountSocket,
+                QJsonObject{
+                    {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                    {QStringLiteral("id"), 4242},
+                    {QStringLiteral("method"), QStringLiteral("machines.create")},
+                    {QStringLiteral("params"),
+                     QJsonObject{
+                         {QStringLiteral("name"), QStringLiteral("mounts-valid")},
+                         {QStringLiteral("distro"), QStringLiteral("distro-inexistente")},
+                         {QStringLiteral("mounts"),
+                          QJsonArray{QJsonObject{
+                              {QStringLiteral("source"), sharedSource},
+                              {QStringLiteral("target"), QStringLiteral("/mnt/shared")},
+                              {QStringLiteral("readOnly"), true}}}}}},
+                });
+
+    QJsonObject createResponse;
+    QJsonObject donePayload;
+    QElapsedTimer mountTimer;
+    mountTimer.start();
+    while (mountTimer.elapsed() < 5000 && donePayload.isEmpty()) {
+        const int remaining = 5000 - static_cast<int>(mountTimer.elapsed());
+        if (remaining <= 0) {
+            break;
+        }
+        const QJsonObject message = readMessage(mountSocket, mountBuffer, remaining);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 4242) {
+            createResponse = message;
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.done")) {
+            donePayload = message.value(QStringLiteral("params")).toObject();
+        }
+    }
+    QVERIFY(!createResponse.isEmpty());
+    QVERIFY(createResponse.value(QStringLiteral("error")).isUndefined());
+    QVERIFY(!createResponse.value(QStringLiteral("result"))
+                 .toObject()
+                 .value(QStringLiteral("jobId"))
+                 .toString()
+                 .isEmpty());
+    QVERIFY(!donePayload.isEmpty());
+    const QJsonObject jobError = donePayload.value(QStringLiteral("error")).toObject();
+    QVERIFY(!jobError.isEmpty());
+    QVERIFY(jobError.value(QStringLiteral("code")).toString()
+            != QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    for (const QString &method :
+         {QStringLiteral("machines.start"), QStringLiteral("machines.stop"),
+          QStringLiteral("machines.restart"), QStringLiteral("machines.delete")}) {
+        PodStack::Error lifecycle;
+        client.call(method,
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                    &lifecycle);
+        QCOMPARE(lifecycle.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    }
+
+    PodStack::Error cancel;
+    client.call(QStringLiteral("machines.cancel"),
+                QJsonObject{{QStringLiteral("jobId"), QStringLiteral("missing-job")}}, &cancel);
+    QCOMPARE(cancel.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    const QJsonObject after = client.call(QStringLiteral("machines.list"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(after.value(QStringLiteral("items")).toArray().size(), 0);
+}
+
+void RpcTest::machineLogs()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.logs"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-logs-1");
+    meta.name = QStringLiteral("logs-demo");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString machinesRoot = m_testDataDir + QStringLiteral("/data/podstack/machines");
+    const QString machineDir = machinesRoot + QLatin1Char('/') + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+
+    QFile console(machineDir + QStringLiteral("/console.log"));
+    QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    console.write("boot 1\nboot 2\nboot 3\nboot 4\nboot 5\n");
+    console.close();
+    QVERIFY(console.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    const QJsonObject all =
+        client.call(QStringLiteral("machines.logs"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QJsonArray lines = all.value(QStringLiteral("lines")).toArray();
+    QCOMPARE(lines.size(), 5);
+    QCOMPARE(lines.first().toString(), QStringLiteral("boot 1"));
+    QCOMPARE(lines.last().toString(), QStringLiteral("boot 5"));
+
+    const QJsonObject tail =
+        client.call(QStringLiteral("machines.logs"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("logs-demo")},
+                                {QStringLiteral("tail"), 2}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    lines = tail.value(QStringLiteral("lines")).toArray();
+    QCOMPARE(lines.size(), 2);
+    QCOMPARE(lines.first().toString(), QStringLiteral("boot 4"));
+    QCOMPARE(lines.last().toString(), QStringLiteral("boot 5"));
+
+    PodStack::MachineMeta unstarted = meta;
+    unstarted.id = QStringLiteral("machine-logs-2");
+    unstarted.name = QStringLiteral("no-console");
+    QVERIFY2(store.upsert(unstarted, &storeError), qPrintable(storeError.message));
+    QVERIFY(QDir().mkpath(machinesRoot + QLatin1Char('/') + unstarted.id));
+
+    const QJsonObject empty =
+        client.call(QStringLiteral("machines.logs"),
+                    QJsonObject{{QStringLiteral("id"), unstarted.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(empty.value(QStringLiteral("lines")).toArray().size(), 0);
+
+    PodStack::MachineMeta symlinked = meta;
+    symlinked.id = QStringLiteral("machine-logs-3");
+    symlinked.name = QStringLiteral("symlink-console");
+    QVERIFY2(store.upsert(symlinked, &storeError), qPrintable(storeError.message));
+    const QString symlinkDir = machinesRoot + QLatin1Char('/') + symlinked.id;
+    QVERIFY(QDir().mkpath(symlinkDir));
+    const QString outside = m_testDataDir + QStringLiteral("/outside.log");
+    QFile outsideFile(outside);
+    QVERIFY(outsideFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    outsideFile.write("secret\n");
+    outsideFile.close();
+    QVERIFY(QFile::link(outside, symlinkDir + QStringLiteral("/console.log")));
+
+    PodStack::Error symlinkError;
+    client.call(QStringLiteral("machines.logs"),
+                QJsonObject{{QStringLiteral("id"), symlinked.id}}, &symlinkError);
+    QCOMPARE(symlinkError.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(store.remove(meta.id));
+    QVERIFY(store.remove(unstarted.id));
+    QVERIFY(store.remove(symlinked.id));
+    QDir(machineDir).removeRecursively();
+    QDir(machinesRoot + QLatin1Char('/') + unstarted.id).removeRecursively();
+    QDir(symlinkDir).removeRecursively();
+    QFile::remove(outside);
+}
+
+void RpcTest::machineConsole()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.console.read"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    client.call(QStringLiteral("machines.console"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-console-1");
+    meta.name = QStringLiteral("console-demo");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+    meta.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    meta.state = QStringLiteral("running");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString machinesRoot = m_testDataDir + QStringLiteral("/data/podstack/machines");
+    const QString machineDir = machinesRoot + QLatin1Char('/') + meta.id;
+    QVERIFY(QDir().mkpath(machineDir));
+    const QString consolePath = machineDir + QStringLiteral("/console.log");
+
+    QFile console(consolePath);
+    QVERIFY(console.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    console.write("boot 1\nboot 2\nboot 3\n");
+    console.close();
+    QVERIFY(console.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    const QJsonObject all =
+        client.call(QStringLiteral("machines.console.read"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(all.value(QStringLiteral("id")).toString(), meta.id);
+    QCOMPARE(all.value(QStringLiteral("data")).toString(),
+             QStringLiteral("boot 1\nboot 2\nboot 3\n"));
+
+    const QJsonObject tail =
+        client.call(QStringLiteral("machines.console.read"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("console-demo")},
+                                {QStringLiteral("tailBytes"), 14}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(tail.value(QStringLiteral("data")).toString(),
+             QStringLiteral("boot 2\nboot 3\n"));
+
+    QLocalSocket socket;
+    socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(socket.waitForConnected(3000));
+    QByteArray buffer;
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("machines.console")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("id"), meta.id}}}});
+
+    QString subscriptionId;
+    QJsonObject initialDelta;
+    for (int i = 0; i < 30 && (initialDelta.isEmpty() || subscriptionId.isEmpty()); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 1) {
+            subscriptionId = message.value(QStringLiteral("result"))
+                                 .toObject()
+                                 .value(QStringLiteral("subscriptionId"))
+                                 .toString();
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.console.delta")) {
+            initialDelta = message.value(QStringLiteral("params")).toObject();
+        }
+    }
+    QVERIFY(!subscriptionId.isEmpty());
+    QVERIFY2(!initialDelta.isEmpty(), "nenhum machines.console.delta inicial recebido");
+    QCOMPARE(initialDelta.value(QStringLiteral("subscriptionId")).toString(), subscriptionId);
+    QCOMPARE(initialDelta.value(QStringLiteral("id")).toString(), meta.id);
+    QVERIFY(initialDelta.value(QStringLiteral("reset")).toBool());
+    QCOMPARE(initialDelta.value(QStringLiteral("data")).toString(),
+             QStringLiteral("boot 1\nboot 2\nboot 3\n"));
+
+    QFile appendConsole(consolePath);
+    QVERIFY(appendConsole.open(QIODevice::Append));
+    appendConsole.write("boot 4\n");
+    appendConsole.close();
+
+    QJsonObject appendedDelta;
+    for (int i = 0; i < 40 && appendedDelta.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.console.delta")) {
+            const QJsonObject payload = message.value(QStringLiteral("params")).toObject();
+            if (payload.value(QStringLiteral("data")).toString().contains(
+                    QStringLiteral("boot 4"))) {
+                appendedDelta = payload;
+            }
+        }
+    }
+    QVERIFY2(!appendedDelta.isEmpty(), "nenhum delta com os bytes anexados");
+    QCOMPARE(appendedDelta.value(QStringLiteral("data")).toString(),
+             QStringLiteral("boot 4\n"));
+    QVERIFY(!appendedDelta.value(QStringLiteral("reset")).toBool());
+
+    QFile truncatedConsole(consolePath);
+    QVERIFY(truncatedConsole.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    truncatedConsole.write("fresh\n");
+    truncatedConsole.close();
+
+    QJsonObject resetDelta;
+    for (int i = 0; i < 40 && resetDelta.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.console.delta")) {
+            const QJsonObject payload = message.value(QStringLiteral("params")).toObject();
+            if (payload.value(QStringLiteral("data")).toString().contains(
+                    QStringLiteral("fresh"))) {
+                resetDelta = payload;
+            }
+        }
+    }
+    QVERIFY2(!resetDelta.isEmpty(), "nenhum delta após truncate");
+    QCOMPARE(resetDelta.value(QStringLiteral("data")).toString(), QStringLiteral("fresh\n"));
+    QVERIFY(resetDelta.value(QStringLiteral("reset")).toBool());
+
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 2},
+                 {QStringLiteral("method"), QStringLiteral("machines.console.unsubscribe")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}}}});
+    QJsonObject unsubscribeResponse;
+    for (int i = 0; i < 20 && unsubscribeResponse.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 2) {
+            unsubscribeResponse = message;
+        }
+    }
+    QCOMPARE(unsubscribeResponse.value(QStringLiteral("result"))
+                 .toObject()
+                 .value(QStringLiteral("subscriptionId"))
+                 .toString(),
+             subscriptionId);
+    socket.abort();
+
+    PodStack::MachineMeta symlinked = meta;
+    symlinked.id = QStringLiteral("machine-console-2");
+    symlinked.name = QStringLiteral("console-symlink");
+    QVERIFY2(store.upsert(symlinked, &storeError), qPrintable(storeError.message));
+    const QString symlinkDir = machinesRoot + QLatin1Char('/') + symlinked.id;
+    QVERIFY(QDir().mkpath(symlinkDir));
+    const QString outside = m_testDataDir + QStringLiteral("/console-outside.log");
+    QFile outsideFile(outside);
+    QVERIFY(outsideFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    outsideFile.write("secret\n");
+    outsideFile.close();
+    QVERIFY(QFile::link(outside, symlinkDir + QStringLiteral("/console.log")));
+
+    PodStack::Error symlinkError;
+    client.call(QStringLiteral("machines.console.read"),
+                QJsonObject{{QStringLiteral("id"), symlinked.id}}, &symlinkError);
+    QCOMPARE(symlinkError.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    symlinkError = {};
+    client.call(QStringLiteral("machines.console"),
+                QJsonObject{{QStringLiteral("id"), symlinked.id}}, &symlinkError);
+    QCOMPARE(symlinkError.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    PodStack::MachineMeta unstarted = meta;
+    unstarted.id = QStringLiteral("machine-console-3");
+    unstarted.name = QStringLiteral("console-empty");
+    QVERIFY2(store.upsert(unstarted, &storeError), qPrintable(storeError.message));
+    QVERIFY(QDir().mkpath(machinesRoot + QLatin1Char('/') + unstarted.id));
+
+    const QJsonObject empty =
+        client.call(QStringLiteral("machines.console.read"),
+                    QJsonObject{{QStringLiteral("id"), unstarted.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(empty.value(QStringLiteral("data")).toString(), QString());
+
+    QVERIFY(store.remove(meta.id));
+    QVERIFY(store.remove(symlinked.id));
+    QVERIFY(store.remove(unstarted.id));
+    QDir(machineDir).removeRecursively();
+    QDir(symlinkDir).removeRecursively();
+    QDir(machinesRoot + QLatin1Char('/') + unstarted.id).removeRecursively();
+    QFile::remove(outside);
+}
+
+void RpcTest::machineSsh()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.ssh"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-ssh-1");
+    meta.name = QStringLiteral("ssh-demo");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/id_ed25519");
+    meta.forwardSshAgent = true;
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    QVERIFY(QDir().mkpath(QFileInfo(meta.sshKeyPath).absolutePath()));
+    QFile key(meta.sshKeyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.ssh"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("ssh-demo")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("host")).toString(), QStringLiteral("127.0.0.1"));
+    QCOMPARE(result.value(QStringLiteral("port")).toInt(), 32222);
+    QCOMPARE(result.value(QStringLiteral("user")).toString(), QStringLiteral("podstack"));
+    QCOMPARE(result.value(QStringLiteral("identityFile")).toString(), meta.sshKeyPath);
+    QCOMPARE(result.value(QStringLiteral("forwardAgent")).toBool(), true);
+    QVERIFY(!result.contains(QStringLiteral("name")));
+    QVERIFY(!result.contains(QStringLiteral("keyContent")));
+
+    const QJsonObject byId =
+        client.call(QStringLiteral("machines.ssh"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(byId.value(QStringLiteral("identityFile")).toString(), meta.sshKeyPath);
+
+    const QString configPath = m_testDataDir + QStringLiteral("/ssh/config");
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::ReadOnly));
+    QVERIFY(QString::fromUtf8(config.readAll())
+                .contains(QStringLiteral("# >>> podstack: ssh-demo")));
+    config.close();
+
+    QVERIFY(store.remove(meta.id));
+    QFile::remove(meta.sshKeyPath);
+    QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+}
+
+void RpcTest::machineFiles()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    for (const QString &method :
+         {QStringLiteral("machines.files.list"),
+          QStringLiteral("machines.files.download"),
+          QStringLiteral("machines.files.upload")}) {
+        PodStack::Error missing;
+        client.call(method,
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")},
+                                {QStringLiteral("path"), QStringLiteral("/")},
+                                {QStringLiteral("destination"),
+                                 m_downloadDir + QStringLiteral("/missing.txt")},
+                                {QStringLiteral("sourcePath"),
+                                 m_testDataDir + QStringLiteral("/missing.txt")}},
+                    &missing);
+        QCOMPARE(missing.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    }
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-files-1");
+    meta.name = QStringLiteral("files-demo");
+    meta.distro = QStringLiteral("fedora");
+    meta.distroVersion = QStringLiteral("44");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/files_ed25519");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+    QVERIFY(QDir().mkpath(QFileInfo(meta.sshKeyPath).absolutePath()));
+    QFile key(meta.sshKeyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    PodStack::Error invalidPath;
+    client.call(QStringLiteral("machines.files.list"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("path"), QStringLiteral("/tmp/bad\npath")}},
+                &invalidPath);
+    QCOMPARE(invalidPath.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QJsonObject listing =
+        client.call(QStringLiteral("machines.files.list"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("files-demo")},
+                                {QStringLiteral("path"), QStringLiteral("/home/podstack")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(listing.value(QStringLiteral("path")).toString(),
+             QStringLiteral("/home/podstack"));
+    const QJsonArray items = listing.value(QStringLiteral("items")).toArray();
+    QCOMPARE(items.size(), 2);
+    bool sawDirectory = false;
+    bool sawFile = false;
+    for (const QJsonValue &value : items) {
+        const QJsonObject item = value.toObject();
+        QVERIFY(!item.value(QStringLiteral("path")).toString().contains(m_testDataDir));
+        if (item.value(QStringLiteral("name")).toString() == QStringLiteral("docs")) {
+            sawDirectory = item.value(QStringLiteral("directory")).toBool();
+            QCOMPARE(item.value(QStringLiteral("path")).toString(),
+                     QStringLiteral("/home/podstack/docs"));
+        }
+        if (item.value(QStringLiteral("name")).toString() == QStringLiteral("rpc.txt")) {
+            sawFile = !item.value(QStringLiteral("directory")).toBool();
+            QCOMPARE(item.value(QStringLiteral("size")).toInteger(), 42LL);
+        }
+    }
+    QVERIFY(sawDirectory);
+    QVERIFY(sawFile);
+
+    const QJsonObject download =
+        client.call(QStringLiteral("machines.files.download"),
+                    QJsonObject{{QStringLiteral("id"), meta.id},
+                                {QStringLiteral("path"),
+                                 QStringLiteral("/home/podstack/rpc.txt")},
+                                {QStringLiteral("destination"),
+                                 m_downloadDir + QStringLiteral("/rpc.txt")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(download.value(QStringLiteral("path")).toString(),
+             QStringLiteral("/home/podstack/rpc.txt"));
+    QCOMPARE(download.value(QStringLiteral("destination")).toString(),
+             m_downloadDir + QStringLiteral("/rpc.txt"));
+    QVERIFY(QFileInfo::exists(m_downloadDir + QStringLiteral("/rpc.txt")));
+
+    const QString sourcePath = m_testDataDir + QStringLiteral("/rpc-upload.txt");
+    QFile source(sourcePath);
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    source.write("rpc upload");
+    source.close();
+
+    const QJsonObject upload =
+        client.call(QStringLiteral("machines.files.upload"),
+                    QJsonObject{{QStringLiteral("id"), meta.id},
+                                {QStringLiteral("path"),
+                                 QStringLiteral("/tmp/rpc-upload.txt")},
+                                {QStringLiteral("sourcePath"), sourcePath}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(upload.value(QStringLiteral("path")).toString(),
+             QStringLiteral("/tmp/rpc-upload.txt"));
+    QCOMPARE(upload.value(QStringLiteral("sourcePath")).toString(), sourcePath);
+    QCOMPARE(upload.value(QStringLiteral("ok")).toBool(), true);
+
+    PodStack::Error invalidSource;
+    client.call(QStringLiteral("machines.files.upload"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("path"), QStringLiteral("/tmp/x")},
+                            {QStringLiteral("sourcePath"),
+                             m_testDataDir + QStringLiteral("/does-not-exist")}},
+                &invalidSource);
+    QCOMPARE(invalidSource.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(store.remove(meta.id));
+    QFile::remove(meta.sshKeyPath);
+    QFile::remove(sourcePath);
+    QFile::remove(m_downloadDir + QStringLiteral("/rpc.txt"));
+    QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+}
+
+void RpcTest::machinePorts()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.ports.list"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-ports-1");
+    meta.name = QStringLiteral("ports-rpc");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("stopped");
+    meta.sshPort = 32222;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    meta.ports = {PodStack::MachinePort{QStringLiteral("ssh-rpc"),
+                                       32222,
+                                       22,
+                                       QStringLiteral("tcp"),
+                                       false,
+                                       QStringLiteral("ssh")}};
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QJsonObject initial =
+        client.call(QStringLiteral("machines.ports.list"),
+                    QJsonObject{{QStringLiteral("id"), meta.name}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(initial.value(QStringLiteral("items")).toArray().size(), 1);
+
+    PodStack::Error invalidType;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("ports"), QStringLiteral("8080")}},
+                &invalidType);
+    QCOMPARE(invalidType.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error invalidMissing;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id}}, &invalidMissing);
+    QCOMPARE(invalidMissing.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error invalidHostType;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("ports"),
+                             QJsonArray{QJsonObject{{QStringLiteral("hostPort"),
+                                                     QStringLiteral("8080")},
+                                                   {QStringLiteral("guestPort"), 80}}}}},
+                &invalidHostType);
+    QCOMPARE(invalidHostType.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error invalidHost;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("ports"),
+                             QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 0},
+                                                   {QStringLiteral("guestPort"), 80}}}}},
+                &invalidHost);
+    QCOMPARE(invalidHost.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QJsonObject configured =
+        client.call(QStringLiteral("machines.ports.set"),
+                    QJsonObject{
+                        {QStringLiteral("id"), meta.id},
+                        {QStringLiteral("ports"),
+                         QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 18080},
+                                               {QStringLiteral("guestPort"), 80},
+                                               {QStringLiteral("protocol"),
+                                                QStringLiteral("tcp")},
+                                               {QStringLiteral("exposeLan"), false},
+                                               {QStringLiteral("label"),
+                                                QStringLiteral("web")}}}}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonArray configuredPorts = configured.value(QStringLiteral("ports")).toArray();
+    QCOMPARE(configuredPorts.size(), 2);
+    bool sawSsh = false;
+    bool sawWeb = false;
+    for (const QJsonValue &value : configuredPorts) {
+        const QJsonObject port = value.toObject();
+        if (port.value(QStringLiteral("guestPort")).toInt() == 22) {
+            sawSsh = port.value(QStringLiteral("id")).toString() == QStringLiteral("ssh-rpc");
+        } else if (port.value(QStringLiteral("hostPort")).toInt() == 18080) {
+            sawWeb = port.value(QStringLiteral("guestPort")).toInt() == 80
+                     && port.value(QStringLiteral("label")).toString() == QStringLiteral("web")
+                     && !port.value(QStringLiteral("id")).toString().isEmpty();
+        }
+    }
+    QVERIFY(sawSsh);
+    QVERIFY(sawWeb);
+
+    const QJsonObject listed =
+        client.call(QStringLiteral("machines.ports.list"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(listed.value(QStringLiteral("items")).toArray().size(), 2);
+
+    // Enviar só as portas não-SSH mantém a SSH; alterar a SSH é recusado.
+    const QJsonObject cleared =
+        client.call(QStringLiteral("machines.ports.set"),
+                    QJsonObject{{QStringLiteral("id"), meta.id},
+                                {QStringLiteral("ports"), QJsonArray{}}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cleared.value(QStringLiteral("ports")).toArray().size(), 1);
+    QCOMPARE(cleared.value(QStringLiteral("ports"))
+                 .toArray()
+                 .at(0)
+                 .toObject()
+                 .value(QStringLiteral("id"))
+                 .toString(),
+             QStringLiteral("ssh-rpc"));
+
+    PodStack::Error alteredSsh;
+    client.call(QStringLiteral("machines.ports.set"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("ports"),
+                             QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 32223},
+                                                   {QStringLiteral("guestPort"), 22},
+                                                   {QStringLiteral("protocol"),
+                                                    QStringLiteral("tcp")}}}}},
+                &alteredSsh);
+    QCOMPARE(alteredSsh.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(store.remove(meta.id));
+    QDir(m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id)
+        .removeRecursively();
+}
+
+void RpcTest::machineSnapshots()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.snapshots.list"), {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    client.call(QStringLiteral("machines.snapshots.list"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    client.call(QStringLiteral("machines.snapshots.create"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")},
+                            {QStringLiteral("name"), QStringLiteral("snap")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-snapshots-1");
+    meta.name = QStringLiteral("snapshots-rpc");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    PodStack::Error invalidName;
+    client.call(QStringLiteral("machines.snapshots.create"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("name"), QStringLiteral("bad name")}},
+                &invalidName);
+    QCOMPARE(invalidName.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error missingName;
+    client.call(QStringLiteral("machines.snapshots.create"),
+                QJsonObject{{QStringLiteral("id"), meta.id}}, &missingName);
+    QCOMPARE(missingName.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error missingSnapshotName;
+    client.call(QStringLiteral("machines.snapshots.remove"),
+                QJsonObject{{QStringLiteral("id"), meta.id}}, &missingSnapshotName);
+    QCOMPARE(missingSnapshotName.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    // A machine existe no índice, mas não tem disco: a listagem falha em I/O.
+    PodStack::Error missingDisk;
+    const QJsonObject listed =
+        client.call(QStringLiteral("machines.snapshots.list"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &missingDisk);
+    QCOMPARE(missingDisk.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(listed.isEmpty());
+
+    QVERIFY(store.remove(meta.id));
+}
+
+void RpcTest::machineStats()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.stats"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("machine-stats-1");
+    meta.name = QStringLiteral("stats-demo");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/stats-id_ed25519");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    QVERIFY(QDir().mkpath(QFileInfo(meta.sshKeyPath).absolutePath()));
+    QFile key(meta.sshKeyPath);
+    QVERIFY(key.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    key.write("FAKE-PRIVATE-KEY");
+    key.close();
+    QVERIFY(key.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    error = {};
+    const QJsonObject sample =
+        client.call(QStringLiteral("machines.stats"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("stats-demo")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(sample.value(QStringLiteral("ts")).toInteger() > 0);
+    QCOMPARE(sample.value(QStringLiteral("cpuPercent")).toDouble(), 0.0);
+    QCOMPARE(sample.value(QStringLiteral("memUsed")).toInteger(), 1073741824LL);
+    QCOMPARE(sample.value(QStringLiteral("memTotal")).toInteger(), 2147483648LL);
+    QCOMPARE(sample.value(QStringLiteral("memPercent")).toDouble(), 50.0);
+    QCOMPARE(sample.value(QStringLiteral("netRx")).toInteger(), 0);
+    QCOMPARE(sample.value(QStringLiteral("netTx")).toInteger(), 0);
+    QCOMPARE(sample.value(QStringLiteral("diskRead")).toInteger(), 0);
+    QCOMPARE(sample.value(QStringLiteral("diskWrite")).toInteger(), 0);
+    QCOMPARE(sample.value(QStringLiteral("diskUsed")).toInteger(), 2500000000LL);
+    QCOMPARE(sample.value(QStringLiteral("diskTotal")).toInteger(), 10000000000LL);
+    QCOMPARE(sample.value(QStringLiteral("diskPercent")).toDouble(), 25.0);
+
+    QLocalSocket socket;
+    socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(socket.waitForConnected(3000));
+    QByteArray buffer;
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("machines.stats.subscribe")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("id"), meta.id},
+                              {QStringLiteral("intervalSeconds"), 1}}}});
+
+    QString subscriptionId;
+    QJsonObject delta;
+    for (int i = 0; i < 20 && delta.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 1) {
+            subscriptionId = message.value(QStringLiteral("result"))
+                                 .toObject()
+                                 .value(QStringLiteral("subscriptionId"))
+                                 .toString();
+        }
+        if (message.value(QStringLiteral("method")).toString()
+            == QStringLiteral("machines.stats.delta")) {
+            delta = message.value(QStringLiteral("params")).toObject();
+        }
+    }
+    QVERIFY(!subscriptionId.isEmpty());
+    QVERIFY2(!delta.isEmpty(), "nenhum machines.stats.delta recebido");
+    QCOMPARE(delta.value(QStringLiteral("subscriptionId")).toString(), subscriptionId);
+    QCOMPARE(delta.value(QStringLiteral("id")).toString(), meta.id);
+    QCOMPARE(delta.value(QStringLiteral("memTotal")).toInteger(), 2147483648LL);
+    QCOMPARE(delta.value(QStringLiteral("diskPercent")).toDouble(), 25.0);
+
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 2},
+                 {QStringLiteral("method"), QStringLiteral("machines.stats.unsubscribe")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}}}});
+    QJsonObject unsubscribeResponse;
+    for (int i = 0; i < 20 && unsubscribeResponse.isEmpty(); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("id")).toInt() == 2) {
+            unsubscribeResponse = message;
+        }
+    }
+    QCOMPARE(unsubscribeResponse.value(QStringLiteral("result"))
+                 .toObject()
+                 .value(QStringLiteral("subscriptionId"))
+                 .toString(),
+             subscriptionId);
+
+    QVERIFY(store.remove(meta.id));
+    QFile::remove(meta.sshKeyPath);
+    QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
 }
 
 void RpcTest::composeAndBuilds()
@@ -767,6 +2176,9 @@ void RpcTest::composeAndBuilds()
     QCOMPARE(build.value(QStringLiteral("status")).toString(), QStringLiteral("success"));
     QCOMPARE(build.value(QStringLiteral("imageRef")).toString(),
              QStringLiteral("localhost/mock:1"));
+    const QJsonArray singlePlatforms = build.value(QStringLiteral("platforms")).toArray();
+    QCOMPARE(singlePlatforms.size(), 1);
+    QCOMPARE(singlePlatforms.at(0).toString(), QStringLiteral("linux/amd64"));
 
     const QJsonObject removed =
         client.call(QStringLiteral("builds.remove"),
@@ -869,6 +2281,199 @@ void RpcTest::composeAndBuilds()
     QCOMPARE(emptyRemove.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
+void RpcTest::multiPlatformBuild()
+{
+    const QString projectDir = m_testDataDir + QStringLiteral("/multi-project");
+    QDir().mkpath(projectDir);
+    QFile dockerfile(projectDir + QStringLiteral("/Dockerfile"));
+    QVERIFY(dockerfile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    dockerfile.write("FROM alpine:3.20\n");
+    dockerfile.close();
+
+    const QString argsLog = m_testDataDir + QStringLiteral("/podman-args.log");
+    QFile::remove(argsLog);
+
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+    const QJsonArray platforms{QStringLiteral("linux/amd64"), QStringLiteral("linux/arm64")};
+
+    const auto waitDone = [this](QLocalSocket &socket, QByteArray &buffer, int *deltas) {
+        QString status;
+        for (int i = 0; i < 100; ++i) {
+            const QJsonObject message = readMessage(socket, buffer, 5000);
+            if (message.isEmpty()) {
+                break;
+            }
+            const QString method = message.value(QStringLiteral("method")).toString();
+            if (method == QStringLiteral("builds.delta")) {
+                if (deltas) {
+                    ++(*deltas);
+                }
+            } else if (method == QStringLiteral("builds.done")) {
+                status = message.value(QStringLiteral("params"))
+                             .toObject()
+                             .value(QStringLiteral("status"))
+                             .toString();
+                break;
+            }
+        }
+        return status;
+    };
+
+    // Sucesso: duas plataformas viram manifest list via CLI falso.
+    QLocalSocket socket;
+    socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(socket.waitForConnected(5000));
+    QByteArray buffer;
+    sendMessage(socket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("builds.start")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                              {QStringLiteral("tag"), QStringLiteral("localhost/mock:multi")},
+                              {QStringLiteral("platforms"), platforms},
+                              {QStringLiteral("buildArgs"),
+                               QJsonObject{{QStringLiteral("A"), QStringLiteral("B")}}}}}});
+    const QJsonObject response = readMessage(socket, buffer);
+    const QString buildId = response.value(QStringLiteral("result"))
+                                .toObject()
+                                .value(QStringLiteral("buildId"))
+                                .toString();
+    QVERIFY(!buildId.isEmpty());
+    int deltas = 0;
+    QCOMPARE(waitDone(socket, buffer, &deltas), QStringLiteral("success"));
+    QVERIFY(deltas >= 2);
+    socket.disconnectFromServer();
+
+    QFile argsFile(argsLog);
+    QVERIFY(argsFile.open(QIODevice::ReadOnly));
+    const QString args = QString::fromUtf8(argsFile.readAll());
+    argsFile.close();
+    QVERIFY2(args.contains(QStringLiteral("manifest rm localhost/mock:multi")),
+             qPrintable(args));
+    QVERIFY2(args.contains(QStringLiteral("build --platform linux/amd64,linux/arm64 "
+                                          "--manifest localhost/mock:multi -f Dockerfile "
+                                          "--build-arg A=B ")),
+             qPrintable(args));
+    QVERIFY2(args.contains(projectDir), qPrintable(args));
+
+    const QJsonObject build =
+        client.call(QStringLiteral("builds.get"),
+                    QJsonObject{{QStringLiteral("id"), buildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(build.value(QStringLiteral("status")).toString(), QStringLiteral("success"));
+    const QJsonArray storedPlatforms = build.value(QStringLiteral("platforms")).toArray();
+    QCOMPARE(storedPlatforms.size(), 2);
+    QCOMPARE(storedPlatforms.at(0).toString(), QStringLiteral("linux/amd64"));
+    QCOMPARE(storedPlatforms.at(1).toString(), QStringLiteral("linux/arm64"));
+    client.call(QStringLiteral("builds.remove"),
+                QJsonObject{{QStringLiteral("id"), buildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    // Falha do CLI falso: o build termina como failed e mantém platforms.
+    QLocalSocket failSocket;
+    failSocket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(failSocket.waitForConnected(5000));
+    QByteArray failBuffer;
+    sendMessage(failSocket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("builds.start")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                              {QStringLiteral("tag"), QStringLiteral("localhost/mock:fail-multi")},
+                              {QStringLiteral("platforms"), platforms}}}});
+    const QString failBuildId = readMessage(failSocket, failBuffer)
+                                    .value(QStringLiteral("result"))
+                                    .toObject()
+                                    .value(QStringLiteral("buildId"))
+                                    .toString();
+    QVERIFY(!failBuildId.isEmpty());
+    QCOMPARE(waitDone(failSocket, failBuffer, nullptr), QStringLiteral("failed"));
+    failSocket.disconnectFromServer();
+
+    const QJsonObject failedBuild =
+        client.call(QStringLiteral("builds.get"),
+                    QJsonObject{{QStringLiteral("id"), failBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(failedBuild.value(QStringLiteral("status")).toString(), QStringLiteral("failed"));
+    QVERIFY(!failedBuild.value(QStringLiteral("error")).toString().isEmpty());
+    const QJsonArray failedPlatforms =
+        failedBuild.value(QStringLiteral("platforms")).toArray();
+    QCOMPARE(failedPlatforms.size(), 2);
+    QCOMPARE(failedPlatforms.at(0).toString(), QStringLiteral("linux/amd64"));
+    QCOMPARE(failedPlatforms.at(1).toString(), QStringLiteral("linux/arm64"));
+    client.call(QStringLiteral("builds.remove"),
+                QJsonObject{{QStringLiteral("id"), failBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    // Cancelamento: builds.cancel sinaliza a subscription e mata o CLI lento.
+    QLocalSocket cancelSocket;
+    cancelSocket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
+    QVERIFY(cancelSocket.waitForConnected(5000));
+    QByteArray cancelBuffer;
+    sendMessage(cancelSocket,
+                {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                 {QStringLiteral("id"), 1},
+                 {QStringLiteral("method"), QStringLiteral("builds.start")},
+                 {QStringLiteral("params"),
+                  QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                              {QStringLiteral("tag"), QStringLiteral("localhost/mock:slow")},
+                              {QStringLiteral("platform"),
+                               QStringLiteral("linux/amd64,linux/arm64")}}}});
+    const QString cancelBuildId = readMessage(cancelSocket, cancelBuffer)
+                                      .value(QStringLiteral("result"))
+                                      .toObject()
+                                      .value(QStringLiteral("buildId"))
+                                      .toString();
+    QVERIFY(!cancelBuildId.isEmpty());
+    QTest::qWait(150);
+    const QJsonObject cancelled =
+        client.call(QStringLiteral("builds.cancel"),
+                    QJsonObject{{QStringLiteral("id"), cancelBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(cancelled.value(QStringLiteral("cancelled")).toBool());
+    QCOMPARE(waitDone(cancelSocket, cancelBuffer, nullptr), QStringLiteral("cancelled"));
+    cancelSocket.disconnectFromServer();
+
+    const QJsonObject cancelledBuild =
+        client.call(QStringLiteral("builds.get"),
+                    QJsonObject{{QStringLiteral("id"), cancelBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cancelledBuild.value(QStringLiteral("status")).toString(),
+             QStringLiteral("cancelled"));
+    const QJsonArray cancelledPlatforms =
+        cancelledBuild.value(QStringLiteral("platforms")).toArray();
+    QCOMPARE(cancelledPlatforms.size(), 2);
+    QCOMPARE(cancelledPlatforms.at(0).toString(), QStringLiteral("linux/amd64"));
+    QCOMPARE(cancelledPlatforms.at(1).toString(), QStringLiteral("linux/arm64"));
+    client.call(QStringLiteral("builds.remove"),
+                QJsonObject{{QStringLiteral("id"), cancelBuildId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    PodStack::Error invalidPlatform;
+    client.call(QStringLiteral("builds.start"),
+                QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                            {QStringLiteral("tag"), QStringLiteral("localhost/mock:invalid")},
+                            {QStringLiteral("platforms"),
+                             QJsonArray{QStringLiteral("linux/amd64/extra/v8/bad")}}},
+                &invalidPlatform);
+    QCOMPARE(invalidPlatform.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QJsonArray tooMany;
+    for (int i = 0; i < 9; ++i) {
+        tooMany.append(QStringLiteral("linux/arch%1").arg(i));
+    }
+    PodStack::Error tooManyError;
+    client.call(QStringLiteral("builds.start"),
+                QJsonObject{{QStringLiteral("contextPath"), projectDir},
+                            {QStringLiteral("tag"), QStringLiteral("localhost/mock:too-many")},
+                            {QStringLiteral("platforms"), tooMany}},
+                &tooManyError);
+    QCOMPARE(tooManyError.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
 void RpcTest::setupFlow()
 {
     PodStack::RpcClient client(m_controlSocket);
@@ -936,6 +2541,180 @@ void RpcTest::setupFlow()
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(afterComplete.value(QStringLiteral("completed")).toBool(), true);
     QVERIFY(!afterComplete.value(QStringLiteral("completedAt")).isNull());
+}
+
+void RpcTest::settingsFlow()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject schema = client.call(QStringLiteral("settings.schema"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonArray definitions = schema.value(QStringLiteral("schema")).toArray();
+    QCOMPARE(definitions.size(), 82);
+    bool engineRestart = false;
+    bool proxySecret = false;
+    for (const QJsonValue &value : definitions) {
+        const QJsonObject definition = value.toObject();
+        if (definition.value(QStringLiteral("key")).toString()
+            == QStringLiteral("engine.mode")) {
+            engineRestart = definition.value(QStringLiteral("restartRequired")).toBool();
+        }
+        if (definition.value(QStringLiteral("key")).toString()
+            == QStringLiteral("network.proxy")) {
+            proxySecret = definition.value(QStringLiteral("secret")).toBool();
+        }
+    }
+    QVERIFY(engineRestart);
+    QVERIFY(proxySecret);
+
+    const QJsonObject all = client.call(QStringLiteral("settings.get"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonObject defaults = all.value(QStringLiteral("values")).toObject();
+    QCOMPARE(defaults.size(), 82);
+    QCOMPARE(defaults.value(QStringLiteral("engine.mode")).toString(),
+             QStringLiteral("rootless"));
+    QCOMPARE(defaults.value(QStringLiteral("app.theme")).toString(),
+             QStringLiteral("system"));
+    QCOMPARE(defaults.value(QStringLiteral("network.httpsPort")).toInt(), 8443);
+
+    const QJsonObject one =
+        client.call(QStringLiteral("settings.get"),
+                    QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(one.value(QStringLiteral("values")).toObject().size(), 1);
+
+    QVERIFY(client
+                .call(QStringLiteral("settings.get"),
+                      QJsonObject{{QStringLiteral("key"), QStringLiteral("does.not.exist")}},
+                      &error)
+                .isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("does.not.exist")},
+                                     {QStringLiteral("value"), true}},
+                         &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+    QCOMPARE(error.detail, QStringLiteral("does.not.exist"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")},
+                                     {QStringLiteral("value"), QStringLiteral("neon")}},
+                         &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"),
+                                      QStringLiteral("terminal.fontSize")},
+                                     {QStringLiteral("value"), 7}},
+                         &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("value"), true}}, &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QVERIFY(!client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")}},
+                         &error)
+                 .contains(QStringLiteral("values")));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QJsonObject result =
+        client.call(QStringLiteral("settings.set"),
+                    QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")},
+                                {QStringLiteral("value"), QStringLiteral("dark")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("app.theme"))
+                 .toString(),
+             QStringLiteral("dark"));
+    QCOMPARE(result.value(QStringLiteral("restartRequired")).toBool(), false);
+
+    result = client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("app.notifications")},
+                                     {QStringLiteral("value"), false}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("app.notifications"))
+                 .toBool(),
+             false);
+
+    result = client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("network.httpPort")},
+                                     {QStringLiteral("value"), 9090}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("network.httpPort"))
+                 .toInt(),
+             9090);
+
+    result = client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("network.proxyExclude")},
+                    {QStringLiteral("value"),
+                     QJsonArray{QStringLiteral("localhost"), QStringLiteral(".internal")}}},
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("network.proxyExclude"))
+                 .toArray()
+                 .size(),
+             2);
+
+    result = client.call(QStringLiteral("settings.set"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("engine.mode")},
+                                     {QStringLiteral("value"), QStringLiteral("rootful")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("restartRequired")).toBool(), true);
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("engine.mode"))
+                 .toString(),
+             QStringLiteral("rootful"));
+
+    result = client.call(QStringLiteral("settings.reset"),
+                         QJsonObject{{QStringLiteral("key"), QStringLiteral("app.theme")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("app.theme"))
+                 .toString(),
+             QStringLiteral("system"));
+    QCOMPARE(result.value(QStringLiteral("restartRequired")).toBool(), false);
+
+    result = client.call(QStringLiteral("settings.reset"),
+                         QJsonObject{{QStringLiteral("key"),
+                                      QStringLiteral("does.not.exist")}},
+                         &error);
+    QVERIFY(result.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    result = client.call(QStringLiteral("settings.reset"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonObject resetValues = result.value(QStringLiteral("values")).toObject();
+    QCOMPARE(resetValues.value(QStringLiteral("engine.mode")).toString(),
+             QStringLiteral("rootless"));
+    QCOMPARE(resetValues.value(QStringLiteral("network.proxyExclude")).toArray().size(), 0);
+    QCOMPARE(resetValues.value(QStringLiteral("network.httpPort")).toInt(), 8080);
+    QCOMPARE(resetValues.value(QStringLiteral("app.notifications")).toBool(), true);
+    QCOMPARE(result.value(QStringLiteral("restartRequired")).toBool(), true);
+    QCOMPARE(resetValues.value(QStringLiteral("setup.completed")).toBool(), true);
 }
 
 void RpcTest::invalidRequests()

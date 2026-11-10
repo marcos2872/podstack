@@ -66,6 +66,45 @@ void StreamClient::subscribeSystemStats(int intervalSeconds)
     connectSocket();
 }
 
+void StreamClient::subscribeMachineStats(const QString &id, int intervalSeconds)
+{
+    stop(true);
+    m_kind = QStringLiteral("machine-stats");
+    m_unsubscribeMethod = QStringLiteral("machines.stats.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("machines.stats.subscribe")},
+        {QStringLiteral("params"),
+         QJsonObject{{QStringLiteral("id"), id},
+                     {QStringLiteral("intervalSeconds"), intervalSeconds}}},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
+void StreamClient::startMachineConsole(const QString &id, int tailBytes)
+{
+    stop(true);
+    m_kind = QStringLiteral("machine-console");
+    m_unsubscribeMethod = QStringLiteral("machines.console.unsubscribe");
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("machines.console")},
+        {QStringLiteral("params"),
+         QJsonObject{{QStringLiteral("id"), id},
+                     {QStringLiteral("tailBytes"), tailBytes}}},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
+void StreamClient::stopMachineConsole()
+{
+    stop(true);
+}
+
 void StreamClient::pullImage(const QString &reference, const QString &platform)
 {
     stop(true);
@@ -115,6 +154,42 @@ void StreamClient::startBuild(const QJsonObject &params)
         {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
         {QStringLiteral("id"), 1},
         {QStringLiteral("method"), QStringLiteral("builds.start")},
+        {QStringLiteral("params"), params},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
+void StreamClient::startMachineCreate(const QJsonObject &params)
+{
+    startMachineJob(QStringLiteral("machines.create"), params);
+}
+
+void StreamClient::startMachineExport(const QJsonObject &params)
+{
+    startMachineJob(QStringLiteral("machines.export"), params);
+}
+
+void StreamClient::startMachineImport(const QJsonObject &params)
+{
+    startMachineJob(QStringLiteral("machines.import"), params);
+}
+
+void StreamClient::startMachineClone(const QJsonObject &params)
+{
+    startMachineJob(QStringLiteral("machines.clone"), params);
+}
+
+void StreamClient::startMachineJob(const QString &method, const QJsonObject &params)
+{
+    // Não há `machines.unsubscribe`: o daemon remove a subscription ao terminar.
+    stop(false);
+    m_kind = QStringLiteral("machine-job");
+    m_unsubscribeMethod.clear();
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), method},
         {QStringLiteral("params"), params},
     };
     m_pendingSend = true;
@@ -188,22 +263,19 @@ void StreamClient::unsubscribe()
 
 void StreamClient::stop(bool sendUnsubscribe)
 {
-    if (sendUnsubscribe && !m_subscriptionId.isEmpty()
+    if (sendUnsubscribe && !m_subscriptionId.isEmpty() && !m_unsubscribeMethod.isEmpty()
         && m_socket.state() == QLocalSocket::ConnectedState) {
         QJsonObject message;
         message.insert(QStringLiteral("jsonrpc"), QStringLiteral("2.0"));
         message.insert(QStringLiteral("id"), 2);
-        message.insert(QStringLiteral("method"),
-                       m_unsubscribeMethod.isEmpty()
-                           ? QStringLiteral("containers.") + m_kind
-                                 + QStringLiteral(".unsubscribe")
-                           : m_unsubscribeMethod);
+        message.insert(QStringLiteral("method"), m_unsubscribeMethod);
         message.insert(QStringLiteral("params"),
                        QJsonObject{{QStringLiteral("subscriptionId"), m_subscriptionId}});
         send(message);
     }
 
     m_subscriptionId.clear();
+    m_machineConsoleSubscription.clear();
     m_kind.clear();
     m_pending = {};
     m_pendingSend = false;
@@ -274,6 +346,9 @@ void StreamClient::onReadyRead()
             m_lastResult = message.value(QStringLiteral("result")).toObject();
             m_subscriptionId =
                 m_lastResult.value(QStringLiteral("subscriptionId")).toString();
+            if (m_kind == QStringLiteral("machine-console")) {
+                m_machineConsoleSubscription = m_subscriptionId;
+            }
             emit subscriptionReady(m_lastResult);
             continue;
         }
@@ -287,6 +362,10 @@ void StreamClient::onReadyRead()
             emit stats(params);
         } else if (method == QStringLiteral("system.stats.delta")) {
             emit systemStats(params);
+        } else if (method == QStringLiteral("machines.stats.delta")) {
+            emit machineStats(params);
+        } else if (method == QStringLiteral("machines.console.delta")) {
+            emit machineConsoleEvent(params);
         } else if (method == QStringLiteral("images.pull.delta")) {
             emit pullEvent(params);
         } else if (method == QStringLiteral("compose.logs.delta")) {
@@ -296,6 +375,14 @@ void StreamClient::onReadyRead()
             emit buildEvent(params);
         } else if (method == QStringLiteral("builds.done")) {
             emit buildFinished(params);
+            m_subscriptionId.clear();
+            m_kind.clear();
+            m_socket.abort();
+        } else if (method == QStringLiteral("machines.delta")) {
+            emit machineCreateEvent(params);
+        } else if (method == QStringLiteral("machines.done")) {
+            // O daemon remove a subscription quando o job termina; não há unsubscribe.
+            emit machineCreateFinished(params);
             m_subscriptionId.clear();
             m_kind.clear();
             m_socket.abort();
@@ -329,6 +416,19 @@ void StreamClient::onReadyRead()
                            .toObject()
                            .value(QStringLiteral("message"))
                            .toString());
+        } else if (method == QStringLiteral("machines.stats.error")
+                   || method == QStringLiteral("machines.console.error")) {
+            const QJsonObject errorObject = params.value(QStringLiteral("error")).toObject();
+            QString text = errorObject.value(QStringLiteral("message")).toString();
+            const QString remediation = errorObject.value(QStringLiteral("remediation")).toString();
+            if (!remediation.isEmpty()) {
+                text += QStringLiteral(" ") + remediation;
+            }
+            emit error(text);
+            m_subscriptionId.clear();
+            m_machineConsoleSubscription.clear();
+            m_kind.clear();
+            m_socket.abort();
         }
     }
 }
@@ -340,6 +440,7 @@ void StreamClient::onError()
     }
     m_pendingSend = false;
     m_subscriptionId.clear();
+    m_machineConsoleSubscription.clear();
 }
 
 } // namespace PodStack

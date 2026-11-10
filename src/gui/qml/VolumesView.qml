@@ -6,6 +6,21 @@ import PodStack
 ColumnLayout {
     id: volumesView
 
+    readonly property var pruneVolumeSection: backend.prunePreview.volumes
+                                             ? backend.prunePreview.volumes : null
+    readonly property var pruneVolumeItems: pruneVolumeSection && pruneVolumeSection.items
+                                            ? pruneVolumeSection.items : []
+
+    function formatBytes(bytes) {
+        var value = Number(bytes) || 0
+        var units = ["B", "KiB", "MiB", "GiB", "TiB"]
+        var unit = 0
+        while (value >= 1024 && unit < units.length - 1) {
+            value /= 1024
+            ++unit
+        }
+        return (unit === 0 ? value.toFixed(0) : value.toFixed(1)) + " " + units[unit]
+    }
 
     spacing: 0
 
@@ -222,9 +237,11 @@ ColumnLayout {
                 font.pixelSize: 11
                 font.bold: true
             }
-            FormField {
+            PathField {
                 id: importHostSource
                 Layout.fillWidth: true
+                title: qsTr("Diretório de origem")
+                mode: "directory"
                 placeholderText: "/home/usuario/dados"
             }
             Label {
@@ -279,17 +296,83 @@ ColumnLayout {
         id: pruneDialog
         title: "Limpar volumes?"
         modal: true
+        implicitWidth: 560
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
             border.color: Theme.border
         }
-        contentItem: Label {
-            text: "Remove volumes sem containers usando. Os dados desses volumes serão perdidos."
-            color: Theme.textPrimary
-            wrapMode: Text.WordWrap
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Label {
+                Layout.fillWidth: true
+                text: "Remove volumes sem containers usando. Os dados desses volumes serão perdidos."
+                color: Theme.textPrimary
+                wrapMode: Text.WordWrap
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Espaço recuperável estimado: %1").arg(
+                          volumesView.formatBytes(volumesView.pruneVolumeSection
+                                                  ? volumesView.pruneVolumeSection.reclaimableBytes : 0))
+                color: Theme.cyan
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                font.bold: true
+            }
+
+            ListView {
+                id: pruneVolumeList
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? Math.min(180, Math.max(44, contentHeight)) : 0
+                visible: volumesView.pruneVolumeItems.length > 0
+                clip: true
+                model: volumesView.pruneVolumeItems
+                spacing: 4
+
+                delegate: RowLayout {
+                    width: pruneVolumeList.width
+                    spacing: 8
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: modelData.name
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideMiddle
+                    }
+
+                    Label {
+                        text: modelData.inUse ? qsTr("em uso · não será removido")
+                                              : qsTr("sem uso · será removido")
+                        color: modelData.inUse ? Theme.textTertiary : Theme.danger
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                    }
+
+                    Label {
+                        text: volumesView.formatBytes(modelData.sizeBytes)
+                        color: Theme.textSecondary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMeta
+                    }
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: volumesView.pruneVolumeItems.length === 0
+                text: qsTr("Nenhum volume encontrado.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
         }
+        onOpened: backend.refreshDiskUsage()
         onAccepted: backend.pruneVolumes()
     }
 }

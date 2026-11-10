@@ -14,6 +14,7 @@ find_package(Qt6 6.10 REQUIRED COMPONENTS
     Qml
     Quick
     QuickControls2
+    QuickWidgets
     Network
     Concurrent
     DBus
@@ -23,16 +24,26 @@ find_package(qtermwidget6 REQUIRED)
 find_package(LibArchive REQUIRED)
 find_package(SQLite3 REQUIRED)
 
+find_library(CRYPT_LIBRARY crypt)
+if(NOT CRYPT_LIBRARY)
+    message(FATAL_ERROR
+        "libcrypt não encontrada. Instale libxcrypt-devel (Fedora) ou libcrypt-dev (Debian/Ubuntu).")
+endif()
+
 qt_standard_project_setup(REQUIRES 6.10)
 
 # ---------------------------------------------------------------------------
 # Core: errors, paths, config, logging, JSON-RPC client
 # ---------------------------------------------------------------------------
 add_library(podstack_core STATIC
+    src/core/DiskUsage.cpp
     src/core/Error.cpp
+    src/core/Ids.cpp
     src/core/Paths.cpp
     src/core/Config.cpp
+    src/core/Settings.cpp
     src/core/Logging.cpp
+    src/core/Proxy.cpp
     src/core/RpcClient.cpp
     src/core/RpcStream.cpp
 )
@@ -50,6 +61,37 @@ add_library(podstack_podman STATIC
 target_link_libraries(podstack_podman PUBLIC podstack_core CURL::libcurl LibArchive::LibArchive)
 
 # ---------------------------------------------------------------------------
+# Machines: registry de distros, download e cache de imagens cloud
+# ---------------------------------------------------------------------------
+add_library(podstack_machines STATIC
+    src/machines/DistroRegistry.cpp
+    src/machines/HttpDownloader.cpp
+    src/machines/CloudImageCache.cpp
+    src/machines/CloudInit.cpp
+    src/machines/SshConfig.cpp
+    src/machines/MachineMeta.cpp
+    src/machines/MachineStore.cpp
+    src/machines/QemuCommand.cpp
+    src/machines/QmpClient.cpp
+    src/machines/QemuRuntime.cpp
+    src/machines/VirtiofsdProcess.cpp
+    src/machines/MachineManager.cpp
+    src/machines/MachineArchive.cpp
+    src/machines/MachineStats.cpp
+    src/machines/MachineFiles.cpp
+)
+target_include_directories(podstack_machines PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(podstack_machines PUBLIC
+    podstack_core
+    Qt6::Core
+    Qt6::Network
+    CURL::libcurl
+    LibArchive::LibArchive
+    SQLite::SQLite3
+    ${CRYPT_LIBRARY}
+)
+
+# ---------------------------------------------------------------------------
 # Daemon
 # ---------------------------------------------------------------------------
 add_executable(podstackd
@@ -57,12 +99,15 @@ add_executable(podstackd
     src/daemon/Daemon.cpp
     src/daemon/RpcServer.cpp
     src/daemon/BuildStore.cpp
+    src/daemon/ManifestBuilder.cpp
     src/daemon/ComposeManager.cpp
     src/daemon/SetupManager.cpp
+    src/daemon/HelperClient.cpp
     src/daemon/StatsCollector.cpp
 )
 target_link_libraries(podstackd PRIVATE
     podstack_podman
+    podstack_machines
     Qt6::Concurrent
     Qt6::DBus
     SQLite::SQLite3
@@ -74,11 +119,12 @@ target_link_libraries(podstackd PRIVATE
 add_executable(podstack-helper
     src/helper/main.cpp
     src/helper/HelperService.cpp
+    src/helper/Firewall.cpp
     src/helper/Polkit.cpp
 )
 target_include_directories(podstack-helper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(podstack-helper PRIVATE PODSTACK_VERSION="${PROJECT_VERSION}")
-target_link_libraries(podstack-helper PRIVATE Qt6::Core Qt6::DBus)
+target_link_libraries(podstack-helper PRIVATE podstack_core Qt6::DBus)
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -94,10 +140,15 @@ target_link_libraries(podstack PRIVATE podstack_core Qt6::Network)
 add_library(podstack_gui_lib STATIC
     src/gui/Autostart.cpp
     src/gui/Backend.cpp
+    src/gui/ContainerDetailDialog.cpp
     src/gui/ContainerListModel.cpp
+    src/gui/ExternalTerminal.cpp
+    src/gui/MachineDetailDialog.cpp
+    src/gui/MainWindow.cpp
     src/gui/Notifications.cpp
     src/gui/SingleInstance.cpp
     src/gui/StreamClient.cpp
+    src/gui/TerminalView.cpp
     src/gui/TerminalWindow.cpp
     src/gui/Tray.cpp
 )
@@ -110,6 +161,7 @@ target_link_libraries(podstack_gui_lib PUBLIC
     Qt6::Network
     Qt6::Concurrent
     Qt6::DBus
+    Qt6::QuickWidgets
     qtermwidget6
 )
 
@@ -145,10 +197,13 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/ViewHeader.qml
         src/gui/qml/ActionButton.qml
         src/gui/qml/FormField.qml
+        src/gui/qml/PathField.qml
         src/gui/qml/FormCheck.qml
+        src/gui/qml/SettingsRow.qml
         src/gui/qml/LogsView.qml
         src/gui/qml/StatsView.qml
         src/gui/qml/Inspector.qml
+        src/gui/qml/ContainerDetail.qml
         src/gui/qml/FilesView.qml
         src/gui/qml/CatalogList.qml
         src/gui/qml/ContainersPage.qml
@@ -156,6 +211,9 @@ qt_add_qml_module(podstack-gui
         src/gui/qml/VolumesView.qml
         src/gui/qml/NetworksView.qml
         src/gui/qml/PodsView.qml
+        src/gui/qml/MachinesPage.qml
+        src/gui/qml/MachineInspector.qml
+        src/gui/qml/MachineFilesView.qml
         src/gui/qml/ComposeView.qml
         src/gui/qml/BuildsView.qml
         src/gui/qml/Toast.qml

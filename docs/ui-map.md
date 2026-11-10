@@ -21,7 +21,7 @@
 ┌────────────────────────────────────────────────────────────────────────────┐
 │ Toolbar  [☰] PodStack   [+ Criar] [Importar] [Abrir]   [🔍 Buscar] [⚙]    │
 ├───────────────┬──────────────────────────────────────┬─────────────────────┤
-│ Sidebar (220) │ Lista (flex)                         │ Inspector (360)     │
+│ Sidebar (220) │ Lista (flex)                         │ Inspector (480)     │
 │               │                                      │                     │
 │ ENGINE        │ Tabs: Todos | Rodando | Parados      │ [Info][Stats][Logs] │
 │  Containers 12│ Filtro: [todos ▾]  Ordenar: [nome ▾] │ [Terminal][Files]   │
@@ -96,16 +96,22 @@
 
 | Seção | Colunas principais (implementado) | Ações de toolbar |
 |---|---|---|
-| Containers | nome, status, imagem, portas | criar, start/stop all, lote por seleção, terminal |
-| Images | repositório:tag, digest, tamanho, uso | pull, importar, tag, untag, prune, remover |
-| Volumes | nome, driver, tamanho, links | criar, clone, importar do host, prune, remover |
+| Containers | nome, status, imagem, portas | criar, start/stop all, lote por seleção, expandir (overlay com terminal) |
+| Images | repositório:tag, digest, tamanho, uso | pull, importar, tag, untag, prune (prévia), remover |
+| Volumes | nome, driver, tamanho, links | criar, clone, importar do host, prune (prévia), remover |
 | Networks | nome, driver, subnet, containers | criar, conectar, desconectar, remover |
 | Pods (Podman) | nome, status, containers, ID | criar, start, stop, restart, remover |
 | Compose | projeto, status, serviços, diretório | up, down, restart, logs, abrir YAML/diretório |
-| Builds | imagem, status, duração, origem | novo build, cancelar, remover, log |
+| Builds | imagem, status, duração, origem, plataformas | novo build, cancelar, remover, log |
 | Services (K8s) | planejado (M5) | — |
-| Machines | planejado (M4) | — |
+| Machines | nome, distro, estado, SSH | criar, importar, exportar, start/stop/restart, excluir |
 | Devices | tipo, nome, VID:PID, status | attach/detach |
+
+**Prune com prévia (T2-18):** os diálogos de Imagens e Volumes chamam
+`backend.refreshDiskUsage()` ao abrir, consultam `system.df` e listam
+`sections.images.items`/`sections.volumes.items` com nome, tamanho e situação
+(dangling/sem uso/em uso) e o total recuperável estimado. A lista tem altura limitada e,
+quando vazia, mostra uma mensagem. Nenhum mountpoint/path é exposto na prévia.
 
 ### 4.3 Estados
 
@@ -119,43 +125,83 @@
 
 ## 5. Inspector
 
-Abas por tipo (estado do M2):
+Abas por tipo (estado do M4 após o redesenho do detalhe):
 
 | Aba | Container | Machine | Volume | Image | Observação |
 |---|---|---|---|---|---|
-| **Info** | ✅ | planejado | planejado | planejado | nome, imagem, portas, estado, health, ações |
-| **Logs** | ✅ | planejado | — | — | streaming/follow, busca, wrap, timestamps |
-| **Stats** | ✅ | planejado | — | — | CPU, memória, rede, disco/PIDs + gráfico |
-| **Files** | ✅ | planejado | planejado | — | listar e baixar para `~/Downloads` |
-| **Terminal** | janela nativa | planejado | — | — | QTermWidget; embutir no inspector no M3 |
-| **Inspect** | CLI `podstack inspect` | — | — | — | aba GUI no M2 |
+| **Info** | ✅ card lateral | ✅ | planejado | planejado | nome, imagem, portas, estado, health, ações |
+| **Logs** | ✅ overlay (Detalhes) | ✅ | — | — | container: streaming/follow; machine: one-shot + Atualizar |
+| **Stats** | ✅ overlay (Visão geral) | ✅ | — | — | CPU, memória, rede, disco/PIDs + gráfico; machine via SSH (2 s) |
+| **Files** | ✅ overlay (Detalhes) | planejado | planejado | — | enviar, baixar e navegar via `FilesView` no detalhe; saiu do card lateral |
+| **Terminal** | ✅ aba interna do detalhe | ✅ aba interna do detalhe | — | — | `TerminalView`/QTermWidget em placeholder do QML; **Nova sessão em janela** via `ExternalTerminal` |
+| **Inspect** | ✅ overlay | — | — | — | JSON completo via `containers.inspect` |
 
-Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings (rootless/rootful). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod, mostra progresso/steps e mantém histórico em SQLite. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes e a licença. Machines, Services e Devices permanecem desabilitados até os marcos seguintes.
+Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpause/kill/remove, renomear, duplicar, abrir porta, abrir terminal, `Start all`/`Stop all`, multi-seleção (`Ctrl`/`Shift` + lote), upload para containers, e Settings dirigido pelo schema (82 chaves, T7-01). O catálogo tem seções navegáveis para Images (pull/importar/tag/untag/prune/remover), Volumes (criar/clone/importar do host/prune/remover), Networks (criar/conectar/desconectar/remover) e Pods (criar/start/stop/restart/remover). **Compose** agrupa projetos por labels, sobe/derruba via provider, abre YAML/diretório e assina logs por serviço ou agregados. **Builds** inicia builds via Libpod (uma ou nenhuma plataforma) ou uma manifest list via CLI do Podman (duas ou mais), exibe as plataformas no diálogo e na coluna `PLATAFORMAS` do catálogo quando há dados, mostra progresso/log (sem steps no fluxo multi-plataforma) e mantém histórico em SQLite. **Machines** (M4) lista NOME/DISTRO/ESTADO/SSH, mostra Info (incluindo os mounts virtiofs source → target e o toggle **Encaminhar SSH agent** com aviso de segurança), Logs do `console.log` (com seleção de texto, copiar e horário da captura) e Stats (cards e sparklines de CPU, RAM, disco, rede e I/O) e permite criar (com senha opcional só em hash, mounts `origem:destino[:ro]` e o checkbox **Modo isolado**, que desabilita mounts/agent e força a rede restrita), importar/exportar `.tar.zst` (com progresso e cancelamento), start/stop/restart, expandir o detalhe em overlay, abrir SSH na aba Terminal desse detalhe (com `-A` quando o agent está encaminhado), gerenciar arquivos na aba Files (listar, baixar para `~/Downloads` e enviar), gerenciar snapshots do disco (criar/restaurar/remover com confirmação) e excluir com confirmação. **Eventos globais** aparecem como toasts no topo. A barra de status mostra a conexão com o daemon, contagens de containers/imagens/volumes/machines e a licença. Services e Devices permanecem desabilitados até os marcos seguintes.
 
 ### 5.1 Info
 
-- Cabeçalho: ícone, nome, status, ações (start/stop/restart/delete).
-- Grid de metadados copiáveis: imagem, comando, portas, env, mounts, rede/IP, labels, health, criado/uptime.
+- Cabeçalho: ícone, nome, status, ações (start/stop/ssh/restart/delete).
+- Largura do painel: ~480 px no modo normal e ~320 px no compacto (janela < 1100 px);
+  a lista encolhe com `Layout.fillWidth`. As grades de Info/Ações usam uma coluna quando
+  não há espaço (limiar de 460 px) para não cortar ID, portas, estado ou botões.
+- Botão **Expandir** (ícone expand, quatro setas para fora) abre o detalhe do container
+  em overlay integrado (seção 5.7). O card lateral mostra somente **Info** e **Ações**.
+- Machines: o botão **Expandir** abre o overlay da machine (seção 5.8); o botão **SSH**
+  do card lateral abre o mesmo overlay já na aba **Terminal**. **Portas** abre o diálogo de
+  port forwarding da machine.
+- Grid de metadados: ID, portas publicadas, estado, criado e saúde.
 - Ações: abrir no navegador, copiar ID, revelar no gerenciador.
+- **Exposição LAN (T2-15):** na célula de portas, o botão alterna **“Expor na LAN”** /
+  **“Fechar LAN”** para containers com portas publicadas (`backend.exposeContainerLan`).
+  O aviso lembra que só as portas publicadas são afetadas e que containers antigos em
+  `127.0.0.1` exigem recriação; erros (`PODSTACK_UNSUPPORTED`/`PODSTACK_HELPER_REQUIRED`)
+  aparecem junto ao botão e no rodapé de ações. O diálogo de criação tem o checkbox
+  **“Expor portas na LAN”** com o mesmo aviso; sem ele, o bind é `127.0.0.1`.
 
 ### 5.2 Stats
 
 - Cards: CPU %, memória (usado/limite), rede RX/TX, disco R/W, PIDs.
 - Gráfico de linha (60 s) com tooltip; atualização 2 s.
 - Botão pausar/retomar.
+- **Machines (M4):** a aba **Stats** coleta de dentro da VM por SSH one-shot a cada 2 s
+  (`machines.stats.subscribe`) e mostra cards de CPU, RAM (usado/total), disco (usado/total),
+  rede ↓/↑ e I/O de disco (leitura/escrita), com sparklines de CPU/RAM (0–100) e rede
+  (autoescala). Ao abrir a aba a subscription começa; ao sair, é cancelada. Estados vazios
+  (“aguardando amostras”, machine parada) e erros de SSH aparecem no próprio painel.
 
 ### 5.3 Logs
 
 - Toolbar: follow (toggle), busca, filtro (só matching), wrap, timestamps, pretty JSON, limpar, exportar.
 - Lista virtualizada com cores por stream (stdout neutro, stderr vermelho suave).
 - Auto-scroll pausa ao subir; badge "novas linhas".
+- Machines (M4): `console.log` one-shot com as últimas 200 linhas, seleção de texto, botão
+  Copiar e indicador "Atualizado em" (horário da captura). O botão **Seguir console** liga o
+  stream serial (`machines.console`): o mesmo `TextArea` passa a mostrar os deltas, com
+  auto-scroll, e o botão vira **Parar console**; o follow para ao trocar de aba, trocar de
+  machine ou fechar o inspetor. Erros do stream aparecem no cabeçalho da aba, sem substituir
+  o `lastError` global. Copiar/Atualizar ficam desabilitados durante o follow. A aba
+  **Info** lista os mounts virtiofs (`source → target`, com marca de somente leitura), se
+  houver.
 
 ### 5.4 Terminal
 
 - Emulação completa (cores, cursor, seleção, copy/paste, mouse).
-- Tabs de sessão; título = comando/shell; indicador de conexão.
+- Componente reutilizável `TerminalView` (QTermWidget + barra com título e botão
+  **Abrir externo**) usado no dock, na `TerminalWindow` legada e no overlay de detalhe.
+- Terminal embutido em painel dockável (`QDockWidget` "Terminal") da janela principal,
+  com abas (`QTabWidget`) por sessão; título = container/machine.
+- Containers abrem `podman exec -it <id> /bin/sh`; machines abrem `ssh` na aba
+  **Terminal** do detalhe da machine (seção 5.8), montada com `sshKeyPath`/`sshPort`/
+  `sshUser` (`IdentitiesOnly=yes`, `StrictHostKeyChecking=accept-new`,
+  `user@127.0.0.1`). O caminho legado `Backend::openMachineSsh` continua emitindo
+  `terminalRequested` para quem não usa o overlay (dock/`TerminalWindow`). Fechar a aba
+  encerra a sessão; fechar o dock apenas o esconde (as sessões continuam e uma nova
+  sessão reabre o painel).
+- **Abrir externo** relança o mesmo programa/argumentos priorizando
+  `xdg-terminal-exec`, depois `$TERMINAL`, a configuração do desktop
+  (`xdg-settings`/gsettings/KDE), `TERM_PROGRAM` e o desktop atual (niri → alacritty);
+  os emuladores comuns são o último fallback. Nunca passa por shell.
 - Menu: copiar tela/seleção (texto/ANSI/HTML), reset, fonte, fechar.
-- Fallback: "Abrir no terminal externo".
 
 ### 5.5 Files
 
@@ -168,45 +214,142 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 - JSON viewer com árvore, busca, copiar, exportar.
 - **Diferencial PodStack** (não existe como aba no OrbStack).
 
+### 5.7 Detalhe do container (overlay integrado)
+
+- Botão **Expandir** no cabeçalho do inspector abre o `ContainerDetailDialog`, um
+  `QWidget` **filho da `MainWindow`** que cobre a janela inteira (sem frame nem janela
+  separada) com fundo escurecido e um card central de margens ~24 px e cantos
+  arredondados. O botão **x** do cabeçalho (ou `Esc`) encerra o overlay, os streams e a
+  sessão de terminal. Ao redimensionar a janela, um event filter reajusta o overlay.
+- O card lateral mantém apenas **Info** e **Ações**; logs, stats, files, ambiente,
+  redes, volumes e inspect vivem no overlay.
+- O card do overlay hospeda `ContainerDetail.qml` diretamente em um `QQuickWidget`
+  (sem `QTabWidget` nativo). O terminal é uma **aba interna** do detalhe, entre
+  **Arquivos** e **Inspect**: o QML reserva a área e o C++ sobrepõe a sessão
+  `TerminalView` (`podman exec -it <id> /bin/sh`) sobre o placeholder, ocultando-a
+  ao trocar de aba e preservando a sessão até fechar o overlay. O botão **Nova
+  sessão em janela** abre uma nova sessão via `ExternalTerminal`; o **Abrir
+  externo** do `TerminalView` continua no dock e na `TerminalWindow`.
+- Cabeçalho do detalhe: nome, status, imagem, start/stop/restart, remover com
+  confirmação e **x** para fechar. O terminal não fica mais no cabeçalho.
+- Abas de Detalhes (9):
+  - **Visão geral** — cards de CPU, RAM (usado/total), rede ↓/↑ e disco R/W com sparklines
+    de 60 amostras; stats em stream próprio (`containerDetailStats`), ~1 s.
+  - **Logs** — `LogsView` em `TextArea` único (seleção multi-linha, Ctrl+C, Copiar, busca,
+    wrap, timestamps, seguir e limpar) alimentado por `containerDetailLogLines`.
+  - **Info** — estado, PID/exit, health, criado/iniciado, restart policy, imagem/digest,
+    entrypoint/comando, workdir, usuário, portas publicadas e labels.
+  - **Ambiente** — todas as `Config.Env` (`KEY=VALUE`); chaves com token/password/secret/
+    authorization/key ficam mascaradas até **Mostrar valores**; Copiar respeita o mascaramento.
+  - **Redes** — `NetworkSettings.Networks` (IP, gateway, MAC, aliases, NetworkID) e portas publicadas.
+  - **Volumes** — `Mounts` (tipo, nome, source, destination, driver, RW e propagação).
+  - **Arquivos** — `FilesView` para navegar, baixar e enviar arquivos do container.
+  - **Terminal** — sessão embutida `podman exec -it <id> /bin/sh` sobre o placeholder,
+    com o botão **Nova sessão em janela**.
+  - **Inspect** — JSON completo e indentado de `containers.inspect`, com Copiar.
+- Ao abrir: `loadContainerDetail(id)` + streams próprios de stats/logs. Ao fechar: ambos os
+  streams são cancelados e os logs do detalhe são limpos. Erros de inspect aparecem no
+  banner do overlay, sem poluir `backend.lastError` do inspector de containers.
+
+### 5.8 Detalhe da machine (overlay integrado)
+
+- `MachineDetailDialog` segue o padrão do detalhe do container: `QWidget` **filho da
+  `MainWindow`**, sem janela do sistema, com scrim e card central, event filter de resize
+  e **x**/`Esc` para fechar (parando a subscription de stats e encerrando a sessão SSH).
+- O card hospeda `MachineInspector.qml` diretamente em um `QQuickWidget`, com
+  `showTerminalTab=true` e `showFilesTab=true`; o mesmo componente continua no card lateral
+  com ambos `false` (somente Info/Logs/Stats).
+- Abas: **Info**, **Logs** (`console.log` one-shot + Copiar/Atualizar), **Stats**
+  (métricas via SSH a cada 2 s), **Terminal** e **Files**. Entrar em Terminal interrompe a
+  coleta de stats; sair dela não inicia logs. Entrar em Files (ou abrir o overlay nessa aba)
+  chama `refreshMachineFiles(id, "/")`.
+- A aba **Terminal** mostra a sessão SSH (`ssh -i <sshKeyPath> -p <sshPort> ... user@127.0.0.1`,
+  com `-A` quando o SSH agent está encaminhado) sobre o placeholder e o botão **Nova sessão
+  em janela** (`ExternalTerminal`). Sem `sshKeyPath`, nenhuma sessão é criada e o placeholder
+  explica o motivo.
+- A aba **Files** (`MachineFilesView.qml`) lista o diretório remoto via SSH, permite editar
+  o caminho/subir um nível, baixar arquivo ao clicar (destino `~/Downloads/<nome>`) e enviar
+  um arquivo local digitado no campo + **Enviar**. Erros aparecem no próprio painel; o
+  estado de transferência não polui `backend.lastError`.
+- Abertura: `openMachine(id, tab)` busca a machine em `Backend::machines()`, carrega
+  `machines.get` (`loadMachineInfo`) e atualiza o card quando `machineInfoChanged`/
+  `machinesChanged` chegam. Abrir pela lista usa a aba Info, pelo botão **Expandir**;
+  o botão **SSH** do card lateral abre direto na aba Terminal (`tab=3`).
+- Ações de ciclo de vida continuam no cabeçalho; **Exportar** abre o diálogo de
+  arquivo `.tar.zst` (com progresso e cancelamento) e **Excluir** pede confirmação
+  nativa e fecha o overlay após remover. **Renomear** abre um diálogo só com o novo nome
+  (`machines.rename`) e **Clonar** pede o nome da cópia e acompanha o job de clone com o
+  mesmo bloco de progresso/erro do export/import (`archiveStageLabel` + `machineCreate*`).
+  **Recursos** abre o diálogo “Editar recursos” (`machines.update`): CPUs, memória e disco
+  em GiB preenchidos da machine, com aviso de que o disco só cresce e que CPU/memória
+  exigem restart; erro permanece inline e o diálogo fecha só no sucesso. **Portas** abre o
+  diálogo “Portas da machine” (`machines.ports.list/set`): lista as portas extras com
+  host→guest/protocolo/bind/rótulo e remover, campos host/guest/protocolo/LAN/rótulo com
+  **Adicionar**, aviso de segurança para LAN e erro inline. A lista enviada exclui a SSH
+  (gerenciada pelo daemon) e o diálogo fecha só no sucesso. **Snapshots** abre o diálogo
+  “Snapshots do disco” (`machines.snapshots.list/create/restore/remove`): lista nome/data/
+  tamanho, campo de nome + **Criar**, e **Restaurar**/**Remover** por item com confirmação
+  inline (restaurar avisa que o disco atual será substituído); a lista é recarregada ao abrir
+  e depois de cada ação, e erros ficam inline.
+- A aba **Info** tem o checkbox **“Encaminhar SSH agent”** (`backend.updateMachine` com
+  `forwardSshAgent`), ligado ao `forwardSshAgent` da machine. A troca não reinicia a
+  machine e sincroniza o bloco do `~/.ssh/config`; o `ssh` do PodStack (terminal embutido,
+  terminal externo e CLI) passa a usar `-A` quando ativo. Abaixo do checkbox há o aviso:
+  processos no guest podem usar as chaves do SSH agent do host — ative só em machines
+  confiáveis. Em erro, o valor anterior é restaurado.
+
 ---
 
 ## 6. Diálogos
 
 | Diálogo | Campos | Validação |
 |---|---|---|
-| Criar container | imagem, nome, comando, portas, env, volumes, workdir, user, flags, recursos | imagem existente/pull; nome único; portas válidas |
+| Criar container | imagem, nome, comando, portas, env, volumes, workdir, user, flags, recursos, expor na LAN | imagem existente/pull; nome único; portas válidas; helper para LAN |
 | Criar rede | nome, driver, subnet4, gateway, IPv6, labels | CIDR válido; sem sobreposição |
-| Criar máquina | distro/versão, nome, arch, CPU/mem/disco, user/senha, user-data, mounts, isolado, SSH agent | recursos mínimos; nome único; YAML válido |
-| Clonar máquina | origem, novo nome | nome único |
-| Importar máquina | arquivo, nome | checksum/manifest |
-| Renomear | novo nome | RFC 1123 |
+| Criar máquina | distro/versão, nome, CPU/mem/disco, user, user-data, modo isolado, mounts (`origem:destino[:ro]`, até 8), isolar rede, SSH agent | recursos mínimos; nome único; YAML válido; mounts absolutos/existentes e tags seguras; isolado desabilita/limpa mounts e agent, marca/desabilita “Isolar a rede” e envia `isolated` |
+| SSH agent (Info) | checkbox “Encaminhar SSH agent” + aviso de segurança | máquina fora de `provisioning`/`deleting`; persiste e sincroniza sem reiniciar |
+| Clonar máquina | novo nome; progresso (`stopping`/`disk`/`copy`/`metadata`/`starting`) | nome único; RFC 1123 |
+| Exportar máquina | arquivo `.tar.zst`, substituir | caminho absoluto; padrão em `~/Downloads/<nome>.tar.zst` |
+| Importar máquina | arquivo `.tar.zst`, nome, substituir | checksum/manifesto; nome RFC 1123 |
+| Renomear | novo nome | nome único; RFC 1123 |
+| Editar recursos | CPUs, memória (GiB), disco (GiB) | 1..256 CPUs; memória/disco ≥ 1 GiB; disco só cresce |
+| Portas da machine | lista de portas (host/guest/protocolo/bind/rótulo), host, guest, protocolo, LAN, rótulo | 1..65535; hostPort único por protocolo; SSH preservada; aviso para LAN |
+| Snapshots do disco | lista nome/data/tamanho + Criar; Restaurar/Remover por item | nome `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` e único; restauração/remoção pedem confirmação inline; restaurar substitui o disco atual |
 | Confirmar remoção | lista + impacto | requer confirmação ou `force` |
 | Reset Docker/K8s | escopo + aviso | digitar nome/`--yes` |
 | Instalar helper/CLI | explicação + polkit | consentimento |
 | Migração | origem, itens, prévia | espaço/rollback |
 
-Todos com: foco inicial no campo primário, `Esc` cancela, `Enter` confirma quando válido, erros inline.
+Todos com: foco inicial no campo primário, `Esc` cancela, `Enter` confirma quando válido, erros inline. Campos de caminho usam `PathField` com botão **Procurar…** que abre o `QFileDialog` nativo (abrir, salvar ou escolher diretório).
 
 ---
 
 ## 7. Settings
 
-Janela separada (⌘, / `Ctrl+,`), sidebar de categorias:
+Diálogo modal (`AppDialog`, `Ctrl+,`) dirigido pelo schema do daemon (`settings.schema`), com
+`AppSelect` de categoria e uma lista rolável de linhas. Cada linha é gerada a partir de
+`SettingsRow.qml`: chave, descrição, valor padrão, `AppBadge` de **reinício**/segredo, controle
+adequado ao tipo (`FormCheck` para bool, `AppSelect` para enum, `FormField` para string/int/
+int64/lista; `echoMode: Password` em `network.proxy`), botões **Salvar** e **Restaurar** e erro
+inline. Nada é gravado direto no arquivo: `Backend::refreshSettings/setSetting/resetSetting` usam
+`settings.get/set/reset/schema` via `RpcClient` em worker thread.
 
 | Categoria | Conteúdo |
 |---|---|
-| **Geral** | iniciar no login, tema, idioma, tray, manter rodando |
-| **Engine** | rootless/rootful, socket, versão, reiniciar engine |
-| **Setup** | executar novamente, status do Podman/Docker, componentes |
-| **Docker** | expor portas na LAN, containerd image store, daemon.json |
-| **Rede** | HTTPS, proxy, exclusões, subnet, bridge, LAN |
-| **Máquinas** | portas na LAN, forward, limites default, SSH agent |
-| **Kubernetes** | habilitar, expor serviços, kubeconfig por domínio, SANs |
-| **Terminal/Logs** | fonte, tamanho, wrap, pretty JSON, busca |
-| **Updates** | modo, canal, check agora |
-| **Avançado** | SSH expose, diretórios, reset, diagnóstico, telemetria |
+| **Geral** | iniciar no login, tema, idioma, tray, manter rodando, confirmações, onboarding |
+| **Engine** | rootless/rootful, socket, auto-start, restart em mudança de config |
+| **Docker** | expor portas na LAN, containerd image store, containers.conf, rede default |
+| **Rede** | HTTPS, proxy + exclusões, subnet, bridge, IPv6, LAN, domínio, portas |
+| **Máquinas** | default, portas/forward, CPU/memória/disco, SSH agent, isolamento, SSH (porta, config, chave) |
+| **Kubernetes** | habilitar, expor serviços, kubeconfig por domínio, SANs, CPU/memória/disco, paths |
+| **Terminal/Logs** | fonte, tamanho, scrollback, wrap, busca, JSON, buffer |
+| **Updates** | modo, canal, último check, diagnóstico/report, telemetria |
+| **Avançado** | helper, DNS, CA, log level, retenção de jobs/builds, cache de imagens |
+| **Setup** | estado do onboarding, política do Docker, componentes, última validação |
 
-Cada setting: label, descrição curta, controle, badge "requer reinício" quando aplicável, link "saiba mais".
+O rodapé mantém **Executar configuração** (reabre o setup) e **Fechar**. Reset por chave usa o
+botão da linha; o reset total fica na CLI (`podstack config reset --all --yes`) e preserva
+`setup.*`. O visual usa `Theme.qml` (superfícies, tipografia e espaçamento padrão).
 
 ---
 
@@ -254,7 +397,8 @@ enquanto o job está rodando.
 
 **Implementação (2026-11-08):** `TrayController` usa `QSystemTrayIcon` + `QMenu` (SNI via
 DBusMenu no Wayland/Noctalia). O menu entrega **Abrir PodStack**, **Containers** (agrupado por
-projeto Compose, com iniciar/parar/reiniciar/logs/abrir), **Activity Monitor**, **Configurações**
+projeto Compose, com iniciar/parar/reiniciar/logs — abre o modal na aba Logs — e abrir),
+**Activity Monitor**, **Configurações**
 e **Sair**. O ícone reflete normal/atenção (setup pendente ou container unhealthy)/erro (daemon
 indisponível); fechar a janela esconde para a bandeja; a segunda instância foca a primeira; e o
 `SetupWindow` nunca é escondido para o tray. Pendentes: submenus de Machines/Kubernetes (M4/M5) e
@@ -331,6 +475,10 @@ qml/
 ├── FormCheck.qml
 ├── ContainersPage.qml
 ├── Inspector.qml
+├── ContainerDetail.qml   # conteúdo do overlay de detalhe (9 abas, inclui Terminal)
+├── MachinesPage.qml      # catálogo + card lateral (Info/Logs/Stats)
+├── MachineInspector.qml  # card lateral e conteúdo do overlay da machine (+ Terminal/Files)
+├── MachineFilesView.qml  # file manager SSH/SCP da machine (aba Files do overlay)
 ├── LogsView.qml
 ├── StatsView.qml
 ├── Sparkline.qml
@@ -373,7 +521,7 @@ qml/
 | `Ctrl+Enter` | iniciar/parar selecionado |
 | `Ctrl+Shift+L` | abrir logs |
 | `Ctrl+Shift+T` | abrir terminal |
-| `Esc` | desselecionar/fechar |
+| `Esc` | desselecionar/fechar (inclui o overlay de detalhe do container) |
 | `Ctrl+Q` | sair |
 
 Atalhos configuráveis (P2); conflitos com o desktop são resolvidos pelo usuário.

@@ -247,9 +247,11 @@ ColumnLayout {
                 font.weight: Font.DemiBold
             }
 
-            FormField {
+            PathField {
                 id: upProjectPath
                 Layout.fillWidth: true
+                title: qsTr("Diretório do projeto")
+                mode: "directory"
                 placeholderText: "/home/usuario/projeto"
             }
 

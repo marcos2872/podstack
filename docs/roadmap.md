@@ -100,7 +100,7 @@ gantt
 
 ### M3 — Compose e builds (3 semanas)
 
-**Status:** **concluído com ressalvas** — Compose, builds com histórico SQLite e eventos globais em toasts. Pendências para o M4: buildx multi-plataforma real e Supabase.
+**Status:** **concluído com ressalvas** — Compose, builds com histórico SQLite, manifest list multi-plataforma via CLI do Podman e eventos globais em toasts. Pendência para o M4: Supabase.
 
 **Objetivo:** fluxo de projeto completo (J1).
 
@@ -121,6 +121,10 @@ gantt
 ---
 
 ### M4 — Machines (4 semanas)
+
+**Status:** **em andamento** — T4-01 (registry/cache de imagens), T4-02 (seed cloud-init)
+e T4-03 (qcow2/QEMU/QMP + RPC/CLI + ciclo de vida) concluídas em 2026-11-09. SSH, logs,
+virtiofs, arquivos, export/import e clones seguem nas tarefas seguintes.
 
 **Objetivo:** VMs Linux integradas (J2).
 
