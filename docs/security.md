@@ -89,7 +89,7 @@ flowchart TB
 
 | Método | Params | Efeito |
 |---|---|---|
-| `BindPorts` | `{ports:[80,443], socketPath}` | Socket activation para o daemon |
+| `BindPorts` | `{ports:[80,443], httpTarget, httpsTarget}` | Unidades systemd + `systemd-socket-proxyd` para o proxy local (alvos só `127.0.0.1:<porta>`) |
 | `InstallDnsZone` | `{zone:"podstack.local", upstream:"127.0.0.1:5353"}` | Drop-in no resolved + reload |
 | `RemoveDnsZone` | `{zone}` | Remove drop-in |
 | `TrustCa` | `{certPath, fingerprint}` | Copia CA para trust store + `update-ca-trust` |

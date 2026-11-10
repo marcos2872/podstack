@@ -27,6 +27,9 @@ public slots:
     Q_SCRIPTABLE QVariantMap ClosePorts(const QStringList &ports, const QString &protocol);
     Q_SCRIPTABLE QVariantMap InstallDnsZone(const QString &zone, const QString &upstream);
     Q_SCRIPTABLE QVariantMap RemoveDnsZone(const QString &zone);
+    Q_SCRIPTABLE QVariantMap BindPorts(const QStringList &ports, const QString &httpTarget,
+                                       const QString &httpsTarget);
+    Q_SCRIPTABLE QVariantMap UnbindPorts(const QStringList &ports);
 
 protected:
     /// Ponto de extensão para testes; em produção exige polkit via D-Bus.
@@ -36,6 +39,8 @@ protected:
     virtual QString resolvedDirectory() const;
     virtual bool reloadResolved(QString *error) const;
     virtual bool avahiActive() const;
+    virtual QString systemUnitDirectory() const;
+    virtual bool runSystemctl(const QStringList &arguments, QString *error) const;
 
 private:
     bool validatePackages(const QStringList &packages, const QStringList &allowed,
@@ -46,6 +51,8 @@ private:
     QVariantMap changePorts(const QStringList &ports, const QString &protocol,
                             const QString &actionId, bool open);
     QVariantMap changeDnsZone(const QString &zone, const QString &upstream, bool install);
+    QVariantMap changePortBindings(const QStringList &ports, const QString &httpTarget,
+                                   const QString &httpsTarget, bool bind);
     uint callerUid() const;
 
     static QVariantMap result(bool ok, const QString &message);

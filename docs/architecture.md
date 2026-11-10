@@ -306,6 +306,9 @@ sequenceDiagram
   escolhe a porta HTTP e o resultado fica em cache por container/digest
   (T6-03). HTTPS de backend (T6-06) e overrides por label (T6-08) seguem
   pendentes.
+- `:80`/`:443` entram por unidades systemd do helper
+  (`podstack-http.socket`/`podstack-https.socket` +
+  `systemd-socket-proxyd`) apontando para o proxy local (T6-05).
 
 ### 3.7 Requisição de domínio
 

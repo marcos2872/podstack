@@ -7,6 +7,7 @@
 #include "helper/Firewall.h"
 #include "helper/HelperService.h"
 #include "helper/Polkit.h"
+#include "helper/PortBinding.h"
 
 #include <QCoreApplication>
 #include <QDBusConnection>
@@ -88,6 +89,21 @@ protected:
     bool avahiActive() const override { return avahi; }
 };
 
+class PortBindingHelper : public PodStack::HelperService {
+public:
+    QString directory;
+    mutable QStringList systemctlCalls;
+
+protected:
+    bool authorize(const QString &, QString *) const override { return true; }
+    QString systemUnitDirectory() const override { return directory; }
+    bool runSystemctl(const QStringList &arguments, QString *) const override
+    {
+        systemctlCalls.append(arguments.join(QLatin1Char(' ')));
+        return true;
+    }
+};
+
 class FakeSetupManager : public PodStack::SetupManager {
 public:
     bool available = true;
@@ -145,6 +161,9 @@ private slots:
     void dnsZoneInstallBackupAndRemove();
     void helperValidatesDnsZone();
     void helperInstallsDnsZone();
+    void portBindingInstallAndRemove();
+    void helperValidatesPortBindings();
+    void helperBindsPorts();
     void setupRunsSocketJob();
     void setupTracksActiveJob();
     void setupCompletesOnboarding();
@@ -624,6 +643,95 @@ void SetupTest::helperInstallsDnsZone()
     reply = helper.RemoveDnsZone(QStringLiteral("podstack.local"));
     QVERIFY(reply.value(QStringLiteral("ok")).toBool());
     QCOMPARE(helper.reloads, 4);
+}
+
+void SetupTest::portBindingInstallAndRemove()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QString error;
+
+    QVERIFY(PodStack::PortBinding::install(
+        dir.path(), {QStringLiteral("80"), QStringLiteral("443")}, QStringLiteral("127.0.0.1:8080"),
+        QStringLiteral("127.0.0.1:8443"), &error));
+    QFile socket80(dir.filePath(QStringLiteral("podstack-http.socket")));
+    QVERIFY(socket80.open(QIODevice::ReadOnly));
+    QVERIFY(socket80.readAll().contains("ListenStream=80"));
+    socket80.close();
+    QFile service443(dir.filePath(QStringLiteral("podstack-https.service")));
+    QVERIFY(service443.open(QIODevice::ReadOnly));
+    const QByteArray serviceContent = service443.readAll();
+    service443.close();
+    QVERIFY(serviceContent.contains("systemd-socket-proxyd"));
+    QVERIFY(serviceContent.contains("127.0.0.1:8443"));
+
+    QVERIFY(!PodStack::PortBinding::validatePorts({QStringLiteral("8080")}, &error));
+    QVERIFY(!PodStack::PortBinding::validateTarget(QStringLiteral("0.0.0.0:8080"), &error));
+    QVERIFY(!PodStack::PortBinding::validateTarget(QStringLiteral("127.0.0.1:0"), &error));
+    QVERIFY(!PodStack::PortBinding::validateTarget(QStringLiteral("127.0.0.1:70000"), &error));
+    QVERIFY(!PodStack::PortBinding::install(dir.path(), {QStringLiteral("80")},
+                                            QStringLiteral("192.168.1.1:8080"),
+                                            QStringLiteral("127.0.0.1:8443"), &error));
+
+    QVERIFY(PodStack::PortBinding::remove(dir.path(), {QStringLiteral("80"), QStringLiteral("443")},
+                                          &error));
+    QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("podstack-http.socket"))));
+    QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("podstack-https.service"))));
+    QVERIFY(PodStack::PortBinding::remove(dir.path(), {QStringLiteral("80")}, &error));
+}
+
+void SetupTest::helperValidatesPortBindings()
+{
+    PodStack::HelperService helper;
+
+    QVariantMap reply = helper.BindPorts({QStringLiteral("8080")}, QStringLiteral("127.0.0.1:8080"),
+                                         QStringLiteral("127.0.0.1:8443"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(
+        reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("allowlist")));
+
+    reply = helper.BindPorts({QStringLiteral("80")}, QStringLiteral("0.0.0.0:8080"),
+                             QStringLiteral("127.0.0.1:8443"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(
+        reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("allowlist")));
+
+    reply = helper.BindPorts({QStringLiteral("80"), QStringLiteral("443")},
+                             QStringLiteral("127.0.0.1:8080"), QStringLiteral("127.0.0.1:8443"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("message")).toString(),
+             QStringLiteral("Chamada local não autorizada."));
+
+    reply = helper.UnbindPorts({QStringLiteral("8443")});
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(
+        reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("allowlist")));
+}
+
+void SetupTest::helperBindsPorts()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    PortBindingHelper helper;
+    helper.directory = dir.path();
+
+    QVariantMap reply =
+        helper.BindPorts({QStringLiteral("80"), QStringLiteral("443")},
+                         QStringLiteral("127.0.0.1:8080"), QStringLiteral("127.0.0.1:8443"));
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(QFile::exists(dir.filePath(QStringLiteral("podstack-http.socket"))));
+    QVERIFY(QFile::exists(dir.filePath(QStringLiteral("podstack-http.service"))));
+    QVERIFY(QFile::exists(dir.filePath(QStringLiteral("podstack-https.socket"))));
+    QVERIFY(QFile::exists(dir.filePath(QStringLiteral("podstack-https.service"))));
+    QVERIFY(helper.systemctlCalls.contains(QStringLiteral("daemon-reload")));
+    QVERIFY(helper.systemctlCalls.contains(QStringLiteral("enable --now podstack-http.socket")));
+    QVERIFY(helper.systemctlCalls.contains(QStringLiteral("enable --now podstack-https.socket")));
+
+    reply = helper.UnbindPorts({QStringLiteral("80"), QStringLiteral("443")});
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("podstack-http.socket"))));
+    QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("podstack-https.service"))));
+    QVERIFY(helper.systemctlCalls.contains(QStringLiteral("disable --now podstack-http.socket")));
 }
 
 void SetupTest::setupRunsSocketJob()
