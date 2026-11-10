@@ -689,8 +689,10 @@ Domains=~podstack.local
   storage próprio (`<data>/podstack/caddy/storage`), `skip_install_trust` e
   encaminha o HTTP para o `HttpProxy` em `127.0.0.1:<network.httpPort>`; o
   `Host` original é preservado para a resolução do container.
-- Confiar na CA via helper (`update-ca-trust`) apenas com consentimento.
-- CA montada nos containers via label opt-out.
+- Confiar na CA via helper (`update-ca-trust`) apenas com consentimento: o
+  helper exige CA autoassinada, fingerprint SHA-256 correspondente e arquivo
+  pertencente ao chamador, grava o anchor e roda o update do trust store.
+- CA montada nos containers via label opt-out (T6-08).
 - Renovação automática; chave e CA com permissões restritas (root `0600`).
 
 **Critérios:**
@@ -699,7 +701,8 @@ Domains=~podstack.local
 - [x] `network.https=false` não sobe o Caddy; ausência do binário gera aviso e
   não derruba o daemon.
 - [x] Chave/CA sem leitura por grupo/outros.
-- [ ] Confiar na CA no host e nos containers (T6-07).
+- [x] Confiar/remover a CA no host via helper, com fingerprint e consentimento.
+- [ ] Montar a CA nos containers via label opt-out (T6-08).
 
 ### 11.4 Detecção de porta
 

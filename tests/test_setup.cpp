@@ -3,6 +3,7 @@
 #include "core/Paths.h"
 #include "daemon/DbusUtils.h"
 #include "daemon/SetupManager.h"
+#include "helper/CaTrust.h"
 #include "helper/DnsZone.h"
 #include "helper/Firewall.h"
 #include "helper/HelperService.h"
@@ -20,6 +21,7 @@
 #include <QJsonArray>
 #include <QScopeGuard>
 #include <QSet>
+#include <QSslCertificate>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -50,6 +52,21 @@ QString readLog(const QString &path)
         return {};
     }
     return QString::fromUtf8(file.readAll()).trimmed();
+}
+
+QByteArray testCaPem()
+{
+    const QStringList bundles{QStringLiteral("/etc/pki/tls/certs/ca-bundle.crt"),
+                              QStringLiteral("/etc/ssl/certs/ca-certificates.crt")};
+    for (const QString &bundle : bundles) {
+        const QList<QSslCertificate> certificates = QSslCertificate::fromPath(bundle);
+        for (const QSslCertificate &certificate : certificates) {
+            if (certificate.isSelfSigned()) {
+                return certificate.toPem();
+            }
+        }
+    }
+    return {};
 }
 
 class EchoService : public QObject {
@@ -87,6 +104,21 @@ protected:
         return true;
     }
     bool avahiActive() const override { return avahi; }
+};
+
+class CaTrustHelper : public PodStack::HelperService {
+public:
+    QString anchorsDirectory;
+    mutable int trustUpdates = 0;
+
+protected:
+    bool authorize(const QString &, QString *) const override { return true; }
+    QString caAnchorsDirectory() const override { return anchorsDirectory; }
+    bool runTrustUpdate(QString *) const override
+    {
+        ++trustUpdates;
+        return true;
+    }
 };
 
 class PortBindingHelper : public PodStack::HelperService {
@@ -164,6 +196,9 @@ private slots:
     void portBindingInstallAndRemove();
     void helperValidatesPortBindings();
     void helperBindsPorts();
+    void caTrustInstallAndRemove();
+    void helperValidatesCaTrust();
+    void helperTrustsCa();
     void setupRunsSocketJob();
     void setupTracksActiveJob();
     void setupCompletesOnboarding();
@@ -732,6 +767,101 @@ void SetupTest::helperBindsPorts()
     QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("podstack-http.socket"))));
     QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("podstack-https.service"))));
     QVERIFY(helper.systemctlCalls.contains(QStringLiteral("disable --now podstack-http.socket")));
+}
+
+void SetupTest::caTrustInstallAndRemove()
+{
+    const QByteArray pem = testCaPem();
+    if (pem.isEmpty()) {
+        QSKIP("nenhuma CA autoassinada no bundle do sistema");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QString error;
+    const QString fingerprint = PodStack::CaTrust::fingerprintOf(pem);
+    QVERIFY(!fingerprint.isEmpty());
+    QVERIFY(PodStack::CaTrust::validateFingerprint(fingerprint, &error));
+    QVERIFY(PodStack::CaTrust::isSelfSigned(pem, &error));
+
+    QVERIFY(!PodStack::CaTrust::trust(dir.path(), pem, QString(64, QLatin1Char('a')), &error));
+    QVERIFY(PodStack::CaTrust::trust(dir.path(), pem, fingerprint, &error));
+    const QString anchor = dir.filePath(QStringLiteral("podstack-local-ca.crt"));
+    QVERIFY(QFile::exists(anchor));
+
+    QVERIFY(!PodStack::CaTrust::untrust(dir.path(), QString(64, QLatin1Char('a')), &error));
+    QVERIFY(QFile::exists(anchor));
+    QVERIFY(PodStack::CaTrust::untrust(dir.path(), fingerprint, &error));
+    QVERIFY(!QFile::exists(anchor));
+    QVERIFY(PodStack::CaTrust::untrust(dir.path(), fingerprint, &error));
+}
+
+void SetupTest::helperValidatesCaTrust()
+{
+    const QByteArray pem = testCaPem();
+    if (pem.isEmpty()) {
+        QSKIP("nenhuma CA autoassinada no bundle do sistema");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString certPath = dir.filePath(QStringLiteral("root.crt"));
+    QFile file(certPath);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write(pem), qint64(pem.size()));
+    file.close();
+    const QString fingerprint = PodStack::CaTrust::fingerprintOf(pem);
+
+    PodStack::HelperService helper;
+    QVariantMap reply = helper.TrustCa(certPath, QStringLiteral("abc"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(
+        reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("Fingerprint")));
+
+    reply = helper.TrustCa(certPath, QString(64, QLatin1Char('a')));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(
+        reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("fingerprint")));
+
+    reply = helper.TrustCa(QStringLiteral("/arquivo/inexistente.crt"), fingerprint);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+
+    reply = helper.TrustCa(certPath, fingerprint);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("message")).toString(),
+             QStringLiteral("Chamada local não autorizada."));
+
+    reply = helper.UntrustCa(fingerprint);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("message")).toString(),
+             QStringLiteral("Chamada local não autorizada."));
+}
+
+void SetupTest::helperTrustsCa()
+{
+    const QByteArray pem = testCaPem();
+    if (pem.isEmpty()) {
+        QSKIP("nenhuma CA autoassinada no bundle do sistema");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString certPath = dir.filePath(QStringLiteral("root.crt"));
+    QFile file(certPath);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write(pem), qint64(pem.size()));
+    file.close();
+
+    CaTrustHelper helper;
+    helper.anchorsDirectory = dir.path();
+    const QString fingerprint = PodStack::CaTrust::fingerprintOf(pem);
+
+    QVariantMap reply = helper.TrustCa(certPath, fingerprint);
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(QFile::exists(dir.filePath(QStringLiteral("podstack-local-ca.crt"))));
+    QCOMPARE(helper.trustUpdates, 1);
+
+    reply = helper.UntrustCa(fingerprint);
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("podstack-local-ca.crt"))));
+    QCOMPARE(helper.trustUpdates, 2);
 }
 
 void SetupTest::setupRunsSocketJob()
