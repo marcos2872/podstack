@@ -146,7 +146,7 @@
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T5-01 | P1 | Provisionar VM k3s e instalar | T4-03 | Cluster Ready |
+| T5-01 | P1 | Provisionar VM k3s e instalar | T4-03 | ✅ `K8sManager`/`K8sStore` + RPC `k8s.status/enable/cancel`: cria/reutiliza uma machine dedicada `podstack-k8s` com SSH em loopback com CPUs/memória/disco de `kubernetes.*`, aguarda SSH + `cloud-init status --wait`, instala o k3s server sem Traefik via SSH com streaming/timeout/cancelamento e só marca `ready` quando `kubectl get nodes` reporta `Ready`; estado em `clusters` (`podstack.db`) e `kubernetes.enabled` persistido. Falha para a VM e mantém o disco para retry. Evidência: `cmake --build --preset dev` sem warnings; `ctest --preset dev` **14/14**; `test_machines` novos testes de provisionamento, reuso, conflito, store, status e runner SSH (sucesso/retry, falha, timeout, cancelamento); `test_rpc/k8sStatusAndValidation`; `clang-format`/`clang-tidy` limpos. **E2E real (KVM/Fedora, 2026-11-10):** `k8s.enable` com 2 CPU/3 GiB/12 GiB concluiu em **90 s**; `sudo k3s kubectl get nodes` → `podstack-k8s Ready control-plane 9s v1.37.2+k3s1`; `cloud-init status: done`; `kubernetes.enabled=true` e `clusters.state=ready` |
 | T5-02 | P1 | kubeconfig isolado + contexto + `podstack kube env` | T5-01 | `kubectl get nodes` |
 | T5-03 | P1 | Watch de Pods/Services + modelos | T5-01 | UI atualiza |
 | T5-04 | P1 | Logs por container do pod | T5-03 | Streaming |
@@ -154,6 +154,8 @@
 | T5-06 | P1 | Enable/disable/reset com confirmação | T5-01 | Idempotente |
 | T5-07 | P2 | Expor Services (NodePort/LB/API) + TLS SANs | T5-01 | Configurável |
 | T5-08 | P2 | Troca automática de contexto | T5-02 | Por projeto |
+
+**Status (2026-11-10): T5-01 implementada.** A VM do cluster é uma machine dedicada comum com SSH em loopback e a instalação usa o instalador oficial do k3s por SSH. Kubeconfig/contexto (`podstack kube env`), watch/listagem, logs, ações, ciclo de vida e exposição ficam nas T5-02..T5-08.
 
 **Saída M5:** J3 completo.
 

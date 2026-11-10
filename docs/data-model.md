@@ -155,7 +155,7 @@ Derivado dos containers; não persistido (ou cache).
 
 ### 2.11 Cluster (persistido)
 
-`clusters`: `id`, `name`, `provider` (`k3s-vm`), `state`, `apiPort`, `kubeconfigPath`, `contextName`, `vmMachineId`, `createdAt`, `updatedAt`, `error`.
+`clusters` (implementado na T5-01): `id`, `name`, `provider` (`k3s-vm`), `state`, `apiPort`, `kubeconfigPath`, `contextName`, `vmMachineId`, `createdAt`, `updatedAt`, `error`.
 
 ### 2.12 Domain (persistido para custom domains)
 
@@ -293,7 +293,7 @@ CREATE TABLE clusters (
   api_port INTEGER,
   kubeconfig_path TEXT,
   context_name TEXT,
-  vm_machine_id TEXT REFERENCES machines(id) ON DELETE SET NULL,
+  vm_machine_id TEXT, -- referência lógica a machines(id)
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   error TEXT

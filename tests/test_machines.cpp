@@ -7,6 +7,7 @@
 #include "core/Ids.h"
 #include "core/Paths.h"
 #include "daemon/BuildStore.h"
+#include "k8s/K8sManager.h"
 #include "machines/CloudImageCache.h"
 #include "machines/CloudInit.h"
 #include "machines/DistroRegistry.h"
@@ -63,6 +64,9 @@ using PodStack::CreateMachineRequest;
 using PodStack::DistroImage;
 using PodStack::DistroRegistry;
 using PodStack::HttpDownloader;
+using PodStack::K8sCluster;
+using PodStack::K8sManager;
+using PodStack::K8sStore;
 using PodStack::MachineArchive;
 using PodStack::MachineArchiveManifest;
 using PodStack::MachineFiles;
@@ -480,11 +484,13 @@ public:
     {
         lastSpec = spec;
         ++startCount;
-        if (failStart) {
+        if (failStart || failStartSilently) {
             running = false;
             if (error) {
-                *error = PodStack::Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                               QStringLiteral("falha simulada de start"));
+                *error = failStart
+                             ? PodStack::Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                                     QStringLiteral("falha simulada de start"))
+                             : PodStack::Error{};
             }
             return false;
         }
@@ -559,12 +565,50 @@ public:
 
     bool running = false;
     bool failStart = false;
+    bool failStartSilently = false;
     bool failStop = false;
     int startCount = 0;
     int stopCount = 0;
     bool lastForce = false;
     QemuSpec lastSpec;
 };
+
+QString k8sFakeSsh(const QString &root, const QByteArray &body)
+{
+    const QString path = root + QStringLiteral("/ssh-fake.sh");
+    if (!writeTestFile(path, body,
+                       QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner)) {
+        return {};
+    }
+    return path;
+}
+
+MachineManager::Options k8sMachineOptions(const QString &root, const DistroImage &image,
+                                          const QString &qemuImg, const QString &ovmfCode,
+                                          const QString &ovmfVars,
+                                          FakeQemuRuntime **runtimeOut = nullptr)
+{
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    if (runtimeOut) {
+        *runtimeOut = runtime.get();
+    }
+    MachineManager::Options options;
+    if (!configureSshOptions(&options, root)) {
+        return {};
+    }
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *) {
+        return image;
+    };
+    return options;
+}
 
 /// Processo fake destacado cujo argv contém `podstack:<id>` (sem pidfile).
 class FakeMachineProcess {
@@ -820,6 +864,30 @@ private slots:
     void qmpSocketCloses();
     void idsUuidV7();
     void machineManagerCreate();
+    void k8sEnableProvisionsCluster();
+    void k8sEnableReusesCluster();
+    void k8sEnableInstallFailure();
+    void k8sEnableCancelled();
+    void k8sStatusReconcilesStoppedMachine();
+    void k8sStoreLifecycle();
+    void k8sStatusStaleAndMissingVm();
+    void k8sEnableNameConflict();
+    void k8sSshRunnerSuccess();
+    void k8sSshRunnerFailure();
+    void k8sSshRunnerTimeout();
+    void k8sSshRunnerCancelled();
+    void k8sSshRunnerStartFailure();
+    void k8sSshReadyTimeout();
+    void k8sNodeNotReady();
+    void k8sInstallFailureWithoutError();
+    void k8sSshReadyCancelledByRemote();
+    void k8sClusterJsonRoundtrip();
+    void k8sNullManager();
+    void k8sEnableClearsMissingVmAndStartsStopped();
+    void k8sNodeReadyWithoutError();
+    void k8sBrokenStore();
+    void k8sDefaultSshTimeout();
+    void k8sCreateStartFailure();
     void machineManagerCreateErrors();
     void machineManagerPortsErrors();
     void machineManagerUpdateRemoveErrors();
@@ -2728,6 +2796,1092 @@ void MachinesTest::machineManagerCreate()
     QCOMPARE(stages.last(), QStringLiteral("running"));
 
     QVERIFY(QFileInfo(storePath).isFile());
+}
+
+void MachinesTest::k8sEnableProvisionsCluster()
+{
+    const QString root = m_root + QStringLiteral("/k8s-enable");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'k');
+    m_server.setResponse(QStringLiteral("/k8s-enable.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-enable.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    QStringList scripts;
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.remoteExec = [&scripts](const SshInfo &, const QString &script,
+                                       const K8sManager::Line &, const K8sManager::Cancelled &, int,
+                                       PodStack::Error *execError) {
+        scripts.append(script);
+        if (execError) {
+            *execError = {};
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    QStringList stages;
+    int lastProgress = 0;
+    K8sManager::EnableRequest request;
+    request.cpus = 2;
+    request.memoryBytes = 2LL * 1024 * 1024 * 1024;
+    request.diskBytes = 10LL * 1024 * 1024 * 1024;
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable(
+        request,
+        [&stages, &lastProgress](const QString &stage, int value) {
+            stages.append(stage);
+            lastProgress = value;
+        },
+        {}, &error);
+
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cluster.state, QStringLiteral("ready"));
+    QVERIFY(!cluster.vmMachineId.isEmpty());
+    QCOMPARE(lastProgress, 100);
+    QVERIFY(stages.contains(QStringLiteral("machine")));
+    QVERIFY(stages.contains(QStringLiteral("ssh")));
+    QVERIFY(stages.contains(QStringLiteral("install")));
+    QVERIFY(stages.contains(QStringLiteral("ready")));
+    QVERIFY(scripts.join(QLatin1Char('\n')).contains(QStringLiteral("get.k3s.io")));
+    QVERIFY(scripts.join(QLatin1Char('\n')).contains(QStringLiteral("get nodes")));
+
+    const MachineMeta vm = machines.get(cluster.vmMachineId, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(vm.name, QStringLiteral("podstack-k8s"));
+    QCOMPARE(vm.cpus, 2);
+    QVERIFY(!vm.isolateNetwork);
+    QVERIFY(!vm.ports.isEmpty());
+    QVERIFY(!vm.ports.at(0).exposeLan);
+    QCOMPARE(vm.state, QStringLiteral("running"));
+
+    K8sStore store(storePath);
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    const K8sCluster persisted = store.get(QStringLiteral("default"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(persisted.state, QStringLiteral("ready"));
+    QCOMPARE(persisted.vmMachineId, cluster.vmMachineId);
+    QVERIFY(PodStack::Config::load().get(QStringLiteral("kubernetes.enabled")).toBool());
+}
+
+void MachinesTest::k8sEnableReusesCluster()
+{
+    const QString root = m_root + QStringLiteral("/k8s-reuse");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'r');
+    m_server.setResponse(QStringLiteral("/k8s-reuse.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-reuse.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    int execCount = 0;
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.remoteExec = [&execCount](const SshInfo &, const QString &, const K8sManager::Line &,
+                                         const K8sManager::Cancelled &, int,
+                                         PodStack::Error *execError) {
+        ++execCount;
+        if (execError) {
+            *execError = {};
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster first = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(execCount > 0);
+    const int machineCount = machines.list(&error).size();
+    QCOMPARE(machineCount, 1);
+
+    execCount = 0;
+    const K8sCluster second = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(second.vmMachineId, first.vmMachineId);
+    QCOMPARE(execCount, 0);
+    QCOMPARE(machines.list(&error).size(), 1);
+}
+
+void MachinesTest::k8sEnableInstallFailure()
+{
+    const QString root = m_root + QStringLiteral("/k8s-install-failure");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'f');
+    m_server.setResponse(QStringLiteral("/k8s-failure.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-failure.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script, const K8sManager::Line &,
+                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (script.contains(QStringLiteral("get.k3s.io"))) {
+            if (execError) {
+                *execError = PodStack::Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                                   QStringLiteral("install falhou"));
+            }
+            return false;
+        }
+        if (execError) {
+            *execError = {};
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    K8sStore store(storePath);
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    const K8sCluster persisted = store.get(QStringLiteral("default"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(persisted.state, QStringLiteral("error"));
+    QVERIFY(persisted.error.contains(QStringLiteral("install falhou")));
+
+    const MachineMeta vm = machines.get(persisted.vmMachineId, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(vm.state, QStringLiteral("stopped"));
+}
+
+void MachinesTest::k8sEnableCancelled()
+{
+    const QString root = m_root + QStringLiteral("/k8s-cancelled");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'c');
+    m_server.setResponse(QStringLiteral("/k8s-cancelled.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-cancelled.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
+                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, [] { return true; }, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+    QVERIFY(machines.list(&error).isEmpty());
+
+    K8sStore store(storePath);
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    const K8sCluster persisted = store.get(QStringLiteral("default"), &error);
+    if (error.isEmpty()) {
+        QVERIFY(persisted.state != QStringLiteral("ready"));
+    }
+}
+
+void MachinesTest::k8sStatusReconcilesStoppedMachine()
+{
+    const QString root = m_root + QStringLiteral("/k8s-status");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 's');
+    m_server.setResponse(QStringLiteral("/k8s-status.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-status.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
+                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster ready = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(k8s.status(&error).state, QStringLiteral("ready"));
+
+    const MachineMeta stopped = machines.stop(ready.vmMachineId, true, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stopped.state, QStringLiteral("stopped"));
+    QCOMPARE(k8s.status(&error).state, QStringLiteral("stopped"));
+
+    const MachineMeta started = machines.start(ready.vmMachineId, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(started.state, QStringLiteral("running"));
+    QCOMPARE(k8s.status(&error).state, QStringLiteral("ready"));
+}
+
+void MachinesTest::k8sStoreLifecycle()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("k8s.db"));
+    K8sStore store(path);
+    PodStack::Error error;
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    QVERIFY(store.list(&error).isEmpty());
+
+    QVERIFY(store.get(QStringLiteral("default"), &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    K8sCluster cluster;
+    cluster.id = QStringLiteral("k8s-default");
+    cluster.name = QStringLiteral("default");
+    cluster.state = QStringLiteral("ready");
+    cluster.apiPort = 6443;
+    cluster.kubeconfigPath = QStringLiteral("/tmp/kubeconfig");
+    cluster.contextName = QStringLiteral("podstack-default");
+    cluster.vmMachineId = QStringLiteral("vm-1");
+    cluster.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    cluster.updatedAt = cluster.createdAt;
+    QVERIFY2(store.upsert(cluster, &error),
+             qPrintable(error.message + QStringLiteral(" | ") + error.detail));
+
+    const K8sCluster loaded = store.get(QStringLiteral("default"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(loaded.apiPort, 6443);
+    QCOMPARE(loaded.contextName, QStringLiteral("podstack-default"));
+    QCOMPARE(loaded.vmMachineId, QStringLiteral("vm-1"));
+    QCOMPARE(store.list(&error).size(), 1);
+
+    cluster.state = QStringLiteral("stopped");
+    QVERIFY(store.upsert(cluster, &error));
+    QCOMPARE(store.get(QStringLiteral("default"), &error).state, QStringLiteral("stopped"));
+    QVERIFY(store.remove(QStringLiteral("default"), &error));
+    QVERIFY(store.list(&error).isEmpty());
+
+    K8sCluster invalid;
+    QVERIFY(!store.upsert(invalid, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QString blocker = directory.filePath(QStringLiteral("blocker"));
+    QVERIFY(writeTestFile(blocker, QByteArrayLiteral("x")));
+    K8sStore broken(blocker + QStringLiteral("/k8s.db"));
+    error = {};
+    QVERIFY(!broken.open(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+    QVERIFY(broken.get(QStringLiteral("default"), &error).id.isEmpty());
+    QVERIFY(broken.list(&error).isEmpty());
+    QVERIFY(!broken.remove(QStringLiteral("default"), &error));
+
+    const QString readonlyDir = directory.filePath(QStringLiteral("readonly"));
+    QVERIFY(QDir().mkpath(readonlyDir));
+    QVERIFY(QFile::setPermissions(readonlyDir, QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+    K8sStore readonlyStore(readonlyDir + QStringLiteral("/k8s.db"));
+    error = {};
+    QVERIFY(!readonlyStore.open(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+    QFile::setPermissions(readonlyDir,
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+}
+
+void MachinesTest::k8sStatusStaleAndMissingVm()
+{
+    const QString root = m_root + QStringLiteral("/k8s-status-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = root + QStringLiteral("/podstack.db");
+    K8sManager k8s(&machines, k8sOptions);
+
+    QCOMPARE(k8s.status().state, QStringLiteral("disabled"));
+
+    K8sStore store(k8sOptions.storePath);
+    K8sCluster cluster;
+    cluster.id = QStringLiteral("k8s-default");
+    cluster.name = QStringLiteral("default");
+    cluster.state = QStringLiteral("installing");
+    cluster.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    cluster.updatedAt = cluster.createdAt;
+    PodStack::Error error;
+    QVERIFY2(store.upsert(cluster, &error),
+             qPrintable(error.message + QStringLiteral(" | ") + error.detail));
+    QCOMPARE(k8s.status(&error).state, QStringLiteral("error"));
+    QVERIFY(k8s.status(&error).error.contains(QStringLiteral("interrompido")));
+
+    cluster.state = QStringLiteral("ready");
+    cluster.vmMachineId.clear();
+    QVERIFY(store.upsert(cluster, &error));
+    QCOMPARE(k8s.status(&error).state, QStringLiteral("ready"));
+
+    cluster.vmMachineId = QStringLiteral("missing-vm");
+    QVERIFY(store.upsert(cluster, &error));
+    QCOMPARE(k8s.status(&error).state, QStringLiteral("error"));
+    QVERIFY(k8s.status(&error).error.contains(QStringLiteral("não existe")));
+}
+
+void MachinesTest::k8sEnableNameConflict()
+{
+    const QString root = m_root + QStringLiteral("/k8s-name-conflict");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'n');
+    m_server.setResponse(QStringLiteral("/k8s-conflict.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-conflict.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    CreateMachineRequest existing;
+    existing.name = QStringLiteral("podstack-k8s");
+    existing.distro = QStringLiteral("test");
+    existing.arch = QStringLiteral("amd64");
+    existing.user = QStringLiteral("podstack");
+    existing.diskBytes = 1024LL * 1024LL * 1024LL;
+    PodStack::Error error;
+    QVERIFY2(!machines.create(existing, {}, {}, &error).id.isEmpty(), qPrintable(error.message));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
+                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    K8sManager::EnableRequest invalid;
+    invalid.cpus = 0;
+    QVERIFY(k8s.enable(invalid, {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cluster.state, QStringLiteral("ready"));
+    const MachineMeta vm = machines.get(cluster.vmMachineId, &error);
+    QCOMPARE(vm.name, QStringLiteral("podstack-k8s-2"));
+}
+
+void MachinesTest::k8sSshRunnerSuccess()
+{
+    const QString root = m_root + QStringLiteral("/k8s-ssh-success");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'x');
+    m_server.setResponse(QStringLiteral("/k8s-ssh.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-ssh.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    const QString marker = root + QStringLiteral("/ssh-ready");
+    const QString ssh = k8sFakeSsh(
+        root, QByteArrayLiteral(
+                  "#!/bin/sh\n"
+                  "for last do :; done\n"
+                  "case \"$last\" in\n"
+                  "  *cloud-init*)\n"
+                  "    if [ ! -f \"$PODSTACK_FAKE_SSH_MARKER\" ]; then\n"
+                  "      : > \"$PODSTACK_FAKE_SSH_MARKER\"\n"
+                  "      echo 'ssh ainda subindo' >&2\n"
+                  "      exit 1\n"
+                  "    fi\n"
+                  "    echo 'cloud-init ok'; exit 0;;\n"
+                  "  *get.k3s.io*)\n"
+                  "    i=1\n"
+                  "    while [ $i -le 25 ]; do printf 'linha %s\\r\\n' \"$i\"; i=$((i+1)); done\n"
+                  "    printf 'ultima-linha-sem-newline'\n"
+                  "    exit 0;;\n"
+                  "  *\"get nodes\"*) echo 'node Ready'; exit 0;;\n"
+                  "  *) echo \"inesperado: $last\" >&2; exit 1;;\n"
+                  "esac\n"));
+    QVERIFY(!ssh.isEmpty());
+    qputenv("PODSTACK_FAKE_SSH_MARKER", marker.toUtf8());
+    const auto restore = qScopeGuard([] { qunsetenv("PODSTACK_FAKE_SSH_MARKER"); });
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.sshBinary = ssh;
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cluster.state, QStringLiteral("ready"));
+    QVERIFY(QFileInfo::exists(marker));
+}
+
+void MachinesTest::k8sSshRunnerFailure()
+{
+    const QString root = m_root + QStringLiteral("/k8s-ssh-failure");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'y');
+    m_server.setResponse(QStringLiteral("/k8s-ssh-failure.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-ssh-failure.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    const QString ssh = k8sFakeSsh(
+        root, QByteArrayLiteral("#!/bin/sh\n"
+                                "for last do :; done\n"
+                                "case \"$last\" in\n"
+                                "  *cloud-init*) exit 0;;\n"
+                                "  *get.k3s.io*) echo 'falha ao baixar k3s' >&2; exit 3;;\n"
+                                "  *) exit 0;;\n"
+                                "esac\n"));
+    QVERIFY(!ssh.isEmpty());
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.sshBinary = ssh;
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(error.detail.contains(QStringLiteral("falha ao baixar k3s")));
+}
+
+void MachinesTest::k8sSshRunnerTimeout()
+{
+    const QString root = m_root + QStringLiteral("/k8s-ssh-timeout");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'z');
+    m_server.setResponse(QStringLiteral("/k8s-ssh-timeout.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-ssh-timeout.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    const QString ssh = k8sFakeSsh(root, QByteArrayLiteral("#!/bin/sh\n"
+                                                           "for last do :; done\n"
+                                                           "case \"$last\" in\n"
+                                                           "  *cloud-init*) exit 0;;\n"
+                                                           "  *get.k3s.io*) sleep 10;;\n"
+                                                           "  *) exit 0;;\n"
+                                                           "esac\n"));
+    QVERIFY(!ssh.isEmpty());
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.sshBinary = ssh;
+    k8sOptions.installTimeoutMs = 500;
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_TIMEOUT"));
+}
+
+void MachinesTest::k8sSshRunnerCancelled()
+{
+    const QString root = m_root + QStringLiteral("/k8s-ssh-cancelled");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'w');
+    m_server.setResponse(QStringLiteral("/k8s-ssh-cancelled.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-ssh-cancelled.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    const QString ssh = k8sFakeSsh(root, QByteArrayLiteral("#!/bin/sh\n"
+                                                           "for last do :; done\n"
+                                                           "case \"$last\" in\n"
+                                                           "  *cloud-init*) exit 0;;\n"
+                                                           "  *get.k3s.io*) sleep 10;;\n"
+                                                           "  *) exit 0;;\n"
+                                                           "esac\n"));
+    QVERIFY(!ssh.isEmpty());
+
+    bool cancelRequested = false;
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.sshBinary = ssh;
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable(
+        {},
+        [&cancelRequested](const QString &stage, int) {
+            if (stage == QStringLiteral("install")) {
+                cancelRequested = true;
+            }
+        },
+        [&cancelRequested] { return cancelRequested; }, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+}
+
+void MachinesTest::k8sSshRunnerStartFailure()
+{
+    const QString root = m_root + QStringLiteral("/k8s-ssh-start-failure");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'a');
+    m_server.setResponse(QStringLiteral("/k8s-ssh-start.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-ssh-start.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = root + QStringLiteral("/podstack.db");
+    k8sOptions.sshBinary = QStringLiteral("podstack-ssh-inexistente");
+    k8sOptions.sshReadyTimeoutMs = 100;
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_TIMEOUT"));
+    QVERIFY(error.message.contains(QStringLiteral("SSH")));
+}
+
+void MachinesTest::k8sSshReadyTimeout()
+{
+    const QString root = m_root + QStringLiteral("/k8s-ssh-ready-timeout");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'b');
+    m_server.setResponse(QStringLiteral("/k8s-ready-timeout.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-ready-timeout.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    MachineManager machines(std::move(options));
+
+    const QString marker = root + QStringLiteral("/ssh-attempt");
+    const QString ssh =
+        k8sFakeSsh(root, QByteArrayLiteral("#!/bin/sh\n"
+                                           "for last do :; done\n"
+                                           "case \"$last\" in\n"
+                                           "  *cloud-init*)\n"
+                                           "    if [ ! -f \"$PODSTACK_FAKE_SSH_MARKER\" ]; then\n"
+                                           "      : > \"$PODSTACK_FAKE_SSH_MARKER\"\n"
+                                           "      exit 1\n"
+                                           "    fi\n"
+                                           "    echo 'sem ssh' >&2; exit 1;;\n"
+                                           "  *) exit 0;;\n"
+                                           "esac\n"));
+    QVERIFY(!ssh.isEmpty());
+    qputenv("PODSTACK_FAKE_SSH_MARKER", marker.toUtf8());
+    const auto restoreMarker = qScopeGuard([] { qunsetenv("PODSTACK_FAKE_SSH_MARKER"); });
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = root + QStringLiteral("/podstack.db");
+    k8sOptions.sshBinary = ssh;
+    k8sOptions.sshReadyTimeoutMs = 1500;
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_TIMEOUT"));
+}
+
+void MachinesTest::k8sNodeNotReady()
+{
+    const QString root = m_root + QStringLiteral("/k8s-node-not-ready");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'd');
+    m_server.setResponse(QStringLiteral("/k8s-node-not-ready.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-node-not-ready.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    MachineManager machines(std::move(options));
+
+    const QString ssh =
+        k8sFakeSsh(root, QByteArrayLiteral("#!/bin/sh\n"
+                                           "for last do :; done\n"
+                                           "case \"$last\" in\n"
+                                           "  *cloud-init*) exit 0;;\n"
+                                           "  *get.k3s.io*) exit 0;;\n"
+                                           "  *\"get nodes\"*) echo 'node NotReady' >&2; exit 1;;\n"
+                                           "  *) exit 0;;\n"
+                                           "esac\n"));
+    QVERIFY(!ssh.isEmpty());
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = root + QStringLiteral("/podstack.db");
+    k8sOptions.sshBinary = ssh;
+    k8sOptions.readyTimeoutMs = 3000;
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(error.detail.contains(QStringLiteral("node NotReady")));
+}
+
+void MachinesTest::k8sInstallFailureWithoutError()
+{
+    const QString root = m_root + QStringLiteral("/k8s-install-no-error");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'e');
+    m_server.setResponse(QStringLiteral("/k8s-no-error.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-no-error.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = root + QStringLiteral("/podstack.db");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script, const K8sManager::Line &,
+                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        return !script.contains(QStringLiteral("get.k3s.io"));
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(error.message.contains(QStringLiteral("instalar o k3s")));
+}
+
+void MachinesTest::k8sSshReadyCancelledByRemote()
+{
+    const QString root = m_root + QStringLiteral("/k8s-ready-cancelled");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'f');
+    m_server.setResponse(QStringLiteral("/k8s-ready-cancelled.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-ready-cancelled.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = root + QStringLiteral("/podstack.db");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script, const K8sManager::Line &,
+                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (script.contains(QStringLiteral("cloud-init"))) {
+            if (execError) {
+                *execError = PodStack::Error::make(QStringLiteral("PODSTACK_CANCELLED"),
+                                                   QStringLiteral("cancelado no ssh"));
+            }
+            return false;
+        }
+        if (execError) {
+            *execError = {};
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+}
+
+void MachinesTest::k8sClusterJsonRoundtrip()
+{
+    K8sCluster cluster;
+    cluster.id = QStringLiteral("k8s-default");
+    cluster.name = QStringLiteral("default");
+    cluster.state = QStringLiteral("ready");
+    cluster.apiPort = 6443;
+    cluster.kubeconfigPath = QStringLiteral("/kubeconfig");
+    cluster.contextName = QStringLiteral("podstack-default");
+    cluster.vmMachineId = QStringLiteral("vm");
+    cluster.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    cluster.updatedAt = cluster.createdAt;
+    const K8sCluster loaded = K8sCluster::fromJson(cluster.toJson());
+    QCOMPARE(loaded.id, cluster.id);
+    QCOMPARE(loaded.name, cluster.name);
+    QCOMPARE(loaded.provider, QStringLiteral("k3s-vm"));
+    QCOMPARE(loaded.state, cluster.state);
+    QCOMPARE(loaded.apiPort, cluster.apiPort);
+    QCOMPARE(loaded.kubeconfigPath, cluster.kubeconfigPath);
+    QCOMPARE(loaded.contextName, cluster.contextName);
+    QCOMPARE(loaded.vmMachineId, cluster.vmMachineId);
+    QCOMPARE(loaded.createdAt, cluster.createdAt);
+    QCOMPARE(loaded.updatedAt, cluster.updatedAt);
+    QVERIFY(loaded.isReady());
+
+    const K8sCluster defaults = K8sCluster::fromJson(QJsonObject{});
+    QCOMPARE(defaults.provider, QStringLiteral("k3s-vm"));
+    QCOMPARE(defaults.state, QStringLiteral("disabled"));
+}
+
+void MachinesTest::k8sNullManager()
+{
+    K8sManager k8s(nullptr);
+    PodStack::Error error;
+    QVERIFY(k8s.status(&error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INTERNAL"));
+
+    error = {};
+    QVERIFY(k8s.enable({}, {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INTERNAL"));
+}
+
+void MachinesTest::k8sEnableClearsMissingVmAndStartsStopped()
+{
+    const QString root = m_root + QStringLiteral("/k8s-reuse-stopped");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'g');
+    m_server.setResponse(QStringLiteral("/k8s-reuse-stopped.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-reuse-stopped.qcow2"), payload);
+
+    FakeQemuRuntime *runtime = nullptr;
+    MachineManager::Options options =
+        k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars, &runtime);
+    QVERIFY(!options.storePath.isEmpty());
+    QVERIFY(runtime != nullptr);
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
+                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    K8sStore store(storePath);
+    K8sCluster cluster;
+    cluster.id = QStringLiteral("k8s-default");
+    cluster.name = QStringLiteral("default");
+    cluster.state = QStringLiteral("ready");
+    cluster.vmMachineId = QStringLiteral("missing-vm");
+    cluster.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    cluster.updatedAt = cluster.createdAt;
+    PodStack::Error error;
+    QVERIFY2(store.upsert(cluster, &error),
+             qPrintable(error.message + QStringLiteral(" | ") + error.detail));
+
+    const K8sCluster created = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.state, QStringLiteral("ready"));
+    QVERIFY(created.vmMachineId != QStringLiteral("missing-vm"));
+    const MachineMeta running = machines.get(created.vmMachineId, &error);
+    QCOMPARE(running.state, QStringLiteral("running"));
+
+    const MachineMeta stopped = machines.stop(running.id, true, &error);
+    QCOMPARE(stopped.state, QStringLiteral("stopped"));
+
+    cluster.state = QStringLiteral("ready");
+    cluster.vmMachineId = running.id;
+    cluster.createdAt.clear();
+    QVERIFY(store.upsert(cluster, &error));
+    const K8sCluster restarted = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(restarted.vmMachineId, running.id);
+    QCOMPARE(machines.get(running.id, &error).state, QStringLiteral("running"));
+
+    // Cancelamento depois do provisionamento, antes do SSH.
+    cluster.state = QStringLiteral("error");
+    cluster.vmMachineId = running.id;
+    QVERIFY(store.upsert(cluster, &error));
+    error = {};
+    QVERIFY(k8s.enable({}, {}, [] { return true; }, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    // Start silencioso: runtime não inicia e não devolve erro.
+    runtime->failStartSilently = true;
+    cluster.state = QStringLiteral("ready");
+    cluster.vmMachineId = running.id;
+    QVERIFY(store.upsert(cluster, &error));
+    error = {};
+    QVERIFY(k8s.enable({}, {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void MachinesTest::k8sNodeReadyWithoutError()
+{
+    const QString root = m_root + QStringLiteral("/k8s-node-no-error");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'h');
+    m_server.setResponse(QStringLiteral("/k8s-node-no-error.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-node-no-error.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = root + QStringLiteral("/podstack.db");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script, const K8sManager::Line &,
+                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        return !script.contains(QStringLiteral("get nodes"));
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_TIMEOUT"));
+}
+
+void MachinesTest::k8sBrokenStore()
+{
+    const QString root = m_root + QStringLiteral("/k8s-broken-store");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    const QString blocker = root + QStringLiteral("/blocker");
+    QVERIFY(writeTestFile(blocker, QByteArrayLiteral("x")));
+
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = blocker + QStringLiteral("/k8s.db");
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    QVERIFY(k8s.status(&error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    error = {};
+    QVERIFY(k8s.enable({}, {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+}
+
+void MachinesTest::k8sDefaultSshTimeout()
+{
+    const QString root = m_root + QStringLiteral("/k8s-default-ssh");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'j');
+    m_server.setResponse(QStringLiteral("/k8s-default-ssh.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-default-ssh.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = options.storePath;
+    k8sOptions.sshReadyTimeoutMs = 100;
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_TIMEOUT"));
+}
+
+void MachinesTest::k8sCreateStartFailure()
+{
+    const QString root = m_root + QStringLiteral("/k8s-create-start-failure");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'q');
+    m_server.setResponse(QStringLiteral("/k8s-create-start.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-create-start.qcow2"), payload);
+
+    FakeQemuRuntime *runtime = nullptr;
+    MachineManager::Options options =
+        k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars, &runtime);
+    QVERIFY(!options.storePath.isEmpty());
+    QVERIFY(runtime != nullptr);
+    runtime->failStart = true;
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &, const K8sManager::Line &,
+                               const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY(cluster.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
 }
 
 void MachinesTest::machineManagerCreateErrors()
