@@ -291,18 +291,18 @@ void TerminalTest::externalTerminalBranches()
         }
         file.write("#!/bin/sh\nexit 0\n");
         file.close();
-        if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                 | QFileDevice::ExeOwner)) {
+        if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                 QFileDevice::ExeOwner)) {
             return QString();
         }
         return path;
     };
 
-    for (const QString &name : {QStringLiteral("alacritty"), QStringLiteral("ghostty"),
-                                QStringLiteral("foot"), QStringLiteral("wezterm"),
-                                QStringLiteral("konsole"), QStringLiteral("kitty"),
-                                QStringLiteral("xfce4-terminal"),
-                                QStringLiteral("gnome-terminal"), QStringLiteral("kgx")}) {
+    for (const QString &name :
+         {QStringLiteral("alacritty"), QStringLiteral("ghostty"), QStringLiteral("foot"),
+          QStringLiteral("wezterm"), QStringLiteral("konsole"), QStringLiteral("kitty"),
+          QStringLiteral("xfce4-terminal"), QStringLiteral("gnome-terminal"),
+          QStringLiteral("kgx")}) {
         QVERIFY2(!writeScript(name).isEmpty(), qPrintable(name));
     }
 

@@ -22,7 +22,9 @@ if [ -z "$formatter" ]; then
     exit 2
 fi
 
-violations="$(printf '%s\n' "$diff" | "$formatter" -p1 -style=file)"
+# clang-format-diff imprime o diff em stderr e retorna 1 quando há violações;
+# capture os dois fluxos sem deixar o `set -e` abortar antes da mensagem.
+violations="$(printf '%s\n' "$diff" | "$formatter" -p1 -style=file 2>&1)" || true
 if [ -n "$violations" ]; then
     printf '%s\n' "$violations"
     echo "clang-format: formate as linhas acima com clang-format -i." >&2

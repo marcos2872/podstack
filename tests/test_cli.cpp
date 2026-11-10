@@ -1872,8 +1872,8 @@ void CliTest::composeErrors()
     for (const QStringList &args : cases) {
         const CliResult result = run(args, env);
         QVERIFY2(result.code != 0,
-                 qPrintable(QStringLiteral("%1 -> %2").arg(args.join(QLatin1Char(' ')))
-                                .arg(result.code)));
+                 qPrintable(
+                     QStringLiteral("%1 -> %2").arg(args.join(QLatin1Char(' '))).arg(result.code)));
         QVERIFY2(!result.err.trimmed().isEmpty(),
                  qPrintable(QStringLiteral("%1 sem erro").arg(args.join(QLatin1Char(' ')))));
     }

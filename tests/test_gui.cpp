@@ -3,8 +3,8 @@
 #include "core/Config.h"
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
-#include "gui/StreamClient.h"
 #include "gui/ContainerListModel.h"
+#include "gui/StreamClient.h"
 #include "machines/MachineStore.h"
 
 #include <QCoreApplication>
@@ -1442,9 +1442,9 @@ void GuiTest::guiStartsAndQuits()
     for (int attempt = 0; attempt < 300 && !QFileInfo::exists(instanceSocket); ++attempt) {
         QTest::qWait(50);
     }
-    QVERIFY2(QFileInfo::exists(instanceSocket),
-             qPrintable(QStringLiteral("socket de instância não apareceu: %1")
-                            .arg(instanceSocket)));
+    QVERIFY2(
+        QFileInfo::exists(instanceSocket),
+        qPrintable(QStringLiteral("socket de instância não apareceu: %1").arg(instanceSocket)));
 
     QProcess quit;
     quit.setProcessEnvironment(environment);

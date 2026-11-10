@@ -643,14 +643,13 @@ void ContractTest::rawHttpErrors()
     QVERIFY(server.isListening());
     PodStack::UnixHttpClient client(server.socketPath());
 
-    const PodStack::HttpResponse ping = client.request(QByteArrayLiteral("GET"),
-                                                       QStringLiteral("/_ping"));
+    const PodStack::HttpResponse ping =
+        client.request(QByteArrayLiteral("GET"), QStringLiteral("/_ping"));
     QCOMPARE(ping.status, 200L);
     QVERIFY(ping.error.isEmpty());
 
     const PodStack::HttpResponse missing =
-        client.request(QByteArrayLiteral("GET"),
-                       QStringLiteral("/containers/missing/json"));
+        client.request(QByteArrayLiteral("GET"), QStringLiteral("/containers/missing/json"));
     QCOMPARE(missing.status, 404L);
     QVERIFY(missing.body.contains("no such container"));
 
@@ -662,8 +661,8 @@ void ContractTest::rawHttpErrors()
 
     std::atomic_bool cancel{true};
     QString error;
-    QVERIFY(!client.stream(QStringLiteral("/events"),
-                           [](const QByteArray &) { return true; }, &cancel, &error));
+    QVERIFY(!client.stream(
+        QStringLiteral("/events"), [](const QByteArray &) { return true; }, &cancel, &error));
     QVERIFY(!error.isEmpty());
 }
 
