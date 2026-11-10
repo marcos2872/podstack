@@ -101,7 +101,7 @@ o conteúdo não é mesclado.
 | Chave | Tipo | Default | Reinício | Descrição |
 |---|---|---|---|---|
 | `kubernetes.enabled` | bool | `false` | sim | Cluster local habilitado |
-| `kubernetes.exposeServices` | bool | `false` | sim | Expõe Services na LAN |
+| `kubernetes.exposeServices` | bool | `false` | sim | Port-forward de Service em `0.0.0.0` (LAN); `false` usa loopback |
 | `kubernetes.kubeconfigUseDomain` | bool | `true` | sim | Usa domínio no kubeconfig |
 | `kubernetes.tlsSan` | string[] | `[]` | sim | SANs extras do API server |
 | `kubernetes.cpus` | int | `2` | sim | CPUs da VM do cluster |

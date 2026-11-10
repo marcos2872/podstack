@@ -638,6 +638,9 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > `kubectl port-forward -n <ns> pod/<pod> local:remote` ativo, emitindo
 > `k8s.portforward.delta {id, line}` e `k8s.portforward.done {id, error?}`;
 > `k8s.portforward.stop {id}` cancela o processo e responde `{id, stopped:true}`.
+> O start aceita `resource: "pod"|"service"` (default `pod`); com
+> `kubernetes.exposeServices=true` o forward usa `--address 0.0.0.0`, senão
+> `127.0.0.1`.
 >
 > **T5-06:** `k8s.disable {force?}` e `k8s.reset {}` são jobs (`k8s.delta`/`k8s.done`) que
 > param/removem a VM, apagam o kubeconfig e o registro em `clusters`, e gravam

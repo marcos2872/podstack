@@ -33,14 +33,22 @@ ColumnLayout {
     }
 
     function openPortForward() {
-        const pod = backend.k8sPods[podsList.currentRow]
-        if (!pod) {
+        const item = page.selectedItem()
+        if (!item) {
             return
         }
-        actionNamespace = pod.namespace
-        actionName = pod.name
+        actionNamespace = item.namespace
+        actionName = item.name
+        actionKind = page.tab === 0 ? "pod" : "service"
+        let remote = 80
+        if (item.ports) {
+            const match = String(item.ports).match(/\d+/)
+            if (match) {
+                remote = parseInt(match[0])
+            }
+        }
         forwardLocal.text = "8080"
-        forwardRemote.text = "80"
+        forwardRemote.text = String(remote)
         backend.stopK8sPortForward()
         forwardDialog.open()
     }
@@ -129,8 +137,7 @@ ColumnLayout {
         ActionButton {
             text: qsTr("Port-forward")
             iconName: "terminal"
-            visible: page.tab === 0
-            enabled: podsList.currentRow >= 0
+            enabled: page.selectedItem() !== null
             onClicked: page.openPortForward()
             Accessible.name: qsTr("Abrir port-forward do pod")
         }
@@ -616,7 +623,8 @@ ColumnLayout {
                     onClicked: backend.startK8sPortForward(page.actionNamespace,
                                                            page.actionName,
                                                            parseInt(forwardLocal.text),
-                                                           parseInt(forwardRemote.text))
+                                                           parseInt(forwardRemote.text),
+                                                           page.actionKind)
                 }
 
                 ActionButton {

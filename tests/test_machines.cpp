@@ -2851,6 +2851,13 @@ void MachinesTest::k8sEnableProvisionsCluster()
     MachineManager machines(std::move(options));
 
     QStringList scripts;
+    PodStack::Config tlsConfig = PodStack::Config::load();
+    tlsConfig.set(QStringLiteral("kubernetes.tlsSan"),
+                  QJsonArray{QStringLiteral("k8s.example.test")});
+    QString tlsError;
+    QVERIFY2(tlsConfig.save(&tlsError), qPrintable(tlsError));
+    QCOMPARE(PodStack::Config::load().get(QStringLiteral("kubernetes.tlsSan")).toArray().size(), 1);
+
     K8sManager::Options k8sOptions;
     k8sOptions.storePath = storePath;
     k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
@@ -2895,6 +2902,8 @@ void MachinesTest::k8sEnableProvisionsCluster()
     QVERIFY(stages.contains(QStringLiteral("ready")));
     QVERIFY(scripts.join(QLatin1Char('\n')).contains(QStringLiteral("get.k3s.io")));
     QVERIFY(scripts.join(QLatin1Char('\n')).contains(QStringLiteral("get nodes")));
+    QVERIFY2(scripts.join(QLatin1Char('\n')).contains(QStringLiteral("--tls-san=k8s.example.test")),
+             qPrintable(scripts.join(QLatin1Char('\n'))));
 
     const MachineMeta vm = machines.get(cluster.vmMachineId, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
@@ -4526,14 +4535,22 @@ void MachinesTest::k8sDeleteAndPortForward()
 
     QStringList lines;
     QVERIFY2(k8s.portForward(
-                 QStringLiteral("prod"), QStringLiteral("web"), 8080, 80,
-                 [&lines](const QString &line) { lines.append(line); }, {}, &error),
+                 QStringLiteral("pod"), QStringLiteral("prod"), QStringLiteral("web"), 8080, 80,
+                 false, [&lines](const QString &line) { lines.append(line); }, {}, &error),
              qPrintable(error.message));
     QCOMPARE(lines.size(), 1);
-    QVERIFY(commands.last().contains(QStringLiteral("port-forward -n prod pod/web 8080:80")));
+    QVERIFY(commands.last().contains(
+        QStringLiteral("port-forward --address 127.0.0.1 -n prod pod/web 8080:80")));
+
+    QVERIFY2(k8s.portForward(QStringLiteral("service"), QStringLiteral("prod"),
+                             QStringLiteral("web"), 8080, 80, true, {}, {}, &error),
+             qPrintable(error.message));
+    QVERIFY(commands.last().contains(
+        QStringLiteral("port-forward --address 0.0.0.0 -n prod service/web 8080:80")));
 
     error = {};
-    QVERIFY(!k8s.portForward(QStringLiteral("prod"), QStringLiteral("web"), 0, 80, {}, {}, &error));
+    QVERIFY(!k8s.portForward(QStringLiteral("pod"), QStringLiteral("prod"), QStringLiteral("web"),
+                             0, 80, false, {}, {}, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
     error = {};
     QVERIFY(!k8s.deleteResource(QStringLiteral("pod"), QStringLiteral("bad namespace"),

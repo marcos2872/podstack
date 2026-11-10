@@ -187,15 +187,19 @@ QString resolveBinary(const QString &override)
     return QStandardPaths::findExecutable(QStringLiteral("ssh"));
 }
 
-QString defaultInstallScript()
+QString defaultInstallScript(const QStringList &tlsSans)
 {
-    return QStringLiteral(
-        "set -e\n"
-        "if command -v k3s >/dev/null 2>&1 && sudo systemctl is-active --quiet k3s; then\n"
-        "  exit 0\n"
-        "fi\n"
-        "curl -sfL https://get.k3s.io | "
-        "INSTALL_K3S_EXEC=\"server --disable=traefik --write-kubeconfig-mode=600\" sh -\n");
+    QString exec = QStringLiteral("server --disable=traefik --write-kubeconfig-mode=600");
+    for (const QString &san : tlsSans) {
+        exec += QStringLiteral(" --tls-san=") + san;
+    }
+    return QStringLiteral("set -e\n"
+                          "if command -v k3s >/dev/null 2>&1 && sudo systemctl is-active --quiet "
+                          "k3s; then\n"
+                          "  exit 0\n"
+                          "fi\n"
+                          "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC=\"%1\" sh -\n")
+        .arg(exec);
 }
 
 QString readyScript()
@@ -766,19 +770,21 @@ bool K8sManager::deleteResource(const QString &resource, const QString &namespac
     return true;
 }
 
-bool K8sManager::validatePortForward(const QString &namespaceName, const QString &pod,
-                                     int localPort, int remotePort, Error *error)
+bool K8sManager::validatePortForward(const QString &resource, const QString &namespaceName,
+                                     const QString &name, int localPort, int remotePort,
+                                     Error *error)
 {
     if (error) {
         *error = {};
     }
     static const QRegularExpression validName(QStringLiteral("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"));
     const QString ns = namespaceName.trimmed();
-    const QString podName = pod.trimmed();
-    if (ns.isEmpty() || !validName.match(ns).hasMatch() || podName.isEmpty() ||
-        podName.size() > 253 || !validName.match(podName).hasMatch()) {
+    const QString target = name.trimmed();
+    if ((resource != QStringLiteral("pod") && resource != QStringLiteral("service")) ||
+        ns.isEmpty() || !validName.match(ns).hasMatch() || target.isEmpty() ||
+        target.size() > 253 || !validName.match(target).hasMatch()) {
         setError(error, QStringLiteral("PODSTACK_INVALID_PARAMS"),
-                 QStringLiteral("Namespace ou pod inválido."));
+                 QStringLiteral("Recurso, namespace ou nome inválido."));
         return false;
     }
     if (localPort < 1 || localPort > 65535 || remotePort < 1 || remotePort > 65535) {
@@ -795,21 +801,23 @@ bool K8sManager::checkClusterReady(Error *error)
     return clusterSsh(&ssh, error);
 }
 
-bool K8sManager::portForward(const QString &namespaceName, const QString &pod, int localPort,
-                             int remotePort, const Line &onLine, const Cancelled &cancelled,
-                             Error *error)
+bool K8sManager::portForward(const QString &resource, const QString &namespaceName,
+                             const QString &name, int localPort, int remotePort, bool exposeLan,
+                             const Line &onLine, const Cancelled &cancelled, Error *error)
 {
-    if (!validatePortForward(namespaceName, pod, localPort, remotePort, error)) {
+    if (!validatePortForward(resource, namespaceName, name, localPort, remotePort, error)) {
         return false;
     }
     SshInfo ssh;
     if (!clusterSsh(&ssh, error)) {
         return false;
     }
-    const QString command = QStringLiteral("sudo k3s kubectl port-forward -n %1 pod/%2 %3:%4")
-                                .arg(namespaceName.trimmed(), pod.trimmed())
-                                .arg(localPort)
-                                .arg(remotePort);
+    const QString address = exposeLan ? QStringLiteral("0.0.0.0") : QStringLiteral("127.0.0.1");
+    const QString command =
+        QStringLiteral("sudo k3s kubectl port-forward --address %1 -n %2 %3/%4 %5:%6")
+            .arg(address, namespaceName.trimmed(), resource, name.trimmed())
+            .arg(localPort)
+            .arg(remotePort);
     Error execError;
     const bool ok = execRemote(ssh, command, onLine, cancelled, 0, &execError);
     if (!ok && error) {
@@ -1273,8 +1281,18 @@ K8sCluster K8sManager::enable(const EnableRequest &request, const Progress &prog
 
     persistState(cluster, QStringLiteral("installing"), {});
     report(QStringLiteral("install"), 65);
+    QStringList tlsSans;
+    const QJsonArray tlsSanArray =
+        Config::load().get(QStringLiteral("kubernetes.tlsSan")).toArray();
+    static const QRegularExpression validSan(QStringLiteral("^[A-Za-z0-9.-]+$"));
+    for (const QJsonValue &value : tlsSanArray) {
+        const QString san = value.toString().trimmed();
+        if (!san.isEmpty() && san.size() <= 253 && validSan.match(san).hasMatch()) {
+            tlsSans.append(san);
+        }
+    }
     const QString script =
-        m_options.installScript.isEmpty() ? defaultInstallScript() : m_options.installScript;
+        m_options.installScript.isEmpty() ? defaultInstallScript(tlsSans) : m_options.installScript;
     Error installError;
     const bool installed =
         m_options.remoteExec

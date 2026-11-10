@@ -4301,14 +4301,18 @@ QJsonObject Daemon::k8sServiceDelete(const QJsonObject &params, Error *error)
 QJsonObject Daemon::k8sPortForwardStart(const QJsonObject &params, const Notify &notify,
                                         Error *error)
 {
+    const QString resource =
+        params.value(QStringLiteral("resource")).toString(QStringLiteral("pod")).trimmed();
     const QString ns = params.value(QStringLiteral("namespace")).toString().trimmed();
     const QString pod = params.value(QStringLiteral("pod")).toString().trimmed();
     const int localPort = params.value(QStringLiteral("localPort")).toInt();
     const int remotePort = params.value(QStringLiteral("remotePort")).toInt();
-    if (!K8sManager::validatePortForward(ns, pod, localPort, remotePort, error) ||
+    if (!K8sManager::validatePortForward(resource, ns, pod, localPort, remotePort, error) ||
         !m_k8s.checkClusterReady(error)) {
         return {};
     }
+    const bool exposeLan =
+        Config::load().get(QStringLiteral("kubernetes.exposeServices")).toBool(false);
 
     QString id;
     {
@@ -4321,7 +4325,8 @@ QJsonObject Daemon::k8sPortForwardStart(const QJsonObject &params, const Notify 
         m_k8sForwards.insert(id, subscription);
     }
 
-    (void) QtConcurrent::run([this, id, ns, pod, localPort, remotePort, subscription, notify] {
+    (void) QtConcurrent::run([this, id, resource, ns, pod, localPort, remotePort, exposeLan,
+                              subscription, notify] {
         const auto onLine = [&notify, &id](const QString &line) {
             QJsonObject payload;
             payload.insert(QStringLiteral("id"), id);
@@ -4330,7 +4335,8 @@ QJsonObject Daemon::k8sPortForwardStart(const QJsonObject &params, const Notify 
         };
         const auto cancelled = [subscription] { return subscription->cancel.load(); };
         Error forwardError;
-        m_k8s.portForward(ns, pod, localPort, remotePort, onLine, cancelled, &forwardError);
+        m_k8s.portForward(resource, ns, pod, localPort, remotePort, exposeLan, onLine, cancelled,
+                          &forwardError);
 
         QJsonObject payload;
         payload.insert(QStringLiteral("id"), id);
@@ -4345,6 +4351,7 @@ QJsonObject Daemon::k8sPortForwardStart(const QJsonObject &params, const Notify 
     });
 
     return QJsonObject{{QStringLiteral("id"), id},
+                       {QStringLiteral("resource"), resource},
                        {QStringLiteral("namespace"), ns},
                        {QStringLiteral("pod"), pod},
                        {QStringLiteral("localPort"), localPort},
