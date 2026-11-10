@@ -51,6 +51,7 @@ private slots:
     void invalidInvocations();
     void runtimeErrors();
     void outputModes();
+    void composeErrors();
 
 private:
     QString cliPath() const;
@@ -1846,6 +1847,35 @@ void CliTest::outputModes()
         QVERIFY2(
             result.code != -2,
             qPrintable(QStringLiteral("%1 estourou timeout").arg(args.join(QLatin1Char(' ')))));
+    }
+}
+
+void CliTest::composeErrors()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+    const QString failDir = m_testDataDir + QStringLiteral("/fail-compose");
+    QVERIFY(QDir().mkpath(failDir));
+    QFile compose(failDir + QStringLiteral("/compose.yaml"));
+    QVERIFY(compose.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    compose.write("services: {}\n");
+    compose.close();
+
+    const QList<QStringList> cases = {
+        {QStringLiteral("compose"), QStringLiteral("up"), failDir},
+        {QStringLiteral("compose"), QStringLiteral("down"), failDir},
+        {QStringLiteral("compose"), QStringLiteral("stop"), failDir},
+        {QStringLiteral("compose"), QStringLiteral("start"), failDir},
+        {QStringLiteral("compose"), QStringLiteral("restart"), failDir},
+        {QStringLiteral("compose"), QStringLiteral("logs"), failDir},
+    };
+
+    for (const QStringList &args : cases) {
+        const CliResult result = run(args, env);
+        QVERIFY2(result.code != 0,
+                 qPrintable(QStringLiteral("%1 -> %2").arg(args.join(QLatin1Char(' ')))
+                                .arg(result.code)));
+        QVERIFY2(!result.err.trimmed().isEmpty(),
+                 qPrintable(QStringLiteral("%1 sem erro").arg(args.join(QLatin1Char(' ')))));
     }
 }
 
