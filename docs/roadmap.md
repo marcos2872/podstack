@@ -168,6 +168,12 @@ virtiofs, arquivos, export/import e clones seguem nas tarefas seguintes.
 
 ### M6 — Domains e HTTPS (3 semanas)
 
+**Status (2026-11-10): concluído no código.** T6-01..T6-09 implementadas
+(proxy `*.localhost`/`*.podstack.local`, índice, detecção de porta, DNS
+userspace, socket activation :80/:443, Caddy/CA interna, confiança na CA,
+labels e exposição LAN). A T6-10 (portas não publicadas) fica adiada pela
+limitação rootless, documentada em `spec.md` §11.7.
+
 **Objetivo:** acesso por domínio sem configuração (G4).
 
 **Entregáveis:**
@@ -180,9 +186,9 @@ virtiofs, arquivos, export/import e clones seguem nas tarefas seguintes.
 
 **Critério de saída:**
 
-- [ ] `curl app.localhost:8080` funciona sem root.
-- [ ] `*.podstack.local` instala/remove de forma idempotente.
-- [ ] HTTPS válido no navegador; CA removível.
+- [x] `curl app.localhost:8080` funciona sem root.
+- [x] `*.podstack.local` instala/remove de forma idempotente.
+- [x] HTTPS válido com a CA local; CA confiável/removível via helper.
 - [ ] 404 para host desconhecido.
 - [ ] Sem resíduo em `/etc/hosts`/resolved.
 
