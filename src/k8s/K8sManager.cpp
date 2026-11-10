@@ -735,6 +735,90 @@ bool K8sManager::streamLogs(const QString &namespaceName, const QString &pod,
     return ok && execError.isEmpty();
 }
 
+bool K8sManager::useContext(const QString &context, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    const QString name = context.trimmed();
+    if (name.isEmpty() || name.size() > 253 || name.contains(QLatin1Char('\n')) ||
+        name.contains(QLatin1Char('\r'))) {
+        setError(error, QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                 QStringLiteral("Contexto inválido."), name);
+        return false;
+    }
+    Error storeError;
+    const K8sCluster cluster = m_store.get(m_options.clusterName, &storeError);
+    if (!storeError.isEmpty()) {
+        if (error) {
+            *error = storeError;
+        }
+        return false;
+    }
+    if (cluster.kubeconfigPath.isEmpty()) {
+        setError(error, QStringLiteral("PODSTACK_NOT_FOUND"),
+                 QStringLiteral("O cluster ainda não tem kubeconfig."));
+        return false;
+    }
+    QFile file(cluster.kubeconfigPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+                 QStringLiteral("Não foi possível ler o kubeconfig."), file.errorString());
+        return false;
+    }
+    QString content = QString::fromUtf8(file.readAll());
+    file.close();
+    if (!content.contains(QStringLiteral("name: ") + name)) {
+        setError(error, QStringLiteral("PODSTACK_NOT_FOUND"),
+                 QStringLiteral("Contexto não encontrado no kubeconfig."), name);
+        return false;
+    }
+    const QStringList lines = content.split(QLatin1Char('\n'));
+    bool replaced = false;
+    QStringList updated;
+    for (const QString &line : lines) {
+        if (line.trimmed().startsWith(QStringLiteral("current-context:"))) {
+            updated.append(QStringLiteral("current-context: ") + name);
+            replaced = true;
+        } else {
+            updated.append(line);
+        }
+    }
+    if (!replaced) {
+        setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+                 QStringLiteral("O kubeconfig não tem current-context."));
+        return false;
+    }
+    content = updated.join(QLatin1Char('\n'));
+    bool written = false;
+    QString writeError;
+    {
+        QSaveFile output(cluster.kubeconfigPath);
+        if (!output.open(QIODevice::WriteOnly)) {
+            writeError = output.errorString();
+        } else {
+            const QByteArray payload = content.toUtf8();
+            written = output.write(payload) == payload.size() && output.commit();
+            if (!written) {
+                writeError = output.errorString();
+            }
+        }
+    }
+    if (!written) {
+        setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+                 QStringLiteral("Não foi possível gravar o kubeconfig."), writeError);
+        return false;
+    }
+    const QByteArray nativePath = QFile::encodeName(cluster.kubeconfigPath);
+    if (::chmod(nativePath.constData(), S_IRUSR | S_IWUSR) != 0) {
+        setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+                 QStringLiteral("Não foi possível restringir o kubeconfig a 0600."),
+                 cluster.kubeconfigPath);
+        return false;
+    }
+    return true;
+}
+
 bool K8sManager::deleteResource(const QString &resource, const QString &namespaceName,
                                 const QString &name, Error *error)
 {

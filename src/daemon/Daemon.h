@@ -129,6 +129,7 @@ private:
     QJsonObject k8sServiceDelete(const QJsonObject &params, Error *error);
     QJsonObject k8sPortForwardStart(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject k8sPortForwardStop(const QJsonObject &params, Error *error);
+    QJsonObject k8sContextUse(const QJsonObject &params, Error *error);
     QJsonObject setupStatus();
     QJsonObject setupCheck(const QJsonObject &params);
     QJsonObject setupValidate();

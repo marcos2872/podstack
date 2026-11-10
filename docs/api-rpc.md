@@ -601,7 +601,7 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 | `k8s.service.delete` | `{namespace, name}` | `{}` |
 | `k8s.portforward.start` | `{namespace, pod, localPort, remotePort}` | `{id}` |
 | `k8s.portforward.stop` | `{id}` | `{}` |
-| `k8s.context.use` | `{context}` | `{}` |
+| `k8s.context.use` | `{context}` | `{context}` |
 
 > **Implementado na T5-01:** `k8s.status`, `k8s.enable` e `k8s.cancel`. O `enable` provisiona
 > uma machine dedicada `podstack-k8s` com SSH em loopback (CPUs/memória/disco das settings
@@ -641,6 +641,10 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > O start aceita `resource: "pod"|"service"` (default `pod`); com
 > `kubernetes.exposeServices=true` o forward usa `--address 0.0.0.0`, senão
 > `127.0.0.1`.
+>
+> **T5-08:** `k8s.context.use {context}` valida o nome no kubeconfig isolado e troca
+> `current-context` mantendo o arquivo `0600`; a troca automática por projeto ainda não
+> tem modelo de mapeamento no v1.
 >
 > **T5-06:** `k8s.disable {force?}` e `k8s.reset {}` são jobs (`k8s.delta`/`k8s.done`) que
 > param/removem a VM, apagam o kubeconfig e o registro em `clusters`, e gravam

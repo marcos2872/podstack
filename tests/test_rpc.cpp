@@ -2410,6 +2410,25 @@ void RpcTest::k8sActions()
     client.call(QStringLiteral("k8s.portforward.stop"),
                 QJsonObject{{QStringLiteral("id"), QStringLiteral("missing")}}, &error);
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    PodStack::K8sStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    PodStack::K8sCluster cluster = store.get(QStringLiteral("default"), &error);
+    const QString kubeconfig = m_testDataDir + QStringLiteral("/k8s-context.yaml");
+    QFile file(kubeconfig);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write("apiVersion: v1\ncontexts:\n- name: podstack-default\n"
+               "current-context: podstack-default\n");
+    file.close();
+    cluster.kubeconfigPath = kubeconfig;
+    QVERIFY(store.upsert(cluster, &error));
+
+    result = client.call(
+        QStringLiteral("k8s.context.use"),
+        QJsonObject{{QStringLiteral("context"), QStringLiteral("podstack-default")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("context")).toString(),
+             QStringLiteral("podstack-default"));
 }
 
 void RpcTest::composeProviderFallback()

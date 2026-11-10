@@ -209,6 +209,7 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 | `orb stop k8s` | `kube stop` | — | ✅ T5-06; remove VM/kubeconfig |
 | `orb delete k8s` | `kube disable` | `--force` | ✅ T5-06; idempotente |
 | — | `kube env` | `--cluster` | ✅ T5-02; `export KUBECONFIG=...` |
+| — | `kube context [use <nome>]` | — | ✅ T5-08; mostra/troca o current-context |
 | — | `kube pods/services` | `--namespace` | Atalhos de leitura |
 
 ### 2.6 Domínios

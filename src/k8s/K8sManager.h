@@ -80,6 +80,8 @@ public:
                                     Error *error = nullptr);
     /// Verifica se o cluster está pronto e a VM rodando (sem abrir um stream).
     bool checkClusterReady(Error *error = nullptr);
+    /// Troca o `current-context` do kubeconfig isolado.
+    bool useContext(const QString &context, Error *error = nullptr);
 
     /// Provisiona a VM (se preciso), instala o k3s e aguarda o node Ready.
     /// Idempotente quando o cluster já está pronto.
