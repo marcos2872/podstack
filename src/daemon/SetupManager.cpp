@@ -552,7 +552,7 @@ QJsonObject SetupManager::apply(const QJsonObject &params, const Notify &notify,
     }
 
     auto job = createJob(action, notify);
-    const QJsonObject options = params;
+    const QJsonObject &options = params;
     (void)QtConcurrent::run([this, job, options] { runJob(job, options); });
 
     QJsonObject result;
@@ -588,7 +588,7 @@ QJsonObject SetupManager::removeDocker(const QJsonObject &params, const Notify &
     }
 
     auto job = createJob(QStringLiteral("remove-docker"), notify);
-    const QJsonObject options = params;
+    const QJsonObject &options = params;
     (void)QtConcurrent::run([this, job, options] { runJob(job, options); });
 
     QJsonObject result;
