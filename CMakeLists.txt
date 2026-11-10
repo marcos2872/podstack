@@ -134,6 +134,7 @@ target_link_libraries(podstackd PRIVATE
 add_executable(podstack-helper
     src/helper/main.cpp
     src/helper/HelperService.cpp
+    src/helper/CaTrust.cpp
     src/helper/DnsZone.cpp
     src/helper/PortBinding.cpp
     src/helper/Firewall.cpp

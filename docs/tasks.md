@@ -171,7 +171,7 @@
 | T6-04 | P1 | Helper: DNS userspace + drop-in resolved | T6-01 | ✅ — `DnsServer` escuta em `127.0.0.1:5353` (UDP + TCP quando possível) e responde A/AAAA com 127.0.0.1/::1 para `podstack.local` e subdomínios, NXDOMAIN fora da zona e NOERROR sem resposta para tipos não suportados. O helper ganhou `InstallDnsZone`/`RemoveDnsZone` com allowlist fixa (`podstack.local`, `127.0.0.1:5353`), escrita atômica de `/etc/systemd/resolved.conf.d/podstack.conf`, backup `.bak`, reload via `systemctl`/`resolvectl` e aviso quando o Avahi está ativo; policy `dev.podstack.helper.dns-zone`. Evidência: `test_dns` (9 casos), `test_setup` (3 novos: backup/remoção, allowlist e instalação com hooks fake), `ctest` 16/16; E2E local com `podstackd` respondendo `A web.podstack.local → 127.0.0.1` na 5353 mesmo com o `kdeconnectd` no mDNS (bind compartilhado). RPC `proxy.dns.*`/toggle de settings ficam para a fiação do setup (T7). |
 | T6-05 | P1 | Helper: socket activation :80/:443 | T6-04 | ✅ — `BindPorts`/`UnbindPorts` no helper geram `podstack-http.socket`/`podstack-https.socket` (`ListenStream=80/443`) e serviços `systemd-socket-proxyd` apontando para `127.0.0.1:<httpPort|httpsPort>`; allowlist fixa (80/443 e alvo loopback), escrita atômica com backup, `daemon-reload` + `enable/disable --now`, remoção idempotente e policy `dev.podstack.helper.bind-ports`. Evidência: `test_setup` (32 casos, 3 novos: unidades/validação e helper com runner fake), `ctest` 16/16. O bind real em :80/:443 exige polkit/root e fica para a validação manual/fiação do setup (T7). |
 | T6-06 | P1 | Caddy: CA interna + HTTPS on-the-fly | T6-05 | ✅ — `CaddyProxy` gera um Caddyfile com `https_port`, storage próprio, `skip_install_trust` e site `*.localhost, *.podstack.local` com `tls internal` + `on_demand`, encaminhando para o `HttpProxy` em `127.0.0.1:<httpPort>`; o daemon sobe o Caddy quando `network.https=true` (restart) e o `HttpProxy` passou a aceitar também `*.podstack.local`. CA/chaves em `<data>/podstack/caddy/storage` (root `0600`). Evidência: `test_caddy` (3 casos; TLS real com `QSslSocket` + CA, chave sem leitura de grupo/outros, sem caddy → `PODSTACK_NOT_FOUND`), `test_http_proxy` (27, inclui Host `podstack.local`), E2E com daemon: `curl --cacert ... https://web.localhost:18443/` → 502 HTML do proxy (TLS válido). Confiar na CA fica na T6-07. |
-| T6-07 | P1 | Confiar na CA (host/containers) opt-in | T6-06 | `update-ca-trust` |
+| T6-07 | P1 | Confiar na CA (host/containers) opt-in | T6-06 | ✅/parcial — `TrustCa`/`UntrustCa` no helper exigem CA autoassinada e fingerprint SHA-256 correspondente, validam que o arquivo pertence ao chamador, gravam `podstack-local-ca.crt` em `/etc/pki/ca-trust/source/anchors` (ou `/usr/local/share/ca-certificates`) e rodam `update-ca-trust`/`update-ca-certificates`; remoção idempotente e policy `dev.podstack.helper.trust-ca`. Evidência: `test_setup` (35 casos, 3 novos), `ctest` 17/17. O mount da CA nos containers via label opt-out fica na T6-08 (labels), junto do opt-out. |
 | T6-08 | P1 | Labels `dev.podstack.domains/http-port/https-port` | T6-03 | Overrides |
 | T6-09 | P1 | Exposição LAN de domínios/portas | T6-01 | Acesso externo |
 | T6-10 | P2 | Port forwarding de portas não publicadas | T6-04 | Via router/helper |
@@ -183,8 +183,10 @@ dependência de root, `/etc/hosts` ou DNS. `http://localhost:<porta>/` lista os
 serviços publicados, o 404 de container desconhecido reaproveita a lista, e a
 porta HTTP é detectada (com cache) quando o container publica mais de uma. O
 `DnsServer` responde `*.podstack.local` na 5353, o helper instala o drop-in do
-resolved e gera a socket activation de :80/:443, e o Caddy termina HTTPS com CA
-interna e certificados on-demand. A próxima tarefa é confiar na CA (T6-07).
+resolved e gera a socket activation de :80/:443, o Caddy termina HTTPS com CA
+interna e certificados on-demand, e o helper confia na CA no host com
+fingerprint/allowlist. A próxima tarefa é o conjunto de labels (T6-08), que
+inclui o mount da CA nos containers.
 
 **Saída M6:** G4 completo.
 

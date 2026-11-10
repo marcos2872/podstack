@@ -30,6 +30,8 @@ public slots:
     Q_SCRIPTABLE QVariantMap BindPorts(const QStringList &ports, const QString &httpTarget,
                                        const QString &httpsTarget);
     Q_SCRIPTABLE QVariantMap UnbindPorts(const QStringList &ports);
+    Q_SCRIPTABLE QVariantMap TrustCa(const QString &certPath, const QString &fingerprint);
+    Q_SCRIPTABLE QVariantMap UntrustCa(const QString &fingerprint);
 
 protected:
     /// Ponto de extensão para testes; em produção exige polkit via D-Bus.
@@ -41,6 +43,8 @@ protected:
     virtual bool avahiActive() const;
     virtual QString systemUnitDirectory() const;
     virtual bool runSystemctl(const QStringList &arguments, QString *error) const;
+    virtual QString caAnchorsDirectory() const;
+    virtual bool runTrustUpdate(QString *error) const;
 
 private:
     bool validatePackages(const QStringList &packages, const QStringList &allowed,
@@ -53,6 +57,7 @@ private:
     QVariantMap changeDnsZone(const QString &zone, const QString &upstream, bool install);
     QVariantMap changePortBindings(const QStringList &ports, const QString &httpTarget,
                                    const QString &httpsTarget, bool bind);
+    QVariantMap changeCaTrust(const QString &certPath, const QString &fingerprint, bool trust);
     uint callerUid() const;
 
     static QVariantMap result(bool ok, const QString &message);

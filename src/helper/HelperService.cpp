@@ -3,6 +3,7 @@
 #include "helper/HelperService.h"
 
 #include "core/Error.h"
+#include "helper/CaTrust.h"
 #include "helper/DnsZone.h"
 #include "helper/Firewall.h"
 #include "helper/Polkit.h"
@@ -12,6 +13,8 @@
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusReply>
+#include <QFile>
+#include <QFileInfo>
 #include <QLoggingCategory>
 #include <QProcess>
 #include <QStandardPaths>
@@ -29,6 +32,7 @@ constexpr auto kOpenPortsAction = "dev.podstack.helper.open-ports";
 constexpr auto kClosePortsAction = "dev.podstack.helper.close-ports";
 constexpr auto kDnsZoneAction = "dev.podstack.helper.dns-zone";
 constexpr auto kBindPortsAction = "dev.podstack.helper.bind-ports";
+constexpr auto kTrustCaAction = "dev.podstack.helper.trust-ca";
 
 const QStringList &installAllowlist()
 {
@@ -390,6 +394,101 @@ bool HelperService::runSystemctl(const QStringList &arguments, QString *error) c
     return true;
 }
 
+QString HelperService::caAnchorsDirectory() const
+{
+    if (!QStandardPaths::findExecutable(QStringLiteral("update-ca-trust")).isEmpty()) {
+        return QStringLiteral("/etc/pki/ca-trust/source/anchors");
+    }
+    return QStringLiteral("/usr/local/share/ca-certificates");
+}
+
+bool HelperService::runTrustUpdate(QString *error) const
+{
+    QString program = QStandardPaths::findExecutable(QStringLiteral("update-ca-trust"));
+    if (program.isEmpty()) {
+        program = QStandardPaths::findExecutable(QStringLiteral("update-ca-certificates"));
+    }
+    if (program.isEmpty()) {
+        if (error) {
+            *error = QStringLiteral("update-ca-trust/update-ca-certificates não encontrado.");
+        }
+        return false;
+    }
+    const QString failure = runProcess(program, {}, 60000);
+    if (!failure.isEmpty()) {
+        if (error) {
+            *error = failure;
+        }
+        return false;
+    }
+    if (error) {
+        error->clear();
+    }
+    return true;
+}
+
+QVariantMap HelperService::changeCaTrust(const QString &certPath, const QString &fingerprint,
+                                         bool trustCa)
+{
+    QString error;
+    if (!CaTrust::validateFingerprint(fingerprint, &error)) {
+        return result(false, error);
+    }
+
+    QByteArray pem;
+    if (trustCa) {
+        const QFileInfo info(QFileInfo(certPath).canonicalFilePath());
+        if (!info.isFile() || !info.isReadable() || info.size() > 1024LL * 1024) {
+            return result(false, QStringLiteral("Certificado inválido ou inacessível."));
+        }
+        const uint uid = callerUid();
+        if (uid != 0 && info.ownerId() != uid) {
+            return result(false, QStringLiteral("O certificado não pertence ao chamador."));
+        }
+        QFile file(info.absoluteFilePath());
+        if (!file.open(QIODevice::ReadOnly)) {
+            return result(false, QStringLiteral("Não foi possível ler o certificado."));
+        }
+        pem = file.readAll();
+        if (CaTrust::fingerprintOf(pem) != CaTrust::normalizeFingerprint(fingerprint)) {
+            return result(false, QStringLiteral("O fingerprint não corresponde ao certificado."));
+        }
+        if (!CaTrust::isSelfSigned(pem, &error)) {
+            return result(false, error);
+        }
+    }
+
+    if (!authorize(QString::fromLatin1(kTrustCaAction), &error)) {
+        qCWarning(lcHelper, "%s uid=%u result=denied", trustCa ? "TrustCa" : "UntrustCa",
+                  callerUid());
+        return result(false, error);
+    }
+
+    if (trustCa) {
+        if (!CaTrust::trust(caAnchorsDirectory(), pem, fingerprint, &error)) {
+            qCWarning(lcHelper, "TrustCa uid=%u result=error", callerUid());
+            return result(false, error);
+        }
+        if (!runTrustUpdate(&error)) {
+            return result(false, error);
+        }
+        qCInfo(lcHelper, "TrustCa uid=%u fingerprint=%s result=ok", callerUid(),
+               qUtf8Printable(CaTrust::normalizeFingerprint(fingerprint)));
+        return result(true, QStringLiteral("CA local confiada no trust store do host."));
+    }
+
+    if (!CaTrust::untrust(caAnchorsDirectory(), fingerprint, &error)) {
+        qCWarning(lcHelper, "UntrustCa uid=%u result=error", callerUid());
+        return result(false, error);
+    }
+    if (!runTrustUpdate(&error)) {
+        return result(false, error);
+    }
+    qCInfo(lcHelper, "UntrustCa uid=%u fingerprint=%s result=ok", callerUid(),
+           qUtf8Printable(CaTrust::normalizeFingerprint(fingerprint)));
+    return result(true, QStringLiteral("CA local removida do trust store do host."));
+}
+
 QVariantMap HelperService::changePortBindings(const QStringList &ports, const QString &httpTarget,
                                               const QString &httpsTarget, bool bind)
 {
@@ -541,6 +640,16 @@ QVariantMap HelperService::BindPorts(const QStringList &ports, const QString &ht
 QVariantMap HelperService::UnbindPorts(const QStringList &ports)
 {
     return changePortBindings(ports, QString(), QString(), false);
+}
+
+QVariantMap HelperService::TrustCa(const QString &certPath, const QString &fingerprint)
+{
+    return changeCaTrust(certPath, fingerprint, true);
+}
+
+QVariantMap HelperService::UntrustCa(const QString &fingerprint)
+{
+    return changeCaTrust(QString(), fingerprint, false);
 }
 
 } // namespace PodStack
