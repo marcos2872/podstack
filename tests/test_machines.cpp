@@ -3235,7 +3235,7 @@ void MachinesTest::machineManagerSnapshots()
                  .toString(Qt::ISODateWithMs));
     QCOMPARE(listed.at(1).name, QStringLiteral("before-upgrade"));
     QCOMPARE(listed.at(1).sizeBytes, 0LL);
-    QVERIFY(logText().contains(QStringLiteral("info\n--output=json\n") + created.diskPath));
+    QVERIFY(logText().contains(QStringLiteral("info\n-U\n--output=json\n") + created.diskPath));
 
     // Running: cria parando e reiniciando.
     int stopsBefore = fake->stopCount;

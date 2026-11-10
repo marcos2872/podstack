@@ -444,8 +444,9 @@ foram salvas.
 `{items: MachineSnapshot[]}`, onde `MachineSnapshot` é `{id, name, sizeBytes, date}`:
 `sizeBytes` é o `vm-state-size` do qemu-img (0 quando o snapshot foi tirado com a machine
 parada) e `date` é RFC 3339 UTC com milissegundos (`date-sec`/`date-nsec`). A listagem
-executa `qemu-img info --output=json` no qcow2 e é somente leitura: funciona com a machine
-parada ou rodando. `machines.snapshots.create {id, name}` exige nome único que case com
+executa `qemu-img info -U --output=json` (force-share) no qcow2 e é somente leitura:
+funciona com a machine parada ou rodando, sem esbarrar no lock de escrita do QEMU.
+`machines.snapshots.create {id, name}` exige nome único que case com
 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` (`PODSTACK_INVALID_PARAMS`) e nome já existente retorna
 `PODSTACK_CONFLICT`; a machine é parada antes e reiniciada depois (inclusive em falha), pois
 o snapshot interno é sempre offline. `machines.snapshots.restore {id, name}` devolve o

@@ -3408,7 +3408,17 @@ void Backend::onActionFinished()
     // metadado; só é erro de RPC quando o valor é um objeto.
     if (result.value(QStringLiteral("error")).isObject()) {
         const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
-        m_lastError = errorObject.value(QStringLiteral("message")).toString();
+        QString message = errorObject.value(QStringLiteral("message")).toString();
+        const QString detail = errorObject.value(QStringLiteral("detail")).toString();
+        if (!detail.isEmpty() && !message.contains(detail)) {
+            message += QLatin1Char(' ') + detail;
+        }
+        const QString remediation =
+            errorObject.value(QStringLiteral("remediation")).toString();
+        if (!remediation.isEmpty()) {
+            message += QLatin1Char(' ') + remediation;
+        }
+        m_lastError = message;
         emit lastErrorChanged();
         emit actionFinished(false, m_lastError);
     } else {

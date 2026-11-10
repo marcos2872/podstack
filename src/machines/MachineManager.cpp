@@ -1079,8 +1079,10 @@ QVector<MachineSnapshot> MachineManager::parseSnapshots(const MachineMeta &meta,
     }
 
     QByteArray output;
-    if (!qemuImgSnapshot({QStringLiteral("info"), QStringLiteral("--output=json"),
-                          meta.diskPath},
+    // `-U` (force-share) permite ler os snapshots com a machine rodando; o
+    // QEMU mantém o lock de escrita no qcow2. A operação é somente leitura.
+    if (!qemuImgSnapshot({QStringLiteral("info"), QStringLiteral("-U"),
+                          QStringLiteral("--output=json"), meta.diskPath},
                          &output, error)) {
         return {};
     }
