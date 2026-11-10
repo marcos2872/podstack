@@ -429,6 +429,109 @@ int K8sManager::allocateApiPort(Error *error) const
     return 0;
 }
 
+K8sCluster K8sManager::disable(bool force, const Progress &progress, const Cancelled &cancelled,
+                               Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    const auto report = [&progress](const QString &stage, int value) {
+        if (progress) {
+            progress(stage, value);
+        }
+    };
+    report(QStringLiteral("disable"), 10);
+
+    Error storeError;
+    K8sCluster cluster = m_store.get(m_options.clusterName, &storeError);
+    if (storeError.code == QStringLiteral("PODSTACK_NOT_FOUND")) {
+        Config config = Config::load();
+        config.set(QStringLiteral("kubernetes.enabled"), false);
+        QString ignored;
+        config.save(&ignored);
+        K8sCluster disabled;
+        disabled.name = m_options.clusterName;
+        disabled.state = QStringLiteral("disabled");
+        report(QStringLiteral("done"), 100);
+        return disabled;
+    }
+    if (!storeError.isEmpty()) {
+        if (error) {
+            *error = storeError;
+        }
+        return {};
+    }
+    if (cancelled && cancelled()) {
+        setError(error, QStringLiteral("PODSTACK_CANCELLED"),
+                 QStringLiteral("Desabilitação do cluster cancelada."));
+        return {};
+    }
+
+    if (!cluster.vmMachineId.isEmpty() && m_machines) {
+        Error machineError;
+        MachineMeta machine = m_machines->get(cluster.vmMachineId, &machineError);
+        if (!machineError.isEmpty() && machineError.code != QStringLiteral("PODSTACK_NOT_FOUND")) {
+            if (error) {
+                *error = machineError;
+            }
+            return {};
+        }
+        if (!machine.id.isEmpty()) {
+            report(QStringLiteral("stopping"), 30);
+            if (machine.state == QStringLiteral("running") ||
+                machine.state == QStringLiteral("starting")) {
+                Error stopError;
+                m_machines->stop(machine.id, true, &stopError);
+                if (!stopError.isEmpty() && !force) {
+                    if (error) {
+                        *error = stopError;
+                    }
+                    return {};
+                }
+            }
+            if (cancelled && cancelled()) {
+                setError(error, QStringLiteral("PODSTACK_CANCELLED"),
+                         QStringLiteral("Desabilitação do cluster cancelada."));
+                return {};
+            }
+            report(QStringLiteral("removing"), 60);
+            Error removeError;
+            if (!m_machines->remove(machine.id, true, &removeError) && !force) {
+                if (error) {
+                    *error = removeError;
+                }
+                return {};
+            }
+        }
+    }
+
+    report(QStringLiteral("cleanup"), 85);
+    if (!cluster.kubeconfigPath.isEmpty()) {
+        const QString directory = kubeconfigDirFor(m_options);
+        const QFileInfo info(cluster.kubeconfigPath);
+        if (!directory.isEmpty() &&
+            info.absoluteFilePath().startsWith(QFileInfo(directory).absoluteFilePath() +
+                                               QLatin1Char('/'))) {
+            QFile::remove(cluster.kubeconfigPath);
+        }
+    }
+    m_store.remove(m_options.clusterName, nullptr);
+
+    Config config = Config::load();
+    config.set(QStringLiteral("kubernetes.enabled"), false);
+    QString saveError;
+    config.save(&saveError);
+
+    cluster.state = QStringLiteral("disabled");
+    cluster.error.clear();
+    cluster.apiPort = 0;
+    cluster.kubeconfigPath.clear();
+    cluster.contextName.clear();
+    cluster.vmMachineId.clear();
+    report(QStringLiteral("done"), 100);
+    return cluster;
+}
+
 bool K8sManager::clusterSsh(SshInfo *ssh, Error *error)
 {
     if (!m_machines) {

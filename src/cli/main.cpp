@@ -3542,7 +3542,9 @@ void printKubeUsage(QTextStream &stream)
     stream << "Uso: podstack kube <comando> [opções]\n\n"
            << "Comandos:\n"
            << "  info [--cluster NOME] [--json]  Estado do cluster\n"
-           << "  env [--cluster NOME]            Imprime export KUBECONFIG=...\n";
+           << "  env [--cluster NOME]            Imprime export KUBECONFIG=...\n"
+           << "  start                           Cria a VM e instala o k3s\n"
+           << "  stop|disable [--force]          Remove a VM e o kubeconfig\n";
     stream.flush();
 }
 
@@ -3637,6 +3639,63 @@ int kubeEnvCommand(const QStringList &args)
     return kExitOk;
 }
 
+int kubeJobCommand(const QString &method, const QString &label, const QJsonObject &params)
+{
+    PodStack::RpcStream stream;
+    PodStack::Error error;
+    bool failed = false;
+    QString failure;
+    const bool ok = stream.run(
+        method, params,
+        [&](const QString &event, const QJsonObject &payload) {
+            if (event.endsWith(QStringLiteral(".delta"))) {
+                const QString stage = payload.value(QStringLiteral("stage")).toString();
+                const int progress = payload.value(QStringLiteral("progress")).toInt();
+                if (!stage.isEmpty()) {
+                    out() << stage << ' ' << progress << "%\n";
+                    out().flush();
+                }
+            } else if (event.endsWith(QStringLiteral(".done"))) {
+                const QJsonObject errorObject = payload.value(QStringLiteral("error")).toObject();
+                if (!errorObject.isEmpty()) {
+                    failed = true;
+                    failure = errorObject.value(QStringLiteral("message")).toString();
+                }
+            }
+        },
+        &error, 900000);
+    if (!ok) {
+        return fail(error);
+    }
+    if (failed) {
+        return fail(PodStack::Error::make(QStringLiteral("PODSTACK_IO_ERROR"), failure));
+    }
+    out() << label << "\n";
+    out().flush();
+    return kExitOk;
+}
+
+int kubeStartCommand()
+{
+    return kubeJobCommand(QStringLiteral("k8s.enable"), QStringLiteral("cluster pronto"),
+                          QJsonObject{});
+}
+
+int kubeDisableCommand(const QStringList &args)
+{
+    bool force = false;
+    for (int i = 1; i < args.size(); ++i) {
+        if (args.at(i) == QStringLiteral("--force")) {
+            force = true;
+        } else {
+            err() << "opção desconhecida: " << args.at(i) << '\n';
+            return kExitUsage;
+        }
+    }
+    return kubeJobCommand(QStringLiteral("k8s.disable"), QStringLiteral("cluster removido"),
+                          QJsonObject{{QStringLiteral("force"), force}});
+}
+
 int commandKube(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -3654,6 +3713,12 @@ int commandKube(const QStringList &args)
     }
     if (subcommand == QStringLiteral("env")) {
         return kubeEnvCommand(args);
+    }
+    if (subcommand == QStringLiteral("start")) {
+        return kubeStartCommand();
+    }
+    if (subcommand == QStringLiteral("stop") || subcommand == QStringLiteral("disable")) {
+        return kubeDisableCommand(args);
     }
     err() << "comando kube desconhecido: " << subcommand << '\n';
     printKubeUsage(err());

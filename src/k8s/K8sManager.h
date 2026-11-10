@@ -84,6 +84,9 @@ public:
     /// Idempotente quando o cluster já está pronto.
     K8sCluster enable(const EnableRequest &request, const Progress &progress,
                       const Cancelled &cancelled, Error *error = nullptr);
+    /// Remove a VM, o kubeconfig e o registro do cluster (idempotente).
+    K8sCluster disable(bool force, const Progress &progress, const Cancelled &cancelled,
+                       Error *error = nullptr);
 
 private:
     QString machineNameForNewCluster();

@@ -60,11 +60,6 @@ Rectangle {
             applyTheme(backend.settingsValues["app.theme"] || "system")
         }
 
-        function onK8sChanged() {
-            if (!backend.k8sEnabled && section === "kubernetes") {
-                section = "containers"
-            }
-        }
     }
 
     SetupWindow {
@@ -91,12 +86,9 @@ Rectangle {
             { key: "machines", label: "Machines", icon: "machines" },
             { key: "devices", label: "Devices", icon: "devices", disabled: true }
         ] }
-        if (backend.k8sEnabled) {
-            return [engine, { group: "Kubernetes", items: [
-                { key: "kubernetes", label: "Kubernetes", icon: "pods" }
-            ] }, linux]
-        }
-        return [engine, linux]
+        return [engine, { group: "Kubernetes", items: [
+            { key: "kubernetes", label: "Kubernetes", icon: "pods" }
+        ] }, linux]
     }
 
     readonly property string sectionTitle: {

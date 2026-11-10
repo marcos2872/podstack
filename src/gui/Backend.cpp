@@ -662,6 +662,35 @@ Backend::Backend(QObject *parent)
                 emit actionFinished(false, message);
             });
 
+    connect(&m_k8sJobStream, &StreamClient::k8sJobEvent, this, [this](const QJsonObject &event) {
+        m_k8sJobStage = event.value(QStringLiteral("stage")).toString();
+        m_k8sJobProgress = event.value(QStringLiteral("progress")).toInt();
+        emit k8sJobChanged();
+    });
+    connect(
+        &m_k8sJobStream, &StreamClient::k8sJobFinished, this, [this](const QJsonObject &result) {
+            m_k8sJobActive = false;
+            const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+            if (!errorObject.isEmpty()) {
+                m_k8sJobError = errorObject.value(QStringLiteral("message")).toString();
+            } else {
+                const QJsonObject cluster = result.value(QStringLiteral("cluster")).toObject();
+                m_k8sState = cluster.value(QStringLiteral("state")).toString();
+                m_k8sEnabled = !m_k8sState.isEmpty() && m_k8sState != QStringLiteral("disabled");
+                m_k8sJobError.clear();
+            }
+            emit k8sJobChanged();
+            emit k8sChanged();
+            refreshK8sStatus();
+            if (m_k8sEnabled) {
+                refreshK8s();
+            }
+        });
+    connect(&m_k8sJobStream, &StreamClient::error, this, [this](const QString &message) {
+        m_k8sJobActive = false;
+        m_k8sJobError = message;
+        emit k8sJobChanged();
+    });
     connect(&m_k8sLogsStream, &StreamClient::k8sLogLine, this, [this](const QString &line) {
         m_k8sLogLines.append(line);
         if (m_k8sLogLines.size() > 5000) {
@@ -1048,6 +1077,37 @@ void Backend::onK8sForwardFinished()
         m_k8sPortForwardError.clear();
     }
     emit k8sForwardChanged();
+}
+
+void Backend::enableK8s()
+{
+    m_k8sJobActive = true;
+    m_k8sJobStage = QStringLiteral("starting");
+    m_k8sJobProgress = 0;
+    m_k8sJobError.clear();
+    emit k8sJobChanged();
+    m_k8sJobStream.startK8sJob(QStringLiteral("k8s.enable"), QJsonObject{});
+}
+
+void Backend::disableK8s(bool force)
+{
+    m_k8sJobActive = true;
+    m_k8sJobStage = QStringLiteral("disabling");
+    m_k8sJobProgress = 0;
+    m_k8sJobError.clear();
+    emit k8sJobChanged();
+    m_k8sJobStream.startK8sJob(QStringLiteral("k8s.disable"),
+                               QJsonObject{{QStringLiteral("force"), force}});
+}
+
+void Backend::resetK8s()
+{
+    m_k8sJobActive = true;
+    m_k8sJobStage = QStringLiteral("resetting");
+    m_k8sJobProgress = 0;
+    m_k8sJobError.clear();
+    emit k8sJobChanged();
+    m_k8sJobStream.startK8sJob(QStringLiteral("k8s.reset"), QJsonObject{});
 }
 
 void Backend::refreshSection(const QString &section)

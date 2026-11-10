@@ -73,6 +73,10 @@ class Backend : public QObject {
     Q_PROPERTY(bool k8sPortForwardActive READ k8sPortForwardActive NOTIFY k8sForwardChanged)
     Q_PROPERTY(QString k8sPortForwardId READ k8sPortForwardId NOTIFY k8sForwardChanged)
     Q_PROPERTY(QString k8sPortForwardError READ k8sPortForwardError NOTIFY k8sForwardChanged)
+    Q_PROPERTY(bool k8sJobActive READ k8sJobActive NOTIFY k8sJobChanged)
+    Q_PROPERTY(QString k8sJobStage READ k8sJobStage NOTIFY k8sJobChanged)
+    Q_PROPERTY(int k8sJobProgress READ k8sJobProgress NOTIFY k8sJobChanged)
+    Q_PROPERTY(QString k8sJobError READ k8sJobError NOTIFY k8sJobChanged)
     Q_PROPERTY(bool pullActive READ pullActive NOTIFY pullStateChanged)
     Q_PROPERTY(QString pullStatus READ pullStatus NOTIFY pullStateChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
@@ -194,6 +198,10 @@ public:
     bool k8sPortForwardActive() const { return m_k8sPortForwardActive; }
     QString k8sPortForwardId() const { return m_k8sPortForwardId; }
     QString k8sPortForwardError() const { return m_k8sPortForwardError; }
+    bool k8sJobActive() const { return m_k8sJobActive; }
+    QString k8sJobStage() const { return m_k8sJobStage; }
+    int k8sJobProgress() const { return m_k8sJobProgress; }
+    QString k8sJobError() const { return m_k8sJobError; }
     bool pullActive() const { return m_pullActive; }
     QString pullStatus() const { return m_pullStatus; }
     QVariantMap diskUsage() const { return m_diskUsage; }
@@ -272,6 +280,9 @@ public:
     Q_INVOKABLE void startK8sPortForward(const QString &namespaceName, const QString &pod,
                                          int localPort, int remotePort);
     Q_INVOKABLE void stopK8sPortForward();
+    Q_INVOKABLE void enableK8s();
+    Q_INVOKABLE void disableK8s(bool force = false);
+    Q_INVOKABLE void resetK8s();
     Q_INVOKABLE void pullImage(const QString &reference, const QString &platform = {});
     Q_INVOKABLE void cancelPull();
     Q_INVOKABLE void removeImage(const QString &id, bool force);
@@ -417,6 +428,7 @@ signals:
     void k8sChanged();
     void k8sLogsChanged();
     void k8sForwardChanged();
+    void k8sJobChanged();
     void pullStateChanged();
     void diskUsageChanged();
     void prunePreviewChanged();
@@ -536,6 +548,7 @@ private:
     StreamClient m_setupStream;
     StreamClient m_eventsStream;
     StreamClient m_k8sLogsStream;
+    StreamClient m_k8sJobStream;
     QTimer m_eventTimer;
     QTimer m_logsTimer;
     QTimer m_detailLogsTimer;
@@ -592,6 +605,10 @@ private:
     bool m_k8sPortForwardActive = false;
     QString m_k8sPortForwardId;
     QString m_k8sPortForwardError;
+    bool m_k8sJobActive = false;
+    QString m_k8sJobStage;
+    int m_k8sJobProgress = 0;
+    QString m_k8sJobError;
     QTimer m_k8sTimer;
     bool m_pullActive = false;
     QString m_pullStatus;

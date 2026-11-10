@@ -572,6 +572,12 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("k8s.enable")) {
         return k8sEnable(params, notify, error);
     }
+    if (method == QStringLiteral("k8s.disable")) {
+        return k8sDisable(params, notify, error);
+    }
+    if (method == QStringLiteral("k8s.reset")) {
+        return k8sReset(params, notify, error);
+    }
     if (method == QStringLiteral("k8s.cancel")) {
         return k8sCancel(params, error);
     }
@@ -4092,6 +4098,65 @@ QJsonObject Daemon::k8sEnable(const QJsonObject &params, const Notify &notify, E
     result.insert(QStringLiteral("jobId"), jobId);
     result.insert(QStringLiteral("subscriptionId"), subscriptionId);
     return result;
+}
+
+QJsonObject Daemon::k8sDisable(const QJsonObject &params, const Notify &notify, Error *error)
+{
+    const bool force = params.value(QStringLiteral("force")).toBool(false);
+    QString jobId;
+    {
+        std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+        jobId =
+            QStringLiteral("k8s-%1-%2").arg(QDateTime::currentSecsSinceEpoch()).arg(m_nextK8sJob++);
+    }
+    auto subscription = std::make_shared<Subscription>();
+    const QString subscriptionId = createSubscription(subscription);
+    {
+        std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+        m_k8sSubscriptions.insert(jobId, subscriptionId);
+    }
+
+    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, force, notify] {
+        const auto progress = [jobId, notify](const QString &stage, int value) {
+            if (!notify) {
+                return;
+            }
+            QJsonObject payload;
+            payload.insert(QStringLiteral("jobId"), jobId);
+            payload.insert(QStringLiteral("stage"), stage);
+            payload.insert(QStringLiteral("progress"), value);
+            notify(QStringLiteral("k8s.delta"), payload);
+        };
+        const auto cancelled = [subscription] { return subscription->cancel.load(); };
+        Error disableError;
+        const K8sCluster cluster = m_k8s.disable(force, progress, cancelled, &disableError);
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("jobId"), jobId);
+        if (disableError.isEmpty()) {
+            payload.insert(QStringLiteral("cluster"), cluster.toJson());
+        } else {
+            payload.insert(QStringLiteral("error"), disableError.toJson());
+        }
+        if (notify) {
+            notify(QStringLiteral("k8s.done"), payload);
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+            m_k8sSubscriptions.remove(jobId);
+        }
+        removeSubscription(subscriptionId);
+    });
+
+    return QJsonObject{{QStringLiteral("jobId"), jobId},
+                       {QStringLiteral("subscriptionId"), subscriptionId}};
+}
+
+QJsonObject Daemon::k8sReset(const QJsonObject &params, const Notify &notify, Error *error)
+{
+    Q_UNUSED(params);
+    QJsonObject forceParams{{QStringLiteral("force"), true}};
+    return k8sDisable(forceParams, notify, error);
 }
 
 QJsonObject Daemon::k8sCancel(const QJsonObject &params, Error *error)

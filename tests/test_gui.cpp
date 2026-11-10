@@ -46,6 +46,7 @@ private slots:
     void backendCatalog();
     void backendKubernetes();
     void backendKubernetesEnabledError();
+    void backendKubernetesDisableJob();
     void backendMachines();
     void backendMachineStats();
     void backendMachineConsole();
@@ -562,6 +563,22 @@ void GuiTest::backendKubernetesEnabledError()
     QVERIFY(!backend.k8sError().isEmpty());
 
     QVERIFY(store.remove(QStringLiteral("default"), &error));
+}
+
+void GuiTest::backendKubernetesDisableJob()
+{
+    PodStack::Backend backend;
+    QSignalSpy jobSpy(&backend, &PodStack::Backend::k8sJobChanged);
+
+    backend.disableK8s(true);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sJobActive(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sState() == QStringLiteral("disabled"), 5000);
+    QVERIFY(backend.k8sJobError().isEmpty());
+    QVERIFY(jobSpy.count() > 0);
+
+    backend.resetK8s();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sJobActive(), 5000);
+    QCOMPARE(backend.k8sState(), QStringLiteral("disabled"));
 }
 
 void GuiTest::backendCatalog()
@@ -1722,6 +1739,21 @@ void GuiTest::streamClientProtocol()
     QTRY_VERIFY_WITH_TIMEOUT(k8sLogSpy.count() > 0, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(k8sLogDoneSpy.count() > 0, 5000);
     QCOMPARE(k8sLogDoneSpy.last().at(0).toBool(), true);
+
+    QSignalSpy k8sJobEventSpy(&client, &PodStack::StreamClient::k8sJobEvent);
+    QSignalSpy k8sJobDoneSpy(&client, &PodStack::StreamClient::k8sJobFinished);
+    client.startK8sJob(QStringLiteral("k8s.disable"), QJsonObject{});
+    socket = accept(QByteArrayLiteral("k8s.disable"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-11\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"k8s.delta\",\"params\":{"
+        "\"stage\":\"removing\",\"progress\":60}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"k8s.done\",\"params\":{"
+        "\"cluster\":{\"state\":\"disabled\"}}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(k8sJobEventSpy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(k8sJobDoneSpy.count() > 0, 5000);
 
     const QList<QPair<QString, QString>> machineJobs = {
         {QStringLiteral("machines.create"), QStringLiteral("create")},
