@@ -18,6 +18,10 @@ target_link_libraries(test_http_proxy PRIVATE podstack_core podstack_podman Qt6:
     Qt6::Test)
 add_test(NAME http_proxy COMMAND test_http_proxy)
 
+qt_add_executable(test_dns test_dns.cpp ../src/daemon/DnsServer.cpp)
+target_link_libraries(test_dns PRIVATE podstack_core Qt6::Network Qt6::Test)
+add_test(NAME dns COMMAND test_dns)
+
 qt_add_executable(test_rpc test_rpc.cpp MockPodmanServer.cpp
     ../src/daemon/ComposeManager.cpp)
 target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_k8s
@@ -85,6 +89,7 @@ add_test(NAME machines COMMAND test_machines)
 qt_add_executable(test_setup test_setup.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/SetupManager.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/HelperClient.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/DnsZone.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/Firewall.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/HelperService.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/Polkit.cpp)

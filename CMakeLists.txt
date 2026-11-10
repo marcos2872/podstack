@@ -116,6 +116,7 @@ add_executable(podstackd
     src/daemon/HelperClient.cpp
     src/daemon/StatsCollector.cpp
     src/daemon/HttpProxy.cpp
+    src/daemon/DnsServer.cpp
 )
 target_link_libraries(podstackd PRIVATE
     podstack_podman
@@ -132,6 +133,7 @@ target_link_libraries(podstackd PRIVATE
 add_executable(podstack-helper
     src/helper/main.cpp
     src/helper/HelperService.cpp
+    src/helper/DnsZone.cpp
     src/helper/Firewall.cpp
     src/helper/Polkit.cpp
 )

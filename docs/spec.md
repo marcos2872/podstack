@@ -662,9 +662,21 @@ DNS=127.0.0.1:5353
 Domains=~podstack.local
 ```
 
-- DNS userspace responde A/AAAA para 127.0.0.1/::1.
-- Remoção idempotente; backup e validação.
-- Conflito com Avahi: detectar e avisar.
+- DNS userspace (`DnsServer`) escuta em `127.0.0.1:5353` (UDP e TCP quando
+  disponível) e responde A/AAAA para `*.podstack.local` com 127.0.0.1/::1.
+  O bind UDP usa `SO_REUSEADDR` para conviver com mDNS/Avahi que ocupe
+  `0.0.0.0:5353`; se ainda assim falhar, o daemon loga o aviso e segue.
+- Remoção idempotente; backup (`podstack.conf.bak`) e validação de
+  zona/upstream contra allowlist (`podstack.local`, `127.0.0.1:5353`).
+- Conflito com Avahi: detectar e avisar no resultado do helper.
+
+**Critérios:**
+
+- [x] Drop-in instalado/removido de forma idempotente, com backup.
+- [x] DNS responde A/AAAA para `*.podstack.local` (UDP e TCP).
+- [x] Avahi ativo gera aviso (não bloqueia).
+- [ ] Toggle de settings/RPC `proxy.dns.*` e validação E2E com polkit ficam
+  para a fiação do setup (T7).
 
 ### 11.3 HTTPS
 

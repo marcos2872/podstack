@@ -664,6 +664,11 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 | `proxy.dns.install` | `{}` | `JobRef` |
 | `proxy.dns.remove` | `{}` | `JobRef` |
 
+> **T6-04:** o helper já expõe `InstallDnsZone`/`RemoveDnsZone` (drop-in do
+> resolved + reload) e o daemon sobe o `DnsServer` em `127.0.0.1:5353`. Os
+> métodos `proxy.dns.*`/`proxy.status` e o toggle de settings ainda serão
+> fiados na etapa de setup (T7).
+
 ### 4.10 `settings.*`
 
 Fonte única: o `podstackd` lê/valida/escreve `~/.config/podstack/config.json` (0600, escrita
