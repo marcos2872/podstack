@@ -169,6 +169,8 @@ qt_add_executable(podstack-gui
     src/gui/main.cpp
 )
 
+qt_add_library(podstack_qml STATIC)
+
 set_source_files_properties(src/gui/qml/Theme.qml
     PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
@@ -180,7 +182,7 @@ file(GLOB PODSTACK_TRAY_ICONS CONFIGURE_DEPENDS
     RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     assets/png/tray/*.png)
 
-qt_add_qml_module(podstack-gui
+qt_add_qml_module(podstack_qml
     URI PodStack
     VERSION 1.0
     QML_FILES
@@ -232,8 +234,14 @@ qt_add_qml_module(podstack-gui
         ${PODSTACK_TRAY_ICONS}
 )
 
+target_link_libraries(podstack_qml PUBLIC
+    Qt6::Qml
+    Qt6::Quick
+)
+
 target_link_libraries(podstack-gui PRIVATE
     podstack_gui_lib
+    podstack_qml
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets

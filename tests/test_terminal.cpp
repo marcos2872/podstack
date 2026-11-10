@@ -27,6 +27,9 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QToolButton>
+#include <QtQml/qqmlextensionplugin.h>
+
+Q_IMPORT_QML_PLUGIN(PodStackPlugin)
 
 #include <qtermwidget.h>
 
@@ -63,6 +66,7 @@ private slots:
     void machineDetailDialogFromList();
     void machineDetailDialogQml();
     void mainWindowTerminalDock();
+    void mainWindowQml();
 
 private:
     QTemporaryDir m_runtime;
@@ -592,8 +596,7 @@ void TerminalTest::mainWindowTerminalDock()
     PodStack::TrayController tray(false);
     PodStack::NotificationService notifications;
     PodStack::SingleInstance singleInstance;
-    // Sem QML: o módulo QML pertence ao binário podstack-gui; aqui validamos o
-    // dock e a criação/adição de sessões QTermWidget.
+    // Sem QML: valida o dock e a criação/adição de sessões QTermWidget.
     PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance,
                                 /*startHidden=*/true, /*loadQml=*/false);
 
@@ -619,6 +622,20 @@ void TerminalTest::mainWindowTerminalDock()
     QCOMPARE(window.terminalTabs()->count(), 0);
     QVERIFY(window.terminalDock()->isHidden());
     QVERIFY(window.findChild<QTermWidget *>() == nullptr);
+}
+
+void TerminalTest::mainWindowQml()
+{
+    PodStack::Backend backend;
+    PodStack::TrayController tray(false);
+    PodStack::NotificationService notifications;
+    PodStack::SingleInstance singleInstance;
+    PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance,
+                                /*startHidden=*/true, /*loadQml=*/true);
+
+    QVERIFY(window.qmlLoaded());
+    QVERIFY(window.centralWidget() != nullptr);
+    QVERIFY(window.terminalDock() != nullptr);
 }
 
 } // namespace
