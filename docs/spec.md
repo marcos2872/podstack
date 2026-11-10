@@ -101,7 +101,7 @@ Formato único:
 2. **Diagnóstico** — checks read-only: Docker, Podman, QEMU/KVM, `/dev/kvm`, virtiofsd, systemd de usuário, SQLite, Caddy e k3s.
 3. **Podman** — instala/atualiza o Podman e ativa `podman.socket` rootless. **O Docker não é removido por padrão**; a remoção é uma ação separada, opt-in, com confirmação e aviso de perda.
 4. **QEMU/KVM** — instala QEMU, OVMF, virtiofsd e libvirt opcional; sem `/dev/kvm`, avisa e permite TCG.
-5. **Componentes** — socket/rootless/SQLite obrigatórios; Caddy e k3s opcionais (k3s desmarcado).
+5. **Componentes** — socket/rootless/SQLite obrigatórios; Caddy opcional. O k3s **não** é instalado no host pelo setup: o cluster roda em VM dedicada e é habilitado depois na página Kubernetes.
 6. **Validação** — checklist final; obrigatórios vs. opcionais; a tela principal fica bloqueada enquanto os obrigatórios não estiverem OK.
 7. **Pronto** — resumo e abertura do app; persiste `setup.completed`.
 
