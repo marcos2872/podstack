@@ -77,11 +77,13 @@ ColumnLayout {
     }
 
     ViewHeader {
+        objectName: "k8sHeader"
         Layout.fillWidth: true
         Layout.leftMargin: 22
         Layout.rightMargin: 22
         Layout.topMargin: 20
         Layout.bottomMargin: 12
+        Layout.alignment: Qt.AlignTop
         title: qsTr("Kubernetes")
         subtitle: backend.k8sEnabled
                   ? backend.k8sPods.length + qsTr(" pods · ")
@@ -159,10 +161,12 @@ ColumnLayout {
     }
 
     Rectangle {
+        objectName: "k8sDisabledCard"
         Layout.fillWidth: true
         Layout.leftMargin: 22
         Layout.rightMargin: 22
         Layout.bottomMargin: 12
+        Layout.alignment: Qt.AlignTop
         visible: !backend.k8sEnabled
         implicitHeight: disabledColumn.implicitHeight + 32
         radius: Theme.radiusLg
@@ -180,7 +184,7 @@ ColumnLayout {
                 text: qsTr("Kubernetes não está habilitado")
                 color: Theme.textPrimary
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontH2
+                font.pixelSize: Theme.fontHeading
                 font.weight: Font.DemiBold
             }
 
@@ -624,5 +628,11 @@ ColumnLayout {
         }
 
         onClosed: backend.stopK8sPortForward()
+    }
+
+    Item {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        visible: !backend.k8sEnabled
     }
 }
