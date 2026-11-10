@@ -27,7 +27,8 @@ add_dependencies(test_cli podstack podstackd)
 add_test(NAME cli COMMAND test_cli)
 
 qt_add_executable(test_gui test_gui.cpp MockPodmanServer.cpp)
-target_link_libraries(test_gui PRIVATE podstack_gui_lib podstack_machines Qt6::Test Qt6::Network)
+target_link_libraries(test_gui PRIVATE podstack_gui_lib podstack_machines podstack_k8s
+    Qt6::Test Qt6::Network)
 add_dependencies(test_gui podstackd)
 add_test(NAME gui COMMAND test_gui)
 
