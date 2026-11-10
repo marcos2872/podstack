@@ -91,7 +91,24 @@ bool processExists(qint64 pid)
     const QString processPath = QStringLiteral("/proc/%1").arg(pid);
     struct stat status {};
     const QByteArray nativePath = QFile::encodeName(processPath);
-    return ::stat(nativePath.constData(), &status) == 0 && status.st_uid == ::getuid();
+    if (::stat(nativePath.constData(), &status) != 0 || status.st_uid != ::getuid()) {
+        return false;
+    }
+
+    // Em containers o PID 1 pode não recolher o filho destacado de imediato;
+    // um zumbi ainda tem /proc/<pid>, mas não é um processo vivo.
+    QFile statFile(processPath + QStringLiteral("/stat"));
+    if (statFile.open(QIODevice::ReadOnly)) {
+        const QByteArray stat = statFile.read(4096);
+        const int closeParen = stat.lastIndexOf(')');
+        if (closeParen >= 0 && closeParen + 2 < stat.size()) {
+            const char state = stat.at(closeParen + 2);
+            if (state == 'Z' || state == 'X') {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 bool waitForSocket(qint64 pid, const QString &socketPath, int timeoutMs)
