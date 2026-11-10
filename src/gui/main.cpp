@@ -13,11 +13,15 @@
 #include <QIcon>
 #include <QQuickStyle>
 
+#include <cstdio>
+
 #include <qqml.h>
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    std::fprintf(stderr, "podstack-gui: aplicação iniciada\n");
+    std::fflush(stderr);
     QGuiApplication::setApplicationName(QStringLiteral("PodStack"));
     QGuiApplication::setOrganizationName(QStringLiteral("PodStack"));
     QGuiApplication::setApplicationVersion(QStringLiteral(PODSTACK_VERSION));
@@ -41,11 +45,15 @@ int main(int argc, char *argv[])
                                         : (startHidden ? QString() : QStringLiteral("show"));
     if (!singleInstance.start(command, &instanceError)) {
         if (!instanceError.isEmpty()) {
-            qWarning("podstack-gui: %s", qUtf8Printable(instanceError));
+            std::fprintf(stderr, "podstack-gui: single instance falhou: %s\n",
+                         qUtf8Printable(instanceError));
+            std::fflush(stderr);
             return 1;
         }
         return 0;
     }
+    std::fprintf(stderr, "podstack-gui: single instance ok\n");
+    std::fflush(stderr);
     if (requestQuit) {
         return 0;
     }
@@ -104,11 +112,15 @@ int main(int argc, char *argv[])
     QGuiApplication::setWindowIcon(tray.icon());
 
     PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance, startHidden);
+    std::fprintf(stderr, "podstack-gui: main window criada (loaded=%d failed=%d)\n",
+                 window.qmlLoaded() ? 1 : 0, window.qmlFailed() ? 1 : 0);
+    std::fflush(stderr);
     // O QQuickWidget pode carregar de forma assíncrona (especialmente com QML
     // cache frio no CI); só falhe se o carregamento terminou em erro.
     if (window.qmlFailed()) {
-        qWarning("podstack-gui: falha ao carregar a UI: %s",
-                 qPrintable(window.qmlErrors().join(QStringLiteral(" | "))));
+        std::fprintf(stderr, "podstack-gui: falha ao carregar a UI: %s\n",
+                     qPrintable(window.qmlErrors().join(QStringLiteral(" | "))));
+        std::fflush(stderr);
         return 1;
     }
 
