@@ -24,6 +24,7 @@ class ContractTest : public QObject {
 private slots:
     void containerInfoJson();
     void pingListAndLifecycle();
+    void libpodNativeList();
     void createContainer();
     void execLogsAndEvents();
     void files();
@@ -93,6 +94,26 @@ void ContractTest::pingListAndLifecycle()
     const QJsonObject inspected = client.inspectContainer(QStringLiteral("abc123"), &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(inspected.value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
+}
+
+void ContractTest::libpodNativeList()
+{
+    MockPodmanServer server;
+    QVERIFY(server.isListening());
+    server.setNativeContainers(true);
+
+    PodStack::PodmanClient client(server.socketPath());
+    PodStack::Error error;
+    const QVector<PodStack::ContainerInfo> containers = client.listContainers(true, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(containers.size(), 1);
+    const PodStack::ContainerInfo &container = containers.first();
+    QCOMPARE(container.name, QStringLiteral("native"));
+    QCOMPARE(container.state, QStringLiteral("created"));
+    QCOMPARE(container.ports.size(), 1);
+    QCOMPARE(container.ports.first(), QStringLiteral("5433->5432/tcp"));
+    QVERIFY(!container.created.isEmpty());
+    QVERIFY(container.created.contains(QLatin1Char('T')));
 }
 
 void ContractTest::createContainer()
