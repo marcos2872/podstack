@@ -917,6 +917,7 @@ private slots:
     void k8sKubeconfigDirFailure();
     void k8sListsPodsAndServices();
     void k8sListRequiresReadyCluster();
+    void k8sStreamLogs();
     void machineManagerCreateErrors();
     void machineManagerPortsErrors();
     void machineManagerUpdateRemoveErrors();
@@ -4396,6 +4397,76 @@ void MachinesTest::k8sListRequiresReadyCluster()
     QVERIFY(k8s.pods({}, &error).isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
     QVERIFY(error.message.contains(QStringLiteral("não está rodando")));
+}
+
+void MachinesTest::k8sStreamLogs()
+{
+    const QString root = m_root + QStringLiteral("/k8s-logs");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'g');
+    m_server.setResponse(QStringLiteral("/k8s-logs.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-logs.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    QString logCommand;
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec =
+        [&logCommand](const SshInfo &, const QString &script, const K8sManager::Line &onLine,
+                      const K8sManager::Cancelled &, int, PodStack::Error *execError) {
+            if (execError) {
+                *execError = {};
+            }
+            if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+                for (const QString &line : k8sKubeconfigLines()) {
+                    onLine(line);
+                }
+            } else if (script.contains(QStringLiteral("kubectl logs"))) {
+                logCommand = script;
+                if (onLine) {
+                    onLine(QStringLiteral("2026-11-10T10:00:00Z primeira linha"));
+                    onLine(QStringLiteral("2026-11-10T10:00:01Z segunda linha"));
+                }
+            }
+            return true;
+        };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    QVERIFY2(k8s.enable({}, {}, {}, &error).isReady(), qPrintable(error.message));
+
+    QStringList received;
+    const bool ok = k8s.streamLogs(
+        QStringLiteral("prod"), QStringLiteral("web"), QStringLiteral("web"), 100,
+        [&received](const QString &line) { received.append(line); }, {}, &error);
+    QVERIFY2(ok, qPrintable(error.message));
+    QCOMPARE(received.size(), 2);
+    QCOMPARE(received.at(0), QStringLiteral("2026-11-10T10:00:00Z primeira linha"));
+    QVERIFY(logCommand.contains(QStringLiteral("logs -n prod web -c web")));
+    QVERIFY(logCommand.contains(QStringLiteral("--tail=100")));
+    QVERIFY(logCommand.contains(QStringLiteral("--timestamps")));
+
+    error = {};
+    QVERIFY(!k8s.streamLogs(QStringLiteral("bad namespace"), QStringLiteral("web"),
+                            QStringLiteral("web"), 100, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!k8s.streamLogs(QStringLiteral("prod"), QStringLiteral("web"), QStringLiteral("web"), 0,
+                            {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void MachinesTest::machineManagerCreateErrors()

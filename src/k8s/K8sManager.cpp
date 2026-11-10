@@ -304,7 +304,7 @@ RunResult runSsh(const QString &binary, const SshInfo &ssh, const QString &scrip
                      QStringLiteral("Instalação do cluster cancelada."));
             return RunResult::Cancelled;
         }
-        if (timer.elapsed() >= timeoutMs) {
+        if (timeoutMs > 0 && timer.elapsed() >= timeoutMs) {
             process.kill();
             process.waitForFinished(5000);
             setError(error, QStringLiteral("PODSTACK_TIMEOUT"),
@@ -569,6 +569,63 @@ QJsonArray K8sManager::services(const QString &namespaceFilter, Error *error)
         *error = {};
     }
     return kubectlItems(QStringLiteral("services"), namespaceFilter, error);
+}
+
+bool K8sManager::validateLogsRequest(const QString &namespaceName, const QString &pod,
+                                     const QString &container, int tailLines, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    static const QRegularExpression validName(QStringLiteral("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"));
+    const QString ns = namespaceName.trimmed();
+    const QString podName = pod.trimmed();
+    const QString containerName = container.trimmed();
+    if (ns.isEmpty() || ns.size() > 63 || !validName.match(ns).hasMatch() || podName.isEmpty() ||
+        podName.size() > 253 || !validName.match(podName).hasMatch() ||
+        (!containerName.isEmpty() &&
+         (containerName.size() > 63 || !validName.match(containerName).hasMatch()))) {
+        setError(error, QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                 QStringLiteral("Namespace, pod ou container inválido."),
+                 QStringLiteral("%1/%2/%3").arg(ns, podName, containerName));
+        return false;
+    }
+    if (tailLines < 1 || tailLines > 5000) {
+        setError(error, QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                 QStringLiteral("tail deve ficar entre 1 e 5000."), QString::number(tailLines));
+        return false;
+    }
+    return true;
+}
+
+bool K8sManager::streamLogs(const QString &namespaceName, const QString &pod,
+                            const QString &container, int tailLines, const Line &onLine,
+                            const Cancelled &cancelled, Error *error)
+{
+    if (!validateLogsRequest(namespaceName, pod, container, tailLines, error)) {
+        return false;
+    }
+    const QString ns = namespaceName.trimmed();
+    const QString podName = pod.trimmed();
+    const QString containerName = container.trimmed();
+
+    SshInfo ssh;
+    if (!clusterSsh(&ssh, error)) {
+        return false;
+    }
+
+    QString command = QStringLiteral("sudo k3s kubectl logs -n %1 %2").arg(ns, podName);
+    if (!containerName.isEmpty()) {
+        command += QStringLiteral(" -c ") + containerName;
+    }
+    command += QStringLiteral(" --tail=%1 --timestamps -f").arg(tailLines);
+
+    Error execError;
+    const bool ok = execRemote(ssh, command, onLine, cancelled, 0, &execError);
+    if (!ok && error) {
+        *error = execError;
+    }
+    return ok && execError.isEmpty();
 }
 
 bool K8sManager::ensureApiAccess(K8sCluster &cluster, MachineMeta &machine, const SshInfo &ssh,

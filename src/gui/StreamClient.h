@@ -23,6 +23,8 @@ public:
     void stopMachineConsole();
     void pullImage(const QString &reference, const QString &platform = {});
     void subscribeComposeLogs(const QString &project, const QString &service = {});
+    void subscribeK8sLogs(const QString &namespaceName, const QString &pod,
+                          const QString &container = {});
     void startBuild(const QJsonObject &params);
     /// Inicia `machines.create` e entrega `machines.delta`/`machines.done` sem unsubscribe:
     /// o daemon remove a subscription quando o job termina.
@@ -53,6 +55,8 @@ signals:
     void setupEvent(const QJsonObject &event);
     void setupFinished(const QJsonObject &result);
     void eventReceived(const QJsonObject &event);
+    void k8sLogLine(const QString &line);
+    void k8sLogFinished(bool ok, const QString &error);
     void error(const QString &message);
 
 private:

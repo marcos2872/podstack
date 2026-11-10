@@ -61,6 +61,13 @@ public:
     QJsonArray pods(const QString &namespaceFilter, Error *error = nullptr);
     /// Services do cluster (namespace vazio = todos).
     QJsonArray services(const QString &namespaceFilter, Error *error = nullptr);
+    /// Acompanha os logs de um container do pod via `kubectl logs -f`.
+    bool streamLogs(const QString &namespaceName, const QString &pod, const QString &container,
+                    int tailLines, const Line &onLine, const Cancelled &cancelled,
+                    Error *error = nullptr);
+    static bool validateLogsRequest(const QString &namespaceName, const QString &pod,
+                                    const QString &container, int tailLines,
+                                    Error *error = nullptr);
 
     /// Provisiona a VM (se preciso), instala o k3s e aguarda o node Ready.
     /// Idempotente quando o cluster já está pronto.

@@ -67,6 +67,9 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList k8sServices READ k8sServices NOTIFY k8sChanged)
     Q_PROPERTY(QString k8sError READ k8sError NOTIFY k8sChanged)
     Q_PROPERTY(bool k8sLoading READ k8sLoading NOTIFY k8sChanged)
+    Q_PROPERTY(QStringList k8sLogLines READ k8sLogLines NOTIFY k8sLogsChanged)
+    Q_PROPERTY(QString k8sLogError READ k8sLogError NOTIFY k8sLogsChanged)
+    Q_PROPERTY(bool k8sLogActive READ k8sLogActive NOTIFY k8sLogsChanged)
     Q_PROPERTY(bool pullActive READ pullActive NOTIFY pullStateChanged)
     Q_PROPERTY(QString pullStatus READ pullStatus NOTIFY pullStateChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
@@ -182,6 +185,9 @@ public:
     QVariantList k8sServices() const { return m_k8sServices; }
     QString k8sError() const { return m_k8sError; }
     bool k8sLoading() const { return m_k8sLoading; }
+    QStringList k8sLogLines() const { return m_k8sLogLines; }
+    QString k8sLogError() const { return m_k8sLogError; }
+    bool k8sLogActive() const { return m_k8sLogActive; }
     bool pullActive() const { return m_pullActive; }
     QString pullStatus() const { return m_pullStatus; }
     QVariantMap diskUsage() const { return m_diskUsage; }
@@ -251,6 +257,10 @@ public:
     Q_INVOKABLE void refreshK8sStatus();
     Q_INVOKABLE void startK8sWatch();
     Q_INVOKABLE void stopK8sWatch();
+    Q_INVOKABLE void startK8sLogs(const QString &namespaceName, const QString &pod,
+                                  const QString &container = QString());
+    Q_INVOKABLE void stopK8sLogs();
+    Q_INVOKABLE void clearK8sLogs();
     Q_INVOKABLE void pullImage(const QString &reference, const QString &platform = {});
     Q_INVOKABLE void cancelPull();
     Q_INVOKABLE void removeImage(const QString &id, bool force);
@@ -394,6 +404,7 @@ signals:
     void networksChanged();
     void podsChanged();
     void k8sChanged();
+    void k8sLogsChanged();
     void pullStateChanged();
     void diskUsageChanged();
     void prunePreviewChanged();
@@ -510,6 +521,7 @@ private:
     StreamClient m_machineConsoleStream;
     StreamClient m_setupStream;
     StreamClient m_eventsStream;
+    StreamClient m_k8sLogsStream;
     QTimer m_eventTimer;
     QTimer m_logsTimer;
     QTimer m_detailLogsTimer;
@@ -560,6 +572,9 @@ private:
     QVariantList m_k8sServices;
     QString m_k8sError;
     bool m_k8sLoading = false;
+    QStringList m_k8sLogLines;
+    QString m_k8sLogError;
+    bool m_k8sLogActive = false;
     QTimer m_k8sTimer;
     bool m_pullActive = false;
     QString m_pullStatus;

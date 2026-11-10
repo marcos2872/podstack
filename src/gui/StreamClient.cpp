@@ -145,6 +145,29 @@ void StreamClient::subscribeComposeLogs(const QString &project, const QString &s
     connectSocket();
 }
 
+void StreamClient::subscribeK8sLogs(const QString &namespaceName, const QString &pod,
+                                    const QString &container)
+{
+    stop(true);
+    m_kind = QStringLiteral("k8s-logs");
+    m_unsubscribeMethod = QStringLiteral("k8s.logs.unsubscribe");
+    QJsonObject params;
+    params.insert(QStringLiteral("namespace"), namespaceName);
+    params.insert(QStringLiteral("pod"), pod);
+    if (!container.isEmpty()) {
+        params.insert(QStringLiteral("container"), container);
+    }
+    params.insert(QStringLiteral("tail"), 500);
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("k8s.logs.subscribe")},
+        {QStringLiteral("params"), params},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
 void StreamClient::startBuild(const QJsonObject &params)
 {
     stop(true);
@@ -371,6 +394,15 @@ void StreamClient::onReadyRead()
         } else if (method == QStringLiteral("compose.logs.delta")) {
             emit composeLog(params.value(QStringLiteral("service")).toString(),
                             params.value(QStringLiteral("line")).toString());
+        } else if (method == QStringLiteral("k8s.logs.delta")) {
+            emit k8sLogLine(params.value(QStringLiteral("line")).toString());
+        } else if (method == QStringLiteral("k8s.logs.done")) {
+            const QJsonObject errorObject = params.value(QStringLiteral("error")).toObject();
+            emit k8sLogFinished(errorObject.isEmpty(),
+                                errorObject.value(QStringLiteral("message")).toString());
+            m_subscriptionId.clear();
+            m_kind.clear();
+            m_socket.abort();
         } else if (method == QStringLiteral("builds.delta")) {
             emit buildEvent(params);
         } else if (method == QStringLiteral("builds.done")) {
@@ -409,15 +441,15 @@ void StreamClient::onReadyRead()
             m_subscriptionId.clear();
             m_kind.clear();
             m_socket.abort();
-        } else if (method == QStringLiteral("containers.logs.error")
-                   || method == QStringLiteral("containers.stats.error")
-                   || method == QStringLiteral("system.stats.error")) {
+        } else if (method == QStringLiteral("containers.logs.error") ||
+                   method == QStringLiteral("containers.stats.error") ||
+                   method == QStringLiteral("system.stats.error")) {
             emit error(params.value(QStringLiteral("error"))
                            .toObject()
                            .value(QStringLiteral("message"))
                            .toString());
-        } else if (method == QStringLiteral("machines.stats.error")
-                   || method == QStringLiteral("machines.console.error")) {
+        } else if (method == QStringLiteral("machines.stats.error") ||
+                   method == QStringLiteral("machines.console.error")) {
             const QJsonObject errorObject = params.value(QStringLiteral("error")).toObject();
             QString text = errorObject.value(QStringLiteral("message")).toString();
             const QString remediation = errorObject.value(QStringLiteral("remediation")).toString();

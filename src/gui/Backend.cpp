@@ -660,6 +660,26 @@ Backend::Backend(QObject *parent)
                 emit actionFinished(false, message);
             });
 
+    connect(&m_k8sLogsStream, &StreamClient::k8sLogLine, this, [this](const QString &line) {
+        m_k8sLogLines.append(line);
+        if (m_k8sLogLines.size() > 5000) {
+            m_k8sLogLines = m_k8sLogLines.mid(1000);
+        }
+        emit k8sLogsChanged();
+    });
+    connect(&m_k8sLogsStream, &StreamClient::k8sLogFinished, this,
+            [this](bool ok, const QString &error) {
+                m_k8sLogActive = false;
+                if (!ok) {
+                    m_k8sLogError = error;
+                }
+                emit k8sLogsChanged();
+            });
+    connect(&m_k8sLogsStream, &StreamClient::error, this, [this](const QString &message) {
+        m_k8sLogActive = false;
+        m_k8sLogError = message;
+        emit k8sLogsChanged();
+    });
     connect(&m_eventsStream, &StreamClient::eventReceived, this,
             [this](const QJsonObject &event) {
                 if (event.value(QStringLiteral("Type")).toString()
@@ -931,6 +951,29 @@ void Backend::onK8sServicesFinished()
     }
     m_k8sLoading = m_k8sPodsWatcher.isRunning() || m_k8sServicesWatcher.isRunning();
     emit k8sChanged();
+}
+
+void Backend::startK8sLogs(const QString &namespaceName, const QString &pod,
+                           const QString &container)
+{
+    m_k8sLogLines.clear();
+    m_k8sLogError.clear();
+    m_k8sLogActive = true;
+    emit k8sLogsChanged();
+    m_k8sLogsStream.subscribeK8sLogs(namespaceName, pod, container);
+}
+
+void Backend::stopK8sLogs()
+{
+    m_k8sLogsStream.unsubscribe();
+    m_k8sLogActive = false;
+    emit k8sLogsChanged();
+}
+
+void Backend::clearK8sLogs()
+{
+    m_k8sLogLines.clear();
+    emit k8sLogsChanged();
 }
 
 void Backend::refreshSection(const QString &section)

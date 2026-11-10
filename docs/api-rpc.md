@@ -596,7 +596,7 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 | `k8s.reset` | `{}` | `JobRef` |
 | `k8s.pods.list` | `{namespace?}` | `{items: Pod[]}` |
 | `k8s.services.list` | `{namespace?}` | `{items: Service[]}` |
-| `k8s.logs.subscribe` | `{namespace, pod, container?}` | `Subscription` |
+| `k8s.logs.subscribe` | `{namespace, pod, container?, tail?}` | `Subscription` |
 | `k8s.pod.delete` | `{namespace, name}` | `{}` |
 | `k8s.service.delete` | `{namespace, name}` | `{}` |
 | `k8s.portforward.start` | `{namespace, pod, localPort, remotePort}` | `{id}` |
@@ -625,6 +625,12 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > `name`, `namespace`, `status/ready/restarts/node/ip/age/containers` para Pods;
 > `type/clusterIP/externalIP/ports/selector/age` para Services). A UI faz polling de 2 s
 > enquanto a página está visível; um stream nativo fica para evolução futura.
+>
+> **T5-04:** `k8s.logs.subscribe` valida namespace/pod/container (`tail` 1..5000, default
+> 500), executa `kubectl logs -f --timestamps` por SSH e emite
+> `k8s.logs.delta {namespace, pod, container, line}`; ao terminar envia
+> `k8s.logs.done` (com `error` quando falhar). `k8s.logs.unsubscribe {subscriptionId}`
+> encerra o processo remoto.
 
 ### 4.9 `domains.*` e `proxy.*`
 

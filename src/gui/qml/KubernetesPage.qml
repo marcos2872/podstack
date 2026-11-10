@@ -7,6 +7,21 @@ ColumnLayout {
     id: page
 
     property int tab: 0
+    property string logsNamespace: ""
+    property string logsPod: ""
+
+    function openLogs() {
+        const pod = backend.k8sPods[podsList.currentRow]
+        if (!pod) {
+            return
+        }
+        logsNamespace = pod.namespace
+        logsPod = pod.name
+        logsContainer.model = pod.containers || []
+        logsContainer.currentIndex = logsContainer.count > 0 ? 0 : -1
+        logsDialog.open()
+        backend.startK8sLogs(logsNamespace, logsPod, logsContainer.currentText)
+    }
 
     spacing: 0
 
@@ -37,6 +52,14 @@ ColumnLayout {
             color: Theme.textTertiary
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
+        }
+
+        ActionButton {
+            text: qsTr("Logs")
+            iconName: "terminal"
+            enabled: page.tab === 0 && podsList.currentRow >= 0
+            onClicked: page.openLogs()
+            Accessible.name: qsTr("Ver logs do pod")
         }
 
         ActionButton {
@@ -142,5 +165,78 @@ ColumnLayout {
                 ]
             }
         }
+    }
+
+    AppDialog {
+        id: logsDialog
+        objectName: "k8sLogsDialog"
+        title: qsTr("Logs · %1/%2").arg(page.logsNamespace).arg(page.logsPod)
+        modal: true
+        width: 760
+        height: 560
+
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    text: qsTr("Container")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                }
+
+                AppSelect {
+                    id: logsContainer
+                    Layout.preferredWidth: 220
+                    onCurrentIndexChanged: {
+                        if (logsDialog.opened && currentIndex >= 0) {
+                            backend.startK8sLogs(page.logsNamespace, page.logsPod, currentText)
+                        }
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Label {
+                    visible: backend.k8sLogActive
+                    text: qsTr("streaming…")
+                    color: Theme.cyan
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                }
+
+                ActionButton {
+                    text: qsTr("Parar")
+                    variant: "secondary"
+                    size: "sm"
+                    enabled: backend.k8sLogActive
+                    onClicked: backend.stopK8sLogs()
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: backend.k8sLogError.length > 0
+                text: backend.k8sLogError
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            LogsView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                lines: backend.k8sLogLines
+                emptyText: qsTr("Sem logs. O container pode ainda não ter produzido saída.")
+                onClearRequested: backend.clearK8sLogs()
+            }
+        }
+
+        onClosed: backend.stopK8sLogs()
     }
 }
