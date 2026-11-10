@@ -24,10 +24,12 @@ jobs:
         run: dnf install -y git
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Dependências
         run: |
-          dnf install -y cmake ninja-build gcc-c++ gcovr \
+          dnf install -y cmake ninja-build gcc-c++ gcovr clang-tools-extra \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
             qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
             libxcrypt-devel openssh-clients
@@ -37,6 +39,14 @@ jobs:
 
       - name: Compilar
         run: cmake --build --preset coverage
+
+      - name: clang-format (linhas alteradas)
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          scripts/check-format.sh origin/main
+
+      - name: clang-tidy (fontes alterados)
+        run: scripts/check-tidy.sh origin/main
 
       - name: Testes
         run: ctest --preset coverage --output-on-failure
@@ -57,17 +67,15 @@ jobs:
             --txt-metric line --print-summary | tee coverage-summary.txt
           cat coverage-summary.txt >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Cobertura (meta 80%, informativa)
+      # Gate bloqueante no patamar atual; a meta de 80% segue como objetivo
+      # pré-M5 e deve subir junto com os testes adicionados.
+      - name: Cobertura (gate bloqueante)
         run: |
           set -o pipefail
           gcovr -r . --filter 'src/' --gcov-ignore-parse-errors \
-            --merge-mode-functions=separate \
+            --merge-mode-functions=separate --fail-under-line 77 \
             --txt-metric line --print-summary | tee coverage-gate.txt
           cat coverage-gate.txt >> "$GITHUB_STEP_SUMMARY"
-          line=$(grep -oE '[0-9]+\.[0-9]+%' coverage-gate.txt | head -1 | tr -d '%' || true)
-          if [ -n "$line" ] && awk -v v="$line" 'BEGIN { exit !(v < 80) }'; then
-            echo "::warning title=Cobertura abaixo da meta::Linhas: ${line}% (meta 80%). Ver pendências pré-M5."
-          fi
 
       - name: Upload cobertura
         if: always()
