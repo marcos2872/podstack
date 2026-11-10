@@ -638,6 +638,11 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > `kubectl port-forward -n <ns> pod/<pod> local:remote` ativo, emitindo
 > `k8s.portforward.delta {id, line}` e `k8s.portforward.done {id, error?}`;
 > `k8s.portforward.stop {id}` cancela o processo e responde `{id, stopped:true}`.
+>
+> **T5-06:** `k8s.disable {force?}` e `k8s.reset {}` são jobs (`k8s.delta`/`k8s.done`) que
+> param/removem a VM, apagam o kubeconfig e o registro em `clusters`, e gravam
+> `kubernetes.enabled=false`; são idempotentes. `k8s.reset` equivale a `disable` com
+> `force=true`. A CLI expõe `podstack kube start` e `podstack kube stop|disable [--force]`.
 
 ### 4.9 `domains.*` e `proxy.*`
 

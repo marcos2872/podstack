@@ -168,6 +168,21 @@ void StreamClient::subscribeK8sLogs(const QString &namespaceName, const QString 
     connectSocket();
 }
 
+void StreamClient::startK8sJob(const QString &method, const QJsonObject &params)
+{
+    stop(false);
+    m_kind = QStringLiteral("k8s-job");
+    m_unsubscribeMethod.clear();
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), method},
+        {QStringLiteral("params"), params},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
 void StreamClient::startBuild(const QJsonObject &params)
 {
     stop(true);
@@ -396,6 +411,13 @@ void StreamClient::onReadyRead()
                             params.value(QStringLiteral("line")).toString());
         } else if (method == QStringLiteral("k8s.logs.delta")) {
             emit k8sLogLine(params.value(QStringLiteral("line")).toString());
+        } else if (method == QStringLiteral("k8s.delta")) {
+            emit k8sJobEvent(params);
+        } else if (method == QStringLiteral("k8s.done")) {
+            emit k8sJobFinished(params);
+            m_subscriptionId.clear();
+            m_kind.clear();
+            m_socket.abort();
         } else if (method == QStringLiteral("k8s.logs.done")) {
             const QJsonObject errorObject = params.value(QStringLiteral("error")).toObject();
             emit k8sLogFinished(errorObject.isEmpty(),

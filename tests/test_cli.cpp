@@ -808,6 +808,10 @@ void CliTest::kubeCommands()
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("\"state\": \"disabled\"")));
 
+    result = run({QStringLiteral("kube"), QStringLiteral("disable")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("cluster removido")));
+
     result = run({QStringLiteral("kube"), QStringLiteral("bogus")}, env);
     QCOMPARE(result.code, 2);
     QVERIFY(result.err.contains(QStringLiteral("desconhecido")));

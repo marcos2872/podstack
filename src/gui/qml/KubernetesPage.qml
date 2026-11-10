@@ -12,6 +12,7 @@ ColumnLayout {
     property string actionNamespace: ""
     property string actionName: ""
     property string actionKind: ""
+    property string clusterActionKind: "disable"
 
     function selectedItem() {
         if (page.tab === 0) {
@@ -42,6 +43,11 @@ ColumnLayout {
         forwardRemote.text = "80"
         backend.stopK8sPortForward()
         forwardDialog.open()
+    }
+
+    function openClusterAction(kind) {
+        clusterActionKind = kind
+        clusterActionDialog.open()
     }
 
     function openLogs() {
@@ -77,8 +83,10 @@ ColumnLayout {
         Layout.topMargin: 20
         Layout.bottomMargin: 12
         title: qsTr("Kubernetes")
-        subtitle: backend.k8sPods.length + qsTr(" pods · ")
-                  + backend.k8sServices.length + qsTr(" services")
+        subtitle: backend.k8sEnabled
+                  ? backend.k8sPods.length + qsTr(" pods · ")
+                    + backend.k8sServices.length + qsTr(" services")
+                  : qsTr("cluster desabilitado")
 
         Text {
             visible: backend.k8sLoading
@@ -86,6 +94,34 @@ ColumnLayout {
             color: Theme.textTertiary
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
+        }
+
+        ActionButton {
+            text: qsTr("Habilitar")
+            variant: "primary"
+            iconName: "play"
+            visible: !backend.k8sEnabled
+            enabled: !backend.k8sJobActive
+            onClicked: backend.enableK8s()
+            Accessible.name: qsTr("Habilitar Kubernetes")
+        }
+
+        ActionButton {
+            text: qsTr("Reset")
+            variant: "danger"
+            visible: backend.k8sEnabled
+            enabled: !backend.k8sJobActive
+            onClicked: page.openClusterAction("reset")
+            Accessible.name: qsTr("Resetar cluster Kubernetes")
+        }
+
+        ActionButton {
+            text: qsTr("Desabilitar")
+            variant: "ghost"
+            visible: backend.k8sEnabled
+            enabled: !backend.k8sJobActive
+            onClicked: page.openClusterAction("disable")
+            Accessible.name: qsTr("Desabilitar Kubernetes")
         }
 
         ActionButton {
@@ -122,11 +158,103 @@ ColumnLayout {
         }
     }
 
+    Rectangle {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 12
+        visible: !backend.k8sEnabled
+        implicitHeight: disabledColumn.implicitHeight + 32
+        radius: Theme.radiusLg
+        color: Theme.bgSurface
+        border.width: 1
+        border.color: Theme.border
+
+        ColumnLayout {
+            id: disabledColumn
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 8
+
+            Label {
+                text: qsTr("Kubernetes não está habilitado")
+                color: Theme.textPrimary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontH2
+                font.weight: Font.DemiBold
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("O PodStack cria uma VM dedicada, instala o k3s e gera um kubeconfig isolado. "
+                           + "Requer KVM e internet na VM; leva cerca de 1–2 minutos.")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
+            }
+
+            ActionButton {
+                text: qsTr("Habilitar Kubernetes")
+                variant: "primary"
+                iconName: "play"
+                enabled: !backend.k8sJobActive
+                onClicked: backend.enableK8s()
+            }
+        }
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        visible: backend.k8sJobActive || backend.k8sJobError.length > 0
+        spacing: 4
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            Label {
+                text: backend.k8sJobStage
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+            Item { Layout.fillWidth: true }
+            Label {
+                text: backend.k8sJobProgress + "%"
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+        }
+
+        ProgressBar {
+            Layout.fillWidth: true
+            from: 0
+            to: 100
+            value: backend.k8sJobProgress
+            visible: backend.k8sJobActive
+        }
+
+        Label {
+            Layout.fillWidth: true
+            visible: backend.k8sJobError.length > 0
+            text: backend.k8sJobError
+            color: Theme.danger
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMicro
+            wrapMode: Text.WordWrap
+        }
+    }
+
     RowLayout {
         Layout.fillWidth: true
         Layout.leftMargin: 22
         Layout.rightMargin: 22
         Layout.bottomMargin: 12
+        visible: backend.k8sEnabled
         spacing: 8
 
         ActionButton {
@@ -160,6 +288,7 @@ ColumnLayout {
     StackLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
+        visible: backend.k8sEnabled
         currentIndex: page.tab
 
         Item {
@@ -290,6 +419,57 @@ ColumnLayout {
         }
 
         onClosed: backend.stopK8sLogs()
+    }
+
+    AppDialog {
+        id: clusterActionDialog
+        objectName: "k8sClusterActionDialog"
+        title: page.clusterActionKind === "reset"
+               ? qsTr("Resetar cluster Kubernetes")
+               : qsTr("Desabilitar Kubernetes")
+        modal: true
+        width: 460
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: page.clusterActionKind === "reset"
+                      ? qsTr("O cluster, a VM, o disco e o kubeconfig serão removidos. "
+                             + "Os dados dos workloads serão perdidos.")
+                      : qsTr("A VM do cluster será parada e removida, junto do kubeconfig. "
+                             + "Os dados dos workloads serão perdidos.")
+                color: Theme.textPrimary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+
+                ActionButton {
+                    text: qsTr("Cancelar")
+                    variant: "ghost"
+                    onClicked: clusterActionDialog.close()
+                }
+
+                ActionButton {
+                    text: page.clusterActionKind === "reset" ? qsTr("Resetar") : qsTr("Desabilitar")
+                    variant: "danger"
+                    onClicked: {
+                        if (page.clusterActionKind === "reset") {
+                            backend.resetK8s()
+                        } else {
+                            backend.disableK8s(true)
+                        }
+                        clusterActionDialog.close()
+                    }
+                }
+            }
+        }
     }
 
     AppDialog {

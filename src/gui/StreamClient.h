@@ -25,6 +25,7 @@ public:
     void subscribeComposeLogs(const QString &project, const QString &service = {});
     void subscribeK8sLogs(const QString &namespaceName, const QString &pod,
                           const QString &container = {});
+    void startK8sJob(const QString &method, const QJsonObject &params);
     void startBuild(const QJsonObject &params);
     /// Inicia `machines.create` e entrega `machines.delta`/`machines.done` sem unsubscribe:
     /// o daemon remove a subscription quando o job termina.
@@ -57,6 +58,8 @@ signals:
     void eventReceived(const QJsonObject &event);
     void k8sLogLine(const QString &line);
     void k8sLogFinished(bool ok, const QString &error);
+    void k8sJobEvent(const QJsonObject &event);
+    void k8sJobFinished(const QJsonObject &result);
     void error(const QString &message);
 
 private:

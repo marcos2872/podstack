@@ -919,6 +919,7 @@ private slots:
     void k8sListRequiresReadyCluster();
     void k8sStreamLogs();
     void k8sDeleteAndPortForward();
+    void k8sDisableIsIdempotent();
     void machineManagerCreateErrors();
     void machineManagerPortsErrors();
     void machineManagerUpdateRemoveErrors();
@@ -4538,6 +4539,68 @@ void MachinesTest::k8sDeleteAndPortForward()
     QVERIFY(!k8s.deleteResource(QStringLiteral("pod"), QStringLiteral("bad namespace"),
                                 QStringLiteral("web"), &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void MachinesTest::k8sDisableIsIdempotent()
+{
+    const QString root = m_root + QStringLiteral("/k8s-disable");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'i');
+    m_server.setResponse(QStringLiteral("/k8s-disable.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-disable.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec = [](const SshInfo &, const QString &script,
+                               const K8sManager::Line &onLine, const K8sManager::Cancelled &, int,
+                               PodStack::Error *execError) {
+        if (execError) {
+            *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+            for (const QString &line : k8sKubeconfigLines()) {
+                onLine(line);
+            }
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    const K8sCluster cluster = k8s.enable({}, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(QFileInfo::exists(cluster.kubeconfigPath));
+
+    const K8sCluster disabled = k8s.disable(true, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(disabled.state, QStringLiteral("disabled"));
+    QVERIFY(machines.get(cluster.vmMachineId, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    QVERIFY(!QFileInfo::exists(cluster.kubeconfigPath));
+
+    K8sStore store(storePath);
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    QVERIFY(store.get(QStringLiteral("default"), &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    QVERIFY(!PodStack::Config::load().get(QStringLiteral("kubernetes.enabled")).toBool());
+
+    error = {};
+    const K8sCluster again = k8s.disable(true, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(again.state, QStringLiteral("disabled"));
 }
 
 void MachinesTest::machineManagerCreateErrors()

@@ -845,6 +845,7 @@ void TerminalTest::mainWindowQml()
     QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("k8sLogsDialog")) != nullptr);
     QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("k8sDeleteDialog")) != nullptr);
     QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("k8sForwardDialog")) != nullptr);
+    QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("k8sClusterActionDialog")) != nullptr);
 
     QObject *settings = rootObject->findChild<QObject *>(QStringLiteral("settingsDialog"));
     QVERIFY(settings != nullptr);
