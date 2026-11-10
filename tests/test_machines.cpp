@@ -781,6 +781,7 @@ private slots:
     void machineMetaFileErrors();
     void machineStoreCrud();
     void machineStoreErrors();
+    void machineStoreLegacySchema();
     void machineStoreSharesDb();
     void downloadAndReuse();
     void downloadHttpError();
@@ -1364,6 +1365,36 @@ void MachinesTest::machineStoreErrors()
     MachineStore reopened(dbPath);
     QVERIFY2(reopened.open(&error), qPrintable(error.message));
     QCOMPARE(reopened.list(&error).size(), 1);
+}
+
+void MachinesTest::machineStoreLegacySchema()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("legacy.db"));
+    sqlite3 *db = nullptr;
+    QCOMPARE(sqlite3_open(path.toUtf8().constData(), &db), SQLITE_OK);
+    QCOMPARE(
+        sqlite3_exec(db, "CREATE TABLE machines (id TEXT PRIMARY KEY);", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    sqlite3_close(db);
+
+    PodStack::MachineStore store(path);
+    PodStack::Error error;
+    QVERIFY(!store.open(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+    error = {};
+    QVERIFY(store.list(&error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    error = {};
+    QVERIFY(store.get(QStringLiteral("missing"), &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    error = {};
+    QVERIFY(
+        !store.upsert(testMachine(QStringLiteral("legacy-id"), QStringLiteral("legacy")), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
 }
 
 void MachinesTest::machineStoreSharesDb()
