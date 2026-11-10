@@ -245,9 +245,7 @@ QVariantMap HelperService::RemovePackages(const QStringList &packages)
     qCInfo(lcHelper, "removal requested: %s", qUtf8Printable(installed.join(',')));
 
     QStringList arguments;
-    if (manager == QStringLiteral("dnf")) {
-        arguments = QStringList{QStringLiteral("remove"), QStringLiteral("-y")};
-    } else if (manager == QStringLiteral("apt-get")) {
+    if (manager == QStringLiteral("dnf") || manager == QStringLiteral("apt-get")) {
         arguments = QStringList{QStringLiteral("remove"), QStringLiteral("-y")};
     } else {
         arguments = QStringList{QStringLiteral("-R"), QStringLiteral("--noconfirm")};
