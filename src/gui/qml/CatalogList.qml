@@ -12,10 +12,33 @@ Rectangle {
     property int currentRow: -1
     property string emptyText: qsTr("Nenhum item.")
     property string emptyIcon: "file"
+    /// SelectionState opcional; quando definido, habilita clique com Ctrl/Shift.
+    property var selection: null
+    /// Campo usado como identidade estável do item (id, name, workingDir...).
+    property string idKey: "id"
 
     signal activated(int index)
 
-    onItemsChanged: if (currentRow >= items.length) currentRow = -1
+    function itemId(item) {
+        return item ? String(item[root.idKey] || "") : ""
+    }
+
+    function allIds() {
+        const ids = []
+        for (let i = 0; i < root.items.length; ++i) {
+            ids.push(itemId(root.items[i]))
+        }
+        return ids
+    }
+
+    onItemsChanged: {
+        if (currentRow >= items.length) {
+            currentRow = -1
+        }
+        if (selection) {
+            selection.prune(allIds())
+        }
+    }
 
     color: Theme.bgSurface
     radius: Theme.radiusLg
@@ -80,39 +103,54 @@ Rectangle {
             model: root.items
             ScrollBar.vertical: ScrollBar {}
 
-            delegate: ItemDelegate {
+            delegate: Item {
                 id: row
 
                 property var rowData: modelData
+                readonly property bool hovered: rowHover.hovered
+                readonly property string rowId: root.itemId(rowData)
 
                 width: ListView.view.width
                 height: 44
-                leftPadding: 14
-                rightPadding: 14
-                topPadding: 0
-                bottomPadding: 0
-                hoverEnabled: true
                 Accessible.name: root.columns.length > 0 && rowData
                                  ? String(rowData[root.columns[0].key] || "") : ""
+                Accessible.role: Accessible.ListItem
+                Accessible.selected: root.selection
+                                     ? root.selection.has(rowId)
+                                     : root.currentRow === index
 
-                background: Rectangle {
-                    color: root.currentRow === index
-                           ? Theme.accentSoft
-                           : row.hovered
-                             ? Qt.rgba(Theme.textPrimary.r, Theme.textPrimary.g,
-                                       Theme.textPrimary.b, 0.03)
-                             : "transparent"
+                HoverHandler { id: rowHover }
 
-                    Rectangle {
-                        anchors.bottom: parent.bottom
-                        width: parent.width
-                        height: 1
-                        color: Theme.border
-                        visible: index < root.items.length - 1
-                    }
+                Rectangle {
+                    anchors.fill: parent
+                    color: root.selection
+                           ? (root.selection.has(row.rowId)
+                              ? Theme.accentSoft
+                              : row.hovered
+                                ? Qt.rgba(Theme.textPrimary.r, Theme.textPrimary.g,
+                                          Theme.textPrimary.b, 0.03)
+                                : "transparent")
+                           : (root.currentRow === index
+                              ? Theme.accentSoft
+                              : row.hovered
+                                ? Qt.rgba(Theme.textPrimary.r, Theme.textPrimary.g,
+                                          Theme.textPrimary.b, 0.03)
+                                : "transparent")
                 }
 
-                contentItem: RowLayout {
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: Theme.border
+                    visible: index < root.items.length - 1
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 14
                     spacing: 12
 
                     Repeater {
@@ -138,9 +176,21 @@ Rectangle {
                     }
                 }
 
-                onClicked: {
-                    root.currentRow = index
-                    root.activated(index)
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: function(mouse) {
+                        root.currentRow = index
+                        if (root.selection) {
+                            if (mouse.modifiers & Qt.ControlModifier) {
+                                root.selection.toggle(row.rowId, index)
+                            } else if (mouse.modifiers & Qt.ShiftModifier) {
+                                root.selection.selectRange(root.allIds(), index)
+                            } else {
+                                root.selection.selectOnly(row.rowId, index)
+                            }
+                        }
+                        root.activated(index)
+                    }
                 }
             }
 

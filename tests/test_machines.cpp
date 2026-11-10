@@ -10,6 +10,7 @@
 #include "machines/CloudImageCache.h"
 #include "machines/CloudInit.h"
 #include "machines/DistroRegistry.h"
+#include "machines/HttpDownloader.h"
 #include "machines/MachineArchive.h"
 #include "machines/MachineFiles.h"
 #include "machines/MachineManager.h"
@@ -32,11 +33,16 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QLockFile>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QSet>
 #include <QStandardPaths>
 #include <QTcpServer>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimeZone>
 
@@ -56,7 +62,9 @@ using PodStack::CloudInitOptions;
 using PodStack::CreateMachineRequest;
 using PodStack::DistroImage;
 using PodStack::DistroRegistry;
+using PodStack::HttpDownloader;
 using PodStack::MachineArchive;
+using PodStack::MachineArchiveManifest;
 using PodStack::MachineFiles;
 using PodStack::MachineManager;
 using PodStack::MachineMeta;
@@ -65,7 +73,6 @@ using PodStack::MachineMount;
 using PodStack::MachinePort;
 using PodStack::MachineSnapshot;
 using PodStack::MachineStatsCollector;
-using PodStack::UpdateMachineRequest;
 using PodStack::MachineStore;
 using PodStack::QemuCommand;
 using PodStack::QemuMount;
@@ -76,6 +83,7 @@ using PodStack::QemuSpec;
 using PodStack::QmpClient;
 using PodStack::SshConfig;
 using PodStack::SshInfo;
+using PodStack::UpdateMachineRequest;
 using PodStack::VirtiofsdProcess;
 
 namespace {
@@ -770,19 +778,27 @@ private slots:
     void pathsMachinesDir();
     void machineMetaRoundTrip();
     void machineMetaInvalid();
+    void machineMetaFileErrors();
     void machineStoreCrud();
+    void machineStoreErrors();
+    void machineStoreLegacySchema();
     void machineStoreSharesDb();
     void downloadAndReuse();
     void downloadHttpError();
     void downloadChecksumMismatch();
     void cacheSidecarMissing();
     void downloadCancelled();
+    void cloudImageCacheErrors();
+    void cloudImageCacheEdgeCases();
+    void httpDownloaderSuccess();
+    void httpDownloaderErrors();
     void seedIsoEntries();
     void seedYamlDefaults();
     void seedPasswordHashed();
     void seedVerbatimUserData();
     void seedEnvironment();
     void seedEscapesYaml();
+    void seedValidationErrors();
     void qemuBinary();
     void qemuCommandKvm();
     void qemuCommandTcg();
@@ -800,17 +816,32 @@ private slots:
     void qmpTimeout();
     void qmpQuit();
     void qmpConnectMissing();
+    void qmpInvalidStates();
+    void qmpSocketCloses();
     void idsUuidV7();
     void machineManagerCreate();
+    void machineManagerCreateErrors();
+    void machineManagerPortsErrors();
+    void machineManagerUpdateRemoveErrors();
     void machineManagerIsolated();
     void machineManagerMounts();
     void machineManagerValidation();
+    void machineManagerErrors();
+    void machineManagerQemuImgFailures();
+    void machineManagerDiskErrors();
+    void machineManagerSshKeyFailures();
+    void machineManagerStateErrors();
+    void machineManagerRuntimeErrors();
     void machineManagerLifecycle();
     void machineManagerUpdate();
     void machineManagerRename();
     void machineManagerClone();
     void machineDefaultConfig();
     void machineManagerExportImport();
+    void machineArchiveManifestValidation();
+    void machineArchiveExtractErrors();
+    void machineArchiveWriteErrors();
+    void machineManagerExportImportErrors();
     void machineManagerExportConcurrency();
     void machineManagerImportChecksum();
     void machineManagerCancelled();
@@ -818,15 +849,22 @@ private slots:
     void machineManagerPorts();
     void machineManagerSnapshots();
     void qemuRuntimeFallback();
+    void qemuRuntimePidFile();
+    void qemuRuntimeStartErrors();
+    void qemuRuntimeFakeQemu();
     void machineManagerReconcile();
     void machineManagerStartFallback();
     void machineManagerRemoveOrphan();
     void sshConfigPreserves();
+    void sshConfigErrors();
     void machineManagerSsh();
     void machineStats();
+    void machineStatsErrors();
     void machineFiles();
+    void machineFilesErrors();
     void machineFilesIntegration();
     void qemuRuntimeIntegration();
+    void virtiofsdValidation();
     void virtiofsdIntegration();
 
 private:
@@ -1115,6 +1153,53 @@ void MachinesTest::machineMetaInvalid()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
 }
 
+void MachinesTest::machineMetaFileErrors()
+{
+    const QString root = m_root + QStringLiteral("/meta-file-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const MachineMeta meta = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000012"),
+                                         QStringLiteral("meta-errors"));
+    PodStack::Error error;
+    QVERIFY(!MachineMetaFile::write(QString(), meta, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString parentFile = root + QStringLiteral("/not-a-dir");
+    QVERIFY(writeTestFile(parentFile, QByteArrayLiteral("x")));
+    error = {};
+    QVERIFY(!MachineMetaFile::write(parentFile + QStringLiteral("/meta.json"), meta, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    QVERIFY(MachineMetaFile::read(root, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString valid = root + QStringLiteral("/valid/meta.json");
+    QVERIFY2(MachineMetaFile::write(valid, meta, &error), qPrintable(error.message));
+    QVERIFY(ownerOnly(QFileInfo(valid).permissions(), false));
+
+    // Campos opcionais ausentes usam defaults; entradas não-objeto são ignoradas.
+    const QJsonObject minimal{
+        {QStringLiteral("id"), QStringLiteral("minimal")},
+        {QStringLiteral("name"), QStringLiteral("minimal")},
+        {QStringLiteral("ports"), QJsonArray{QStringLiteral("bad")}},
+        {QStringLiteral("mounts"), QJsonArray{42}},
+    };
+    const MachineMeta parsed = MachineMeta::fromJson(minimal);
+    QCOMPARE(parsed.cpus, 2);
+    QVERIFY(parsed.ports.isEmpty());
+    QVERIFY(parsed.mounts.isEmpty());
+    QCOMPARE(parsed.id, QStringLiteral("minimal"));
+
+    MachineSnapshot snapshot;
+    snapshot.id = QStringLiteral("snap");
+    snapshot.name = QStringLiteral("snap");
+    snapshot.sizeBytes = 1024;
+    snapshot.date = QStringLiteral("2026-01-01T00:00:00.000Z");
+    QCOMPARE(snapshot.toJson().value(QStringLiteral("sizeBytes")).toInteger(), 1024);
+}
+
 void MachinesTest::machineStoreCrud()
 {
     const QString directory = m_root + QStringLiteral("/store-crud");
@@ -1226,6 +1311,90 @@ void MachinesTest::machineStoreCrud()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
     QVERIFY2(store.remove(second.id, &error), qPrintable(error.message));
     QVERIFY(store.list(&error).isEmpty());
+}
+
+void MachinesTest::machineStoreErrors()
+{
+    const QString root = m_root + QStringLiteral("/store-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    PodStack::Error error;
+    MachineStore invalidParent(QStringLiteral("/dev/null/podstack.db"));
+    QVERIFY(!invalidParent.open(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    error = {};
+    MachineStore directory(root);
+    QVERIFY(!directory.open(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    const QString corrupt = root + QStringLiteral("/corrupt.db");
+    QVERIFY(writeTestFile(corrupt, QByteArrayLiteral("this is not a sqlite database")));
+    error = {};
+    MachineStore corrupted(corrupt);
+    QVERIFY(!corrupted.open(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    const QString dbPath = root + QStringLiteral("/valid/podstack.db");
+    MachineStore store(dbPath);
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    QVERIFY(store.open(&error));
+    QVERIFY(store.list(&error).isEmpty());
+
+    MachineMeta noId = testMachine(QString(), QStringLiteral("no-id"));
+    error = {};
+    QVERIFY(!store.upsert(noId, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    MachineMeta first = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000030"),
+                                    QStringLiteral("store-errors"));
+    QVERIFY2(store.upsert(first, &error), qPrintable(error.message));
+
+    MachineMeta duplicate = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000031"),
+                                        QStringLiteral("store-errors"));
+    error = {};
+    QVERIFY(!store.upsert(duplicate, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    error = {};
+    QVERIFY(!store.remove(QStringLiteral("missing"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    MachineStore reopened(dbPath);
+    QVERIFY2(reopened.open(&error), qPrintable(error.message));
+    QCOMPARE(reopened.list(&error).size(), 1);
+}
+
+void MachinesTest::machineStoreLegacySchema()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("legacy.db"));
+    sqlite3 *db = nullptr;
+    QCOMPARE(sqlite3_open(path.toUtf8().constData(), &db), SQLITE_OK);
+    QCOMPARE(
+        sqlite3_exec(db, "CREATE TABLE machines (id TEXT PRIMARY KEY);", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    sqlite3_close(db);
+
+    PodStack::MachineStore store(path);
+    PodStack::Error error;
+    QVERIFY(!store.open(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+    error = {};
+    QVERIFY(store.list(&error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    error = {};
+    QVERIFY(store.get(QStringLiteral("missing"), &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+
+    error = {};
+    QVERIFY(
+        !store.upsert(testMachine(QStringLiteral("legacy-id"), QStringLiteral("legacy")), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
 }
 
 void MachinesTest::machineStoreSharesDb()
@@ -1404,6 +1573,178 @@ void MachinesTest::downloadCancelled()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
     QVERIFY(!QFileInfo::exists(cache.cachedPath(image)));
     QVERIFY(!QFileInfo::exists(cache.cachedPath(image) + QStringLiteral(".part")));
+}
+
+void MachinesTest::httpDownloaderSuccess()
+{
+    const QString root = m_root + QStringLiteral("/http-downloader-success");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    m_server.setResponse(QStringLiteral("/downloader-success.qcow2"), 200,
+                         QByteArrayLiteral("payload"));
+    const QString destination = root + QStringLiteral("/image.qcow2");
+    int progressCalls = 0;
+    qint64 lastReceived = 0;
+    HttpDownloader downloader;
+    PodStack::Error error;
+    QVERIFY2(downloader.download(
+                 m_server.url(QStringLiteral("/downloader-success.qcow2")), destination,
+                 [&](qint64 received, qint64) {
+                     ++progressCalls;
+                     lastReceived = received;
+                 },
+                 {}, &error),
+             qPrintable(error.message));
+    QVERIFY(QFileInfo(destination).isFile());
+    QCOMPARE(QFileInfo(destination).size(), 7);
+    QVERIFY(progressCalls > 0);
+    QCOMPARE(lastReceived, 7);
+    QVERIFY(ownerOnly(QFileInfo(destination).permissions(), false));
+}
+
+void MachinesTest::httpDownloaderErrors()
+{
+    const QString root = m_root + QStringLiteral("/http-downloader-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    m_server.setResponse(QStringLiteral("/downloader-ok.qcow2"), 200, QByteArrayLiteral("payload"));
+    const QString url = m_server.url(QStringLiteral("/downloader-ok.qcow2"));
+
+    HttpDownloader downloader;
+    PodStack::Error error;
+    QVERIFY(!downloader.download(QString(), root + QStringLiteral("/a"), {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+    error = {};
+    QVERIFY(!downloader.download(url, QString(), {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+
+    error = {};
+    QVERIFY(!downloader.download(
+        url, root + QStringLiteral("/cancelled"), {}, [] { return true; }, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    const QString parentFile = root + QStringLiteral("/not-a-dir");
+    QVERIFY(writeTestFile(parentFile, QByteArrayLiteral("x")));
+    error = {};
+    QVERIFY(!downloader.download(url, parentFile + QStringLiteral("/file"), {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+
+    const QString partDirectory = root + QStringLiteral("/part-dir.part");
+    QVERIFY(QDir().mkpath(partDirectory));
+    error = {};
+    QVERIFY(!downloader.download(url, root + QStringLiteral("/part-dir"), {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+
+    // Rename do .part para um destino que é diretório falha.
+    error = {};
+    QVERIFY(!downloader.download(url, root, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+    QVERIFY(!QFileInfo::exists(root + QStringLiteral(".part")));
+
+    error = {};
+    QVERIFY(!downloader.download(QStringLiteral("http://127.0.0.1:1/nope"),
+                                 root + QStringLiteral("/offline"), {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+}
+
+void MachinesTest::cloudImageCacheErrors()
+{
+    const QString root = m_root + QStringLiteral("/cache-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    m_server.setResponse(QStringLiteral("/cache-errors.qcow2"), 200, QByteArrayLiteral("image"));
+    const DistroImage image =
+        testImage(QStringLiteral("/cache-errors.qcow2"), QByteArrayLiteral("image"));
+
+    const QString cacheFile = root + QStringLiteral("/cache-file");
+    QVERIFY(writeTestFile(cacheFile, QByteArrayLiteral("x")));
+    CloudImageCache invalid(cacheFile);
+    QString path;
+    PodStack::Error error;
+    QVERIFY(!invalid.ensure(image, {}, {}, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+
+    const QString cacheDir = root + QStringLiteral("/cache");
+    CloudImageCache cache(cacheDir);
+    QVERIFY(!cache.isCached(image));
+    QCOMPARE(cache.sizeBytes(image), 0);
+    DistroImage special = image;
+    special.distro = QStringLiteral("ubuntu/24.04");
+    QVERIFY(cache.cachedPath(special).contains(QStringLiteral("ubuntu_24.04")));
+
+    // Destino já ocupado por um diretório não pode ser publicado.
+    QDir().mkpath(cacheDir);
+    QDir().mkpath(cache.cachedPath(image));
+    error = {};
+    QVERIFY(!cache.ensure(image, {}, {}, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+    QDir(cache.cachedPath(image)).removeRecursively();
+}
+
+void MachinesTest::cloudImageCacheEdgeCases()
+{
+    const QString root = m_root + QStringLiteral("/cache-edge");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    m_server.setResponse(QStringLiteral("/cache-edge.qcow2"), 200, QByteArrayLiteral("image"));
+    const DistroImage image =
+        testImage(QStringLiteral("/cache-edge.qcow2"), QByteArrayLiteral("image"));
+
+    CloudImageCache cache(root + QStringLiteral("/cache"));
+    QVERIFY(QDir().mkpath(cache.directory()));
+    QString path;
+    PodStack::Error error;
+
+    QVERIFY(writeTestFile(cache.cachedPath(image), QByteArrayLiteral("image")));
+    QVERIFY(!cache.ensure(image, {}, [] { return true; }, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    QVERIFY(QDir().mkpath(cache.sidecarPath(image)));
+    error = {};
+    QVERIFY(!cache.ensure(image, {}, {}, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+    QDir(cache.sidecarPath(image)).removeRecursively();
+
+    QVERIFY(writeTestFile(cache.sidecarPath(image), QByteArrayLiteral("not-json")));
+    error = {};
+    QVERIFY2(cache.ensure(image, {}, {}, &path, &error), qPrintable(error.message));
+    QVERIFY(cache.isCached(image));
+
+    QFile::remove(cache.cachedPath(image));
+    QFile::remove(cache.sidecarPath(image));
+    int progressCalls = 0;
+    error = {};
+    QVERIFY2(cache.ensure(
+                 image, [&progressCalls](qint64, qint64) { ++progressCalls; }, {}, &path, &error),
+             qPrintable(error.message));
+    QVERIFY(progressCalls > 0);
+
+    QJsonObject sidecar;
+    sidecar.insert(QStringLiteral("checksum"), QStringLiteral("00"));
+    sidecar.insert(QStringLiteral("algorithm"),
+                   PodStack::DistroRegistry::algorithmName(image.algorithm));
+    sidecar.insert(QStringLiteral("size"), 5);
+    QVERIFY(writeTestFile(cache.sidecarPath(image),
+                          QJsonDocument(sidecar).toJson(QJsonDocument::Compact)));
+    QVERIFY(!cache.isCached(image));
+    error = {};
+    QVERIFY2(cache.ensure(image, {}, {}, &path, &error), qPrintable(error.message));
+    QVERIFY(cache.isCached(image));
+
+    sidecar.insert(QStringLiteral("algorithm"), QStringLiteral("sha1"));
+    QVERIFY(writeTestFile(cache.sidecarPath(image),
+                          QJsonDocument(sidecar).toJson(QJsonDocument::Compact)));
+    QVERIFY(!cache.isCached(image));
+
+    sidecar.insert(QStringLiteral("algorithm"),
+                   PodStack::DistroRegistry::algorithmName(image.algorithm));
+    sidecar.insert(QStringLiteral("size"), 999);
+    QVERIFY(writeTestFile(cache.sidecarPath(image),
+                          QJsonDocument(sidecar).toJson(QJsonDocument::Compact)));
+    QVERIFY(!cache.isCached(image));
 }
 
 void MachinesTest::seedIsoEntries()
@@ -1625,6 +1966,52 @@ void MachinesTest::seedEscapesYaml()
     QVERIFY2(userData.contains(
                  QByteArrayLiteral("      - 'ssh-ed25519 AAA''BBB comment'\n")),
              userData.constData());
+}
+
+void MachinesTest::seedValidationErrors()
+{
+    const QString root = m_root + QStringLiteral("/seed-validation-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const CloudInitOptions valid =
+        seedOptions(QStringLiteral("machine-validation"), QStringLiteral("podstack-validation"));
+    PodStack::Error error;
+    CloudInitOptions options = valid;
+
+    QVERIFY(!CloudInit::writeSeedIso(QString(), options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    options = valid;
+    options.environment.insert(QStringLiteral("1BAD"), QStringLiteral("x"));
+    QVERIFY(!CloudInit::writeSeedIso(root + QStringLiteral("/env.iso"), options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    options = valid;
+    options.environment.insert(QStringLiteral("GOOD"), QStringLiteral("bad\nvalue"));
+    QVERIFY(!CloudInit::writeSeedIso(root + QStringLiteral("/env2.iso"), options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    options = valid;
+    options.sshAuthorizedKeys = {QString()};
+    QVERIFY(!CloudInit::writeSeedIso(root + QStringLiteral("/key.iso"), options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    options = valid;
+    QVERIFY(!CloudInit::writeSeedIso(root, options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString parentFile = root + QStringLiteral("/not-a-dir");
+    QVERIFY(writeTestFile(parentFile, QByteArrayLiteral("x")));
+    error = {};
+    QVERIFY(!CloudInit::writeSeedIso(parentFile + QStringLiteral("/seed.iso"), options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString tempDir = root + QStringLiteral("/seed-tmp.iso.tmp");
+    QVERIFY(QDir().mkpath(tempDir));
+    error = {};
+    QVERIFY(!CloudInit::writeSeedIso(root + QStringLiteral("/seed-tmp.iso"), options, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
 }
 
 void MachinesTest::qemuBinary()
@@ -2083,6 +2470,70 @@ void MachinesTest::qmpConnectMissing()
     QVERIFY(!client.isConnected());
 }
 
+void MachinesTest::qmpInvalidStates()
+{
+    PodStack::Error error;
+    QmpClient empty{QString{}};
+    QVERIFY(!empty.connect(100, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(!empty.execute(QString(), {}, nullptr, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QString status;
+    QVERIFY(!empty.queryStatus(&status, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(!empty.systemPowerdown(&error));
+    QVERIFY(!empty.quit(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    empty.disconnect();
+
+    MockQmpServer noGreeting;
+    noGreeting.setNoGreeting(true);
+    QVERIFY(noGreeting.isListening());
+    QmpClient bad(noGreeting.socketPath());
+    bad.setCommandTimeout(200);
+    QVERIFY(!bad.connect(1000, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_TIMEOUT"));
+    QVERIFY(!bad.isConnected());
+    bad.disconnect();
+
+    MockQmpServer emptyStatus;
+    emptyStatus.setStatus(QString());
+    QVERIFY(emptyStatus.isListening());
+    QmpClient client(emptyStatus.socketPath());
+    QVERIFY2(client.connect(1000, &error), qPrintable(error.message));
+    QVERIFY(!client.queryStatus(&status, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INTERNAL"));
+    client.disconnect();
+    QVERIFY(!client.isConnected());
+}
+
+void MachinesTest::qmpSocketCloses()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("qmp.sock"));
+    QLocalServer server;
+    QVERIFY2(server.listen(path), qPrintable(server.errorString()));
+
+    QmpClient client(path);
+    PodStack::Error error;
+    bool connected = true;
+    std::thread thread([&] { connected = client.connect(1500, &error); });
+
+    QVERIFY(server.waitForNewConnection(3000));
+    QLocalSocket *socket = server.nextPendingConnection();
+    QVERIFY(socket != nullptr);
+    socket->write("{\"QMP\":{}}\n");
+    socket->flush();
+    socket->waitForBytesWritten(1000);
+    socket->disconnectFromServer();
+    thread.join();
+
+    QVERIFY(!connected);
+    QVERIFY(!error.isEmpty());
+}
+
 void MachinesTest::idsUuidV7()
 {
     static const QRegularExpression pattern(QStringLiteral(
@@ -2279,6 +2730,258 @@ void MachinesTest::machineManagerCreate()
     QVERIFY(QFileInfo(storePath).isFile());
 }
 
+void MachinesTest::machineManagerCreateErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-create-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'c');
+    m_server.setResponse(QStringLiteral("/manager-create-ok.qcow2"), 200, payload);
+    const DistroImage good = testImage(QStringLiteral("/manager-create-ok.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    auto *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [good](const QString &spec, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        DistroImage image = good;
+        if (spec == QStringLiteral("bad-arch")) {
+            image.arch = QStringLiteral("arm64");
+        } else if (spec == QStringLiteral("bad-image")) {
+            image.url.clear();
+            image.checksum.clear();
+        } else if (spec == QStringLiteral("download-fail")) {
+            image.url = QStringLiteral("http://127.0.0.1:%1/missing-create.qcow2").arg(1);
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest base;
+    base.name = QStringLiteral("create-errors");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    CreateMachineRequest request = base;
+    request.distro = QStringLiteral("bad-arch");
+    QVERIFY(manager.create(request, {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    request = base;
+    request.distro = QStringLiteral("bad-image");
+    error = {};
+    QVERIFY(manager.create(request, {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INTERNAL"));
+
+    request = base;
+    request.distro = QStringLiteral("download-fail");
+    error = {};
+    QVERIFY(manager.create(request, {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+
+    // A imagem baixa, mas o QEMU fake falha ao iniciar.
+    fake->failStart = true;
+    request = base;
+    request.distro = QStringLiteral("ok");
+    error = {};
+    const MachineMeta failed = manager.create(request, {}, {}, &error);
+    QVERIFY(!failed.id.isEmpty());
+    QCOMPARE(failed.state, QStringLiteral("error"));
+    QVERIFY(!error.isEmpty());
+}
+
+void MachinesTest::machineManagerPortsErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-ports-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'p');
+    m_server.setResponse(QStringLiteral("/manager-ports-errors.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-ports-errors.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest base;
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    base.name = QStringLiteral("ports-a");
+    PodStack::Error error;
+    const MachineMeta first = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    base.name = QStringLiteral("ports-b");
+    const MachineMeta second = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const auto expect = [&](const QVector<MachinePort> &ports, const QString &code) {
+        error = {};
+        manager.setPorts(first.id, ports, &error);
+        QCOMPARE(error.code, code);
+    };
+
+    expect({MachinePort{QStringLiteral("p"), 18080, 80, QStringLiteral("sctp"), false, {}}},
+           QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    expect({MachinePort{QStringLiteral("p"), 0, 80, QStringLiteral("tcp"), false, {}}},
+           QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    expect({MachinePort{QStringLiteral("p"), 18080, 0, QStringLiteral("tcp"), false, {}}},
+           QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    expect({MachinePort{QStringLiteral("p"), 18080, 80, QStringLiteral("tcp"), false,
+                        QString(65, QLatin1Char('a'))}},
+           QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    expect({MachinePort{QStringLiteral("p"), 18080, 80, QStringLiteral("tcp"), false,
+                        QStringLiteral("a\nb")}},
+           QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    expect({MachinePort{QStringLiteral("p1"), 18080, 80, QStringLiteral("tcp"), false, {}},
+            MachinePort{QStringLiteral("p2"), 18080, 81, QStringLiteral("tcp"), false, {}}},
+           QStringLiteral("PODSTACK_CONFLICT"));
+    expect({MachinePort{QStringLiteral("p"), 2222, 22, QStringLiteral("tcp"), false, {}}},
+           QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    expect({MachinePort{QStringLiteral("p"), second.sshPort, 80, QStringLiteral("tcp"), false, {}}},
+           QStringLiteral("PODSTACK_CONFLICT"));
+
+    error = {};
+    manager.rename(first.id, second.name, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    error = {};
+    manager.clone(first.id, second.name, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    UpdateMachineRequest agentUpdate;
+    agentUpdate.forwardSshAgent = true;
+    error = {};
+    manager.update(first.id, agentUpdate, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    base.name = QStringLiteral("ports-isolated");
+    base.isolated = true;
+    const MachineMeta isolated = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    error = {};
+    manager.setPorts(isolated.id,
+                     {MachinePort{QStringLiteral("p"), 18081, 80, QStringLiteral("tcp"), true, {}}},
+                     &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    const MachineMeta updated =
+        manager.setPorts(first.id,
+                         {MachinePort{QStringLiteral("web"), 18080, 80, QStringLiteral("tcp"),
+                                      false, QStringLiteral("web")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(updated.ports.size() >= 2);
+}
+
+void MachinesTest::machineManagerUpdateRemoveErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-update-remove-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'u');
+    m_server.setResponse(QStringLiteral("/manager-update-remove.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-update-remove.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest base;
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    base.name = QStringLiteral("update-errors");
+    PodStack::Error error;
+    const MachineMeta created = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    UpdateMachineRequest update;
+    update.diskBytes = created.diskBytes / 2;
+    error = {};
+    manager.update(created.id, update, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    // O diretório da machine virou um symlink: remoção deve recusar.
+    base.name = QStringLiteral("remove-symlink");
+    const MachineMeta symlinkMachine = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QString directory = root + QStringLiteral("/machines/") + symlinkMachine.id;
+    QVERIFY(QDir(directory).removeRecursively());
+    QVERIFY(QFile::link(QStringLiteral("/tmp"), directory));
+    error = {};
+    QVERIFY(!manager.remove(symlinkMachine.id, true, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_PERMISSION_DENIED"));
+    QFile::remove(directory);
+}
+
 void MachinesTest::machineManagerIsolated()
 {
     const QString root = m_root + QStringLiteral("/manager-isolated");
@@ -2307,8 +3010,9 @@ void MachinesTest::machineManagerIsolated()
     options.ovmfVarsPath = ovmfVars;
     options.sshPortStart = freePortHint();
     options.runtime = std::move(runtime);
-    options.resolveDistro =
-        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *) {
+        return image;
+    };
 
     MachineManager manager(std::move(options));
 
@@ -2325,9 +3029,8 @@ void MachinesTest::machineManagerIsolated()
                                                     const QString &message) {
         PodStack::Error validateError;
         const bool valid = manager.validate(invalid, &validateError);
-        return !valid && validateError.code == QStringLiteral("PODSTACK_INVALID_PARAMS")
-               && !validateError.remediation.isEmpty()
-               && validateError.message.contains(message);
+        return !valid && validateError.code == QStringLiteral("PODSTACK_INVALID_PARAMS") &&
+               !validateError.remediation.isEmpty() && validateError.message.contains(message);
     };
 
     CreateMachineRequest withMount = request;
@@ -2730,8 +3433,7 @@ void MachinesTest::machineManagerValidation()
 
     const QByteArray payload(2048, 'v');
     m_server.setResponse(QStringLiteral("/manager-validation.qcow2"), 200, payload);
-    const DistroImage image =
-        testImage(QStringLiteral("/manager-validation.qcow2"), payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-validation.qcow2"), payload);
 
     auto runtime = std::make_unique<FakeQemuRuntime>();
     MachineManager::Options options;
@@ -2744,8 +3446,7 @@ void MachinesTest::machineManagerValidation()
     options.ovmfVarsPath = ovmfVars;
     options.sshPortStart = freePortHint();
     options.runtime = std::move(runtime);
-    options.resolveDistro = [image](const QString &spec, const QString &,
-                                    PodStack::Error *error) {
+    options.resolveDistro = [image](const QString &spec, const QString &, PodStack::Error *error) {
         if (spec == QStringLiteral("test")) {
             return image;
         }
@@ -2775,8 +3476,7 @@ void MachinesTest::machineManagerValidation()
     QVERIFY(!manager.validate(invalidCpus, &validateError));
     QCOMPARE(validateError.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
-    const auto expectInvalid = [&manager](CreateMachineRequest request,
-                                          const QString &code) {
+    const auto expectInvalid = [&manager](CreateMachineRequest request, const QString &code) {
         PodStack::Error error;
         const MachineMeta meta = manager.create(request, {}, {}, &error);
         QVERIFY2(meta.id.isEmpty(), qPrintable(request.name));
@@ -2788,8 +3488,8 @@ void MachinesTest::machineManagerValidation()
     expectInvalid(request, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
     const QStringList invalidNames{
-        QStringLiteral("Bad-Name"), QStringLiteral("bad_name"), QStringLiteral("-bad"),
-        QStringLiteral("bad-"), QString(64, QLatin1Char('a')),
+        QStringLiteral("Bad-Name"), QStringLiteral("bad_name"),    QStringLiteral("-bad"),
+        QStringLiteral("bad-"),     QString(64, QLatin1Char('a')),
     };
     for (const QString &name : invalidNames) {
         request = base;
@@ -2826,10 +3526,8 @@ void MachinesTest::machineManagerValidation()
     request.distro = QStringLiteral("gentoo");
     expectInvalid(request, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
-    QVERIFY(!QFileInfo::exists(machinesRoot)
-            || QDir(machinesRoot)
-                   .entryList(QDir::AllEntries | QDir::NoDotAndDotDot)
-                   .isEmpty());
+    QVERIFY(!QFileInfo::exists(machinesRoot) ||
+            QDir(machinesRoot).entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
     QVERIFY(!QFileInfo::exists(storePath));
 
     PodStack::Error error;
@@ -2841,6 +3539,638 @@ void MachinesTest::machineManagerValidation()
     QVERIFY(duplicate.id.isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
     QCOMPARE(manager.list(&error).size(), 1);
+}
+
+void MachinesTest::machineManagerErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'e');
+    m_server.setResponse(QStringLiteral("/manager-errors.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-errors.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &spec, const QString &, PodStack::Error *error) {
+        if (spec == QStringLiteral("test")) {
+            return image;
+        }
+        if (error) {
+            *error = PodStack::Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                           QStringLiteral("Distro não suportada."), spec);
+        }
+        return DistroImage{};
+    };
+
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest base;
+    base.name = QStringLiteral("errors-machine");
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    MachineMeta created = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!created.id.isEmpty());
+
+    const QString missing = QStringLiteral("0190f0f0-0000-7000-8000-00000000dead");
+    const auto expectMissing = [&](auto call) {
+        error = {};
+        const MachineMeta result = call();
+        QVERIFY(result.id.isEmpty());
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    };
+    expectMissing([&] { return manager.start(missing, &error); });
+    expectMissing([&] { return manager.stop(missing, false, &error); });
+    expectMissing([&] { return manager.restart(missing, &error); });
+    expectMissing([&] { return manager.update(missing, {}, &error); });
+    expectMissing([&] { return manager.setPorts(missing, {}, &error); });
+    expectMissing([&] { return manager.rename(missing, QStringLiteral("new-name"), &error); });
+    expectMissing(
+        [&] { return manager.clone(missing, QStringLiteral("new-clone"), {}, {}, &error); });
+    error = {};
+    const MachineSnapshot missingSnapshot =
+        manager.createSnapshot(missing, QStringLiteral("snap"), &error);
+    QVERIFY(missingSnapshot.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+    expectMissing([&] { return manager.restoreSnapshot(missing, QStringLiteral("snap"), &error); });
+    expectMissing([&] {
+        return manager.exportMachine(missing, root + QStringLiteral("/x.tar.zst"), false, {}, {},
+                                     &error);
+    });
+
+    error = {};
+    QVERIFY(!manager.removeSnapshot(missing, QStringLiteral("snap"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    QVERIFY(!manager.sshInfo(missing, nullptr, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    SshInfo info;
+    error = {};
+    QVERIFY(!manager.sshInfo(missing, &info, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    QVERIFY(!manager.setDefaultMachine(missing, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    // Recursos inválidos.
+    UpdateMachineRequest update;
+    update.cpus = 0;
+    manager.update(created.id, update, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    update = {};
+    update.memoryBytes = 1024LL;
+    error = {};
+    manager.update(created.id, update, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    update = {};
+    update.diskBytes = 1024LL;
+    error = {};
+    manager.update(created.id, update, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    // Portas inválidas.
+    MachinePort port;
+    port.id = QStringLiteral("port-error");
+    port.hostPort = 0;
+    port.guestPort = 80;
+    port.protocol = QStringLiteral("tcp");
+    error = {};
+    manager.setPorts(created.id, {port}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    // Nome inválido e snapshot inválido.
+    error = {};
+    manager.rename(created.id, QStringLiteral("Bad Name"), &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    error = {};
+    QVERIFY(manager.createSnapshot(created.id, QStringLiteral("bad name"), &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    // Export/import com caminhos inválidos.
+    error = {};
+    manager.exportMachine(created.id, QString(), false, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    error = {};
+    QVERIFY(
+        manager.importMachine(root + QStringLiteral("/missing.tar.zst"), {}, false, {}, {}, &error)
+            .id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    // SSH com a chave gerada na criação.
+    error = {};
+    QVERIFY2(manager.sshInfo(created.id, &info, &error), qPrintable(error.message));
+    QCOMPARE(info.user, QStringLiteral("podstack"));
+    QVERIFY(!info.identityFile.isEmpty());
+
+    // Default é persistida por nome.
+    error = {};
+    QVERIFY2(manager.setDefaultMachine(created.id, &error), qPrintable(error.message));
+    QCOMPARE(manager.defaultMachine(&error), created.name);
+
+    // Remover também encerra a machine em execução.
+    error = {};
+    QVERIFY2(manager.remove(created.id, true, &error), qPrintable(error.message));
+    QVERIFY(manager.get(created.id, &error).id.isEmpty());
+}
+
+void MachinesTest::machineManagerQemuImgFailures()
+{
+    const QString root = m_root + QStringLiteral("/manager-qemu-img-fail");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+
+    const QString script = root + QStringLiteral("/qemu-img-fail.sh");
+    QVERIFY(writeTestFile(
+        script,
+        QByteArrayLiteral(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = 'info' ]; then printf '%s' '{\"snapshots\":[]}'; exit 0; fi\n"
+            "if [ \"$1\" = 'create' ]; then\n"
+            "  eval \"disk=\\${$(( $# - 1 ))}\"\n"
+            "  printf 'fake-qcow2' > \"$disk\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "echo 'qemu-img falhou de propósito' >&2\n"
+            "exit 1\n"),
+        QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    const QByteArray payload(2048, 'f');
+    m_server.setResponse(QStringLiteral("/manager-qemu-img-fail.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-qemu-img-fail.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = script;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest base;
+    base.name = QStringLiteral("qemu-img-fail");
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    MachineMeta created = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    // resize falha: o erro do qemu-img precisa chegar ao metadado.
+    UpdateMachineRequest update;
+    update.diskBytes = created.diskBytes * 2;
+    manager.update(created.id, update, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    // convert falha: export não deixa um arquivo válido para trás.
+    error = {};
+    const QString archive = root + QStringLiteral("/export.tar.zst");
+    manager.exportMachine(created.id, archive, false, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(!QFileInfo::exists(archive));
+
+    // create falha em outro manager: nenhum metadado é persistido.
+    QDir(root + QStringLiteral("/fail-create")).removeRecursively();
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/fail-create")));
+    const QString failScript = root + QStringLiteral("/fail-create/qemu-img.sh");
+    QVERIFY(
+        writeTestFile(failScript, QByteArrayLiteral("#!/bin/sh\nexit 1\n"),
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    auto failRuntime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options failOptions;
+    QVERIFY(configureSshOptions(&failOptions, root + QStringLiteral("/fail-create")));
+    failOptions.storePath = root + QStringLiteral("/fail-create/podstack.db");
+    failOptions.machinesRoot = root + QStringLiteral("/fail-create/machines");
+    failOptions.imageCacheDir = root + QStringLiteral("/fail-create/images");
+    failOptions.qemuImgBinary = failScript;
+    failOptions.ovmfCodePath = ovmfCode;
+    failOptions.ovmfVarsPath = ovmfVars;
+    failOptions.sshPortStart = freePortHint();
+    failOptions.runtime = std::move(failRuntime);
+    failOptions.resolveDistro = [image](const QString &, const QString &,
+                                        PodStack::Error *distroError) {
+        if (distroError) {
+            *distroError = {};
+        }
+        return image;
+    };
+    MachineManager failManager(std::move(failOptions));
+    base.name = QStringLiteral("qemu-img-create-fail");
+    error = {};
+    QVERIFY(failManager.create(base, {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void MachinesTest::machineManagerDiskErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-disk-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+
+    const QByteArray payload(2048, 'd');
+    m_server.setResponse(QStringLiteral("/manager-disk-errors.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-disk-errors.qcow2"), payload);
+
+    const auto runCreate = [&](const QString &name, const QString &qemuImg) -> PodStack::Error {
+        const QString caseRoot = root + QLatin1Char('/') + name;
+        QDir(caseRoot).removeRecursively();
+        if (!QDir().mkpath(caseRoot)) {
+            return PodStack::Error::make(QStringLiteral("TEST"), QStringLiteral("mkpath"));
+        }
+        auto runtime = std::make_unique<FakeQemuRuntime>();
+        MachineManager::Options options;
+        options.storePath = caseRoot + QStringLiteral("/podstack.db");
+        options.machinesRoot = caseRoot + QStringLiteral("/machines");
+        options.imageCacheDir = root + QStringLiteral("/images");
+        options.qemuImgBinary = qemuImg;
+        if (!configureSshOptions(&options, caseRoot)) {
+            return PodStack::Error::make(QStringLiteral("TEST"), QStringLiteral("ssh options"));
+        }
+        options.ovmfCodePath = ovmfCode;
+        options.ovmfVarsPath = ovmfVars;
+        options.sshPortStart = freePortHint();
+        options.runtime = std::move(runtime);
+        options.resolveDistro = [image](const QString &, const QString &,
+                                        PodStack::Error *distroError) {
+            if (distroError) {
+                *distroError = {};
+            }
+            return image;
+        };
+        MachineManager manager(std::move(options));
+        CreateMachineRequest request;
+        request.name = name;
+        request.distro = QStringLiteral("test");
+        request.arch = QStringLiteral("amd64");
+        request.user = QStringLiteral("podstack");
+        request.diskBytes = 1024LL * 1024LL * 1024LL;
+        PodStack::Error error;
+        manager.create(request, {}, {}, &error);
+        return error;
+    };
+
+    const PodStack::Error missingBinary = runCreate(
+        QStringLiteral("disk-missing-binary"), root + QStringLiteral("/does-not-exist/qemu-img"));
+    QCOMPARE(missingBinary.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString noOutput = root + QStringLiteral("/qemu-img-no-output.sh");
+    QVERIFY(
+        writeTestFile(noOutput, QByteArrayLiteral("#!/bin/sh\nexit 0\n"),
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    const PodStack::Error noDisk = runCreate(QStringLiteral("disk-no-output"), noOutput);
+    QCOMPARE(noDisk.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    QVERIFY(noDisk.message.contains(QStringLiteral("não foi criado")) ||
+            noDisk.detail.contains(QStringLiteral("disco")));
+}
+
+void MachinesTest::machineManagerSshKeyFailures()
+{
+    const QString root = m_root + QStringLiteral("/manager-ssh-key-fail");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'k');
+    m_server.setResponse(QStringLiteral("/manager-ssh-key-fail.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-ssh-key-fail.qcow2"), payload);
+
+    const auto runCase = [&](const QString &name, const QByteArray &script,
+                             const QString &binaryOverride) -> PodStack::Error {
+        const QString caseRoot = root + QLatin1Char('/') + name;
+        QDir(caseRoot).removeRecursively();
+        if (!QDir().mkpath(caseRoot)) {
+            return PodStack::Error::make(QStringLiteral("TEST"), QStringLiteral("mkpath"));
+        }
+        QString keygen = binaryOverride;
+        if (!script.isEmpty()) {
+            keygen = caseRoot + QStringLiteral("/ssh-keygen.sh");
+            if (!writeTestFile(keygen, script,
+                               QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                   QFileDevice::ExeOwner)) {
+                return PodStack::Error::make(QStringLiteral("TEST"),
+                                             QStringLiteral("write script"));
+            }
+        }
+
+        auto runtime = std::make_unique<FakeQemuRuntime>();
+        MachineManager::Options options;
+        options.storePath = caseRoot + QStringLiteral("/podstack.db");
+        options.machinesRoot = caseRoot + QStringLiteral("/machines");
+        options.imageCacheDir = root + QStringLiteral("/images");
+        options.qemuImgBinary = qemuImg;
+        options.sshKeygenBinary = keygen;
+        options.sshConfigPath = caseRoot + QStringLiteral("/ssh/config");
+        options.ovmfCodePath = ovmfCode;
+        options.ovmfVarsPath = ovmfVars;
+        options.sshPortStart = freePortHint();
+        options.runtime = std::move(runtime);
+        options.resolveDistro = [image](const QString &, const QString &,
+                                        PodStack::Error *distroError) {
+            if (distroError) {
+                *distroError = {};
+            }
+            return image;
+        };
+
+        MachineManager manager(std::move(options));
+        CreateMachineRequest request;
+        request.name = name;
+        request.distro = QStringLiteral("test");
+        request.arch = QStringLiteral("amd64");
+        request.user = QStringLiteral("podstack");
+        request.diskBytes = 1024LL * 1024LL * 1024LL;
+        PodStack::Error error;
+        const MachineMeta created = manager.create(request, {}, {}, &error);
+        if (!created.id.isEmpty()) {
+            return PodStack::Error::make(QStringLiteral("TEST"),
+                                         QStringLiteral("create deveria falhar"));
+        }
+        return error;
+    };
+
+    QCOMPARE(runCase(QStringLiteral("keygen-fails"),
+                     QByteArrayLiteral("#!/bin/sh\necho falha >&2\nexit 1\n"), {})
+                 .code,
+             QStringLiteral("PODSTACK_IO_ERROR"));
+    QCOMPARE(
+        runCase(QStringLiteral("keygen-empty"), QByteArrayLiteral("#!/bin/sh\nexit 0\n"), {}).code,
+        QStringLiteral("PODSTACK_IO_ERROR"));
+    QCOMPARE(runCase(QStringLiteral("keygen-empty-public"),
+                     QByteArrayLiteral("#!/bin/sh\n"
+                                       "key=''\n"
+                                       "for last in \"$@\"; do key=\"$last\"; done\n"
+                                       "printf 'private' > \"$key\"\n"
+                                       "printf '' > \"$key.pub\"\n"
+                                       "exit 0\n"),
+                     {})
+                 .code,
+             QStringLiteral("PODSTACK_IO_ERROR"));
+    QCOMPARE(runCase(QStringLiteral("keygen-missing"), QByteArrayLiteral(""),
+                     root + QStringLiteral("/does-not-exist/ssh-keygen"))
+                 .code,
+             QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void MachinesTest::machineManagerStateErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-state-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 's');
+    m_server.setResponse(QStringLiteral("/manager-state-errors.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-state-errors.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    const QString storePath = options.storePath;
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest base;
+    base.name = QStringLiteral("state-errors");
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const auto setState = [&](const QString &state) {
+        MachineStore store(storePath);
+        PodStack::Error storeError;
+        if (!store.open(&storeError)) {
+            return false;
+        }
+        MachineMeta meta = manager.get(created.id, &storeError);
+        meta.state = state;
+        return store.upsert(meta, &storeError);
+    };
+
+    for (const QString &state : {QStringLiteral("deleting"), QStringLiteral("deleted")}) {
+        QVERIFY(setState(state));
+
+        error = {};
+        manager.start(created.id, &error);
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+        error = {};
+        manager.stop(created.id, false, &error);
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+        UpdateMachineRequest update;
+        update.cpus = 4;
+        error = {};
+        manager.update(created.id, update, &error);
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+        error = {};
+        manager.setPorts(created.id, {}, &error);
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+        error = {};
+        QVERIFY(!manager.remove(created.id, false, &error));
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+        error = {};
+        manager.exportMachine(created.id, root + QStringLiteral("/state.tar.zst"), false, {}, {},
+                              &error);
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+        error = {};
+        manager.rename(created.id, QStringLiteral("state-new"), &error);
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+        error = {};
+        manager.clone(created.id, QStringLiteral("state-clone"), {}, {}, &error);
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    }
+
+    QVERIFY(setState(QStringLiteral("stopped")));
+
+    // Chave SSH ausente.
+    QFile::remove(created.sshKeyPath);
+    SshInfo info;
+    error = {};
+    QVERIFY(!manager.sshInfo(created.id, &info, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    // Conflito de porta com a própria SSH já publicada.
+    MachinePort conflicting;
+    conflicting.id = QStringLiteral("conflict-port");
+    conflicting.hostPort = created.sshPort;
+    conflicting.guestPort = 8080;
+    conflicting.protocol = QStringLiteral("tcp");
+    error = {};
+    manager.setPorts(created.id, {conflicting}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    // Nome duplicado na criação.
+    base.name = created.name;
+    error = {};
+    QVERIFY(manager.create(base, {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+}
+
+void MachinesTest::machineManagerRuntimeErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-runtime-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'r');
+    m_server.setResponse(QStringLiteral("/manager-runtime-errors.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-runtime-errors.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    auto *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest base;
+    base.name = QStringLiteral("runtime-errors");
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.state, QStringLiteral("running"));
+
+    fake->failStop = true;
+    error = {};
+    const MachineMeta failedStop = manager.stop(created.id, false, &error);
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(failedStop.state, QStringLiteral("error"));
+
+    fake->failStop = false;
+    error = {};
+    QCOMPARE(manager.stop(created.id, false, &error).state, QStringLiteral("stopped"));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    fake->failStart = true;
+    error = {};
+    const MachineMeta failedStart = manager.start(created.id, &error);
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(failedStart.state, QStringLiteral("error"));
+
+    fake->failStart = false;
+    error = {};
+    QCOMPARE(manager.start(created.id, &error).state, QStringLiteral("running"));
+
+    fake->failStart = true;
+    error = {};
+    const MachineMeta failedRestart = manager.restart(created.id, &error);
+    QVERIFY(!error.isEmpty());
+    QVERIFY(failedRestart.state == QStringLiteral("error") ||
+            failedRestart.state == QStringLiteral("stopping"));
+
+    fake->failStart = false;
+    error = {};
+    QVERIFY(manager.start(created.id, &error).id.isEmpty() == false);
+
+    UpdateMachineRequest update;
+    update.diskBytes = created.diskBytes * 2;
+    fake->failStart = true;
+    error = {};
+    manager.update(created.id, update, &error);
+    QVERIFY(!error.isEmpty());
+    fake->failStart = false;
 }
 
 void MachinesTest::machineManagerLifecycle()
@@ -2857,8 +4187,7 @@ void MachinesTest::machineManagerLifecycle()
 
     const QByteArray payload(2048, 'l');
     m_server.setResponse(QStringLiteral("/manager-lifecycle.qcow2"), 200, payload);
-    const DistroImage image =
-        testImage(QStringLiteral("/manager-lifecycle.qcow2"), payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-lifecycle.qcow2"), payload);
 
     auto runtime = std::make_unique<FakeQemuRuntime>();
     FakeQemuRuntime *fake = runtime.get();
@@ -2872,8 +4201,9 @@ void MachinesTest::machineManagerLifecycle()
     options.ovmfVarsPath = ovmfVars;
     options.sshPortStart = freePortHint();
     options.runtime = std::move(runtime);
-    options.resolveDistro =
-        [image](const QString &, const QString &, PodStack::Error *) { return image; };
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *) {
+        return image;
+    };
 
     const QString machinesRoot = options.machinesRoot;
     MachineManager manager(std::move(options));
@@ -3764,13 +5094,398 @@ void MachinesTest::machineManagerExportImport()
 
     const int stopsBefore = fake->stopCount;
     const int startsBefore = fake->startCount;
-    const MachineMeta stoppedExport =
-        manager.exportMachine(replaced.id, root + QStringLiteral("/stopped.tar.zst"), false,
-                              {}, {}, &error);
+    const MachineMeta stoppedExport = manager.exportMachine(
+        replaced.id, root + QStringLiteral("/stopped.tar.zst"), false, {}, {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(stoppedExport.state, QStringLiteral("stopped"));
     QCOMPARE(fake->stopCount, stopsBefore);
     QCOMPARE(fake->startCount, startsBefore);
+}
+
+void MachinesTest::machineArchiveManifestValidation()
+{
+    const QString hash(64, QLatin1Char('a'));
+    const QJsonArray artifacts = {
+        QJsonObject{{QStringLiteral("path"), QStringLiteral("disk.qcow2")},
+                    {QStringLiteral("size"), 10},
+                    {QStringLiteral("sha256"), hash}},
+        QJsonObject{{QStringLiteral("path"), QStringLiteral("seed.iso")},
+                    {QStringLiteral("size"), 20},
+                    {QStringLiteral("sha256"), hash}},
+        QJsonObject{{QStringLiteral("path"), QStringLiteral("id_ed25519")},
+                    {QStringLiteral("size"), 30},
+                    {QStringLiteral("sha256"), hash}},
+        QJsonObject{{QStringLiteral("path"), QStringLiteral("id_ed25519.pub")},
+                    {QStringLiteral("size"), 40},
+                    {QStringLiteral("sha256"), hash}},
+    };
+    const QJsonObject valid{
+        {QStringLiteral("format"), MachineArchiveManifest::formatId()},
+        {QStringLiteral("name"), QStringLiteral("manifest")},
+        {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+        {QStringLiteral("distroVersion"), QStringLiteral("24.04")},
+        {QStringLiteral("arch"), QStringLiteral("amd64")},
+        {QStringLiteral("cpus"), 2},
+        {QStringLiteral("memoryBytes"), 2.0 * 1024 * 1024 * 1024},
+        {QStringLiteral("diskBytes"), 20.0 * 1024 * 1024 * 1024},
+        {QStringLiteral("sshUser"), QStringLiteral("podstack")},
+        {QStringLiteral("artifacts"), artifacts},
+    };
+
+    PodStack::Error error;
+    const MachineArchiveManifest parsed = MachineArchiveManifest::fromJson(valid, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(parsed.name, QStringLiteral("manifest"));
+    QCOMPARE(parsed.cpus, 2);
+    QCOMPARE(parsed.artifacts.size(), 4);
+    QVERIFY(!parsed.isolated);
+
+    const auto rejected = [](const QJsonObject &object) {
+        PodStack::Error rejectError;
+        const MachineArchiveManifest result =
+            MachineArchiveManifest::fromJson(object, &rejectError);
+        return result.name.isEmpty() &&
+               rejectError.code == QStringLiteral("PODSTACK_INVALID_PARAMS");
+    };
+
+    QJsonObject invalid = valid;
+    invalid.insert(QStringLiteral("format"), QStringLiteral("podstack.machine/0"));
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.remove(QStringLiteral("name"));
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("sshUser"), QStringLiteral("-root"));
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("sshUser"), QString(33, QLatin1Char('a')));
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("cpus"), 0);
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("cpus"), 257);
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("memoryBytes"), 2.0 * 1024 * 1024 * 1024 * 1024);
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("diskBytes"), 65.0 * 1024 * 1024 * 1024 * 1024);
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("memoryBytes"), 1024.0);
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("diskBytes"), 1.0);
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("arch"), QStringLiteral("sparc"));
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("artifacts"), QStringLiteral("none"));
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("artifacts"), QJsonArray{QStringLiteral("bad")});
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("artifacts"),
+                   QJsonArray{QJsonObject{{QStringLiteral("path"), QStringLiteral("disk.qcow2")},
+                                          {QStringLiteral("size"), -1},
+                                          {QStringLiteral("sha256"), hash}}});
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(QStringLiteral("artifacts"),
+                   QJsonArray{QJsonObject{{QStringLiteral("path"), QString()},
+                                          {QStringLiteral("size"), 1},
+                                          {QStringLiteral("sha256"), hash}}});
+    QVERIFY(rejected(invalid));
+
+    invalid = valid;
+    invalid.insert(
+        QStringLiteral("artifacts"),
+        QJsonArray{QJsonObject{{QStringLiteral("path"), QStringLiteral("disk.qcow2")},
+                               {QStringLiteral("size"), 1},
+                               {QStringLiteral("sha256"), QString(63, QLatin1Char('a'))}}});
+    QVERIFY(rejected(invalid));
+
+    // Campos opcionais de isolamento são lidos quando presentes.
+    QJsonObject isolated = valid;
+    isolated.insert(QStringLiteral("isolated"), true);
+    isolated.insert(QStringLiteral("isolateNetwork"), true);
+    isolated.insert(QStringLiteral("forwardSshAgent"), true);
+    error = {};
+    const MachineArchiveManifest isolatedManifest =
+        MachineArchiveManifest::fromJson(isolated, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(isolatedManifest.isolated);
+    QVERIFY(isolatedManifest.isolateNetwork);
+    QVERIFY(isolatedManifest.forwardSshAgent);
+}
+
+void MachinesTest::machineArchiveExtractErrors()
+{
+    const QString root = m_root + QStringLiteral("/archive-extract-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString disk = root + QStringLiteral("/disk.qcow2");
+    const QString seed = root + QStringLiteral("/seed.iso");
+    const QString key = root + QStringLiteral("/id_ed25519");
+    const QString pub = root + QStringLiteral("/id_ed25519.pub");
+    QVERIFY(writeTestFile(disk, QByteArrayLiteral("disk-data")));
+    QVERIFY(writeTestFile(seed, QByteArrayLiteral("seed-data")));
+    QVERIFY(writeTestFile(key, QByteArrayLiteral("private-key")));
+    QVERIFY(writeTestFile(pub, QByteArrayLiteral("ssh-ed25519 AAAA test")));
+
+    MachineArchiveManifest manifest;
+    manifest.format = MachineArchiveManifest::formatId();
+    manifest.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    manifest.name = QStringLiteral("archive-errors");
+    manifest.distro = QStringLiteral("ubuntu");
+    manifest.distroVersion = QStringLiteral("24.04");
+    manifest.arch = QStringLiteral("amd64");
+    manifest.cpus = 2;
+    manifest.memoryBytes = 2LL * 1024 * 1024 * 1024;
+    manifest.diskBytes = 20LL * 1024 * 1024 * 1024;
+    manifest.sshUser = QStringLiteral("podstack");
+
+    const QString archive = root + QStringLiteral("/machine.tar.zst");
+    PodStack::Error error;
+    QVERIFY2(MachineArchive::write(archive, manifest, disk, seed, key, pub, {}, {}, &error),
+             qPrintable(error.message));
+
+    QTemporaryDir out;
+    QVERIFY(out.isValid());
+
+    error = {};
+    QVERIFY(!MachineArchive::extract(root + QStringLiteral("/missing.tar.zst"), out.path(), nullptr,
+                                     nullptr, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QString notDirectory = root + QStringLiteral("/not-a-directory");
+    QVERIFY(writeTestFile(notDirectory, QByteArrayLiteral("x")));
+    error = {};
+    QVERIFY(!MachineArchive::extract(archive, notDirectory, nullptr, nullptr, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    QVERIFY(!MachineArchive::extract(root, out.path(), nullptr, nullptr, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!MachineArchive::extract(
+        archive, out.path(), nullptr, nullptr, {}, [] { return true; }, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    const auto extractFrom = [&](const QString &candidate) {
+        QTemporaryDir target;
+        if (!target.isValid()) {
+            return PodStack::Error{};
+        }
+        PodStack::Error extractError;
+        MachineArchive::extract(candidate, target.path(), nullptr, nullptr, {}, {}, &extractError);
+        return extractError;
+    };
+
+    const QString badJson = root + QStringLiteral("/bad-json.tar.zst");
+    QVERIFY(rewriteArchiveEntry(archive, badJson, QStringLiteral("manifest.json"),
+                                QByteArrayLiteral("not-json")));
+    QCOMPARE(extractFrom(badJson).code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QString badFormat = root + QStringLiteral("/bad-format.tar.zst");
+    QVERIFY(rewriteArchiveEntry(archive, badFormat, QStringLiteral("manifest.json"),
+                                QByteArrayLiteral("{\"format\":\"podstack.machine/0\"}")));
+    QCOMPARE(extractFrom(badFormat).code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QString badChecksum = root + QStringLiteral("/bad-checksum.tar.zst");
+    QVERIFY(rewriteArchiveEntry(archive, badChecksum, QStringLiteral("disk.qcow2"),
+                                QByteArrayLiteral("tampered-disk")));
+    QCOMPARE(extractFrom(badChecksum).code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QFile validArchive(archive);
+    QVERIFY(validArchive.open(QIODevice::ReadOnly));
+    const QByteArray archiveBytes = validArchive.readAll();
+    validArchive.close();
+    const QString truncated = root + QStringLiteral("/truncated.tar.zst");
+    QFile truncatedFile(truncated);
+    QVERIFY(truncatedFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(truncatedFile.write(archiveBytes.left(archiveBytes.size() / 2)) > 0);
+    truncatedFile.close();
+    QCOMPARE(extractFrom(truncated).code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void MachinesTest::machineArchiveWriteErrors()
+{
+    const QString root = m_root + QStringLiteral("/archive-write-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString disk = root + QStringLiteral("/disk.qcow2");
+    const QString seed = root + QStringLiteral("/seed.iso");
+    const QString key = root + QStringLiteral("/id_ed25519");
+    const QString pub = root + QStringLiteral("/id_ed25519.pub");
+    QVERIFY(writeTestFile(disk, QByteArrayLiteral("disk")));
+    QVERIFY(writeTestFile(seed, QByteArrayLiteral("seed")));
+    QVERIFY(writeTestFile(key, QByteArrayLiteral("key")));
+    QVERIFY(writeTestFile(pub, QByteArrayLiteral("pub")));
+
+    MachineArchiveManifest manifest;
+    manifest.format = MachineArchiveManifest::formatId();
+    manifest.name = QStringLiteral("write-errors");
+    manifest.distro = QStringLiteral("ubuntu");
+    manifest.arch = QStringLiteral("amd64");
+    manifest.cpus = 2;
+    manifest.memoryBytes = 2LL * 1024 * 1024 * 1024;
+    manifest.diskBytes = 20LL * 1024 * 1024 * 1024;
+    manifest.sshUser = QStringLiteral("podstack");
+
+    PodStack::Error error;
+    QVERIFY(!MachineArchive::write(QString(), manifest, disk, seed, key, pub, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!MachineArchive::write(root + QStringLiteral("/missing.tar.zst"), manifest,
+                                   root + QStringLiteral("/missing-disk"), seed, key, pub, {}, {},
+                                   &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    QVERIFY(!MachineArchive::write(root, manifest, disk, seed, key, pub, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    QVERIFY(!MachineArchive::write(root + QStringLiteral("/missing-dir/machine.tar.zst"), manifest,
+                                   disk, seed, key, pub, {}, {}, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    QVERIFY(!MachineArchive::write(
+        root + QStringLiteral("/cancelled.tar.zst"), manifest, disk, seed, key, pub, {},
+        [] { return true; }, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    const QString archive = root + QStringLiteral("/ok.tar.zst");
+    error = {};
+    int progress = 0;
+    QVERIFY2(MachineArchive::write(
+                 archive, manifest, disk, seed, key, pub,
+                 [&progress](const QString &, int value) { progress = value; }, {}, &error),
+             qPrintable(error.message));
+    QCOMPARE(progress, 100);
+    QVERIFY(QFileInfo(archive).isFile());
+    QVERIFY(ownerOnly(QFileInfo(archive).permissions(), false));
+}
+
+void MachinesTest::machineManagerExportImportErrors()
+{
+    const QString root = m_root + QStringLiteral("/manager-export-import-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'x');
+    m_server.setResponse(QStringLiteral("/manager-export-import-errors.qcow2"), 200, payload);
+    const DistroImage image =
+        testImage(QStringLiteral("/manager-export-import-errors.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest base;
+    base.name = QStringLiteral("export-import-errors");
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    const MachineMeta created = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/archive-dir")));
+    error = {};
+    manager.exportMachine(created.id, root + QStringLiteral("/archive-dir"), false, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QFile::remove(created.diskPath);
+    error = {};
+    manager.exportMachine(created.id, root + QStringLiteral("/missing-disk.tar.zst"), false, {}, {},
+                          &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    CreateMachineRequest secondRequest = base;
+    secondRequest.name = QStringLiteral("export-import-source");
+    const MachineMeta second = manager.create(secondRequest, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const QString archive = root + QStringLiteral("/machine.tar.zst");
+    error = {};
+    manager.exportMachine(second.id, archive, false, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    error = {};
+    manager.exportMachine(
+        second.id, root + QStringLiteral("/cancelled.tar.zst"), false, {}, [] { return true; },
+        &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    error = {};
+    manager.clone(second.id, QStringLiteral("cancelled-clone"), {}, [] { return true; }, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    error = {};
+    manager.importMachine(archive, QStringLiteral("Bad Name"), false, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    manager.importMachine(archive, second.name, false, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    error = {};
+    const MachineMeta imported = manager.importMachine(archive, second.name, true, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!imported.id.isEmpty());
+    QVERIFY(imported.id != second.id);
+
+    error = {};
+    manager.importMachine(root, QStringLiteral("invalid-archive"), false, {}, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void MachinesTest::machineManagerExportConcurrency()
@@ -4382,6 +6097,237 @@ void MachinesTest::qemuRuntimeFallback()
     QVERIFY(QFileInfo(QStringLiteral("/proc/%1").arg(foreign.pid())).isDir());
 }
 
+void MachinesTest::qemuRuntimePidFile()
+{
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-00000000110a");
+    const QString foreignId = QStringLiteral("0190f0f0-0000-7000-8000-00000000110b");
+    const QString root = m_root + QStringLiteral("/runtime-pidfile");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QemuSpec spec = qemuSpec(root);
+    spec.machineId = id;
+    FakeMachineProcess process;
+    QVERIFY2(process.start(id) > 0, "não foi possível iniciar o processo fake");
+    FakeMachineProcess foreign;
+    QVERIFY2(foreign.start(foreignId) > 0, "não foi possível iniciar o processo estranho");
+
+    QemuProcessRuntime runtime;
+    QVERIFY(waitForMachinePid(&runtime, id, process.pid()));
+    QVERIFY(waitForMachinePid(&runtime, foreignId, foreign.pid()));
+
+    QVERIFY(QDir().mkpath(QFileInfo(spec.pidFile).absolutePath()));
+    QFile pidFile(spec.pidFile);
+    QVERIFY(pidFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    pidFile.write(QByteArray::number(process.pid()));
+    pidFile.close();
+
+    QVERIFY(runtime.isRunning(spec, nullptr));
+    QCOMPARE(runtime.pid(spec), QString::number(process.pid()));
+
+    // Pidfile inválido (texto) e grande demais não podem ser aceitos.
+    QVERIFY(pidFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    pidFile.write("not-a-pid");
+    pidFile.close();
+    QVERIFY(runtime.isRunning(spec, nullptr));
+    QCOMPARE(runtime.pid(spec), QString::number(process.pid()));
+
+    QVERIFY(pidFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    pidFile.write(QByteArray(80, '9'));
+    pidFile.close();
+    QVERIFY(runtime.isRunning(spec, nullptr));
+
+    // Pidfile apontando para outro processo: o fallback pelo cmdline decide.
+    QVERIFY(pidFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    pidFile.write(QByteArray::number(foreign.pid()));
+    pidFile.close();
+    QVERIFY(runtime.isRunning(spec, nullptr));
+    QCOMPARE(runtime.pid(spec), QString::number(process.pid()));
+
+    QVERIFY(runtime.terminate(QString(), 0, nullptr));
+    QCOMPARE(runtime.findPid(QString()), 0);
+
+    process.stop();
+    QVERIFY(waitForMachineGone(&runtime, id));
+    foreign.stop();
+    QVERIFY(waitForMachineGone(&runtime, foreignId));
+
+    // Sem processo e com pidfile obsoleto, stop limpa o arquivo.
+    PodStack::Error stopError;
+    QVERIFY(runtime.stop(spec, false, &stopError));
+    QVERIFY(stopError.isEmpty());
+    QVERIFY(!QFileInfo::exists(spec.pidFile));
+}
+
+void MachinesTest::qemuRuntimeStartErrors()
+{
+    const QString root = m_root + QStringLiteral("/runtime-start-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QemuProcessRuntime runtime;
+    PodStack::Error error;
+
+    // Já em execução.
+    const QString runningId = QStringLiteral("0190f0f0-0000-7000-8000-00000000110c");
+    QemuSpec runningSpec = qemuSpec(root);
+    runningSpec.machineId = runningId;
+    FakeMachineProcess process;
+    QVERIFY2(process.start(runningId) > 0, "não foi possível iniciar o processo fake");
+    QVERIFY(waitForMachinePid(&runtime, runningId, process.pid()));
+    QVERIFY(!runtime.start(runningSpec, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    process.stop();
+
+    // Arquitetura inválida.
+    QemuSpec invalidArch = qemuSpec(root);
+    invalidArch.machineId = QStringLiteral("0190f0f0-0000-7000-8000-00000000110d");
+    invalidArch.arch = QStringLiteral("sparc");
+    error = {};
+    QVERIFY(!runtime.start(invalidArch, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    // Binário ausente no PATH.
+    QTemporaryDir emptyBin;
+    QVERIFY(emptyBin.isValid());
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", emptyBin.path().toUtf8());
+    const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
+    QemuSpec missingBinary = qemuSpec(root);
+    missingBinary.machineId = QStringLiteral("0190f0f0-0000-7000-8000-00000000110e");
+    error = {};
+    QVERIFY(!runtime.start(missingBinary, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    QVERIFY(error.message.contains(QStringLiteral("não foi encontrado")));
+}
+
+void MachinesTest::qemuRuntimeFakeQemu()
+{
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-00000000110f");
+    const QString root = m_root + QStringLiteral("/runtime-fake-qemu");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    const QByteArray script = QByteArrayLiteral(R"(#!/usr/bin/env python3
+import json, os, signal, socket, sys
+
+args = sys.argv[1:]
+def value(flag):
+    try:
+        return args[args.index(flag) + 1]
+    except (ValueError, IndexError):
+        return ""
+
+pidfile = value("-pidfile")
+chardev = value("-chardev")
+qmp_path = ""
+if "path=" in chardev:
+    qmp_path = chardev.split("path=", 1)[1].split(",", 1)[0]
+
+def cleanup(*_):
+    for path in (pidfile, qmp_path):
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, cleanup)
+signal.signal(signal.SIGINT, cleanup)
+if pidfile:
+    with open(pidfile, "w") as handle:
+        handle.write(str(os.getpid()))
+if not qmp_path:
+    signal.pause()
+
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    os.unlink(qmp_path)
+except OSError:
+    pass
+server.bind(qmp_path)
+server.listen(1)
+server.settimeout(30)
+
+def send(conn, payload):
+    conn.sendall(json.dumps(payload).encode() + b"\n")
+
+while True:
+    try:
+        conn, _ = server.accept()
+    except socket.timeout:
+        cleanup()
+    send(conn, {"QMP": {"version": {"qemu": {"major": 0, "minor": 0, "micro": 0},
+                                    "package": ""}, "capabilities": []}})
+    buffer = b""
+    while True:
+        data = conn.recv(4096)
+        if not data:
+            break
+        buffer += data
+        while b"\n" in buffer:
+            line, buffer = buffer.split(b"\n", 1)
+            if not line.strip():
+                continue
+            message = json.loads(line)
+            command = message.get("execute")
+            request_id = message.get("id")
+            if command == "system_powerdown" or command == "quit":
+                send(conn, {"return": {}, "id": request_id})
+                cleanup()
+            elif command == "query-status":
+                send(conn, {"return": {"status": "running"}, "id": request_id})
+            else:
+                send(conn, {"return": {}, "id": request_id})
+)");
+    QVERIFY(
+        writeTestFile(bin.filePath(QStringLiteral("qemu-system-x86_64")), script,
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", bin.path().toUtf8() + ':' + previousPath);
+    const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
+    QemuSpec spec = qemuSpec(root);
+    spec.machineId = id;
+    spec.pidFile = root + QStringLiteral("/qemu.pid");
+    spec.qmpSocketPath = root + QStringLiteral("/qmp.sock");
+    spec.diskPath = root + QStringLiteral("/disk.qcow2");
+    spec.seedPath = root + QStringLiteral("/seed.iso");
+    QVERIFY(writeTestFile(spec.diskPath, QByteArrayLiteral("disk")));
+    QVERIFY(writeTestFile(spec.seedPath, QByteArrayLiteral("seed")));
+
+    QemuProcessRuntime runtime;
+    PodStack::Error error;
+    QVERIFY2(runtime.start(spec, &error),
+             qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QVERIFY(runtime.isRunning(spec, &error));
+    QCOMPARE(runtime.status(spec, &error), QStringLiteral("running"));
+    const qint64 pid = runtime.pid(spec).toLongLong();
+    QVERIFY(pid > 0);
+
+    // Powerdown gracioso: o fake QEMU responde e encerra.
+    QVERIFY2(runtime.stop(spec, false, &error), qPrintable(error.message));
+    QVERIFY(!runtime.isRunning(spec, &error));
+    QVERIFY(QFileInfo::exists(spec.pidFile) == false);
+
+    // Quit forçado via QMP.
+    QVERIFY2(runtime.start(spec, &error), qPrintable(error.message));
+    QVERIFY2(runtime.stop(spec, true, &error), qPrintable(error.message));
+    QVERIFY(!runtime.isRunning(spec, &error));
+
+    // Encerramento de órfão por cmdline (SIGTERM).
+    QVERIFY2(runtime.start(spec, &error), qPrintable(error.message));
+    const qint64 orphanPid = runtime.pid(spec).toLongLong();
+    QVERIFY(orphanPid > 0);
+    QVERIFY2(runtime.terminate(id, orphanPid, &error), qPrintable(error.message));
+    QVERIFY(waitForMachineGone(&runtime, id));
+}
+
 void MachinesTest::machineManagerReconcile()
 {
     const QString root = m_root + QStringLiteral("/manager-reconcile");
@@ -4651,6 +6597,82 @@ void MachinesTest::sshConfigPreserves()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
+void MachinesTest::sshConfigErrors()
+{
+    const QString root = m_root + QStringLiteral("/ssh-config-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString path = root + QStringLiteral("/config");
+    SshConfig config(path);
+    MachineMeta meta = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000040"),
+                                   QStringLiteral("ssh-errors"));
+    PodStack::Error error;
+
+    error = {};
+    QVERIFY(!config.remove(QStringLiteral("Bad_Name"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    meta.sshUser = QStringLiteral("bad user");
+    QVERIFY(!config.sync(meta, false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshKeyPath.clear();
+    error = {};
+    QVERIFY(!config.sync(meta, false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    meta.sshKeyPath = QStringLiteral("/tmp/key with space");
+    error = {};
+    QVERIFY(!config.sync(meta, false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    meta.sshKeyPath = root + QStringLiteral("/id_ed25519");
+    error = {};
+    QVERIFY2(config.sync(meta, false, &error), qPrintable(error.message));
+    QVERIFY2(config.sync(meta, false, &error), qPrintable(error.message));
+
+    const QString incomplete = root + QStringLiteral("/incomplete/config");
+    QVERIFY(QDir().mkpath(QFileInfo(incomplete).absolutePath()));
+    QVERIFY(writeTestFile(incomplete, QByteArrayLiteral("# >>> podstack: ssh-errors\n")));
+    SshConfig incompleteConfig(incomplete);
+    error = {};
+    QVERIFY(!incompleteConfig.sync(meta, false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    error = {};
+    QVERIFY(!incompleteConfig.remove(meta.name, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    SshConfig directoryConfig(root);
+    QVERIFY(!directoryConfig.sync(meta, false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    error = {};
+    QVERIFY(!directoryConfig.remove(meta.name, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString parentFile = root + QStringLiteral("/not-a-dir");
+    QVERIFY(writeTestFile(parentFile, QByteArrayLiteral("x")));
+    error = {};
+    SshConfig parentConfig(parentFile + QStringLiteral("/config"));
+    QVERIFY(!parentConfig.sync(meta, false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    // Marcadores fora do início da linha não podem ser tratados como bloco.
+    const QString markerPath = root + QStringLiteral("/markers/config");
+    QVERIFY(writeTestFile(markerPath, QByteArrayLiteral("prefixo # >>> podstack: ssh-errors\n"
+                                                        "# <<< podstack: ssh-errors\n")));
+    SshConfig markerConfig(markerPath);
+    error = {};
+    QVERIFY2(markerConfig.sync(meta, false, &error), qPrintable(error.message));
+
+    QVERIFY(writeTestFile(markerPath, QByteArrayLiteral("# >>> podstack: ssh-errors\n"
+                                                        "prefixo # <<< podstack: ssh-errors\n")));
+    error = {};
+    QVERIFY2(markerConfig.sync(meta, false, &error), qPrintable(error.message));
+}
+
 void MachinesTest::machineManagerSsh()
 {
     const QString root = m_root + QStringLiteral("/manager-ssh");
@@ -4915,6 +6937,103 @@ void MachinesTest::machineStats()
     qunsetenv("PODSTACK_SSH_BINARY");
 }
 
+void MachinesTest::machineStatsErrors()
+{
+    const QString root = m_root + QStringLiteral("/machine-stats-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString keyPath = root + QStringLiteral("/id_ed25519");
+    QVERIFY(writeTestFile(keyPath, QByteArrayLiteral("FAKE-PRIVATE-KEY")));
+
+    const QString fakeSsh = root + QStringLiteral("/ssh-fake.sh");
+    QVERIFY(writeTestFile(
+        fakeSsh,
+        QByteArrayLiteral("#!/bin/sh\n"
+                          "case \"$PODSTACK_STATS_MODE\" in\n"
+                          "  no-markers) echo 'cpu  1 0 1 1'; exit 0;;\n"
+                          "  bad-df)\n"
+                          "    echo 'cpu  100 0 100 800'\n"
+                          "    echo '__PODSTACK_MEM__'\n"
+                          "    echo 'MemTotal: 2097152 kB'\n"
+                          "    echo 'MemAvailable: 1048576 kB'\n"
+                          "    echo '__PODSTACK_NET__'\n"
+                          "    echo '  eth0: 1 0 0 0 0 0 0 0 2 0 0 0 0 0 0 0'\n"
+                          "    echo '__PODSTACK_DISK__'\n"
+                          "    echo '   8 0 vda 1 0 2 0 3 0 4 0 0 0 0 0 0 0 0 0 0'\n"
+                          "    echo '__PODSTACK_DF__'\n"
+                          "    echo 'Filesystem'\n"
+                          "    exit 0;;\n"
+                          "  big) head -c 2100000 /dev/zero | tr '\\0' 'x'; exit 0;;\n"
+                          "  fail) echo 'ssh falhou' >&2; exit 255;;\n"
+                          "esac\n"
+                          "exit 0\n"),
+        QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    const QByteArray previousSsh = qgetenv("PODSTACK_SSH_BINARY");
+    const QByteArray previousMode = qgetenv("PODSTACK_STATS_MODE");
+    qputenv("PODSTACK_SSH_BINARY", fakeSsh.toUtf8());
+    const auto restore = qScopeGuard([previousSsh, previousMode] {
+        qputenv("PODSTACK_SSH_BINARY", previousSsh);
+        if (previousMode.isEmpty()) {
+            qunsetenv("PODSTACK_STATS_MODE");
+        } else {
+            qputenv("PODSTACK_STATS_MODE", previousMode);
+        }
+    });
+
+    MachineMeta meta;
+    meta.id = QStringLiteral("stats-errors");
+    meta.name = QStringLiteral("stats-errors");
+    meta.state = QStringLiteral("running");
+    meta.sshKeyPath = keyPath;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32222;
+
+    SshInfo info;
+    info.host = QStringLiteral("127.0.0.1");
+    info.port = meta.sshPort;
+    info.user = meta.sshUser;
+    info.identityFile = keyPath;
+
+    MachineStatsCollector collector;
+    PodStack::Error error;
+
+    MachineMeta stopped = meta;
+    stopped.state = QStringLiteral("stopped");
+    QVERIFY(collector.sample(stopped, info, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    MachineMeta noKey = meta;
+    noKey.sshKeyPath.clear();
+    error = {};
+    QVERIFY(collector.sample(noKey, info, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    SshInfo noHost = info;
+    noHost.host.clear();
+    error = {};
+    QVERIFY(collector.sample(meta, noHost, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QByteArray savedPath = qgetenv("PATH");
+    qputenv("PODSTACK_SSH_BINARY", "/nonexistent/ssh");
+    qputenv("PATH", QByteArrayLiteral("/nonexistent"));
+    error = {};
+    QVERIFY(collector.sample(meta, info, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    qputenv("PODSTACK_SSH_BINARY", fakeSsh.toUtf8());
+    qputenv("PATH", savedPath);
+
+    for (const QByteArray &mode : {QByteArrayLiteral("no-markers"), QByteArrayLiteral("bad-df"),
+                                   QByteArrayLiteral("big"), QByteArrayLiteral("fail")}) {
+        qputenv("PODSTACK_STATS_MODE", mode);
+        error = {};
+        QVERIFY2(collector.sample(meta, info, &error).isEmpty(), mode.constData());
+        QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+    }
+}
+
 void MachinesTest::machineFiles()
 {
     const QString root = m_root + QStringLiteral("/machine-files");
@@ -5166,6 +7285,102 @@ void MachinesTest::machineFiles()
     QDir(root).removeRecursively();
 }
 
+void MachinesTest::machineFilesErrors()
+{
+    const QString root = m_root + QStringLiteral("/machine-files-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    MachineFiles files;
+    QJsonArray items;
+    PodStack::Error error;
+    SshInfo ssh;
+    ssh.host = QStringLiteral("127.0.0.1");
+    ssh.user = QStringLiteral("podstack");
+    ssh.port = 32222;
+    ssh.identityFile = root + QStringLiteral("/id_ed25519");
+    QVERIFY(writeTestFile(ssh.identityFile, QByteArrayLiteral("key")));
+
+    QVERIFY(!files.list(ssh, QStringLiteral("/"), nullptr, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    SshInfo badSsh = ssh;
+    badSsh.host.clear();
+    error = {};
+    QVERIFY(!files.list(badSsh, QStringLiteral("/"), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.list(ssh, QString(), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.list(ssh, QStringLiteral("/tmp/\n"), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    const QByteArray previousSsh = qgetenv("PODSTACK_SSH_BINARY");
+    const QByteArray previousScp = qgetenv("PODSTACK_SCP_BINARY");
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PODSTACK_SSH_BINARY", "/nonexistent/ssh");
+    qputenv("PODSTACK_SCP_BINARY", "/nonexistent/scp");
+    qputenv("PATH", QByteArrayLiteral("/nonexistent"));
+    const auto restore = qScopeGuard([previousSsh, previousScp, previousPath] {
+        qputenv("PODSTACK_SSH_BINARY", previousSsh);
+        qputenv("PODSTACK_SCP_BINARY", previousScp);
+        qputenv("PATH", previousPath);
+    });
+
+    error = {};
+    QVERIFY(!files.list(ssh, QStringLiteral("/"), &items, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    error = {};
+    QVERIFY(
+        !files.download(ssh, QStringLiteral("/tmp/file"), root + QStringLiteral("/file"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    error = {};
+    QVERIFY(!files.upload(ssh, ssh.identityFile, QStringLiteral("/tmp/file"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    qputenv("PODSTACK_SSH_BINARY", previousSsh);
+    qputenv("PODSTACK_SCP_BINARY", previousScp);
+    qputenv("PATH", previousPath);
+
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"), QStringLiteral("relative"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"), root + QStringLiteral("/a/../file"),
+                            &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"), root + QLatin1Char('/'), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"),
+                            root + QStringLiteral("/missing/dir/file"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/directory")));
+    error = {};
+    QVERIFY(!files.download(ssh, QStringLiteral("/tmp/file"), root + QStringLiteral("/directory"),
+                            &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.upload(ssh, QStringLiteral("relative"), QStringLiteral("/tmp/file"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!files.upload(ssh, root + QStringLiteral("/missing-file"), QStringLiteral("/tmp/file"),
+                          &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
 void MachinesTest::machineFilesIntegration()
 {
     if (!qEnvironmentVariableIsSet("PODSTACK_MACHINE_FILES_INTEGRATION")) {
@@ -5271,6 +7486,88 @@ void MachinesTest::qemuRuntimeIntegration()
     QVERIFY2(runtime.stop(spec, true, &error), qPrintable(error.message));
     QVERIFY(!runtime.isRunning(spec, &error));
     QVERIFY2(virtiofsd.stop(&error), qPrintable(error.message));
+}
+
+void MachinesTest::virtiofsdValidation()
+{
+    const QString root = m_root + QStringLiteral("/virtiofsd-validation");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/share")));
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/qemu")));
+    const QString share = root + QStringLiteral("/share");
+    const QString binary = createVirtiofsdScript(root);
+    QVERIFY(!binary.isEmpty());
+
+    VirtiofsdProcess process;
+    PodStack::Error error;
+    QVERIFY(!process.isRunning());
+    QCOMPARE(process.pid(), 0);
+    QVERIFY(process.stop(&error));
+
+    QVERIFY(!process.start(binary, share, root + QStringLiteral("/qemu/bad-tag.sock"),
+                           QStringLiteral("Bad_Tag"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!process.start(binary, share, QStringLiteral("relative.sock"), QStringLiteral("host"),
+                           false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    const QString longSocket =
+        root + QLatin1Char('/') + QString(120, QLatin1Char('a')) + QStringLiteral(".sock");
+    QVERIFY(!process.start(binary, share, longSocket, QStringLiteral("host"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!process.start(binary, root + QStringLiteral("/missing"),
+                           root + QStringLiteral("/qemu/missing-source.sock"),
+                           QStringLiteral("host"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(!process.start(binary, share, root + QStringLiteral("/missing-dir/socket.sock"),
+                           QStringLiteral("host"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/qemu/socket-dir.sock")));
+    error = {};
+    QVERIFY(!process.start(binary, share, root + QStringLiteral("/qemu/socket-dir.sock"),
+                           QStringLiteral("host"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString notExecutable = root + QStringLiteral("/not-executable");
+    QVERIFY(writeTestFile(notExecutable, QByteArrayLiteral("#!/bin/sh\nexit 0\n")));
+    error = {};
+    QVERIFY(!process.start(notExecutable, share, root + QStringLiteral("/qemu/noexec.sock"),
+                           QStringLiteral("host"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    const QString failing = root + QStringLiteral("/failing-virtiofsd");
+    QVERIFY(
+        writeTestFile(failing, QByteArrayLiteral("#!/bin/sh\nexit 1\n"),
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    error = {};
+    QVERIFY(!process.start(failing, share, root + QStringLiteral("/qemu/failing.sock"),
+                           QStringLiteral("host"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString socketPath = root + QStringLiteral("/qemu/ok.sock");
+    error = {};
+    QVERIFY2(process.start(binary, share, socketPath, QStringLiteral("host"), false, &error),
+             qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    QVERIFY(process.isRunning());
+    QVERIFY(process.pid() > 0);
+
+    error = {};
+    QVERIFY(!process.start(binary, share, root + QStringLiteral("/qemu/second.sock"),
+                           QStringLiteral("host2"), false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    QVERIFY2(process.stop(&error), qPrintable(error.message));
+    QVERIFY(!process.isRunning());
+    QCOMPARE(process.pid(), 0);
+    QVERIFY(process.stop(&error));
 }
 
 void MachinesTest::virtiofsdIntegration()

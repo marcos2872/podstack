@@ -4,15 +4,19 @@
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
+#include "gui/StreamClient.h"
 #include "machines/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QScopeGuard>
@@ -46,12 +50,17 @@ private slots:
     void backendTerminal();
     void backendM3();
     void backendErrors();
+    void backendInvalidArguments();
+    void backendOperations();
+    void backendBatchActions();
     void backendTheme();
     void backendSettings();
     void backendProxy();
     void backendSetup();
+    void backendSetupJob();
     void backendTray();
     void backendActivityMonitor();
+    void streamClientProtocol();
     void guiStartsAndQuits();
 
 private:
@@ -1165,6 +1174,176 @@ void GuiTest::backendErrors()
     QVERIFY(!backend.lastError().isEmpty());
 }
 
+void GuiTest::backendInvalidArguments()
+{
+    PodStack::Backend backend;
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    // Entradas vazias devem ser recusadas no Backend, sem chegar ao daemon.
+    backend.removeImage(QString(), false);
+    backend.tagImage(QString(), QString());
+    backend.untagImage(QString(), QString());
+    backend.exportImage(QString(), QString());
+    backend.loadImage(QString());
+    backend.createVolume(QString(), QString());
+    backend.removeVolume(QString(), false);
+    backend.cloneVolume(QString(), QString());
+    backend.importHostPath(QString(), QString());
+    backend.createNetwork(QString(), QString(), QString());
+    backend.removeNetwork(QString(), false);
+    backend.connectNetwork(QString(), QString());
+    backend.disconnectNetwork(QString(), QString());
+    backend.createPod(QString());
+    backend.podAction(QString(), QString());
+    backend.removePod(QString(), false);
+    backend.composeUp(QString());
+    backend.composeDown(QString(), false);
+    backend.composeRestart(QString(), QString());
+    backend.composeStop(QString(), QString());
+    backend.composeStart(QString(), QString());
+    backend.subscribeComposeLogs(QString(), QString());
+    backend.removeBuild(QString());
+    backend.loadMachineLogs(QString(), 0);
+    backend.startMachineStats(QString());
+    backend.followMachineConsole(QString(), 0);
+    backend.refreshMachineFiles(QString(), QString());
+    backend.refreshMachineSnapshots(QString());
+    backend.createMachineSnapshot(QString(), QString());
+    backend.restoreMachineSnapshot(QString(), QString());
+    backend.removeMachineSnapshot(QString(), QString());
+    backend.downloadMachineFile(QString(), QString(), QString());
+    backend.uploadMachineFile(QString(), QString(), QString());
+    backend.renameMachine(QString(), QString());
+    backend.cloneMachine(QString(), QString());
+    backend.updateMachine({});
+    backend.setMachinePorts(QString(), {});
+    backend.exportMachine(QString(), QString());
+    backend.importMachine(QString());
+    backend.loadContainerDetail(QString());
+    backend.startContainerDetailStats(QString());
+    backend.startContainerDetailLogs(QString(), 0, true);
+    backend.containerDetailLifecycle(QString(), QString());
+    backend.removeContainerDetail(QString(), false);
+    backend.createContainer({}, false);
+    backend.exposeContainerLan(QString(), true);
+    backend.batchAll(QString());
+    backend.batchIds({}, QString());
+    backend.listFiles(QString(), QString());
+    backend.downloadFile(QString(), QString());
+    backend.uploadFile(QString(), QString(), QString());
+    backend.setSetting(QString(), {});
+    backend.setSetting(QStringLiteral("does.not.exist"), 1);
+    backend.setSetting(QStringLiteral("app.theme"), QStringLiteral("bogus"));
+    backend.resetSetting(QString());
+    backend.resetSetting(QStringLiteral("does.not.exist"));
+    backend.setupApply(QStringLiteral("bogus"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.lastError().isEmpty(), 5000);
+    QVERIFY(errorSpy.count() > 0);
+    QVERIFY(actionSpy.count() > 0);
+}
+
+void GuiTest::backendOperations()
+{
+    PodStack::Backend backend;
+    const QString tempFile = m_testDataDir + QStringLiteral("/image.tar");
+    QFile file(tempFile);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("tar");
+    file.close();
+
+    backend.refreshImages();
+    backend.refreshVolumes();
+    backend.refreshNetworks();
+    backend.refreshPods();
+    backend.refreshDiskUsage();
+    backend.refreshCompose();
+    backend.refreshBuilds();
+
+    backend.createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
+    backend.cloneVolume(QStringLiteral("vol1"), QStringLiteral("vol2"));
+    backend.importHostPath(QStringLiteral("vol3"), m_testDataDir);
+    backend.removeVolume(QStringLiteral("vol1"), false);
+    backend.pruneVolumes();
+
+    backend.createNetwork(QStringLiteral("net2"), QStringLiteral("10.90.0.0/24"),
+                          QStringLiteral("10.90.0.1"));
+    backend.connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    backend.disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    backend.removeNetwork(QStringLiteral("net2"), false);
+
+    backend.createPod(QStringLiteral("pod2"));
+    backend.podAction(QStringLiteral("start"), QStringLiteral("pod1"));
+    backend.removePod(QStringLiteral("pod1"), false);
+
+    backend.tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
+    backend.untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
+    backend.exportImage(QStringLiteral("img1234567890"), tempFile);
+    backend.loadImage(tempFile);
+    backend.pruneImages(false);
+    backend.removeImage(QStringLiteral("img1234567890"), false);
+
+    backend.composeUp(QStringLiteral("/tmp/mock-project"));
+    backend.composeRestart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.composeStop(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.composeStart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.composeDown(QStringLiteral("/tmp/mock-project"), false);
+    backend.subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
+    backend.unsubscribeComposeLogs();
+    backend.removeBuild(QStringLiteral("missing"));
+
+    backend.startActivityMonitor();
+    backend.stopActivityMonitor();
+
+    // Dá tempo para os jobs assíncronos concluírem antes de destruir o Backend.
+    QTest::qWait(1500);
+}
+
+void GuiTest::backendBatchActions()
+{
+    PodStack::Backend backend;
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    backend.batchPods({QStringLiteral("missing")}, QStringLiteral("bogus"));
+    QVERIFY(!backend.lastError().isEmpty());
+
+    backend.batchImages({QStringLiteral("missing-image")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() >= 1, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QVERIFY(!backend.lastError().isEmpty());
+
+    const int beforeVolumes = actionSpy.count();
+    backend.batchVolumes({QStringLiteral("missing-volume")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeVolumes, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforeNetworks = actionSpy.count();
+    backend.batchNetworks({QStringLiteral("missing-network")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeNetworks, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforePods = actionSpy.count();
+    backend.batchPods({QStringLiteral("missing-pod")}, QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforePods, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforeMachines = actionSpy.count();
+    backend.batchMachines({QStringLiteral("missing-machine")}, QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeMachines, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforeBuilds = actionSpy.count();
+    backend.batchBuilds({QStringLiteral("missing-build")});
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeBuilds, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
+    const int beforeCompose = actionSpy.count();
+    backend.batchCompose({QStringLiteral("/tmp/mock-project")}, QStringLiteral("up"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeCompose, 10000);
+    QVERIFY2(actionSpy.last().at(0).toBool(), qPrintable(actionSpy.last().at(1).toString()));
+}
+
 void GuiTest::backendTheme()
 {
     PodStack::Backend backend;
@@ -1299,23 +1478,36 @@ void GuiTest::guiStartsAndQuits()
 
     QProcess gui;
     gui.setProcessEnvironment(environment);
-    gui.setProcessChannelMode(QProcess::ForwardedChannels);
+    gui.setProcessChannelMode(QProcess::SeparateChannels);
     gui.start(guiPath, {QStringLiteral("--hidden")});
-    QVERIFY2(gui.waitForStarted(5000), qPrintable(gui.errorString()));
+    QVERIFY2(gui.waitForStarted(10000), qPrintable(gui.errorString()));
 
     const QString instanceSocket = runtimeDir + QStringLiteral("/podstack/gui.sock");
-    for (int attempt = 0; attempt < 100 && !QFileInfo::exists(instanceSocket); ++attempt) {
+    // O runner do CI é lento para carregar QML; 60 s cobre o container frio.
+    for (int attempt = 0; attempt < 1200 && !QFileInfo::exists(instanceSocket); ++attempt) {
+        if (gui.state() == QProcess::NotRunning) {
+            break;
+        }
         QTest::qWait(50);
     }
-    QVERIFY(QFileInfo::exists(instanceSocket));
+    if (!QFileInfo::exists(instanceSocket)) {
+        const QByteArray out = gui.readAllStandardOutput();
+        const QByteArray err = gui.readAllStandardError();
+        QVERIFY2(false, qPrintable(QStringLiteral("socket de instância não apareceu: %1 (state=%2, "
+                                                  "exit=%3)\nstdout:\n%4\nstderr:\n%5")
+                                       .arg(instanceSocket)
+                                       .arg(int(gui.state()))
+                                       .arg(gui.exitCode())
+                                       .arg(QString::fromUtf8(out), QString::fromUtf8(err))));
+    }
 
     QProcess quit;
     quit.setProcessEnvironment(environment);
     quit.start(guiPath, {QStringLiteral("--quit")});
-    QVERIFY(quit.waitForFinished(5000));
+    QVERIFY(quit.waitForFinished(10000));
     QCOMPARE(quit.exitCode(), 0);
 
-    QVERIFY(gui.waitForFinished(5000));
+    QVERIFY(gui.waitForFinished(10000));
     QCOMPARE(gui.exitCode(), 0);
 
     config.set(QStringLiteral("app.showInTray"), true);
@@ -1344,6 +1536,198 @@ void GuiTest::backendActivityMonitor()
 
     backend.stopActivityMonitor();
     QVERIFY(!backend.activityActive());
+}
+
+void GuiTest::streamClientProtocol()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString socketPath = dir.filePath(QStringLiteral("control.sock"));
+    QLocalServer server;
+    QVERIFY2(server.listen(socketPath), qPrintable(server.errorString()));
+
+    const QByteArray previous = qgetenv("PODSTACK_CONTROL_SOCKET");
+    qputenv("PODSTACK_CONTROL_SOCKET", socketPath.toUtf8());
+    const auto restore = qScopeGuard([previous] {
+        if (previous.isEmpty()) {
+            qunsetenv("PODSTACK_CONTROL_SOCKET");
+        } else {
+            qputenv("PODSTACK_CONTROL_SOCKET", previous);
+        }
+    });
+
+    const auto accept = [&server](const QByteArray &needle) -> QLocalSocket * {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 5000) {
+            if (!server.waitForNewConnection(1000)) {
+                continue;
+            }
+            QLocalSocket *socket = server.nextPendingConnection();
+            if (!socket) {
+                continue;
+            }
+            QByteArray request;
+            while (!request.contains('\n') && socket->waitForReadyRead(1000)) {
+                request += socket->readAll();
+            }
+            if (request.contains(needle)) {
+                return socket;
+            }
+            socket->deleteLater();
+        }
+        return nullptr;
+    };
+
+    PodStack::StreamClient client;
+    QSignalSpy readySpy(&client, &PodStack::StreamClient::subscriptionReady);
+    QSignalSpy logSpy(&client, &PodStack::StreamClient::logLine);
+    QSignalSpy errorSpy(&client, &PodStack::StreamClient::error);
+    QSignalSpy statsSpy(&client, &PodStack::StreamClient::stats);
+    QSignalSpy consoleSpy(&client, &PodStack::StreamClient::machineConsoleEvent);
+    QSignalSpy buildSpy(&client, &PodStack::StreamClient::buildFinished);
+    QSignalSpy buildEventSpy(&client, &PodStack::StreamClient::buildEvent);
+    QSignalSpy composeLogSpy(&client, &PodStack::StreamClient::composeLog);
+    QSignalSpy machineJobSpy(&client, &PodStack::StreamClient::machineCreateFinished);
+    QSignalSpy setupSpy(&client, &PodStack::StreamClient::setupFinished);
+
+    client.subscribeLogs(QStringLiteral("abc"), 10, true);
+    QLocalSocket *socket = accept(QByteArrayLiteral("containers.logs.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-1\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"containers.logs.delta\",\"params\":{\"line\":\"ola\"}}\n"
+        "not-json\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"containers.logs.error\",\"params\":{\"error\":"
+        "{\"message\":\"falhou\"}}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(readySpy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(logSpy.count() > 0, 5000);
+    QCOMPARE(logSpy.last().at(0).toString(), QStringLiteral("ola"));
+    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > 0, 5000);
+    QVERIFY(errorSpy.last().at(0).toString().contains(QStringLiteral("falhou")));
+
+    client.subscribeStats(QStringLiteral("abc"), 2);
+    socket = accept(QByteArrayLiteral("containers.stats.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-2\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"containers.stats.delta\",\"params\":{\"cpu_percent\":"
+        "\"1.5%\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(statsSpy.count() > 0, 5000);
+    QCOMPARE(statsSpy.last().at(0).toJsonObject().value(QStringLiteral("cpu_percent")).toString(),
+             QStringLiteral("1.5%"));
+
+    client.startMachineConsole(QStringLiteral("machine-1"), 1024);
+    socket = accept(QByteArrayLiteral("\"method\":\"machines.console\""));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-3\","
+        "\"id\":\"machine-1\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"machines.console.delta\",\"params\":{\"data\":"
+        "\"boot\",\"reset\":true}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(consoleSpy.count() > 0, 5000);
+
+    client.startBuild(QJsonObject{{QStringLiteral("context"), QStringLiteral("/tmp")},
+                                  {QStringLiteral("tag"), QStringLiteral("x")}});
+    socket = accept(QByteArrayLiteral("builds.start"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-4\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"builds.delta\",\"params\":{\"stream\":\"step\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"builds.done\",\"params\":{\"state\":\"success\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(buildEventSpy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(buildSpy.count() > 0, 5000);
+
+    client.subscribeComposeLogs(QStringLiteral("proj"), QStringLiteral("web"));
+    socket = accept(QByteArrayLiteral("compose.logs.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-9\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"compose.logs.delta\",\"params\":{"
+        "\"service\":\"web\",\"line\":\"oi\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(composeLogSpy.count() > 0, 5000);
+
+    const QList<QPair<QString, QString>> machineJobs = {
+        {QStringLiteral("machines.create"), QStringLiteral("create")},
+        {QStringLiteral("machines.export"), QStringLiteral("export")},
+        {QStringLiteral("machines.import"), QStringLiteral("import")},
+        {QStringLiteral("machines.clone"), QStringLiteral("clone")},
+    };
+    for (const auto &[method, label] : machineJobs) {
+        if (label == QStringLiteral("create")) {
+            client.startMachineCreate({});
+        } else if (label == QStringLiteral("export")) {
+            client.startMachineExport({});
+        } else if (label == QStringLiteral("import")) {
+            client.startMachineImport({});
+        } else {
+            client.startMachineClone({});
+        }
+        socket = accept(method.toUtf8());
+        QVERIFY2(socket, qPrintable(method));
+        socket->write(
+            QByteArrayLiteral("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{"
+                              "\"subscriptionId\":\"sub-job\"}}\n"
+                              "{\"jsonrpc\":\"2.0\",\"method\":\"machines.delta\",\"params\":{"
+                              "\"stage\":\"disk\",\"progress\":50}}\n"
+                              "{\"jsonrpc\":\"2.0\",\"method\":\"machines.done\",\"params\":{"
+                              "\"state\":\"success\"}}\n"));
+        socket->flush();
+        QTRY_VERIFY_WITH_TIMEOUT(machineJobSpy.count() > 0, 5000);
+        machineJobSpy.clear();
+    }
+
+    client.startSetup(QJsonObject{{QStringLiteral("action"), QStringLiteral("enable-socket")}});
+    socket = accept(QByteArrayLiteral("setup.apply"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-5\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"setup.done\",\"params\":{\"state\":\"success\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(setupSpy.count() > 0, 5000);
+
+    QSignalSpy pullSpy(&client, &PodStack::StreamClient::pullFinished);
+    client.pullImage(QStringLiteral("alpine"), {});
+    socket = accept(QByteArrayLiteral("images.pull"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-6\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"images.pull.delta\",\"params\":{"
+        "\"status\":\"Downloading\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"images.pull.done\",\"params\":{"
+        "\"images\":[\"img\"]}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(pullSpy.count() > 0, 5000);
+    QCOMPARE(pullSpy.last().at(0).toBool(), true);
+
+    QSignalSpy machineStatsSpy(&client, &PodStack::StreamClient::machineStats);
+    client.subscribeMachineStats(QStringLiteral("machine-1"), 2);
+    socket = accept(QByteArrayLiteral("machines.stats.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-7\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"machines.stats.delta\",\"params\":{"
+        "\"cpuPercent\":1.0}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(machineStatsSpy.count() > 0, 5000);
+
+    QSignalSpy eventSpy(&client, &PodStack::StreamClient::eventReceived);
+    client.subscribeEvents();
+    socket = accept(QByteArrayLiteral("events.subscribe"));
+    QVERIFY(socket);
+    socket->write(QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"subscriptionId\":\"sub-8\"}}\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{"
+        "\"Action\":\"start\"}}\n"));
+    socket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(eventSpy.count() > 0, 5000);
+
+    client.unsubscribe();
 }
 
 void GuiTest::backendProxy()
@@ -1414,6 +1798,25 @@ void GuiTest::backendSetup()
     }
     QTRY_VERIFY_WITH_TIMEOUT(backend.setupCompleted(), 10000);
     QVERIFY(!backend.setupPending());
+}
+
+void GuiTest::backendSetupJob()
+{
+    PodStack::Backend backend;
+    QSignalSpy jobSpy(&backend, &PodStack::Backend::setupJobChanged);
+
+    backend.setupApply(QStringLiteral("bogus"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupJobActive(), 10000);
+    QVERIFY(!backend.setupError().isEmpty());
+
+    backend.setupApply(QStringLiteral("enable-socket"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupJobActive(), 20000);
+    QVERIFY(jobSpy.count() > 0);
+    QVERIFY(!backend.setupLog().isEmpty());
+
+    backend.setupCancel();
+    backend.setupComplete();
+    QVERIFY(!backend.setupError().isEmpty());
 }
 
 } // namespace

@@ -1,6 +1,7 @@
 #include "MockPodmanServer.h"
 
 #include "podman/PodmanClient.h"
+#include "podman/UnixHttpClient.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -13,6 +14,8 @@
 #include <QStringList>
 #include <QTest>
 
+#include <atomic>
+
 namespace {
 
 class ContractTest : public QObject {
@@ -21,10 +24,13 @@ class ContractTest : public QObject {
 private slots:
     void containerInfoJson();
     void pingListAndLifecycle();
+    void libpodNativeList();
     void createContainer();
     void execLogsAndEvents();
     void files();
     void catalog();
+    void catalogOperations();
+    void rawHttpErrors();
     void catalogErrors();
     void buildContext();
     void errorMapping();
@@ -88,6 +94,26 @@ void ContractTest::pingListAndLifecycle()
     const QJsonObject inspected = client.inspectContainer(QStringLiteral("abc123"), &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(inspected.value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
+}
+
+void ContractTest::libpodNativeList()
+{
+    MockPodmanServer server;
+    QVERIFY(server.isListening());
+    server.setNativeContainers(true);
+
+    PodStack::PodmanClient client(server.socketPath());
+    PodStack::Error error;
+    const QVector<PodStack::ContainerInfo> containers = client.listContainers(true, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(containers.size(), 1);
+    const PodStack::ContainerInfo &container = containers.first();
+    QCOMPARE(container.name, QStringLiteral("native"));
+    QCOMPARE(container.state, QStringLiteral("created"));
+    QCOMPARE(container.ports.size(), 1);
+    QCOMPARE(container.ports.first(), QStringLiteral("5433->5432/tcp"));
+    QVERIFY(!container.created.isEmpty());
+    QVERIFY(container.created.contains(QLatin1Char('T')));
 }
 
 void ContractTest::createContainer()
@@ -512,6 +538,153 @@ void ContractTest::buildContext()
                                [](const QByteArray &) { return true; }, nullptr, &imageId,
                                &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void ContractTest::catalogOperations()
+{
+    MockPodmanServer server;
+    QVERIFY(server.isListening());
+    PodStack::PodmanClient client(server.socketPath());
+    PodStack::Error error;
+
+    const QString id = QStringLiteral("abc123");
+    client.startContainer(id, &error);
+    error = {};
+    client.stopContainer(id, 1, &error);
+    error = {};
+    client.restartContainer(id, 1, &error);
+    error = {};
+    client.pauseContainer(id, &error);
+    error = {};
+    client.unpauseContainer(id, &error);
+    error = {};
+    client.killContainer(id, QStringLiteral("SIGTERM"), &error);
+    error = {};
+    client.renameContainer(id, QStringLiteral("renamed"), &error);
+    error = {};
+    client.removeContainer(id, false, false, &error);
+    error = {};
+    client.inspectContainer(id, &error);
+    error = {};
+    client.listFiles(id, QStringLiteral("/"), &error);
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString download = dir.filePath(QStringLiteral("download.bin"));
+    error = {};
+    client.downloadFile(id, QStringLiteral("/tmp/file"), download, &error);
+    const QString upload = dir.filePath(QStringLiteral("upload.bin"));
+    QFile uploadFile(upload);
+    QVERIFY(uploadFile.open(QIODevice::WriteOnly));
+    uploadFile.write("data");
+    uploadFile.close();
+    error = {};
+    client.uploadFile(id, QStringLiteral("/tmp/upload"), upload, &error);
+
+    error = {};
+    QVERIFY(client.listImages(false, &error).size() >= 2);
+    error = {};
+    client.inspectImage(QStringLiteral("img1234567890"), &error);
+    error = {};
+    client.imageHistory(QStringLiteral("img1234567890"), &error);
+    error = {};
+    client.tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo"), QStringLiteral("tag"),
+                    &error);
+    error = {};
+    client.untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo"),
+                      QStringLiteral("tag"), &error);
+    error = {};
+    client.removeImage(QStringLiteral("img1234567890"), false, &error);
+    qint64 reclaimed = 0;
+    error = {};
+    client.pruneImages(false, &reclaimed, &error);
+    error = {};
+    const QString imageTar = dir.filePath(QStringLiteral("image.tar"));
+    client.exportImage(QStringLiteral("img1234567890"), imageTar, &error);
+    error = {};
+    client.loadImage(imageTar, &error);
+    error = {};
+    client.pullImage(
+        QStringLiteral("alpine:3.20"), {}, [](const QByteArray &) { return true; }, nullptr,
+        &error);
+    error = {};
+    client.pushImage(
+        QStringLiteral("img1234567890"), QStringLiteral("docker.io/repo:tag"),
+        [](const QByteArray &) { return true; }, nullptr, &error);
+
+    error = {};
+    QVERIFY(!client.listVolumes(&error).isEmpty());
+    error = {};
+    client.inspectVolume(QStringLiteral("vol1"), &error);
+    error = {};
+    client.createVolume(QStringLiteral("vol2"), QStringLiteral("local"), {}, {}, &error);
+    error = {};
+    client.removeVolume(QStringLiteral("vol2"), false, &error);
+    qint64 volumeReclaimed = 0;
+    error = {};
+    client.pruneVolumes(&volumeReclaimed, &error);
+    error = {};
+    client.cloneVolume(QStringLiteral("vol1"), QStringLiteral("vol2"), &error);
+    error = {};
+    const QString volumeTar = dir.filePath(QStringLiteral("volume.tar"));
+    client.exportVolume(QStringLiteral("vol1"), volumeTar, &error);
+    error = {};
+    client.importVolume(QStringLiteral("vol2"), volumeTar, false, &error);
+    error = {};
+    client.importHostPath(QStringLiteral("vol2"), dir.path(), &error);
+
+    error = {};
+    QVERIFY(!client.listNetworks(&error).isEmpty());
+    error = {};
+    client.createNetwork(QStringLiteral("mock-net"), QStringLiteral("bridge"),
+                         QStringLiteral("10.90.0.0/24"), QStringLiteral("10.90.0.1"), false, {},
+                         &error);
+    error = {};
+    client.removeNetwork(QStringLiteral("mock-net"), false, &error);
+    error = {};
+    client.connectNetwork(QStringLiteral("mock-net"), id, {QStringLiteral("demo")}, &error);
+    error = {};
+    client.disconnectNetwork(QStringLiteral("mock-net"), id, &error);
+
+    error = {};
+    client.listPods(&error);
+    error = {};
+    client.createPod(QStringLiteral("pod1"), {}, &error);
+    error = {};
+    client.podAction(QStringLiteral("pod1"), QStringLiteral("start"), &error);
+    error = {};
+    client.removePod(QStringLiteral("pod1"), false, &error);
+    error = {};
+    client.systemDf(&error);
+}
+
+void ContractTest::rawHttpErrors()
+{
+    MockPodmanServer server;
+    QVERIFY(server.isListening());
+    PodStack::UnixHttpClient client(server.socketPath());
+
+    const PodStack::HttpResponse ping =
+        client.request(QByteArrayLiteral("GET"), QStringLiteral("/_ping"));
+    QCOMPARE(ping.status, 200L);
+    QVERIFY(ping.error.isEmpty());
+
+    const PodStack::HttpResponse missing =
+        client.request(QByteArrayLiteral("GET"), QStringLiteral("/containers/missing/json"));
+    QCOMPARE(missing.status, 404L);
+    QVERIFY(missing.body.contains("no such container"));
+
+    PodStack::UnixHttpClient offline(server.socketPath() + QStringLiteral(".missing"));
+    const PodStack::HttpResponse failed =
+        offline.request(QByteArrayLiteral("GET"), QStringLiteral("/_ping"));
+    QCOMPARE(failed.status, 0L);
+    QVERIFY(!failed.error.isEmpty());
+
+    std::atomic_bool cancel{true};
+    QString error;
+    QVERIFY(!client.stream(
+        QStringLiteral("/events"), [](const QByteArray &) { return true; }, &cancel, &error));
+    QVERIFY(!error.isEmpty());
 }
 
 void ContractTest::catalogErrors()

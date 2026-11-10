@@ -19,14 +19,21 @@
 #include <QLabel>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickWidget>
 #include <QRectF>
+#include <QScopedPointer>
 #include <QSignalSpy>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QToolButton>
+#include <QtQml/qqmlextensionplugin.h>
+
+Q_IMPORT_QML_PLUGIN(PodStackPlugin)
 
 #include <qtermwidget.h>
 
@@ -57,12 +64,16 @@ private slots:
     void externalTerminalCommands();
     void externalTerminalDetection();
     void externalTerminalDesktopFallback();
+    void externalTerminalBranches();
+    void selectionState();
     void containerDetailDialog();
     void containerDetailDialogQml();
     void machineDetailDialog();
     void machineDetailDialogFromList();
     void machineDetailDialogQml();
+    void machineDetailOverlayErrors();
     void mainWindowTerminalDock();
+    void mainWindowQml();
 
 private:
     QTemporaryDir m_runtime;
@@ -271,6 +282,153 @@ void TerminalTest::externalTerminalDesktopFallback()
     restore("XDG_CURRENT_DESKTOP", oldDesktop);
     restore("DESKTOP_SESSION", oldSession);
     restore("TERM_PROGRAM", oldTermProgram);
+}
+
+void TerminalTest::externalTerminalBranches()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    const auto writeScript = [&dir](const QString &name) {
+        const QString path = dir.filePath(name);
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return QString();
+        }
+        file.write("#!/bin/sh\nexit 0\n");
+        file.close();
+        if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                 QFileDevice::ExeOwner)) {
+            return QString();
+        }
+        return path;
+    };
+
+    for (const QString &name :
+         {QStringLiteral("alacritty"), QStringLiteral("ghostty"), QStringLiteral("foot"),
+          QStringLiteral("wezterm"), QStringLiteral("konsole"), QStringLiteral("kitty"),
+          QStringLiteral("xfce4-terminal"), QStringLiteral("gnome-terminal"),
+          QStringLiteral("kgx")}) {
+        QVERIFY2(!writeScript(name).isEmpty(), qPrintable(name));
+    }
+
+    const QByteArray oldPath = qgetenv("PATH");
+    const QByteArray oldTerminal = qgetenv("TERMINAL");
+    const QByteArray oldDesktop = qgetenv("XDG_CURRENT_DESKTOP");
+    const QByteArray oldSession = qgetenv("DESKTOP_SESSION");
+    const QByteArray oldTermProgram = qgetenv("TERM_PROGRAM");
+    const auto restore = [&] {
+        qputenv("PATH", oldPath);
+        if (oldTerminal.isEmpty()) {
+            qunsetenv("TERMINAL");
+        } else {
+            qputenv("TERMINAL", oldTerminal);
+        }
+        if (oldDesktop.isEmpty()) {
+            qunsetenv("XDG_CURRENT_DESKTOP");
+        } else {
+            qputenv("XDG_CURRENT_DESKTOP", oldDesktop);
+        }
+        if (oldSession.isEmpty()) {
+            qunsetenv("DESKTOP_SESSION");
+        } else {
+            qputenv("DESKTOP_SESSION", oldSession);
+        }
+        if (oldTermProgram.isEmpty()) {
+            qunsetenv("TERM_PROGRAM");
+        } else {
+            qputenv("TERM_PROGRAM", oldTermProgram);
+        }
+    };
+
+    qputenv("PATH", dir.path().toUtf8());
+    qunsetenv("TERMINAL");
+    qunsetenv("XDG_CURRENT_DESKTOP");
+    qunsetenv("DESKTOP_SESSION");
+
+    const QList<QPair<QString, QString>> termPrograms = {
+        {QStringLiteral("ghostty"), QStringLiteral("ghostty")},
+        {QStringLiteral("WezTerm"), QStringLiteral("wezterm")},
+        {QStringLiteral("foot"), QStringLiteral("foot")},
+        {QStringLiteral("konsole"), QStringLiteral("konsole")},
+        {QStringLiteral("kitty"), QStringLiteral("kitty")},
+        {QStringLiteral("xfce4-terminal"), QStringLiteral("xfce4-terminal")},
+        {QStringLiteral("gnome-terminal"), QStringLiteral("gnome-terminal")},
+        {QStringLiteral("alacritty"), QStringLiteral("alacritty")},
+    };
+    for (const auto &[termProgram, expected] : termPrograms) {
+        qputenv("TERM_PROGRAM", termProgram.toUtf8());
+        QCOMPARE(PodStack::ExternalTerminal::findTerminal(), dir.filePath(expected));
+    }
+
+    qunsetenv("TERM_PROGRAM");
+    qputenv("XDG_CURRENT_DESKTOP", "KDE");
+    QCOMPARE(PodStack::ExternalTerminal::findTerminal(), dir.filePath(QStringLiteral("konsole")));
+    qputenv("XDG_CURRENT_DESKTOP", "GNOME");
+    QCOMPARE(PodStack::ExternalTerminal::findTerminal(), dir.filePath(QStringLiteral("kgx")));
+    qputenv("XDG_CURRENT_DESKTOP", "XFCE");
+    QCOMPARE(PodStack::ExternalTerminal::findTerminal(),
+             dir.filePath(QStringLiteral("xfce4-terminal")));
+
+    QString error;
+    qputenv("PATH", QByteArrayLiteral("/nonexistent"));
+    qunsetenv("XDG_CURRENT_DESKTOP");
+    qunsetenv("TERMINAL");
+    QVERIFY(!PodStack::ExternalTerminal::launch(QStringLiteral("/bin/true"), {}, &error));
+    QVERIFY(!error.isEmpty());
+    QVERIFY(!PodStack::ExternalTerminal::launch(QString(), {}, &error));
+    QVERIFY(!error.isEmpty());
+
+    qputenv("PATH", dir.path().toUtf8());
+    qputenv("TERMINAL", dir.filePath(QStringLiteral("alacritty")).toUtf8());
+    QVERIFY2(PodStack::ExternalTerminal::launch(QStringLiteral("/bin/true"), {}, &error),
+             qPrintable(error));
+    QTest::qWait(100);
+    QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("desconhecido"),
+                                                    QStringLiteral("/bin/true"),
+                                                    {QStringLiteral("arg")}),
+             QStringList({QStringLiteral("/bin/true"), QStringLiteral("arg")}));
+
+    restore();
+}
+
+void TerminalTest::selectionState()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.loadFromModule(QStringLiteral("PodStack"), QStringLiteral("SelectionState"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> state(component.create());
+    QVERIFY(state);
+
+    const auto eval = [&](const QString &code) {
+        QQmlExpression expression(engine.rootContext(), state.data(), code);
+        const QVariant result = expression.evaluate();
+        if (expression.hasError()) {
+            qWarning().noquote() << expression.error().toString();
+        }
+        return result;
+    };
+
+    QCOMPARE(state->property("count").toInt(), 0);
+    eval(QStringLiteral("selectOnly('a', 0)"));
+    QCOMPARE(state->property("count").toInt(), 1);
+    QVERIFY(eval(QStringLiteral("has('a')")).toBool());
+
+    eval(QStringLiteral("toggle('b', 1)"));
+    QCOMPARE(state->property("count").toInt(), 2);
+
+    eval(QStringLiteral("selectRange(['a', 'b', 'c', 'd'], 3)"));
+    QCOMPARE(state->property("count").toInt(), 3);
+    QVERIFY(eval(QStringLiteral("has('b')")).toBool());
+    QVERIFY(eval(QStringLiteral("has('d')")).toBool());
+
+    eval(QStringLiteral("prune(['b', 'c'])"));
+    QCOMPARE(state->property("count").toInt(), 2);
+    QVERIFY(!eval(QStringLiteral("has('a')")).toBool());
+
+    eval(QStringLiteral("clear()"));
+    QCOMPARE(state->property("count").toInt(), 0);
 }
 
 void TerminalTest::containerDetailDialog()
@@ -586,14 +744,45 @@ void TerminalTest::machineDetailDialogQml()
     QVERIFY(overlay.findChild<PodStack::TerminalView *>() == nullptr);
 }
 
+void TerminalTest::machineDetailOverlayErrors()
+{
+    PodStack::Backend backend;
+    QWidget host;
+    host.resize(1200, 800);
+    PodStack::MachineDetailDialog overlay(&backend, &host, /*loadQml=*/true);
+    if (!overlay.qmlLoaded()) {
+        QSKIP("Módulo QML PodStack indisponível neste binário de teste.");
+    }
+
+    overlay.openMachine(QStringLiteral("missing"));
+    QVERIFY(overlay.isHidden());
+    QVERIFY(overlay.machineId().isEmpty());
+    overlay.openMachine(QVariantMap{});
+    QVERIFY(overlay.isHidden());
+    QVERIFY(overlay.machineId().isEmpty());
+
+    overlay.applyTerminalArea(QRectF(1, 1, 10, 10), true);
+    overlay.hideOverlay();
+    QVERIFY(overlay.isHidden());
+
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(0), QStringLiteral("info"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(1), QStringLiteral("logs"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(2), QStringLiteral("stats"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(3), QStringLiteral("terminal"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(4), QStringLiteral("files"));
+    QCOMPARE(PodStack::MachineDetailDialog::tabName(99), QStringLiteral("info"));
+
+    overlay.closeOverlay();
+    QVERIFY(overlay.machineId().isEmpty());
+}
+
 void TerminalTest::mainWindowTerminalDock()
 {
     PodStack::Backend backend;
     PodStack::TrayController tray(false);
     PodStack::NotificationService notifications;
     PodStack::SingleInstance singleInstance;
-    // Sem QML: o módulo QML pertence ao binário podstack-gui; aqui validamos o
-    // dock e a criação/adição de sessões QTermWidget.
+    // Sem QML: valida o dock e a criação/adição de sessões QTermWidget.
     PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance,
                                 /*startHidden=*/true, /*loadQml=*/false);
 
@@ -615,10 +804,55 @@ void TerminalTest::mainWindowTerminalDock()
     QTest::qWait(200);
 
     QVERIFY(QMetaObject::invokeMethod(window.terminalTabs(), "tabCloseRequested",
+                                      Qt::DirectConnection, Q_ARG(int, -1)));
+    QCOMPARE(window.terminalTabs()->count(), 1);
+    QVERIFY(QMetaObject::invokeMethod(window.terminalTabs(), "tabCloseRequested",
                                       Qt::DirectConnection, Q_ARG(int, 0)));
     QCOMPARE(window.terminalTabs()->count(), 0);
     QVERIFY(window.terminalDock()->isHidden());
     QVERIFY(window.findChild<QTermWidget *>() == nullptr);
+
+    window.close();
+    QVERIFY(!window.isVisible());
+}
+
+void TerminalTest::mainWindowQml()
+{
+    PodStack::Backend backend;
+    PodStack::TrayController tray(false);
+    PodStack::NotificationService notifications;
+    PodStack::SingleInstance singleInstance;
+    PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance,
+                                /*startHidden=*/true, /*loadQml=*/true);
+
+    QTRY_VERIFY_WITH_TIMEOUT(window.qmlLoaded(), 5000);
+    QVERIFY(!window.qmlFailed());
+    QVERIFY(window.centralWidget() != nullptr);
+    QVERIFY(window.terminalDock() != nullptr);
+
+    // O dialogo de configuracoes usa roles heterogeneos (string/bool/numero);
+    // abrir e reconstruir as linhas precisa continuar funcionando.
+    auto *quick = qobject_cast<QQuickWidget *>(window.centralWidget());
+    QVERIFY(quick != nullptr);
+    QObject *rootObject = quick->rootObject();
+    QVERIFY(rootObject != nullptr);
+    QObject *settings = rootObject->findChild<QObject *>(QStringLiteral("settingsDialog"));
+    QVERIFY(settings != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(settings, "open"));
+    // Sem daemon no teste, o schema fica vazio; o importante é o dialog abrir
+    // sem ReferenceError e o array de linhas existir.
+    QVERIFY(settings->property("settingsRows").isValid());
+    QVERIFY(QMetaObject::invokeMethod(settings, "close"));
+
+    window.reveal();
+    window.hideToTray();
+    window.openContainerDetail(QStringLiteral("missing"));
+    window.openContainerDetail(QString());
+    window.openContainerDetailTab(QString(), 0);
+    window.openMachineDetail(QStringLiteral("missing"));
+    window.openMachineDetail(QString());
+    window.showMinimized();
+    window.reveal();
 }
 
 } // namespace

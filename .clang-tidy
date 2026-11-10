@@ -1,0 +1,15 @@
+---
+Checks: >-
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  performance-*,
+  -performance-enum-size,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -performance-implicit-conversion-in-loop,
+  -performance-no-automatic-move
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*/(src|tests)/.*'
+FormatStyle: file
+...

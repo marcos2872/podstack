@@ -13,7 +13,10 @@
 #include <QIcon>
 #include <QQuickStyle>
 
+#include <QtQml/qqmlextensionplugin.h>
 #include <qqml.h>
+
+Q_IMPORT_QML_PLUGIN(PodStackPlugin)
 
 int main(int argc, char *argv[])
 {
@@ -104,7 +107,11 @@ int main(int argc, char *argv[])
     QGuiApplication::setWindowIcon(tray.icon());
 
     PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance, startHidden);
-    if (!window.qmlLoaded()) {
+    // O QQuickWidget pode carregar de forma assíncrona (especialmente com QML
+    // cache frio no CI); só falhe se o carregamento terminou em erro.
+    if (window.qmlFailed()) {
+        qWarning("podstack-gui: falha ao carregar a UI: %s",
+                 qPrintable(window.qmlErrors().join(QStringLiteral(" | "))));
         return 1;
     }
 

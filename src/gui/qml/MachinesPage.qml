@@ -335,6 +335,8 @@ ColumnLayout {
 
     spacing: 0
 
+    SelectionState { id: machineSelection }
+
     ViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: 22
@@ -384,6 +386,36 @@ ColumnLayout {
             Accessible.name: qsTr("Importar machine de um arquivo .tar.zst")
         }
 
+        Text {
+            visible: machineSelection.count > 0
+            text: machineSelection.count + qsTr(" selecionadas")
+            color: Theme.indigo400
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMeta
+        }
+
+        ActionButton {
+            visible: machineSelection.count > 0
+            text: qsTr("Iniciar")
+            iconName: "play"
+            onClicked: backend.batchMachines(machineSelection.ids(), "start")
+        }
+
+        ActionButton {
+            visible: machineSelection.count > 0
+            text: qsTr("Parar")
+            iconName: "stop"
+            onClicked: backend.batchMachines(machineSelection.ids(), "stop")
+        }
+
+        ActionButton {
+            visible: machineSelection.count > 0
+            text: qsTr("Remover")
+            variant: "danger"
+            iconName: "trash"
+            onClicked: backend.batchMachines(machineSelection.ids(), "delete", true)
+        }
+
         ActionButton {
             variant: "ghost"
             iconName: "refresh"
@@ -409,6 +441,8 @@ ColumnLayout {
             emptyIcon: "machines"
             emptyText: qsTr("Nenhuma machine.\nCrie uma machine Linux para começar.")
             items: backend.machines
+            selection: machineSelection
+            idKey: "id"
             columns: [
                 { key: "name", label: "NOME", width: 0 },
                 { key: "distroLabel", label: "DISTRO", width: 110 },

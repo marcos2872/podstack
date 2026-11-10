@@ -9,9 +9,20 @@ AccessModifierOffset: -4
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
-BreakBeforeBraces: Attach
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: false
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+  SplitEmptyFunction: true
 DerivePointerAlignment: false
-PointerAlignment: Left
+PointerAlignment: Right
 SortIncludes: CaseSensitive
 IncludeBlocks: Preserve
 SpaceAfterCStyleCast: true

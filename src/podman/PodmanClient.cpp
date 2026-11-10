@@ -31,6 +31,46 @@ QString encodeId(const QString &id)
     return QString::fromLatin1(QUrl::toPercentEncoding(id));
 }
 
+/// O Libpod nativo usa chaves minúsculas (`host_port`) e, em algumas versões,
+/// valores numéricos como string; a API compat usa PascalCase. Aceite ambos.
+int jsonInt(const QJsonValue &value, int fallback = 0)
+{
+    if (value.isDouble()) {
+        return value.toInt(fallback);
+    }
+    if (value.isString()) {
+        bool ok = false;
+        const int parsed = value.toString().toInt(&ok);
+        return ok ? parsed : fallback;
+    }
+    return fallback;
+}
+
+int jsonInt(const QJsonObject &object, const QString &primary, const QString &alternate)
+{
+    const QJsonValue value = object.value(primary);
+    if (!value.isUndefined() && !value.isNull()) {
+        return jsonInt(value);
+    }
+    return jsonInt(object.value(alternate));
+}
+
+/// `Created` vem como string ISO na API compat e como epoch (número) no
+/// Libpod nativo. Normaliza os dois para uma string exibível.
+QString jsonTimestamp(const QJsonValue &value)
+{
+    if (value.isString()) {
+        return value.toString();
+    }
+    if (value.isDouble()) {
+        const qint64 seconds = static_cast<qint64>(value.toDouble());
+        if (seconds > 0) {
+            return QDateTime::fromSecsSinceEpoch(seconds, Qt::UTC).toString(Qt::ISODate);
+        }
+    }
+    return {};
+}
+
 QString encodePath(const QString &path)
 {
     return QString::fromLatin1(QUrl::toPercentEncoding(path));
@@ -691,7 +731,7 @@ QVector<ContainerInfo> PodmanClient::listContainers(bool all, Error *error)
         info.image = object.value(QStringLiteral("Image")).toString();
         info.state = object.value(QStringLiteral("State")).toString();
         info.status = object.value(QStringLiteral("Status")).toString();
-        info.created = object.value(QStringLiteral("Created")).toString();
+        info.created = jsonTimestamp(object.value(QStringLiteral("Created")));
 
         if (info.status.contains(QStringLiteral("(unhealthy)"))) {
             info.health = QStringLiteral("unhealthy");
@@ -704,10 +744,16 @@ QVector<ContainerInfo> PodmanClient::listContainers(bool all, Error *error)
         const QJsonArray ports = object.value(QStringLiteral("Ports")).toArray();
         for (const QJsonValue &portValue : ports) {
             const QJsonObject port = portValue.toObject();
-            const QString hostIp = port.value(QStringLiteral("HostIp")).toString();
-            const int hostPort = port.value(QStringLiteral("HostPort")).toInt();
-            const int containerPort = port.value(QStringLiteral("ContainerPort")).toInt();
-            const QString protocol = port.value(QStringLiteral("Protocol")).toString();
+            const QString hostIp = port.value(QStringLiteral("HostIp"))
+                                       .toString(port.value(QStringLiteral("host_ip")).toString());
+            const int hostPort =
+                jsonInt(port, QStringLiteral("HostPort"), QStringLiteral("host_port"));
+            const int containerPort =
+                jsonInt(port, QStringLiteral("ContainerPort"), QStringLiteral("container_port"));
+            const QString protocol =
+                port.value(QStringLiteral("Protocol"))
+                    .toString(
+                        port.value(QStringLiteral("protocol")).toString(QStringLiteral("tcp")));
 
             QString text;
             if (hostPort > 0) {
@@ -2334,7 +2380,7 @@ QVector<PodInfo> PodmanClient::listPods(Error *error)
             continue;
         }
         info.status = object.value(QStringLiteral("Status")).toString();
-        info.created = object.value(QStringLiteral("Created")).toString();
+        info.created = jsonTimestamp(object.value(QStringLiteral("Created")));
         info.infraId = object.value(QStringLiteral("InfraId")).toString();
         info.containers =
             object.value(QStringLiteral("Containers")).toArray().size();

@@ -156,6 +156,11 @@ int MockPodmanServer::createCount() const
     return m_createCount;
 }
 
+void MockPodmanServer::setNativeContainers(bool enabled)
+{
+    m_nativeContainers.store(enabled);
+}
+
 void MockPodmanServer::run()
 {
     while (!m_stopping.load()) {
@@ -232,7 +237,7 @@ void MockPodmanServer::handleClient(int clientFd)
         response = httpResponse(404, "Not Found",
                                 R"({"message":"no such container","cause":"mock"})");
     } else if (pathOnly.contains(QStringLiteral("/libpod/containers/json"))) {
-        const QByteArray payload = R"JSON([{
+        QByteArray payload = R"JSON([{
             "Id": "abc123",
             "Names": ["/demo"],
             "Image": "docker.io/library/alpine:3.20",
@@ -247,6 +252,20 @@ void MockPodmanServer::handleClient(int clientFd)
                 "com.docker.compose.project.working_dir": "/tmp/mock-project"
             }
         }])JSON";
+        if (m_nativeContainers.load()) {
+            payload = R"JSON([{
+                "Id": "native123",
+                "Names": ["/native"],
+                "Image": "docker.io/library/postgres:18",
+                "State": "created",
+                "Status": "Created",
+                "Created": 1793368126,
+                "Ports": [
+                    {"host_ip": "", "container_port": 5432, "host_port": 5433, "protocol": "tcp"}
+                ],
+                "Labels": {}
+            }])JSON";
+        }
         response = httpResponse(200, "OK", payload);
     } else if (method == QStringLiteral("POST") && pathOnly.endsWith(QStringLiteral("/exec"))) {
         response = httpResponse(201, "Created", R"({"Id":"exec-1"})");

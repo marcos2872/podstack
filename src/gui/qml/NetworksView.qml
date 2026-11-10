@@ -9,6 +9,8 @@ ColumnLayout {
 
     spacing: 0
 
+    SelectionState { id: networkSelection }
+
     ViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: 22
@@ -50,7 +52,25 @@ ColumnLayout {
             }
         }
 
+        Text {
+            visible: networkSelection.count > 0
+            text: networkSelection.count + qsTr(" selecionadas")
+            color: Theme.indigo400
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMeta
+        }
+
         ActionButton {
+            visible: networkSelection.count > 0
+            text: qsTr("Remover")
+            variant: "danger"
+            iconName: "trash"
+            onClicked: backend.batchNetworks(networkSelection.ids(), false)
+            Accessible.name: qsTr("Remover redes selecionadas")
+        }
+
+        ActionButton {
+            visible: networkSelection.count === 0
             text: qsTr("Remover")
             variant: "danger"
             enabled: networksList.currentRow >= 0
@@ -75,6 +95,8 @@ ColumnLayout {
         emptyIcon: "networks"
             emptyText: qsTr("Nenhuma rede.\nCrie uma rede bridge para isolar containers.")
         items: backend.networks
+        selection: networkSelection
+        idKey: "name"
         columns: [
             { key: "name", label: "NAME", width: 0 },
             { key: "driver", label: "DRIVER", width: 80 },

@@ -1,6 +1,7 @@
 #include "MockPodmanServer.h"
 
 #include "core/RpcClient.h"
+#include "daemon/ComposeManager.h"
 #include "machines/MachineStore.h"
 
 #include <QCoreApplication>
@@ -15,6 +16,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QScopeGuard>
+#include <QTemporaryDir>
 #include <QTest>
 
 namespace {
@@ -39,6 +41,8 @@ private slots:
     void machineSnapshots();
     void machineStats();
     void machineFiles();
+    void machineInvalidOperations();
+    void composeProviderFallback();
     void composeAndBuilds();
     void multiPlatformBuild();
     void setupFlow();
@@ -1452,6 +1456,34 @@ void RpcTest::machineConsole()
     QCOMPARE(resetDelta.value(QStringLiteral("data")).toString(), QStringLiteral("fresh\n"));
     QVERIFY(resetDelta.value(QStringLiteral("reset")).toBool());
 
+    // Um caractere UTF-8 ("é" = C3 A9) dividido entre dois chunks não pode
+    // virar U+FFFD: o decoder do stream mantém o estado entre deltas.
+    QFile splitConsole(consolePath);
+    QVERIFY(splitConsole.open(QIODevice::Append));
+    splitConsole.write(QByteArray::fromHex("c3"));
+    splitConsole.close();
+    QTest::qWait(500);
+    QVERIFY(splitConsole.open(QIODevice::Append));
+    splitConsole.write(QByteArray::fromHex("a9") + '\n');
+    splitConsole.close();
+
+    QString decoded;
+    for (int i = 0; i < 40 && !decoded.contains(QString::fromUtf8("é")); ++i) {
+        const QJsonObject message = readMessage(socket, buffer);
+        if (message.isEmpty()) {
+            break;
+        }
+        if (message.value(QStringLiteral("method")).toString() ==
+            QStringLiteral("machines.console.delta")) {
+            decoded += message.value(QStringLiteral("params"))
+                           .toObject()
+                           .value(QStringLiteral("data"))
+                           .toString();
+        }
+    }
+    QVERIFY2(decoded.contains(QString::fromUtf8("é")), qPrintable(decoded));
+    QVERIFY(!decoded.contains(QChar::ReplacementCharacter));
+
     sendMessage(socket,
                 {{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
                  {QStringLiteral("id"), 2},
@@ -2029,6 +2061,186 @@ void RpcTest::machineStats()
     QVERIFY(store.remove(meta.id));
     QFile::remove(meta.sshKeyPath);
     QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+}
+
+void RpcTest::machineInvalidOperations()
+{
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    const QString id = QStringLiteral("machine-invalid-1");
+    const QString name = QStringLiteral("invalid-operations");
+    const QString directory = m_testDataDir + QStringLiteral("/data/podstack/machines/") + id;
+    QVERIFY(QDir().mkpath(directory));
+
+    const auto writeFile = [](const QString &path, const QByteArray &data) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return false;
+        }
+        if (file.write(data) != data.size()) {
+            return false;
+        }
+        file.close();
+        return file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    };
+
+    PodStack::MachineMeta meta;
+    meta.id = id;
+    meta.name = name;
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.cpus = 2;
+    meta.memoryBytes = 2LL * 1024 * 1024 * 1024;
+    meta.diskBytes = 20LL * 1024 * 1024 * 1024;
+    meta.diskPath = directory + QStringLiteral("/disk.qcow2");
+    meta.seedPath = directory + QStringLiteral("/seed.iso");
+    meta.sshKeyPath = directory + QStringLiteral("/id_ed25519");
+    meta.sshPort = 32222;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    meta.ports = {PodStack::MachinePort{QStringLiteral("ssh-port"), 32222, 22,
+                                        QStringLiteral("tcp"), false, QStringLiteral("ssh")}};
+    QVERIFY(writeFile(meta.diskPath, QByteArrayLiteral("disk")));
+    QVERIFY(writeFile(meta.seedPath, QByteArrayLiteral("seed")));
+    QVERIFY(writeFile(meta.sshKeyPath, QByteArrayLiteral("key")));
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+    QVERIFY(PodStack::MachineMetaFile::write(directory + QStringLiteral("/meta.json"), meta,
+                                             &storeError));
+
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    client.call(QStringLiteral("machines.get"), QJsonObject{{QStringLiteral("id"), id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    error = {};
+    client.call(QStringLiteral("machines.update"),
+                QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("cpus"), 0}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("machines.update"),
+                QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("memoryBytes"), 1}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(
+        QStringLiteral("machines.ports.set"),
+        QJsonObject{{QStringLiteral("id"), id},
+                    {QStringLiteral("ports"),
+                     QJsonArray{QJsonObject{{QStringLiteral("protocol"), QStringLiteral("sctp")},
+                                            {QStringLiteral("hostPort"), 18080},
+                                            {QStringLiteral("guestPort"), 80}}}}},
+        &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("machines.rename"),
+                QJsonObject{{QStringLiteral("id"), id},
+                            {QStringLiteral("name"), QStringLiteral("Bad Name")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("machines.snapshots.create"),
+                QJsonObject{{QStringLiteral("id"), id},
+                            {QStringLiteral("name"), QStringLiteral("bad name")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("machines.default"),
+                QJsonObject{{QStringLiteral("name"), QStringLiteral("missing")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    const QJsonObject ports = client.call(QStringLiteral("machines.ports.list"),
+                                          QJsonObject{{QStringLiteral("id"), id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(ports.value(QStringLiteral("items")).isArray());
+
+    error = {};
+    const QJsonObject ssh = client.call(QStringLiteral("machines.ssh"),
+                                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(ssh.value(QStringLiteral("user")).toString(), QStringLiteral("podstack"));
+}
+
+void RpcTest::composeProviderFallback()
+{
+    PodStack::PodmanClient client(m_mock.socketPath());
+
+    PodStack::ComposeManager listManager(&client);
+    PodStack::Error listError;
+    const QVector<PodStack::ComposeProjectInfo> projects = listManager.listProjects(&listError);
+    QVERIFY2(listError.isEmpty(), qPrintable(listError.message));
+    QVERIFY(!projects.isEmpty());
+    QCOMPARE(projects.first().name, QStringLiteral("mock-project"));
+
+    const QByteArray previousPath = qgetenv("PATH");
+    const QByteArray previousProvider = qgetenv("PODSTACK_COMPOSE_PROVIDER");
+    qunsetenv("PODSTACK_COMPOSE_PROVIDER");
+    const auto restore = qScopeGuard([previousPath, previousProvider] {
+        qputenv("PATH", previousPath);
+        if (previousProvider.isEmpty()) {
+            qunsetenv("PODSTACK_COMPOSE_PROVIDER");
+        } else {
+            qputenv("PODSTACK_COMPOSE_PROVIDER", previousProvider);
+        }
+    });
+
+    const auto writeScript = [](const QString &path) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return false;
+        }
+        file.write("#!/bin/sh\n"
+                   "case \"$*\" in *fail*) echo 'compose falhou' >&2; exit 1;; esac\n"
+                   "exit 0\n");
+        file.close();
+        return file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                   QFileDevice::ExeOwner);
+    };
+
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    QVERIFY(writeScript(bin.filePath(QStringLiteral("podman"))));
+    qputenv("PATH", bin.path().toUtf8());
+    PodStack::ComposeManager podmanManager(&client);
+    PodStack::Error error;
+    QCOMPARE(podmanManager.provider(&error), QStringLiteral("podman compose"));
+
+    const QString project = m_testDataDir + QStringLiteral("/compose-project");
+    QVERIFY(QDir().mkpath(project));
+    QVERIFY2(podmanManager.up(project, true, &error), qPrintable(error.message));
+
+    const QString failProject = m_testDataDir + QStringLiteral("/compose-fail");
+    QVERIFY(QDir().mkpath(failProject));
+    error = {};
+    QVERIFY(!podmanManager.up(failProject, true, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_COMPOSE_ERROR"));
+
+    QTemporaryDir dockerBin;
+    QVERIFY(dockerBin.isValid());
+    QVERIFY(writeScript(dockerBin.filePath(QStringLiteral("docker"))));
+    qputenv("PATH", dockerBin.path().toUtf8());
+    PodStack::ComposeManager dockerManager(&client);
+    error = {};
+    QCOMPARE(dockerManager.provider(&error), QStringLiteral("docker compose"));
+
+    QTemporaryDir emptyBin;
+    QVERIFY(emptyBin.isValid());
+    qputenv("PATH", emptyBin.path().toUtf8());
+    PodStack::ComposeManager missingManager(&client);
+    error = {};
+    QVERIFY(missingManager.provider(&error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_COMPOSE_PROVIDER_MISSING"));
 }
 
 void RpcTest::composeAndBuilds()
@@ -2735,6 +2947,216 @@ void RpcTest::invalidRequests()
     response = readMessage(socket, buffer);
     QCOMPARE(response.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toInt(),
              -32600);
+
+    sendMessage(socket, QJsonObject{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                                    {QStringLiteral("id"), 8},
+                                    {QStringLiteral("method"), QStringLiteral("does.not.exist")},
+                                    {QStringLiteral("params"), QJsonObject{}}});
+    response = readMessage(socket, buffer);
+    QVERIFY(response.contains(QStringLiteral("error")));
+    QCOMPARE(
+        response.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toInt(),
+        -32603);
+
+    // Métodos que exigem parâmetros: sem eles o handler precisa recusar antes
+    // de tocar no Podman/machines. Cobre os caminhos de validação do daemon.
+    const QStringList methods = {
+        QStringLiteral("containers.inspect"),
+        QStringLiteral("containers.start"),
+        QStringLiteral("containers.stop"),
+        QStringLiteral("containers.restart"),
+        QStringLiteral("containers.pause"),
+        QStringLiteral("containers.unpause"),
+        QStringLiteral("containers.kill"),
+        QStringLiteral("containers.remove"),
+        QStringLiteral("containers.rename"),
+        QStringLiteral("containers.duplicate"),
+        QStringLiteral("containers.exec"),
+        QStringLiteral("containers.logs.subscribe"),
+        QStringLiteral("containers.stats.subscribe"),
+        QStringLiteral("containers.files.list"),
+        QStringLiteral("containers.files.download"),
+        QStringLiteral("containers.files.upload"),
+        QStringLiteral("images.get"),
+        QStringLiteral("images.inspect"),
+        QStringLiteral("images.remove"),
+        QStringLiteral("images.tag"),
+        QStringLiteral("images.untag"),
+        QStringLiteral("images.export"),
+        QStringLiteral("images.history"),
+        QStringLiteral("images.pull"),
+        QStringLiteral("images.push"),
+        QStringLiteral("images.load"),
+        QStringLiteral("volumes.inspect"),
+        QStringLiteral("volumes.remove"),
+        QStringLiteral("networks.inspect"),
+        QStringLiteral("networks.create"),
+        QStringLiteral("networks.remove"),
+        QStringLiteral("pods.inspect"),
+        QStringLiteral("pods.create"),
+        QStringLiteral("pods.remove"),
+        QStringLiteral("builds.get"),
+        QStringLiteral("builds.remove"),
+        QStringLiteral("builds.cancel"),
+        QStringLiteral("builds.start"),
+        QStringLiteral("compose.up"),
+        QStringLiteral("compose.down"),
+        QStringLiteral("compose.start"),
+        QStringLiteral("compose.stop"),
+        QStringLiteral("compose.restart"),
+        QStringLiteral("compose.logs.subscribe"),
+        QStringLiteral("machines.get"),
+        QStringLiteral("machines.start"),
+        QStringLiteral("machines.stop"),
+        QStringLiteral("machines.restart"),
+        QStringLiteral("machines.delete"),
+        QStringLiteral("machines.create"),
+        QStringLiteral("machines.logs"),
+        QStringLiteral("machines.console.read"),
+        QStringLiteral("machines.console"),
+        QStringLiteral("machines.ssh"),
+        QStringLiteral("machines.export"),
+        QStringLiteral("machines.import"),
+        QStringLiteral("machines.rename"),
+        QStringLiteral("machines.clone"),
+        QStringLiteral("machines.update"),
+        QStringLiteral("machines.ports.set"),
+        QStringLiteral("machines.stats"),
+        QStringLiteral("machines.stats.subscribe"),
+        QStringLiteral("machines.files.list"),
+        QStringLiteral("machines.files.download"),
+        QStringLiteral("machines.files.upload"),
+        QStringLiteral("machines.snapshots.create"),
+        QStringLiteral("machines.snapshots.restore"),
+        QStringLiteral("machines.snapshots.remove"),
+        QStringLiteral("settings.set"),
+    };
+
+    int id = 100;
+    for (const QString &method : methods) {
+        sendMessage(socket, QJsonObject{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                                        {QStringLiteral("id"), id++},
+                                        {QStringLiteral("method"), method},
+                                        {QStringLiteral("params"), QJsonObject{}}});
+        const QJsonObject reply = readMessage(socket, buffer);
+        QVERIFY2(reply.contains(QStringLiteral("error")), qPrintable(method));
+    }
+
+    const auto expectError = [&](const QString &method, const QJsonObject &params) {
+        sendMessage(socket, QJsonObject{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                                        {QStringLiteral("id"), id++},
+                                        {QStringLiteral("method"), method},
+                                        {QStringLiteral("params"), params}});
+        const QJsonObject reply = readMessage(socket, buffer);
+        QVERIFY2(
+            reply.contains(QStringLiteral("error")),
+            qPrintable(method + QLatin1Char(' ') +
+                       QString::fromUtf8(QJsonDocument(params).toJson(QJsonDocument::Compact))));
+    };
+
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("name"), QStringLiteral("Bad Name")},
+                 {QStringLiteral("image"), QString()}});
+    expectError(QStringLiteral("containers.duplicate"),
+                {{QStringLiteral("id"), QStringLiteral("missing")}});
+    expectError(
+        QStringLiteral("containers.create"),
+        {{QStringLiteral("image"), QStringLiteral("alpine")}, {QStringLiteral("exposeLan"), true}});
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("image"), QStringLiteral("alpine")},
+                 {QStringLiteral("exposeLan"), true},
+                 {QStringLiteral("ports"),
+                  QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 8080},
+                                         {QStringLiteral("containerPort"), 80},
+                                         {QStringLiteral("protocol"), QStringLiteral("sctp")}}}}});
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("image"), QStringLiteral("alpine")},
+                 {QStringLiteral("exposeLan"), true},
+                 {QStringLiteral("ports"),
+                  QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 70000},
+                                         {QStringLiteral("containerPort"), 80},
+                                         {QStringLiteral("protocol"), QStringLiteral("tcp")}}}}});
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("image"), QStringLiteral("alpine")},
+                 {QStringLiteral("exposeLan"), true},
+                 {QStringLiteral("ports"),
+                  QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 18080},
+                                         {QStringLiteral("containerPort"), 80},
+                                         {QStringLiteral("protocol"), QStringLiteral("tcp")}}}}});
+    QJsonArray manyPorts;
+    for (int index = 0; index < 33; ++index) {
+        manyPorts.append(QJsonObject{{QStringLiteral("hostPort"), 20000 + index},
+                                     {QStringLiteral("containerPort"), 80},
+                                     {QStringLiteral("protocol"), QStringLiteral("tcp")}});
+    }
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("image"), QStringLiteral("alpine")},
+                 {QStringLiteral("exposeLan"), true},
+                 {QStringLiteral("ports"), manyPorts}});
+    expectError(
+        QStringLiteral("containers.exposeLan"),
+        {{QStringLiteral("id"), QStringLiteral("missing")}, {QStringLiteral("expose"), true}});
+    expectError(QStringLiteral("containers.exec"),
+                {{QStringLiteral("id"), QStringLiteral("missing")},
+                 {QStringLiteral("command"), QJsonArray{}}});
+    expectError(QStringLiteral("images.pull"), {{QStringLiteral("reference"), QString()}});
+    expectError(QStringLiteral("images.load"), {{QStringLiteral("path"), QStringLiteral("/nope")}});
+    expectError(QStringLiteral("images.export"), {{QStringLiteral("id"), QStringLiteral("missing")},
+                                                  {QStringLiteral("path"), QString()}});
+    expectError(QStringLiteral("volumes.clone"), {{QStringLiteral("source"), QString()},
+                                                  {QStringLiteral("destination"), QString()}});
+    expectError(QStringLiteral("volumes.export"),
+                {{QStringLiteral("name"), QString()}, {QStringLiteral("path"), QString()}});
+    expectError(
+        QStringLiteral("volumes.import"),
+        {{QStringLiteral("name"), QString()}, {QStringLiteral("path"), QStringLiteral("/nope")}});
+    expectError(QStringLiteral("networks.create"),
+                {{QStringLiteral("name"), QString()},
+                 {QStringLiteral("subnet"), QStringLiteral("bogus")},
+                 {QStringLiteral("gateway"), QStringLiteral("bogus")}});
+    expectError(QStringLiteral("networks.connect"),
+                {{QStringLiteral("name"), QString()}, {QStringLiteral("containerId"), QString()}});
+    expectError(QStringLiteral("pods.create"), {{QStringLiteral("name"), QString()}});
+    expectError(QStringLiteral("pods.start"), {{QStringLiteral("id"), QString()}});
+    expectError(QStringLiteral("compose.up"), {{QStringLiteral("projectPath"), QString()}});
+    expectError(QStringLiteral("compose.up"),
+                {{QStringLiteral("projectPath"), QStringLiteral("/tmp/does-not-exist")}});
+    expectError(QStringLiteral("builds.start"),
+                {{QStringLiteral("context"), QString()}, {QStringLiteral("tag"), QString()}});
+    expectError(QStringLiteral("builds.start"),
+                {{QStringLiteral("context"), QStringLiteral("/tmp/does-not-exist")},
+                 {QStringLiteral("tag"), QStringLiteral("x")}});
+
+    const QJsonObject machineBase{
+        {QStringLiteral("name"), QStringLiteral("rpc-invalid")},
+        {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+        {QStringLiteral("arch"), QStringLiteral("amd64")},
+        {QStringLiteral("cpus"), 2},
+        {QStringLiteral("memoryBytes"), 2.0 * 1024 * 1024 * 1024},
+        {QStringLiteral("diskBytes"), 20.0 * 1024 * 1024 * 1024},
+        {QStringLiteral("user"), QStringLiteral("podstack")},
+    };
+    auto machineParams = [&machineBase](const QString &key, const QJsonValue &value) {
+        QJsonObject params = machineBase;
+        params.insert(key, value);
+        return params;
+    };
+    expectError(QStringLiteral("machines.create"),
+                machineParams(QStringLiteral("name"), QStringLiteral("Bad Name")));
+    expectError(QStringLiteral("machines.create"),
+                machineParams(QStringLiteral("distro"), QString()));
+    expectError(QStringLiteral("machines.create"),
+                machineParams(QStringLiteral("arch"), QStringLiteral("sparc")));
+    expectError(QStringLiteral("machines.create"), machineParams(QStringLiteral("cpus"), 0));
+    expectError(QStringLiteral("machines.create"), machineParams(QStringLiteral("memoryBytes"), 1));
+    expectError(QStringLiteral("machines.create"), machineParams(QStringLiteral("diskBytes"), 1));
+    expectError(QStringLiteral("machines.create"),
+                machineParams(QStringLiteral("mounts"),
+                              QJsonArray{QJsonObject{{QStringLiteral("source"), QString()},
+                                                     {QStringLiteral("target"), QString()}}}));
+    expectError(
+        QStringLiteral("settings.set"),
+        {{QStringLiteral("key"), QStringLiteral("does.not.exist")}, {QStringLiteral("value"), 1}});
 }
 
 QJsonObject RpcTest::readMessage(QLocalSocket &socket, QByteArray &buffer, int timeoutMs)

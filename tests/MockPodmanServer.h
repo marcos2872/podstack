@@ -27,6 +27,10 @@ public:
     /// Quantidade de POST /containers/create recebidos.
     int createCount() const;
 
+    /// Usa o formato nativo do Libpod (`Created` epoch e portas minúsculas)
+    /// na listagem de containers.
+    void setNativeContainers(bool enabled);
+
 private:
     void run();
     void handleClient(int clientFd);
@@ -42,4 +46,5 @@ private:
     QByteArray m_lastBody;
     QByteArray m_lastCreateBody;
     int m_createCount = 0;
+    std::atomic_bool m_nativeContainers{false};
 };

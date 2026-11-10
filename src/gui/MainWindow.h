@@ -41,6 +41,8 @@ public:
     Q_INVOKABLE void openMachineDetail(const QString &id, int tab = 0);
 
     bool qmlLoaded() const;
+    bool qmlFailed() const;
+    QStringList qmlErrors() const;
     QDockWidget *terminalDock() const { return m_terminalDock; }
     QTabWidget *terminalTabs() const { return m_terminalTabs; }
 
