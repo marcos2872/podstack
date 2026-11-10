@@ -73,7 +73,7 @@ jobs:
         run: |
           set -o pipefail
           gcovr -r . --filter 'src/' --gcov-ignore-parse-errors \
-            --merge-mode-functions=separate --fail-under-line 77 \
+            --merge-mode-functions=separate --fail-under-line 78 \
             --txt-metric line --print-summary | tee coverage-gate.txt
           cat coverage-gate.txt >> "$GITHUB_STEP_SUMMARY"
 
