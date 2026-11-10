@@ -243,6 +243,7 @@ target_link_libraries(podstack_qml PUBLIC
 target_link_libraries(podstack-gui PRIVATE
     podstack_gui_lib
     podstack_qml
+    podstack_qmlplugin
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
