@@ -47,6 +47,7 @@ private slots:
     void k8sStatusAndValidation();
     void k8sListsResources();
     void k8sLogsStream();
+    void k8sActions();
     void composeProviderFallback();
     void composeAndBuilds();
     void multiPlatformBuild();
@@ -139,6 +140,13 @@ void writeFakeSsh(const QString &path)
             "  *\"kubectl logs\"*)\n"
             "    echo 'linha 1'\n"
             "    echo 'linha 2'\n"
+            "    exit 0;;\n"
+            "  *\"kubectl delete\"*)\n"
+            "    echo 'deleted'\n"
+            "    exit 0;;\n"
+            "  *\"kubectl port-forward\"*)\n"
+            "    echo 'Forwarding from 127.0.0.1:8080 -> 80'\n"
+            "    sleep 2\n"
             "    exit 0;;\n"
             "esac\n"
             "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
@@ -2339,6 +2347,56 @@ void RpcTest::k8sLogsStream()
         &error, 5000);
     QVERIFY2(ok, qPrintable(error.message));
     QCOMPARE(lines, QStringList({QStringLiteral("linha 1"), QStringLiteral("linha 2")}));
+}
+
+void RpcTest::k8sActions()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    QJsonObject result =
+        client.call(QStringLiteral("k8s.pod.delete"),
+                    QJsonObject{{QStringLiteral("namespace"), QStringLiteral("prod")},
+                                {QStringLiteral("name"), QStringLiteral("web")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("deleted")).toBool(), true);
+
+    result = client.call(QStringLiteral("k8s.service.delete"),
+                         QJsonObject{{QStringLiteral("namespace"), QStringLiteral("prod")},
+                                     {QStringLiteral("name"), QStringLiteral("web")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    error = {};
+    result = client.call(QStringLiteral("k8s.portforward.start"),
+                         QJsonObject{{QStringLiteral("namespace"), QStringLiteral("prod")},
+                                     {QStringLiteral("pod"), QStringLiteral("web")},
+                                     {QStringLiteral("localPort"), 8080},
+                                     {QStringLiteral("remotePort"), 80}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QString forwardId = result.value(QStringLiteral("id")).toString();
+    QVERIFY(!forwardId.isEmpty());
+
+    result = client.call(QStringLiteral("k8s.portforward.stop"),
+                         QJsonObject{{QStringLiteral("id"), forwardId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("stopped")).toBool(), true);
+
+    error = {};
+    client.call(QStringLiteral("k8s.portforward.start"),
+                QJsonObject{{QStringLiteral("namespace"), QStringLiteral("prod")},
+                            {QStringLiteral("pod"), QStringLiteral("web")},
+                            {QStringLiteral("localPort"), 0},
+                            {QStringLiteral("remotePort"), 80}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    client.call(QStringLiteral("k8s.portforward.stop"),
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("missing")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 }
 
 void RpcTest::composeProviderFallback()

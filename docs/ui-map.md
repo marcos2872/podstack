@@ -475,7 +475,7 @@ qml/
 ├── ContainersPage.qml
 ├── Inspector.qml
 ├── ContainerDetail.qml   # conteúdo do overlay de detalhe (9 abas, inclui Terminal)
-├── KubernetesPage.qml    # abas Pods/Services (refresh 2 s) + diálogo de logs por container
+├── KubernetesPage.qml    # abas Pods/Services (refresh 2 s), logs, excluir e port-forward
 ├── MachinesPage.qml      # catálogo + card lateral (Info/Logs/Stats)
 ├── MachineInspector.qml  # card lateral e conteúdo do overlay da machine (+ Terminal/Files)
 ├── MachineFilesView.qml  # file manager SSH/SCP da machine (aba Files do overlay)

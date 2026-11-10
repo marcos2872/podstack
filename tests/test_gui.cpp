@@ -528,6 +528,13 @@ void GuiTest::backendKubernetes()
 
     backend.startK8sWatch();
     backend.stopK8sWatch();
+
+    backend.startK8sPortForward(QStringLiteral("prod"), QStringLiteral("web"), 8080, 80);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sPortForwardError().isEmpty(), 5000);
+    QVERIFY(!backend.k8sPortForwardActive());
+    backend.stopK8sPortForward();
+    backend.deleteK8sPod(QStringLiteral("prod"), QStringLiteral("web"));
+    backend.deleteK8sService(QStringLiteral("prod"), QStringLiteral("web"));
 }
 
 void GuiTest::backendKubernetesEnabledError()

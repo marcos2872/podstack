@@ -123,6 +123,10 @@ private:
     QJsonObject k8sPodsList(const QJsonObject &params, Error *error);
     QJsonObject k8sServicesList(const QJsonObject &params, Error *error);
     QJsonObject subscribeK8sLogs(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject k8sPodDelete(const QJsonObject &params, Error *error);
+    QJsonObject k8sServiceDelete(const QJsonObject &params, Error *error);
+    QJsonObject k8sPortForwardStart(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject k8sPortForwardStop(const QJsonObject &params, Error *error);
     QJsonObject setupStatus();
     QJsonObject setupCheck(const QJsonObject &params);
     QJsonObject setupValidate();
@@ -164,11 +168,13 @@ private:
     QHash<QString, QString> m_machineSubscriptions; // jobId -> subscriptionId
     std::mutex m_k8sJobsMutex;
     QHash<QString, QString> m_k8sSubscriptions; // jobId -> subscriptionId
+    QHash<QString, std::shared_ptr<Subscription>> m_k8sForwards;
     std::mutex m_settingsMutex;
     int m_nextSubscription = 1;
     int m_nextBuild = 1;
     int m_nextMachineJob = 1;
     int m_nextK8sJob = 1;
+    int m_nextK8sForward = 1;
 };
 
 } // namespace PodStack

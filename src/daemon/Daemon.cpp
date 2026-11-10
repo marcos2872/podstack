@@ -584,6 +584,18 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("k8s.logs.subscribe")) {
         return subscribeK8sLogs(params, notify, error);
     }
+    if (method == QStringLiteral("k8s.pod.delete")) {
+        return k8sPodDelete(params, error);
+    }
+    if (method == QStringLiteral("k8s.service.delete")) {
+        return k8sServiceDelete(params, error);
+    }
+    if (method == QStringLiteral("k8s.portforward.start")) {
+        return k8sPortForwardStart(params, notify, error);
+    }
+    if (method == QStringLiteral("k8s.portforward.stop")) {
+        return k8sPortForwardStop(params, error);
+    }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
     }
@@ -4199,6 +4211,98 @@ QJsonObject Daemon::subscribeK8sLogs(const QJsonObject &params, const Notify &no
         });
 
     return QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}};
+}
+
+QJsonObject Daemon::k8sPodDelete(const QJsonObject &params, Error *error)
+{
+    const QString ns = params.value(QStringLiteral("namespace")).toString().trimmed();
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (!m_k8s.deleteResource(QStringLiteral("pod"), ns, name, error)) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("deleted"), true}};
+}
+
+QJsonObject Daemon::k8sServiceDelete(const QJsonObject &params, Error *error)
+{
+    const QString ns = params.value(QStringLiteral("namespace")).toString().trimmed();
+    const QString name = params.value(QStringLiteral("name")).toString().trimmed();
+    if (!m_k8s.deleteResource(QStringLiteral("service"), ns, name, error)) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("deleted"), true}};
+}
+
+QJsonObject Daemon::k8sPortForwardStart(const QJsonObject &params, const Notify &notify,
+                                        Error *error)
+{
+    const QString ns = params.value(QStringLiteral("namespace")).toString().trimmed();
+    const QString pod = params.value(QStringLiteral("pod")).toString().trimmed();
+    const int localPort = params.value(QStringLiteral("localPort")).toInt();
+    const int remotePort = params.value(QStringLiteral("remotePort")).toInt();
+    if (!K8sManager::validatePortForward(ns, pod, localPort, remotePort, error) ||
+        !m_k8s.checkClusterReady(error)) {
+        return {};
+    }
+
+    QString id;
+    {
+        std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+        id = QStringLiteral("fwd-%1").arg(m_nextK8sForward++);
+    }
+    auto subscription = std::make_shared<Subscription>();
+    {
+        std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+        m_k8sForwards.insert(id, subscription);
+    }
+
+    (void) QtConcurrent::run([this, id, ns, pod, localPort, remotePort, subscription, notify] {
+        const auto onLine = [&notify, &id](const QString &line) {
+            QJsonObject payload;
+            payload.insert(QStringLiteral("id"), id);
+            payload.insert(QStringLiteral("line"), line);
+            notify(QStringLiteral("k8s.portforward.delta"), payload);
+        };
+        const auto cancelled = [subscription] { return subscription->cancel.load(); };
+        Error forwardError;
+        m_k8s.portForward(ns, pod, localPort, remotePort, onLine, cancelled, &forwardError);
+
+        QJsonObject payload;
+        payload.insert(QStringLiteral("id"), id);
+        if (!forwardError.isEmpty()) {
+            payload.insert(QStringLiteral("error"), forwardError.toJson());
+        }
+        notify(QStringLiteral("k8s.portforward.done"), payload);
+        {
+            std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+            m_k8sForwards.remove(id);
+        }
+    });
+
+    return QJsonObject{{QStringLiteral("id"), id},
+                       {QStringLiteral("namespace"), ns},
+                       {QStringLiteral("pod"), pod},
+                       {QStringLiteral("localPort"), localPort},
+                       {QStringLiteral("remotePort"), remotePort}};
+}
+
+QJsonObject Daemon::k8sPortForwardStop(const QJsonObject &params, Error *error)
+{
+    const QString id = params.value(QStringLiteral("id")).toString().trimmed();
+    std::shared_ptr<Subscription> subscription;
+    {
+        std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+        subscription = m_k8sForwards.value(id);
+    }
+    if (!subscription) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Port-forward não está ativo."), id);
+        }
+        return {};
+    }
+    subscription->cancel.store(true);
+    return QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("stopped"), true}};
 }
 
 QJsonObject Daemon::setupStatus()

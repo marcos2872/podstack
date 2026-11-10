@@ -631,6 +631,13 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > `k8s.logs.delta {namespace, pod, container, line}`; ao terminar envia
 > `k8s.logs.done` (com `error` quando falhar). `k8s.logs.unsubscribe {subscriptionId}`
 > encerra o processo remoto.
+>
+> **T5-05:** `k8s.pod.delete`/`k8s.service.delete` validam namespace/nome e executam
+> `kubectl delete --wait=false`. `k8s.portforward.start {namespace, pod, localPort, remotePort}`
+> devolve `{id, namespace, pod, localPort, remotePort}` e mantém
+> `kubectl port-forward -n <ns> pod/<pod> local:remote` ativo, emitindo
+> `k8s.portforward.delta {id, line}` e `k8s.portforward.done {id, error?}`;
+> `k8s.portforward.stop {id}` cancela o processo e responde `{id, stopped:true}`.
 
 ### 4.9 `domains.*` e `proxy.*`
 
