@@ -618,6 +618,13 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > `kubernetes.contextPrefix + cluster` e `server: https://127.0.0.1:<apiPort>`. O arquivo
 > `~/.kube/config` não é alterado. `k8s.status` aceita `{cluster}` opcional e devolve
 > `apiPort`, `kubeconfigPath` e `contextName` preenchidos quando o acesso está pronto.
+>
+> **T5-03:** `k8s.pods.list` e `k8s.services.list` aceitam `{namespace?}` (vazio = `-A`) e
+> validam o namespace (`[a-z0-9]([-a-z0-9]*[a-z0-9])?`, até 63). A consulta usa
+> `sudo k3s kubectl get <recurso> -o json` por SSH e devolve itens normalizados (`id`,
+> `name`, `namespace`, `status/ready/restarts/node/ip/age/containers` para Pods;
+> `type/clusterIP/externalIP/ports/selector/age` para Services). A UI faz polling de 2 s
+> enquanto a página está visível; um stream nativo fica para evolução futura.
 
 ### 4.9 `domains.*` e `proxy.*`
 

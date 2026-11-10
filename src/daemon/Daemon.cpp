@@ -575,6 +575,12 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("k8s.cancel")) {
         return k8sCancel(params, error);
     }
+    if (method == QStringLiteral("k8s.pods.list")) {
+        return k8sPodsList(params, error);
+    }
+    if (method == QStringLiteral("k8s.services.list")) {
+        return k8sServicesList(params, error);
+    }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
     }
@@ -4114,6 +4120,40 @@ QJsonObject Daemon::k8sCancel(const QJsonObject &params, Error *error)
     result.insert(QStringLiteral("jobId"), jobId);
     result.insert(QStringLiteral("cancelled"), true);
     return result;
+}
+
+QJsonObject Daemon::k8sPodsList(const QJsonObject &params, Error *error)
+{
+    const QJsonValue namespaceValue = params.value(QStringLiteral("namespace"));
+    if (!namespaceValue.isUndefined() && !namespaceValue.isNull() && !namespaceValue.isString()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("namespace deve ser uma string."));
+        }
+        return {};
+    }
+    const QJsonArray items = m_k8s.pods(namespaceValue.toString().trimmed(), error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("items"), items}};
+}
+
+QJsonObject Daemon::k8sServicesList(const QJsonObject &params, Error *error)
+{
+    const QJsonValue namespaceValue = params.value(QStringLiteral("namespace"));
+    if (!namespaceValue.isUndefined() && !namespaceValue.isNull() && !namespaceValue.isString()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("namespace deve ser uma string."));
+        }
+        return {};
+    }
+    const QJsonArray items = m_k8s.services(namespaceValue.toString().trimmed(), error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("items"), items}};
 }
 
 QJsonObject Daemon::setupStatus()

@@ -64,8 +64,7 @@
 | | Compose | projetos/ativos | up por diretório |
 | | Builds | ativos/histórico | novo build |
 | | Pods | running/total | criar pod |
-| **Kubernetes** (M5) | Services | total | — |
-| | Contextos | atual | trocar/gerar kubeconfig |
+| **Kubernetes** (só com cluster habilitado) | Kubernetes | pods + services | atualizar |
 | **Linux** | Machines | running/total | criar máquina |
 | | Devices | conectados | anexar/desanexar |
 | **General** | Activity Monitor | — | abrir |
@@ -476,6 +475,7 @@ qml/
 ├── ContainersPage.qml
 ├── Inspector.qml
 ├── ContainerDetail.qml   # conteúdo do overlay de detalhe (9 abas, inclui Terminal)
+├── KubernetesPage.qml    # abas Pods/Services do cluster k3s (refresh 2 s)
 ├── MachinesPage.qml      # catálogo + card lateral (Info/Logs/Stats)
 ├── MachineInspector.qml  # card lateral e conteúdo do overlay da machine (+ Terminal/Files)
 ├── MachineFilesView.qml  # file manager SSH/SCP da machine (aba Files do overlay)

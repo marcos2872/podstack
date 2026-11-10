@@ -5,6 +5,7 @@
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
 #include "gui/StreamClient.h"
+#include "k8s/K8sStore.h"
 #include "machines/MachineStore.h"
 
 #include <QCoreApplication>
@@ -43,6 +44,8 @@ private slots:
     void backendStreams();
     void backendContainerDetail();
     void backendCatalog();
+    void backendKubernetes();
+    void backendKubernetesEnabledError();
     void backendMachines();
     void backendMachineStats();
     void backendMachineConsole();
@@ -508,6 +511,50 @@ void GuiTest::backendContainerDetail()
 
     backend.containerDetailLifecycle(QStringLiteral("invalid"), QStringLiteral("abc123"));
     QVERIFY(!backend.lastError().isEmpty());
+}
+
+void GuiTest::backendKubernetes()
+{
+    PodStack::Backend backend;
+    QSignalSpy spy(&backend, &PodStack::Backend::k8sChanged);
+
+    backend.refreshK8s();
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sState() == QStringLiteral("disabled"), 5000);
+    QVERIFY2(!backend.k8sEnabled(),
+             qPrintable(backend.k8sState() + QStringLiteral(" | ") + backend.k8sError()));
+    QVERIFY(backend.k8sPods().isEmpty());
+    QVERIFY(backend.k8sServices().isEmpty());
+
+    backend.startK8sWatch();
+    backend.stopK8sWatch();
+}
+
+void GuiTest::backendKubernetesEnabledError()
+{
+    PodStack::K8sStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error error;
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    PodStack::K8sCluster cluster;
+    cluster.id = QStringLiteral("k8s-default");
+    cluster.name = QStringLiteral("default");
+    cluster.state = QStringLiteral("ready");
+    cluster.vmMachineId = QStringLiteral("missing-vm");
+    cluster.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    cluster.updatedAt = cluster.createdAt;
+    QVERIFY2(store.upsert(cluster, &error), qPrintable(error.message));
+
+    PodStack::Backend backend;
+    QSignalSpy spy(&backend, &PodStack::Backend::k8sChanged);
+    backend.refreshK8s();
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sEnabled(), 5000);
+
+    backend.refreshK8s();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sEnabled(), 5000);
+    QVERIFY(!backend.k8sError().isEmpty());
+
+    QVERIFY(store.remove(QStringLiteral("default"), &error));
 }
 
 void GuiTest::backendCatalog()

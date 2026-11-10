@@ -915,6 +915,8 @@ private slots:
     void k8sKubeconfigFormatError();
     void k8sKubeconfigReadFailure();
     void k8sKubeconfigDirFailure();
+    void k8sListsPodsAndServices();
+    void k8sListRequiresReadyCluster();
     void machineManagerCreateErrors();
     void machineManagerPortsErrors();
     void machineManagerUpdateRemoveErrors();
@@ -4222,6 +4224,178 @@ void MachinesTest::k8sKubeconfigDirFailure()
     QVERIFY(cluster.id.isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
     QVERIFY(error.message.contains(QStringLiteral("kubeconfigs")));
+}
+
+void MachinesTest::k8sListsPodsAndServices()
+{
+    const QString root = m_root + QStringLiteral("/k8s-lists");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'l');
+    m_server.setResponse(QStringLiteral("/k8s-lists.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-lists.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    const QByteArray podsJson =
+        QByteArrayLiteral("{\"items\":["
+                          "{\"metadata\":{\"name\":\"web-1\",\"namespace\":\"prod\","
+                          "\"creationTimestamp\":\"2026-11-10T10:00:00Z\"},"
+                          "\"spec\":{\"nodeName\":\"node-a\",\"containers\":[{\"name\":\"web\"}]},"
+                          "\"status\":{\"phase\":\"Running\",\"podIP\":\"10.42.0.5\","
+                          "\"containerStatuses\":[{\"ready\":true,\"restartCount\":1}]}},"
+                          "{\"metadata\":{\"name\":\"db-0\",\"namespace\":\"data\","
+                          "\"creationTimestamp\":\"2026-11-10T09:00:00Z\"},"
+                          "\"spec\":{\"nodeName\":\"node-b\",\"containers\":[{\"name\":\"db\"}]},"
+                          "\"status\":{\"phase\":\"Pending\","
+                          "\"containerStatuses\":[{\"ready\":false,\"restartCount\":0}]}}]}");
+    const QByteArray servicesJson =
+        QByteArrayLiteral("{\"items\":[{\"metadata\":{\"name\":\"web\",\"namespace\":\"prod\","
+                          "\"creationTimestamp\":\"2026-11-10T10:00:00Z\"},"
+                          "\"spec\":{\"type\":\"ClusterIP\",\"clusterIP\":\"10.43.0.10\","
+                          "\"ports\":[{\"port\":80,\"protocol\":\"TCP\"}],"
+                          "\"selector\":{\"app\":\"web\"}},\"status\":{}}]}");
+
+    QStringList commands;
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    k8sOptions.kubeconfigDir = root + QStringLiteral("/kubeconfigs");
+    k8sOptions.remoteExec = [&commands, &podsJson, &servicesJson](
+                                const SshInfo &, const QString &script,
+                                const K8sManager::Line &onLine, const K8sManager::Cancelled &, int,
+                                PodStack::Error *execError) {
+        commands.append(script);
+        if (execError) {
+            *execError = {};
+        }
+        if (script.contains(QStringLiteral("sudo cat")) && onLine) {
+            for (const QString &line : k8sKubeconfigLines()) {
+                onLine(line);
+            }
+        } else if (script.contains(QStringLiteral("kubectl get pods")) && onLine) {
+            onLine(QString::fromUtf8(podsJson));
+        } else if (script.contains(QStringLiteral("kubectl get services")) && onLine) {
+            onLine(QString::fromUtf8(servicesJson));
+        }
+        return true;
+    };
+    K8sManager k8s(&machines, k8sOptions);
+
+    PodStack::Error error;
+    QVERIFY2(k8s.enable({}, {}, {}, &error).isReady(), qPrintable(error.message));
+
+    const QJsonArray pods = k8s.pods({}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(pods.size(), 2);
+    const QJsonObject firstPod = pods.at(0).toObject();
+    QCOMPARE(firstPod.value(QStringLiteral("id")).toString(), QStringLiteral("data/db-0"));
+    QCOMPARE(firstPod.value(QStringLiteral("status")).toString(), QStringLiteral("Pending"));
+    QCOMPARE(firstPod.value(QStringLiteral("ready")).toString(), QStringLiteral("0/1"));
+    const QJsonObject secondPod = pods.at(1).toObject();
+    QCOMPARE(secondPod.value(QStringLiteral("id")).toString(), QStringLiteral("prod/web-1"));
+    QCOMPARE(secondPod.value(QStringLiteral("node")).toString(), QStringLiteral("node-a"));
+    QCOMPARE(secondPod.value(QStringLiteral("ip")).toString(), QStringLiteral("10.42.0.5"));
+    QCOMPARE(secondPod.value(QStringLiteral("restarts")).toInt(), 1);
+    QCOMPARE(secondPod.value(QStringLiteral("ready")).toString(), QStringLiteral("1/1"));
+    QVERIFY(!secondPod.value(QStringLiteral("age")).toString().isEmpty());
+
+    const QJsonArray services = k8s.services({}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(services.size(), 1);
+    const QJsonObject service = services.first().toObject();
+    QCOMPARE(service.value(QStringLiteral("id")).toString(), QStringLiteral("prod/web"));
+    QCOMPARE(service.value(QStringLiteral("type")).toString(), QStringLiteral("ClusterIP"));
+    QCOMPARE(service.value(QStringLiteral("clusterIP")).toString(), QStringLiteral("10.43.0.10"));
+    QCOMPARE(service.value(QStringLiteral("ports")).toString(), QStringLiteral("80/TCP"));
+    QCOMPARE(service.value(QStringLiteral("selector")).toString(), QStringLiteral("app=web"));
+
+    error = {};
+    QVERIFY(k8s.pods(QStringLiteral("bad namespace"), &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    QVERIFY(k8s.pods(QStringLiteral("prod"), &error).size() == 2);
+    QVERIFY(commands.join(QLatin1Char('\n')).contains(QStringLiteral("get pods -n prod")));
+
+    K8sManager::Options emptyOptions;
+    emptyOptions.storePath = root + QStringLiteral("/empty.db");
+    K8sManager empty(&machines, emptyOptions);
+    error = {};
+    QVERIFY(empty.pods({}, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+}
+
+void MachinesTest::k8sListRequiresReadyCluster()
+{
+    const QString root = m_root + QStringLiteral("/k8s-list-errors");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(4096, 'e');
+    m_server.setResponse(QStringLiteral("/k8s-list-errors.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/k8s-list-errors.qcow2"), payload);
+
+    MachineManager::Options options = k8sMachineOptions(root, image, qemuImg, ovmfCode, ovmfVars);
+    QVERIFY(!options.storePath.isEmpty());
+    const QString storePath = options.storePath;
+    MachineManager machines(std::move(options));
+
+    K8sManager::Options k8sOptions;
+    k8sOptions.storePath = storePath;
+    K8sManager k8s(&machines, k8sOptions);
+
+    K8sStore store(storePath);
+    PodStack::Error error;
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+    K8sCluster cluster;
+    cluster.id = QStringLiteral("k8s-default");
+    cluster.name = QStringLiteral("default");
+    cluster.state = QStringLiteral("stopped");
+    cluster.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    cluster.updatedAt = cluster.createdAt;
+    QVERIFY2(store.upsert(cluster, &error), qPrintable(error.message));
+
+    error = {};
+    QVERIFY(k8s.pods({}, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    cluster.state = QStringLiteral("ready");
+    cluster.vmMachineId = QStringLiteral("missing-vm");
+    QVERIFY(store.upsert(cluster, &error));
+    error = {};
+    QVERIFY(k8s.services({}, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("k8s-list-stopped");
+    request.distro = QStringLiteral("test");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.diskBytes = 1024LL * 1024LL * 1024LL;
+    const MachineMeta vm = machines.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(machines.stop(vm.id, true, &error).state == QStringLiteral("stopped"));
+
+    cluster.vmMachineId = vm.id;
+    QVERIFY(store.upsert(cluster, &error));
+    error = {};
+    QVERIFY(k8s.pods({}, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QVERIFY(error.message.contains(QStringLiteral("não está rodando")));
 }
 
 void MachinesTest::machineManagerCreateErrors()

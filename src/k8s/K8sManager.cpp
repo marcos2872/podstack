@@ -12,6 +12,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHostAddress>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -21,12 +23,136 @@
 
 #include <QThread>
 #include <QVector>
+#include <algorithm>
 #include <sys/stat.h>
 
 namespace PodStack {
 namespace {
 
 constexpr qint64 kGiB = 1024LL * 1024LL * 1024LL;
+
+QString humanAge(const QString &timestamp)
+{
+    const QDateTime created = QDateTime::fromString(timestamp, Qt::ISODate);
+    if (!created.isValid()) {
+        return {};
+    }
+    const qint64 seconds = created.secsTo(QDateTime::currentDateTimeUtc());
+    if (seconds < 60) {
+        return QStringLiteral("%1s").arg(qMax<qint64>(0, seconds));
+    }
+    if (seconds < 3600) {
+        return QStringLiteral("%1m").arg(seconds / 60);
+    }
+    if (seconds < 86400) {
+        return QStringLiteral("%1h").arg(seconds / 3600);
+    }
+    return QStringLiteral("%1d").arg(seconds / 86400);
+}
+
+QJsonObject podToJson(const QJsonObject &item)
+{
+    const QJsonObject metadata = item.value(QStringLiteral("metadata")).toObject();
+    const QJsonObject spec = item.value(QStringLiteral("spec")).toObject();
+    const QJsonObject status = item.value(QStringLiteral("status")).toObject();
+    const QString name = metadata.value(QStringLiteral("name")).toString();
+    const QString ns = metadata.value(QStringLiteral("namespace")).toString();
+
+    int ready = 0;
+    int restarts = 0;
+    const QJsonArray containerStatuses =
+        status.value(QStringLiteral("containerStatuses")).toArray();
+    for (const QJsonValue &value : containerStatuses) {
+        const QJsonObject container = value.toObject();
+        if (container.value(QStringLiteral("ready")).toBool()) {
+            ++ready;
+        }
+        restarts += container.value(QStringLiteral("restartCount")).toInt();
+    }
+    const QJsonArray containers = spec.value(QStringLiteral("containers")).toArray();
+    const int total = qMax(containers.size(), containerStatuses.size());
+
+    QStringList containerNames;
+    for (const QJsonValue &value : containers) {
+        const QString containerName = value.toObject().value(QStringLiteral("name")).toString();
+        if (!containerName.isEmpty()) {
+            containerNames.append(containerName);
+        }
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), ns + QLatin1Char('/') + name);
+    result.insert(QStringLiteral("name"), name);
+    result.insert(QStringLiteral("namespace"), ns);
+    result.insert(QStringLiteral("status"), status.value(QStringLiteral("phase")).toString());
+    result.insert(QStringLiteral("ready"), QStringLiteral("%1/%2").arg(ready).arg(total));
+    result.insert(QStringLiteral("restarts"), restarts);
+    result.insert(QStringLiteral("node"), spec.value(QStringLiteral("nodeName")).toString());
+    result.insert(QStringLiteral("ip"), status.value(QStringLiteral("podIP")).toString());
+    result.insert(QStringLiteral("age"),
+                  humanAge(metadata.value(QStringLiteral("creationTimestamp")).toString()));
+    result.insert(QStringLiteral("containers"), QJsonArray::fromStringList(containerNames));
+    return result;
+}
+
+QJsonObject serviceToJson(const QJsonObject &item)
+{
+    const QJsonObject metadata = item.value(QStringLiteral("metadata")).toObject();
+    const QJsonObject spec = item.value(QStringLiteral("spec")).toObject();
+    const QJsonObject status = item.value(QStringLiteral("status")).toObject();
+    const QString name = metadata.value(QStringLiteral("name")).toString();
+    const QString ns = metadata.value(QStringLiteral("namespace")).toString();
+
+    QStringList ports;
+    const QJsonArray portArray = spec.value(QStringLiteral("ports")).toArray();
+    for (const QJsonValue &value : portArray) {
+        const QJsonObject port = value.toObject();
+        const int number = port.value(QStringLiteral("port")).toInt();
+        const QString protocol =
+            port.value(QStringLiteral("protocol")).toString(QStringLiteral("TCP"));
+        if (number > 0) {
+            ports.append(QStringLiteral("%1/%2").arg(number).arg(protocol));
+        }
+    }
+
+    QString external;
+    const QJsonArray ingress = status.value(QStringLiteral("loadBalancer"))
+                                   .toObject()
+                                   .value(QStringLiteral("ingress"))
+                                   .toArray();
+    if (!ingress.isEmpty()) {
+        const QJsonObject entry = ingress.first().toObject();
+        external = entry.value(QStringLiteral("ip")).toString();
+        if (external.isEmpty()) {
+            external = entry.value(QStringLiteral("hostname")).toString();
+        }
+    }
+    if (external.isEmpty()) {
+        const QJsonArray externalIps = spec.value(QStringLiteral("externalIPs")).toArray();
+        if (!externalIps.isEmpty()) {
+            external = externalIps.first().toString();
+        }
+    }
+
+    QStringList selector;
+    const QJsonObject selectorObject = spec.value(QStringLiteral("selector")).toObject();
+    for (auto it = selectorObject.constBegin(); it != selectorObject.constEnd(); ++it) {
+        selector.append(it.key() + QLatin1Char('=') + it.value().toString());
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), ns + QLatin1Char('/') + name);
+    result.insert(QStringLiteral("name"), name);
+    result.insert(QStringLiteral("namespace"), ns);
+    result.insert(QStringLiteral("type"), spec.value(QStringLiteral("type")).toString());
+    result.insert(QStringLiteral("clusterIP"), spec.value(QStringLiteral("clusterIP")).toString());
+    result.insert(QStringLiteral("externalIP"), external);
+    result.insert(QStringLiteral("ports"), ports.join(QStringLiteral(", ")));
+    result.insert(QStringLiteral("selector"), selector.join(QStringLiteral(", ")));
+    result.insert(QStringLiteral("age"),
+                  humanAge(metadata.value(QStringLiteral("creationTimestamp")).toString()));
+    return result;
+}
 
 QString currentIso()
 {
@@ -43,12 +169,16 @@ void setError(Error *error, const QString &code, const QString &message, const Q
 
 QString resolveBinary(const QString &override)
 {
-    if (!override.trimmed().isEmpty()) {
-        const QString resolved = QStandardPaths::findExecutable(override);
+    QString candidate = override.trimmed();
+    if (candidate.isEmpty()) {
+        candidate = qEnvironmentVariable("PODSTACK_SSH_BINARY").trimmed();
+    }
+    if (!candidate.isEmpty()) {
+        const QString resolved = QStandardPaths::findExecutable(candidate);
         if (!resolved.isEmpty()) {
             return resolved;
         }
-        const QFileInfo info(override);
+        const QFileInfo info(candidate);
         if (info.isFile() && info.isExecutable()) {
             return info.absoluteFilePath();
         }
@@ -297,6 +427,148 @@ int K8sManager::allocateApiPort(Error *error) const
     setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
              QStringLiteral("Não foi possível reservar uma porta para o API server."));
     return 0;
+}
+
+bool K8sManager::clusterSsh(SshInfo *ssh, Error *error)
+{
+    if (!m_machines) {
+        setError(error, QStringLiteral("PODSTACK_INTERNAL"),
+                 QStringLiteral("Gerenciador de machines indisponível."));
+        return false;
+    }
+    Error storeError;
+    const K8sCluster cluster = m_store.get(m_options.clusterName, &storeError);
+    if (!storeError.isEmpty()) {
+        if (error) {
+            *error =
+                storeError.code == QStringLiteral("PODSTACK_NOT_FOUND")
+                    ? Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                  QStringLiteral("Kubernetes não está habilitado."),
+                                  m_options.clusterName,
+                                  QStringLiteral("Habilite o cluster antes de listar recursos."))
+                    : storeError;
+        }
+        return false;
+    }
+    if (cluster.state != QStringLiteral("ready") || cluster.vmMachineId.isEmpty()) {
+        setError(error, QStringLiteral("PODSTACK_CONFLICT"),
+                 QStringLiteral("O cluster Kubernetes não está pronto."), cluster.state,
+                 QStringLiteral("Aguarde o cluster ficar Ready."));
+        return false;
+    }
+    Error machineError;
+    const MachineMeta machine = m_machines->get(cluster.vmMachineId, &machineError);
+    if (!machineError.isEmpty() || machine.id.isEmpty()) {
+        if (error) {
+            *error = machineError.isEmpty()
+                         ? Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                       QStringLiteral("A VM do cluster não existe."))
+                         : machineError;
+        }
+        return false;
+    }
+    if (machine.state != QStringLiteral("running")) {
+        setError(error, QStringLiteral("PODSTACK_CONFLICT"),
+                 QStringLiteral("A VM do cluster não está rodando."), machine.state,
+                 QStringLiteral("Inicie a machine do cluster."));
+        return false;
+    }
+    return m_machines->sshInfo(machine.id, ssh, error);
+}
+
+bool K8sManager::execRemote(const SshInfo &ssh, const QString &script, const Line &onLine,
+                            const Cancelled &cancelled, int timeoutMs, Error *error) const
+{
+    if (m_options.remoteExec) {
+        return m_options.remoteExec(ssh, script, onLine, cancelled, timeoutMs, error);
+    }
+    return runSsh(resolveBinary(m_options.sshBinary), ssh, script, onLine, cancelled, timeoutMs,
+                  error) == RunResult::Completed &&
+           (error == nullptr || error->isEmpty());
+}
+
+QJsonArray K8sManager::kubectlItems(const QString &resource, const QString &namespaceFilter,
+                                    Error *error)
+{
+    const QString ns = namespaceFilter.trimmed();
+    if (!ns.isEmpty()) {
+        static const QRegularExpression validNamespace(
+            QStringLiteral("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"));
+        if (ns.size() > 63 || !validNamespace.match(ns).hasMatch()) {
+            setError(error, QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                     QStringLiteral("Namespace inválido."), ns);
+            return {};
+        }
+    }
+
+    SshInfo ssh;
+    if (!clusterSsh(&ssh, error)) {
+        return {};
+    }
+
+    const QString command =
+        ns.isEmpty() ? QStringLiteral("sudo k3s kubectl get %1 -A -o json").arg(resource)
+                     : QStringLiteral("sudo k3s kubectl get %1 -n %2 -o json").arg(resource, ns);
+    QString raw;
+    const auto collect = [&raw](const QString &line) {
+        raw += line;
+        raw += QLatin1Char('\n');
+    };
+    Error execError;
+    if (!execRemote(ssh, command, collect, {}, 30000, &execError) || !execError.isEmpty()) {
+        if (error) {
+            *error = execError.isEmpty()
+                         ? Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                       QStringLiteral("Não foi possível consultar o cluster."))
+                         : execError;
+        }
+        return {};
+    }
+
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(raw.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        setError(error, QStringLiteral("PODSTACK_IO_ERROR"),
+                 QStringLiteral("Resposta inválida do kubectl."), parseError.errorString());
+        return {};
+    }
+    const QJsonArray items = document.object().value(QStringLiteral("items")).toArray();
+    QVector<QJsonObject> objects;
+    objects.reserve(items.size());
+    for (const QJsonValue &value : items) {
+        if (value.isObject()) {
+            objects.append(resource == QStringLiteral("pods") ? podToJson(value.toObject())
+                                                              : serviceToJson(value.toObject()));
+        }
+    }
+    std::sort(objects.begin(), objects.end(), [](const QJsonObject &a, const QJsonObject &b) {
+        const QString aKey = a.value(QStringLiteral("namespace")).toString() + QLatin1Char('/') +
+                             a.value(QStringLiteral("name")).toString();
+        const QString bKey = b.value(QStringLiteral("namespace")).toString() + QLatin1Char('/') +
+                             b.value(QStringLiteral("name")).toString();
+        return aKey < bKey;
+    });
+    QJsonArray result;
+    for (const QJsonObject &object : objects) {
+        result.append(object);
+    }
+    return result;
+}
+
+QJsonArray K8sManager::pods(const QString &namespaceFilter, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    return kubectlItems(QStringLiteral("pods"), namespaceFilter, error);
+}
+
+QJsonArray K8sManager::services(const QString &namespaceFilter, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    return kubectlItems(QStringLiteral("services"), namespaceFilter, error);
 }
 
 bool K8sManager::ensureApiAccess(K8sCluster &cluster, MachineMeta &machine, const SshInfo &ssh,

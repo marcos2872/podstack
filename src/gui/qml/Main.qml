@@ -59,6 +59,12 @@ Rectangle {
         function onSettingsValuesChanged() {
             applyTheme(backend.settingsValues["app.theme"] || "system")
         }
+
+        function onK8sChanged() {
+            if (!backend.k8sEnabled && section === "kubernetes") {
+                section = "containers"
+            }
+        }
     }
 
     SetupWindow {
@@ -71,8 +77,8 @@ Rectangle {
         id: activityWindow
     }
 
-    readonly property var sections: [
-        { group: "Engine", items: [
+    readonly property var sections: {
+        var engine = { group: "Engine", items: [
             { key: "containers", label: "Containers", icon: "containers" },
             { key: "images", label: "Images", icon: "images" },
             { key: "volumes", label: "Volumes", icon: "volumes" },
@@ -80,12 +86,18 @@ Rectangle {
             { key: "compose", label: "Compose", icon: "compose" },
             { key: "builds", label: "Builds", icon: "builds" },
             { key: "pods", label: "Pods", icon: "pods" }
-        ] },
-        { group: "Linux", items: [
+        ] }
+        var linux = { group: "Linux", items: [
             { key: "machines", label: "Machines", icon: "machines" },
             { key: "devices", label: "Devices", icon: "devices", disabled: true }
         ] }
-    ]
+        if (backend.k8sEnabled) {
+            return [engine, { group: "Kubernetes", items: [
+                { key: "kubernetes", label: "Kubernetes", icon: "pods" }
+            ] }, linux]
+        }
+        return [engine, linux]
+    }
 
     readonly property string sectionTitle: {
         for (let group = 0; group < sections.length; ++group) {
@@ -128,6 +140,9 @@ Rectangle {
         if (key === "machines") {
             return backend.machines.length
         }
+        if (key === "kubernetes") {
+            return backend.k8sPods.length + backend.k8sServices.length
+        }
         return -1
     }
 
@@ -153,6 +168,9 @@ Rectangle {
         if (key === "machines") {
             return 7
         }
+        if (key === "kubernetes") {
+            return 8
+        }
         return 0
     }
 
@@ -173,6 +191,8 @@ Rectangle {
             backend.refreshBuilds()
         } else if (section === "machines") {
             backend.refreshMachines()
+        } else if (section === "kubernetes") {
+            backend.refreshK8s()
         }
     }
 
@@ -579,6 +599,18 @@ Rectangle {
                         onMachineExpandRequested: function(id, tab) {
                             appWindow.openMachineDetail(id, tab)
                         }
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    KubernetesPage {
+                        id: kubernetesPage
+                        objectName: "kubernetesPage"
+                        anchors.fill: parent
                     }
                 }
             }
