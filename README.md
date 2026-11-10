@@ -21,8 +21,8 @@
   Alternativa Linux ao OrbStack, com Qt 6/QML, daemon de usuário e CLI scriptable.
 </p>
 
-> **Status:** **M3 concluído** — Compose (detecção por labels, up/down/restart/stop/start, logs por serviço/agregados), builds via Libpod com histórico SQLite e eventos globais em toasts. Somam-se ao M2 (imagens, volumes, redes e pods) e ao M1 (containers, logs, stats, files, terminal, batch, health e rootful). **Bandeja/tray e onboarding** implementados (fechar para a bandeja, Activity Monitor, notificações e setup modal). **13 testes**, cobertura **79,7%** (gate de 80% pendente; ver [`docs/testing.md`](docs/testing.md)). Próximo: M4 (machines).
-> **Ressalvas M1:** terminal abre em janela nativa (embutir no inspector fica no M2); upload de arquivos e seleção múltipla fina também ficam no M2.
+> **Status:** **M4 concluído e validado manualmente** — machines QEMU/KVM (ciclo de vida, SSH/arquivos, virtiofs, export/import, clone/rename/default, recursos, portas, agent forwarding, modo isolado, console serial e snapshots), sobre o M3 (Compose e builds), o M2 (imagens, volumes, redes e pods) e o M1 (containers, logs, stats, files, terminal, batch, health e rootful). **Pré-M5** entregue com multi-seleção em todas as listas, testes QML reais e gates de `clang-format`/`clang-tidy`. **14 testes**, cobertura **80,1%** com gate bloqueante de **80%** (ver [`docs/testing.md`](docs/testing.md)). Próximo: **M5 (Kubernetes/k3s)**.
+> **Ressalvas:** console serial sem VNC; export/clone não preservam snapshots internos do qcow2; instalação limpa do onboarding ainda a validar (T7-07/T7-14).
 > **Plataforma:** Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10.
 > **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).
 

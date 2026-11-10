@@ -138,6 +138,8 @@
 
 **Saída M4:** J2 completo; criação ≤ 60 s.
 
+**Validação manual do M4 (2026-11-10):** concluída pelo usuário em VM real, incluindo os fluxos de machines, SSH, virtiofs, portas e snapshots.
+
 ---
 
 ## M5 — Kubernetes
