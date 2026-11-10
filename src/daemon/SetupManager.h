@@ -52,6 +52,12 @@ public:
     void subscribe(const QString &jobId, const Notify &notify);
     bool complete(bool skipped, Error *error);
 
+protected:
+    /// Pontos de extensão para testes; em produção falam com o helper via D-Bus.
+    virtual bool helperCall(const QString &method, const QStringList &arguments, QString *error,
+                            int timeoutMs = 900000) const;
+    virtual bool helperAvailable() const;
+
 private:
     struct Job {
         QString id;
@@ -78,9 +84,6 @@ private:
 
     QStringList actionPackages(const QString &action, const QJsonObject &options) const;
     bool enablePodmanSocket(QString *error) const;
-    bool helperCall(const QString &method, const QStringList &arguments, QString *error,
-                    int timeoutMs = 900000) const;
-    bool helperAvailable() const;
     bool applyDockerPolicy(const QString &policy, QString *error);
 
     static QString podmanVersion();

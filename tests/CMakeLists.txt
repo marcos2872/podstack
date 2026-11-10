@@ -77,6 +77,7 @@ qt_add_executable(test_setup test_setup.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/SetupManager.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/HelperClient.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/Firewall.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/HelperService.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/Polkit.cpp)
 target_link_libraries(test_setup PRIVATE podstack_podman Qt6::Concurrent Qt6::DBus
     SQLite::SQLite3 Qt6::Test)

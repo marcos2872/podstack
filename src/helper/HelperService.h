@@ -26,8 +26,11 @@ public slots:
     Q_SCRIPTABLE QVariantMap OpenPorts(const QStringList &ports, const QString &protocol);
     Q_SCRIPTABLE QVariantMap ClosePorts(const QStringList &ports, const QString &protocol);
 
+protected:
+    /// Ponto de extensão para testes; em produção exige polkit via D-Bus.
+    virtual bool authorize(const QString &actionId, QString *error) const;
+
 private:
-    bool authorize(const QString &actionId, QString *error) const;
     bool validatePackages(const QStringList &packages, const QStringList &allowed,
                           QString *error) const;
     QVariantMap install(const QStringList &packages, const QString &actionId,
