@@ -277,8 +277,9 @@ public:
     Q_INVOKABLE void clearK8sLogs();
     Q_INVOKABLE void deleteK8sPod(const QString &namespaceName, const QString &name);
     Q_INVOKABLE void deleteK8sService(const QString &namespaceName, const QString &name);
-    Q_INVOKABLE void startK8sPortForward(const QString &namespaceName, const QString &pod,
-                                         int localPort, int remotePort);
+    Q_INVOKABLE void startK8sPortForward(const QString &namespaceName, const QString &name,
+                                         int localPort, int remotePort,
+                                         const QString &resource = QStringLiteral("pod"));
     Q_INVOKABLE void stopK8sPortForward();
     Q_INVOKABLE void enableK8s();
     Q_INVOKABLE void disableK8s(bool force = false);

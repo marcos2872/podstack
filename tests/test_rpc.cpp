@@ -2384,6 +2384,19 @@ void RpcTest::k8sActions()
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(result.value(QStringLiteral("stopped")).toBool(), true);
 
+    result = client.call(QStringLiteral("k8s.portforward.start"),
+                         QJsonObject{{QStringLiteral("resource"), QStringLiteral("service")},
+                                     {QStringLiteral("namespace"), QStringLiteral("prod")},
+                                     {QStringLiteral("pod"), QStringLiteral("web")},
+                                     {QStringLiteral("localPort"), 8081},
+                                     {QStringLiteral("remotePort"), 80}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("resource")).toString(), QStringLiteral("service"));
+    client.call(QStringLiteral("k8s.portforward.stop"),
+                QJsonObject{{QStringLiteral("id"), result.value(QStringLiteral("id")).toString()}},
+                &error);
+
     error = {};
     client.call(QStringLiteral("k8s.portforward.start"),
                 QJsonObject{{QStringLiteral("namespace"), QStringLiteral("prod")},

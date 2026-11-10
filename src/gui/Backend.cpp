@@ -1021,19 +1021,21 @@ void Backend::deleteK8sService(const QString &namespaceName, const QString &name
         QJsonObject{{QStringLiteral("namespace"), namespaceName}, {QStringLiteral("name"), name}});
 }
 
-void Backend::startK8sPortForward(const QString &namespaceName, const QString &pod, int localPort,
-                                  int remotePort)
+void Backend::startK8sPortForward(const QString &namespaceName, const QString &name, int localPort,
+                                  int remotePort, const QString &resource)
 {
     if (m_k8sForwardWatcher.isRunning()) {
         return;
     }
     m_k8sPortForwardError.clear();
-    m_k8sForwardWatcher.setFuture(QtConcurrent::run([namespaceName, pod, localPort, remotePort] {
+    m_k8sForwardWatcher.setFuture(QtConcurrent::run([namespaceName, name, localPort, remotePort,
+                                                     resource] {
         RpcClient client;
         Error error;
         QJsonObject result = client.call(QStringLiteral("k8s.portforward.start"),
-                                         QJsonObject{{QStringLiteral("namespace"), namespaceName},
-                                                     {QStringLiteral("pod"), pod},
+                                         QJsonObject{{QStringLiteral("resource"), resource},
+                                                     {QStringLiteral("namespace"), namespaceName},
+                                                     {QStringLiteral("pod"), name},
                                                      {QStringLiteral("localPort"), localPort},
                                                      {QStringLiteral("remotePort"), remotePort}},
                                          &error);
