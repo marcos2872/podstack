@@ -2763,6 +2763,206 @@ void RpcTest::invalidRequests()
     response = readMessage(socket, buffer);
     QCOMPARE(response.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toInt(),
              -32600);
+
+    // Métodos que exigem parâmetros: sem eles o handler precisa recusar antes
+    // de tocar no Podman/machines. Cobre os caminhos de validação do daemon.
+    const QStringList methods = {
+        QStringLiteral("containers.inspect"),
+        QStringLiteral("containers.start"),
+        QStringLiteral("containers.stop"),
+        QStringLiteral("containers.restart"),
+        QStringLiteral("containers.pause"),
+        QStringLiteral("containers.unpause"),
+        QStringLiteral("containers.kill"),
+        QStringLiteral("containers.remove"),
+        QStringLiteral("containers.rename"),
+        QStringLiteral("containers.duplicate"),
+        QStringLiteral("containers.exec"),
+        QStringLiteral("containers.logs.subscribe"),
+        QStringLiteral("containers.stats.subscribe"),
+        QStringLiteral("containers.files.list"),
+        QStringLiteral("containers.files.download"),
+        QStringLiteral("containers.files.upload"),
+        QStringLiteral("images.get"),
+        QStringLiteral("images.inspect"),
+        QStringLiteral("images.remove"),
+        QStringLiteral("images.tag"),
+        QStringLiteral("images.untag"),
+        QStringLiteral("images.export"),
+        QStringLiteral("images.history"),
+        QStringLiteral("images.pull"),
+        QStringLiteral("images.push"),
+        QStringLiteral("images.load"),
+        QStringLiteral("volumes.inspect"),
+        QStringLiteral("volumes.remove"),
+        QStringLiteral("networks.inspect"),
+        QStringLiteral("networks.create"),
+        QStringLiteral("networks.remove"),
+        QStringLiteral("pods.inspect"),
+        QStringLiteral("pods.create"),
+        QStringLiteral("pods.remove"),
+        QStringLiteral("builds.get"),
+        QStringLiteral("builds.remove"),
+        QStringLiteral("builds.cancel"),
+        QStringLiteral("builds.start"),
+        QStringLiteral("compose.up"),
+        QStringLiteral("compose.down"),
+        QStringLiteral("compose.start"),
+        QStringLiteral("compose.stop"),
+        QStringLiteral("compose.restart"),
+        QStringLiteral("compose.logs.subscribe"),
+        QStringLiteral("machines.get"),
+        QStringLiteral("machines.start"),
+        QStringLiteral("machines.stop"),
+        QStringLiteral("machines.restart"),
+        QStringLiteral("machines.delete"),
+        QStringLiteral("machines.create"),
+        QStringLiteral("machines.logs"),
+        QStringLiteral("machines.console.read"),
+        QStringLiteral("machines.console"),
+        QStringLiteral("machines.ssh"),
+        QStringLiteral("machines.export"),
+        QStringLiteral("machines.import"),
+        QStringLiteral("machines.rename"),
+        QStringLiteral("machines.clone"),
+        QStringLiteral("machines.update"),
+        QStringLiteral("machines.ports.set"),
+        QStringLiteral("machines.stats"),
+        QStringLiteral("machines.stats.subscribe"),
+        QStringLiteral("machines.files.list"),
+        QStringLiteral("machines.files.download"),
+        QStringLiteral("machines.files.upload"),
+        QStringLiteral("machines.snapshots.create"),
+        QStringLiteral("machines.snapshots.restore"),
+        QStringLiteral("machines.snapshots.remove"),
+        QStringLiteral("settings.set"),
+    };
+
+    int id = 100;
+    for (const QString &method : methods) {
+        sendMessage(socket, QJsonObject{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                                        {QStringLiteral("id"), id++},
+                                        {QStringLiteral("method"), method},
+                                        {QStringLiteral("params"), QJsonObject{}}});
+        const QJsonObject reply = readMessage(socket, buffer);
+        QVERIFY2(reply.contains(QStringLiteral("error")), qPrintable(method));
+    }
+
+    const auto expectError = [&](const QString &method, const QJsonObject &params) {
+        sendMessage(socket, QJsonObject{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                                        {QStringLiteral("id"), id++},
+                                        {QStringLiteral("method"), method},
+                                        {QStringLiteral("params"), params}});
+        const QJsonObject reply = readMessage(socket, buffer);
+        QVERIFY2(
+            reply.contains(QStringLiteral("error")),
+            qPrintable(method + QLatin1Char(' ') +
+                       QString::fromUtf8(QJsonDocument(params).toJson(QJsonDocument::Compact))));
+    };
+
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("name"), QStringLiteral("Bad Name")},
+                 {QStringLiteral("image"), QString()}});
+    expectError(QStringLiteral("containers.duplicate"),
+                {{QStringLiteral("id"), QStringLiteral("missing")}});
+    expectError(
+        QStringLiteral("containers.create"),
+        {{QStringLiteral("image"), QStringLiteral("alpine")}, {QStringLiteral("exposeLan"), true}});
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("image"), QStringLiteral("alpine")},
+                 {QStringLiteral("exposeLan"), true},
+                 {QStringLiteral("ports"),
+                  QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 8080},
+                                         {QStringLiteral("containerPort"), 80},
+                                         {QStringLiteral("protocol"), QStringLiteral("sctp")}}}}});
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("image"), QStringLiteral("alpine")},
+                 {QStringLiteral("exposeLan"), true},
+                 {QStringLiteral("ports"),
+                  QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 70000},
+                                         {QStringLiteral("containerPort"), 80},
+                                         {QStringLiteral("protocol"), QStringLiteral("tcp")}}}}});
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("image"), QStringLiteral("alpine")},
+                 {QStringLiteral("exposeLan"), true},
+                 {QStringLiteral("ports"),
+                  QJsonArray{QJsonObject{{QStringLiteral("hostPort"), 18080},
+                                         {QStringLiteral("containerPort"), 80},
+                                         {QStringLiteral("protocol"), QStringLiteral("tcp")}}}}});
+    QJsonArray manyPorts;
+    for (int index = 0; index < 33; ++index) {
+        manyPorts.append(QJsonObject{{QStringLiteral("hostPort"), 20000 + index},
+                                     {QStringLiteral("containerPort"), 80},
+                                     {QStringLiteral("protocol"), QStringLiteral("tcp")}});
+    }
+    expectError(QStringLiteral("containers.create"),
+                {{QStringLiteral("image"), QStringLiteral("alpine")},
+                 {QStringLiteral("exposeLan"), true},
+                 {QStringLiteral("ports"), manyPorts}});
+    expectError(
+        QStringLiteral("containers.exposeLan"),
+        {{QStringLiteral("id"), QStringLiteral("missing")}, {QStringLiteral("expose"), true}});
+    expectError(QStringLiteral("containers.exec"),
+                {{QStringLiteral("id"), QStringLiteral("missing")},
+                 {QStringLiteral("command"), QJsonArray{}}});
+    expectError(QStringLiteral("images.pull"), {{QStringLiteral("reference"), QString()}});
+    expectError(QStringLiteral("images.load"), {{QStringLiteral("path"), QStringLiteral("/nope")}});
+    expectError(QStringLiteral("images.export"), {{QStringLiteral("id"), QStringLiteral("missing")},
+                                                  {QStringLiteral("path"), QString()}});
+    expectError(QStringLiteral("volumes.clone"), {{QStringLiteral("source"), QString()},
+                                                  {QStringLiteral("destination"), QString()}});
+    expectError(QStringLiteral("volumes.export"),
+                {{QStringLiteral("name"), QString()}, {QStringLiteral("path"), QString()}});
+    expectError(
+        QStringLiteral("volumes.import"),
+        {{QStringLiteral("name"), QString()}, {QStringLiteral("path"), QStringLiteral("/nope")}});
+    expectError(QStringLiteral("networks.create"),
+                {{QStringLiteral("name"), QString()},
+                 {QStringLiteral("subnet"), QStringLiteral("bogus")},
+                 {QStringLiteral("gateway"), QStringLiteral("bogus")}});
+    expectError(QStringLiteral("networks.connect"),
+                {{QStringLiteral("name"), QString()}, {QStringLiteral("containerId"), QString()}});
+    expectError(QStringLiteral("pods.create"), {{QStringLiteral("name"), QString()}});
+    expectError(QStringLiteral("pods.start"), {{QStringLiteral("id"), QString()}});
+    expectError(QStringLiteral("compose.up"), {{QStringLiteral("projectPath"), QString()}});
+    expectError(QStringLiteral("compose.up"),
+                {{QStringLiteral("projectPath"), QStringLiteral("/tmp/does-not-exist")}});
+    expectError(QStringLiteral("builds.start"),
+                {{QStringLiteral("context"), QString()}, {QStringLiteral("tag"), QString()}});
+    expectError(QStringLiteral("builds.start"),
+                {{QStringLiteral("context"), QStringLiteral("/tmp/does-not-exist")},
+                 {QStringLiteral("tag"), QStringLiteral("x")}});
+
+    const QJsonObject machineBase{
+        {QStringLiteral("name"), QStringLiteral("rpc-invalid")},
+        {QStringLiteral("distro"), QStringLiteral("ubuntu")},
+        {QStringLiteral("arch"), QStringLiteral("amd64")},
+        {QStringLiteral("cpus"), 2},
+        {QStringLiteral("memoryBytes"), 2.0 * 1024 * 1024 * 1024},
+        {QStringLiteral("diskBytes"), 20.0 * 1024 * 1024 * 1024},
+        {QStringLiteral("user"), QStringLiteral("podstack")},
+    };
+    auto machineParams = [&machineBase](const QString &key, const QJsonValue &value) {
+        QJsonObject params = machineBase;
+        params.insert(key, value);
+        return params;
+    };
+    expectError(QStringLiteral("machines.create"),
+                machineParams(QStringLiteral("name"), QStringLiteral("Bad Name")));
+    expectError(QStringLiteral("machines.create"),
+                machineParams(QStringLiteral("distro"), QString()));
+    expectError(QStringLiteral("machines.create"),
+                machineParams(QStringLiteral("arch"), QStringLiteral("sparc")));
+    expectError(QStringLiteral("machines.create"), machineParams(QStringLiteral("cpus"), 0));
+    expectError(QStringLiteral("machines.create"), machineParams(QStringLiteral("memoryBytes"), 1));
+    expectError(QStringLiteral("machines.create"), machineParams(QStringLiteral("diskBytes"), 1));
+    expectError(QStringLiteral("machines.create"),
+                machineParams(QStringLiteral("mounts"),
+                              QJsonArray{QJsonObject{{QStringLiteral("source"), QString()},
+                                                     {QStringLiteral("target"), QString()}}}));
+    expectError(
+        QStringLiteral("settings.set"),
+        {{QStringLiteral("key"), QStringLiteral("does.not.exist")}, {QStringLiteral("value"), 1}});
 }
 
 QJsonObject RpcTest::readMessage(QLocalSocket &socket, QByteArray &buffer, int timeoutMs)

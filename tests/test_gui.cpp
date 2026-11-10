@@ -46,6 +46,8 @@ private slots:
     void backendTerminal();
     void backendM3();
     void backendErrors();
+    void backendInvalidArguments();
+    void backendOperations();
     void backendTheme();
     void backendSettings();
     void backendProxy();
@@ -1163,6 +1165,129 @@ void GuiTest::backendErrors()
 
     backend.saveEngineMode(QStringLiteral("bogus"));
     QVERIFY(!backend.lastError().isEmpty());
+}
+
+void GuiTest::backendInvalidArguments()
+{
+    PodStack::Backend backend;
+    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+
+    // Entradas vazias devem ser recusadas no Backend, sem chegar ao daemon.
+    backend.removeImage(QString(), false);
+    backend.tagImage(QString(), QString());
+    backend.untagImage(QString(), QString());
+    backend.exportImage(QString(), QString());
+    backend.loadImage(QString());
+    backend.createVolume(QString(), QString());
+    backend.removeVolume(QString(), false);
+    backend.cloneVolume(QString(), QString());
+    backend.importHostPath(QString(), QString());
+    backend.createNetwork(QString(), QString(), QString());
+    backend.removeNetwork(QString(), false);
+    backend.connectNetwork(QString(), QString());
+    backend.disconnectNetwork(QString(), QString());
+    backend.createPod(QString());
+    backend.podAction(QString(), QString());
+    backend.removePod(QString(), false);
+    backend.composeUp(QString());
+    backend.composeDown(QString(), false);
+    backend.composeRestart(QString(), QString());
+    backend.composeStop(QString(), QString());
+    backend.composeStart(QString(), QString());
+    backend.subscribeComposeLogs(QString(), QString());
+    backend.removeBuild(QString());
+    backend.loadMachineLogs(QString(), 0);
+    backend.startMachineStats(QString());
+    backend.followMachineConsole(QString(), 0);
+    backend.refreshMachineFiles(QString(), QString());
+    backend.refreshMachineSnapshots(QString());
+    backend.createMachineSnapshot(QString(), QString());
+    backend.restoreMachineSnapshot(QString(), QString());
+    backend.removeMachineSnapshot(QString(), QString());
+    backend.downloadMachineFile(QString(), QString(), QString());
+    backend.uploadMachineFile(QString(), QString(), QString());
+    backend.renameMachine(QString(), QString());
+    backend.cloneMachine(QString(), QString());
+    backend.updateMachine({});
+    backend.setMachinePorts(QString(), {});
+    backend.exportMachine(QString(), QString());
+    backend.importMachine(QString());
+    backend.loadContainerDetail(QString());
+    backend.startContainerDetailStats(QString());
+    backend.startContainerDetailLogs(QString(), 0, true);
+    backend.containerDetailLifecycle(QString(), QString());
+    backend.removeContainerDetail(QString(), false);
+    backend.createContainer({}, false);
+    backend.exposeContainerLan(QString(), true);
+    backend.batchAll(QString());
+    backend.batchIds({}, QString());
+    backend.listFiles(QString(), QString());
+    backend.downloadFile(QString(), QString());
+    backend.uploadFile(QString(), QString(), QString());
+    backend.setSetting(QString(), {});
+    backend.resetSetting(QString());
+    backend.setupApply(QStringLiteral("bogus"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.lastError().isEmpty(), 5000);
+    QVERIFY(errorSpy.count() > 0);
+    QVERIFY(actionSpy.count() > 0);
+}
+
+void GuiTest::backendOperations()
+{
+    PodStack::Backend backend;
+    const QString tempFile = m_testDataDir + QStringLiteral("/image.tar");
+    QFile file(tempFile);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("tar");
+    file.close();
+
+    backend.refreshImages();
+    backend.refreshVolumes();
+    backend.refreshNetworks();
+    backend.refreshPods();
+    backend.refreshDiskUsage();
+    backend.refreshCompose();
+    backend.refreshBuilds();
+
+    backend.createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
+    backend.cloneVolume(QStringLiteral("vol1"), QStringLiteral("vol2"));
+    backend.importHostPath(QStringLiteral("vol3"), m_testDataDir);
+    backend.removeVolume(QStringLiteral("vol1"), false);
+    backend.pruneVolumes();
+
+    backend.createNetwork(QStringLiteral("net2"), QStringLiteral("10.90.0.0/24"),
+                          QStringLiteral("10.90.0.1"));
+    backend.connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    backend.disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    backend.removeNetwork(QStringLiteral("net2"), false);
+
+    backend.createPod(QStringLiteral("pod2"));
+    backend.podAction(QStringLiteral("start"), QStringLiteral("pod1"));
+    backend.removePod(QStringLiteral("pod1"), false);
+
+    backend.tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
+    backend.untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
+    backend.exportImage(QStringLiteral("img1234567890"), tempFile);
+    backend.loadImage(tempFile);
+    backend.pruneImages(false);
+    backend.removeImage(QStringLiteral("img1234567890"), false);
+
+    backend.composeUp(QStringLiteral("/tmp/mock-project"));
+    backend.composeRestart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.composeStop(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.composeStart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.composeDown(QStringLiteral("/tmp/mock-project"), false);
+    backend.subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
+    backend.unsubscribeComposeLogs();
+    backend.removeBuild(QStringLiteral("missing"));
+
+    backend.startActivityMonitor();
+    backend.stopActivityMonitor();
+
+    // Dá tempo para os jobs assíncronos concluírem antes de destruir o Backend.
+    QTest::qWait(1500);
 }
 
 void GuiTest::backendTheme()

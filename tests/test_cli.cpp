@@ -48,6 +48,9 @@ private slots:
     void setupCommand();
     void configCommands();
     void errorPaths();
+    void invalidInvocations();
+    void runtimeErrors();
+    void outputModes();
 
 private:
     QString cliPath() const;
@@ -1661,6 +1664,189 @@ void CliTest::errorPaths()
                  environment(m_controlSocket)).code, 2);
     QCOMPARE(run({QStringLiteral("compose"), QStringLiteral("up")},
                  environment(m_controlSocket)).code, 2);
+}
+
+void CliTest::invalidInvocations()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+    const QList<QStringList> cases = {
+        {QStringLiteral("pause")},
+        {QStringLiteral("unpause")},
+        {QStringLiteral("kill")},
+        {QStringLiteral("inspect")},
+        {QStringLiteral("images"), QStringLiteral("pull")},
+        {QStringLiteral("images"), QStringLiteral("push")},
+        {QStringLiteral("images"), QStringLiteral("rm")},
+        {QStringLiteral("images"), QStringLiteral("tag")},
+        {QStringLiteral("images"), QStringLiteral("inspect")},
+        {QStringLiteral("images"), QStringLiteral("export")},
+        {QStringLiteral("images"), QStringLiteral("load")},
+        {QStringLiteral("volumes"), QStringLiteral("rm")},
+        {QStringLiteral("volumes"), QStringLiteral("clone")},
+        {QStringLiteral("volumes"), QStringLiteral("export")},
+        {QStringLiteral("volumes"), QStringLiteral("import")},
+        {QStringLiteral("networks"), QStringLiteral("create")},
+        {QStringLiteral("networks"), QStringLiteral("rm")},
+        {QStringLiteral("networks"), QStringLiteral("connect")},
+        {QStringLiteral("networks"), QStringLiteral("disconnect")},
+        {QStringLiteral("pods"), QStringLiteral("create")},
+        {QStringLiteral("pods"), QStringLiteral("rm")},
+        {QStringLiteral("pods"), QStringLiteral("start")},
+        {QStringLiteral("pods"), QStringLiteral("stop")},
+        {QStringLiteral("pods"), QStringLiteral("restart")},
+        {QStringLiteral("builds"), QStringLiteral("rm")},
+        {QStringLiteral("compose"), QStringLiteral("down")},
+        {QStringLiteral("compose"), QStringLiteral("restart")},
+        {QStringLiteral("compose"), QStringLiteral("stop")},
+        {QStringLiteral("compose"), QStringLiteral("start")},
+        {QStringLiteral("compose"), QStringLiteral("logs")},
+        {QStringLiteral("machine"), QStringLiteral("info")},
+        {QStringLiteral("machine"), QStringLiteral("logs")},
+        {QStringLiteral("machine"), QStringLiteral("create")},
+        {QStringLiteral("machine"), QStringLiteral("start")},
+        {QStringLiteral("machine"), QStringLiteral("stop")},
+        {QStringLiteral("machine"), QStringLiteral("restart")},
+        {QStringLiteral("machine"), QStringLiteral("delete")},
+        {QStringLiteral("machine"), QStringLiteral("files")},
+        {QStringLiteral("machine"), QStringLiteral("pull")},
+        {QStringLiteral("machine"), QStringLiteral("push")},
+        {QStringLiteral("machine"), QStringLiteral("port")},
+        {QStringLiteral("machine"), QStringLiteral("snapshot")},
+        {QStringLiteral("machine"), QStringLiteral("update")},
+        {QStringLiteral("machine"), QStringLiteral("rename")},
+        {QStringLiteral("machine"), QStringLiteral("clone")},
+        {QStringLiteral("machine"), QStringLiteral("export")},
+        {QStringLiteral("machine"), QStringLiteral("import")},
+        {QStringLiteral("config"), QStringLiteral("get")},
+        {QStringLiteral("config"), QStringLiteral("set")},
+    };
+
+    for (const QStringList &args : cases) {
+        const CliResult result = run(args, env);
+        QVERIFY2(result.code == 2, qPrintable(QStringLiteral("%1 -> %2 (%3)")
+                                                  .arg(args.join(QLatin1Char(' ')))
+                                                  .arg(result.code)
+                                                  .arg(result.err.trimmed())));
+    }
+}
+
+void CliTest::runtimeErrors()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+    const QList<QStringList> cases = {
+        {QStringLiteral("images"), QStringLiteral("rm"), QStringLiteral("missing-image")},
+        {QStringLiteral("images"), QStringLiteral("inspect"), QStringLiteral("missing-image")},
+        {QStringLiteral("images"), QStringLiteral("history"), QStringLiteral("missing-image")},
+        {QStringLiteral("images"), QStringLiteral("tag"), QStringLiteral("missing-image"),
+         QStringLiteral("repo:tag")},
+        {QStringLiteral("images"), QStringLiteral("untag"), QStringLiteral("missing-image"),
+         QStringLiteral("repo:tag")},
+        {QStringLiteral("volumes"), QStringLiteral("rm"), QStringLiteral("missing-volume")},
+        {QStringLiteral("networks"), QStringLiteral("rm"), QStringLiteral("missing-network")},
+        {QStringLiteral("pods"), QStringLiteral("rm"), QStringLiteral("missing-pod")},
+        {QStringLiteral("pods"), QStringLiteral("start"), QStringLiteral("missing-pod")},
+        {QStringLiteral("machine"), QStringLiteral("info"), QStringLiteral("missing-machine")},
+        {QStringLiteral("machine"), QStringLiteral("logs"), QStringLiteral("missing-machine")},
+        {QStringLiteral("machine"), QStringLiteral("start"), QStringLiteral("missing-machine")},
+        {QStringLiteral("machine"), QStringLiteral("stop"), QStringLiteral("missing-machine")},
+        {QStringLiteral("machine"), QStringLiteral("restart"), QStringLiteral("missing-machine")},
+        {QStringLiteral("machine"), QStringLiteral("delete"), QStringLiteral("missing-machine")},
+        {QStringLiteral("machine"), QStringLiteral("update"), QStringLiteral("missing-machine"),
+         QStringLiteral("--cpus"), QStringLiteral("2")},
+        {QStringLiteral("machine"), QStringLiteral("rename"), QStringLiteral("missing-machine"),
+         QStringLiteral("new-name")},
+        {QStringLiteral("machine"), QStringLiteral("clone"), QStringLiteral("missing-machine"),
+         QStringLiteral("new-name")},
+        {QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("ls"),
+         QStringLiteral("missing-machine")},
+        {QStringLiteral("machine"), QStringLiteral("snapshot"), QStringLiteral("ls"),
+         QStringLiteral("missing-machine")},
+        {QStringLiteral("machine"), QStringLiteral("export"), QStringLiteral("missing-machine"),
+         QStringLiteral("/tmp/missing-machine.tar.zst")},
+        {QStringLiteral("machine"), QStringLiteral("pull"), QStringLiteral("missing-machine"),
+         QStringLiteral("/tmp/file")},
+        {QStringLiteral("machine"), QStringLiteral("push"), QStringLiteral("missing-machine"),
+         QStringLiteral("/tmp/file"), QStringLiteral("/tmp/dest")},
+        {QStringLiteral("compose"), QStringLiteral("up"),
+         QStringLiteral("/tmp/podstack-missing-project")},
+        {QStringLiteral("build"), QStringLiteral("/tmp/podstack-missing-context"),
+         QStringLiteral("-t"), QStringLiteral("missing:latest")},
+    };
+
+    for (const QStringList &args : cases) {
+        const CliResult result = run(args, env);
+        QVERIFY2(result.code != 0,
+                 qPrintable(
+                     QStringLiteral("%1 -> %2").arg(args.join(QLatin1Char(' '))).arg(result.code)));
+        QVERIFY2(
+            !result.err.trimmed().isEmpty(),
+            qPrintable(QStringLiteral("%1 sem mensagem de erro").arg(args.join(QLatin1Char(' ')))));
+    }
+}
+
+void CliTest::outputModes()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+    const QList<QStringList> cases = {
+        {QStringLiteral("machine")},
+        {QStringLiteral("images")},
+        {QStringLiteral("volumes")},
+        {QStringLiteral("networks")},
+        {QStringLiteral("pods")},
+        {QStringLiteral("compose")},
+        {QStringLiteral("builds")},
+        {QStringLiteral("system")},
+        {QStringLiteral("setup")},
+        {QStringLiteral("config")},
+        {QStringLiteral("machine"), QStringLiteral("default")},
+        {QStringLiteral("machine"), QStringLiteral("default"), QStringLiteral("missing")},
+        {QStringLiteral("machine"), QStringLiteral("distros"), QStringLiteral("--json")},
+        {QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("add"),
+         QStringLiteral("missing"), QStringLiteral("--host"), QStringLiteral("18080"),
+         QStringLiteral("--guest"), QStringLiteral("80")},
+        {QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("add"),
+         QStringLiteral("missing"), QStringLiteral("--host"), QStringLiteral("18081"),
+         QStringLiteral("--guest"), QStringLiteral("53"), QStringLiteral("--udp"),
+         QStringLiteral("--lan"), QStringLiteral("--label"), QStringLiteral("dns")},
+        {QStringLiteral("machine"), QStringLiteral("port"), QStringLiteral("rm"),
+         QStringLiteral("missing"), QStringLiteral("18080")},
+        {QStringLiteral("machine"), QStringLiteral("snapshot"), QStringLiteral("create"),
+         QStringLiteral("missing"), QStringLiteral("snap")},
+        {QStringLiteral("machine"), QStringLiteral("snapshot"), QStringLiteral("restore"),
+         QStringLiteral("missing"), QStringLiteral("snap")},
+        {QStringLiteral("machine"), QStringLiteral("snapshot"), QStringLiteral("rm"),
+         QStringLiteral("missing"), QStringLiteral("snap")},
+        {QStringLiteral("machine"), QStringLiteral("files"), QStringLiteral("ls"),
+         QStringLiteral("missing"), QStringLiteral("/")},
+        {QStringLiteral("machine"), QStringLiteral("console"), QStringLiteral("missing"),
+         QStringLiteral("--no-follow"), QStringLiteral("--json")},
+        {QStringLiteral("machine"), QStringLiteral("logs"), QStringLiteral("missing"),
+         QStringLiteral("--tail"), QStringLiteral("10"), QStringLiteral("--json")},
+        {QStringLiteral("machine"), QStringLiteral("rename"), QStringLiteral("missing"),
+         QStringLiteral("new")},
+        {QStringLiteral("machine"), QStringLiteral("clone"), QStringLiteral("missing"),
+         QStringLiteral("new")},
+        {QStringLiteral("machine"), QStringLiteral("import"),
+         QStringLiteral("/tmp/podstack-missing-machine.tar.zst")},
+        {QStringLiteral("config"), QStringLiteral("show"), QStringLiteral("--json")},
+        {QStringLiteral("config"), QStringLiteral("schema"), QStringLiteral("--json")},
+        {QStringLiteral("config"), QStringLiteral("get"), QStringLiteral("app.theme")},
+        {QStringLiteral("config"), QStringLiteral("reset"), QStringLiteral("app.theme")},
+        {QStringLiteral("system"), QStringLiteral("df"), QStringLiteral("--detailed"),
+         QStringLiteral("--json")},
+        {QStringLiteral("top"), QStringLiteral("--once"), QStringLiteral("--json"),
+         QStringLiteral("--plain")},
+        {QStringLiteral("setup"), QStringLiteral("--status"), QStringLiteral("--json")},
+        {QStringLiteral("setup"), QStringLiteral("--check"), QStringLiteral("--json")},
+        {QStringLiteral("setup"), QStringLiteral("--validate"), QStringLiteral("--json")},
+    };
+
+    for (const QStringList &args : cases) {
+        const CliResult result = run(args, env);
+        QVERIFY2(
+            result.code != -2,
+            qPrintable(QStringLiteral("%1 estourou timeout").arg(args.join(QLatin1Char(' ')))));
+    }
 }
 
 } // namespace
