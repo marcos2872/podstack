@@ -94,6 +94,7 @@ flowchart LR
 | **K8sManager** | provisionar/gerenciar k3s, kubeconfig, watch | proxy de domínios |
 | **ProxyManager** | DNS userspace, Caddy, detecção de porta, certs | lógica de containers |
 | **HttpProxy** | proxy HTTP de entrada para `*.localhost` em loopback; resolve container e porta publicada | DNS, TLS/Caddy (T6), regras de negócio |
+| **DnsServer** | DNS userspace para `*.podstack.local` em 127.0.0.1:5353 (UDP/TCP), A/AAAA | proxy HTTP, root, TLS/Caddy |
 | **Settings** | schema, validação, migração, defaults | UI |
 | **Diagnostics** | checks, report, redaction | enviar sem consentimento |
 | **SetupManager** | detecção read-only, ações de setup via helper, jobs com progresso/cancelamento | executar shell/sudo, remover Docker por padrão |

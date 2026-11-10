@@ -51,4 +51,15 @@
     <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/podstack/podstack-helper</annotate>
   </action>
 
+  <action id="dev.podstack.helper.dns-zone">
+    <description>Configurar DNS local para o PodStack</description>
+    <message>O PodStack instalará um drop-in no systemd-resolved para resolver *.podstack.local para 127.0.0.1. A remoção desfaz a configuração.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/podstack/podstack-helper</annotate>
+  </action>
+
 </policyconfig>

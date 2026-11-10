@@ -3,6 +3,7 @@
 #include "helper/HelperService.h"
 
 #include "core/Error.h"
+#include "helper/DnsZone.h"
 #include "helper/Firewall.h"
 #include "helper/Polkit.h"
 
@@ -25,6 +26,7 @@ constexpr auto kInstallAction = "dev.podstack.helper.install-packages";
 constexpr auto kRemoveAction = "dev.podstack.helper.remove-packages";
 constexpr auto kOpenPortsAction = "dev.podstack.helper.open-ports";
 constexpr auto kClosePortsAction = "dev.podstack.helper.close-ports";
+constexpr auto kDnsZoneAction = "dev.podstack.helper.dns-zone";
 
 const QStringList &installAllowlist()
 {
@@ -243,9 +245,7 @@ QVariantMap HelperService::RemovePackages(const QStringList &packages)
     qCInfo(lcHelper, "removal requested: %s", qUtf8Printable(installed.join(',')));
 
     QStringList arguments;
-    if (manager == QStringLiteral("dnf")) {
-        arguments = QStringList{QStringLiteral("remove"), QStringLiteral("-y")};
-    } else if (manager == QStringLiteral("apt-get")) {
+    if (manager == QStringLiteral("dnf") || manager == QStringLiteral("apt-get")) {
         arguments = QStringList{QStringLiteral("remove"), QStringLiteral("-y")};
     } else {
         arguments = QStringList{QStringLiteral("-R"), QStringLiteral("--noconfirm")};
@@ -326,6 +326,114 @@ QVariantMap HelperService::OpenPorts(const QStringList &ports, const QString &pr
 QVariantMap HelperService::ClosePorts(const QStringList &ports, const QString &protocol)
 {
     return changePorts(ports, protocol, QString::fromLatin1(kClosePortsAction), false);
+}
+
+QString HelperService::resolvedDirectory() const
+{
+    return QStringLiteral("/etc/systemd/resolved.conf.d");
+}
+
+bool HelperService::reloadResolved(QString *error) const
+{
+    const QString reloadError =
+        runProcess(QStringLiteral("systemctl"),
+                   {QStringLiteral("reload"), QStringLiteral("systemd-resolved")}, 10000);
+    if (reloadError.isEmpty()) {
+        return true;
+    }
+    const QString flushError =
+        runProcess(QStringLiteral("resolvectl"), {QStringLiteral("flush-caches")}, 5000);
+    if (flushError.isEmpty()) {
+        return true;
+    }
+    if (error) {
+        *error =
+            QStringLiteral("Drop-in gravado, mas o resolved não recarregou: %1").arg(reloadError);
+    }
+    return false;
+}
+
+bool HelperService::avahiActive() const
+{
+    QProcess process;
+    process.setProcessChannelMode(QProcess::MergedChannels);
+    process.start(
+        QStringLiteral("systemctl"),
+        {QStringLiteral("is-active"), QStringLiteral("--quiet"), QStringLiteral("avahi-daemon")});
+    if (!process.waitForFinished(3000)) {
+        process.kill();
+        process.waitForFinished(1000);
+        return false;
+    }
+    return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+}
+
+QVariantMap HelperService::changeDnsZone(const QString &zone, const QString &upstream,
+                                         bool installZone)
+{
+    QString validationError;
+    const QString checkedUpstream =
+        installZone ? upstream : QString::fromLatin1(DnsZone::kUpstream);
+    if (!DnsZone::validate(zone, checkedUpstream, &validationError)) {
+        return result(false, validationError);
+    }
+
+    QString error;
+    if (!authorize(QString::fromLatin1(kDnsZoneAction), &error)) {
+        qCWarning(lcHelper, "%s uid=%u zone=%s result=denied",
+                  installZone ? "InstallDnsZone" : "RemoveDnsZone", callerUid(),
+                  qUtf8Printable(zone));
+        return result(false, error);
+    }
+
+    if (installZone) {
+        QString writeError;
+        if (!DnsZone::install(resolvedDirectory(), zone, upstream, &writeError)) {
+            qCWarning(lcHelper, "InstallDnsZone uid=%u zone=%s result=error", callerUid(),
+                      qUtf8Printable(zone));
+            return result(false, writeError);
+        }
+        QString reloadError;
+        if (!reloadResolved(&reloadError)) {
+            qCWarning(lcHelper, "InstallDnsZone uid=%u zone=%s result=reload-error", callerUid(),
+                      qUtf8Printable(zone));
+            return result(false, reloadError);
+        }
+        QString message =
+            QStringLiteral("Drop-in do resolved instalado para %1 (DNS %2).").arg(zone, upstream);
+        if (avahiActive()) {
+            message += QStringLiteral(" Avahi está ativo; se houver conflito de nomes, "
+                                      "desative um dos serviços.");
+        }
+        qCInfo(lcHelper, "InstallDnsZone uid=%u zone=%s upstream=%s result=ok", callerUid(),
+               qUtf8Printable(zone), qUtf8Printable(upstream));
+        return result(true, message);
+    }
+
+    QString removeError;
+    if (!DnsZone::remove(resolvedDirectory(), zone, &removeError)) {
+        qCWarning(lcHelper, "RemoveDnsZone uid=%u zone=%s result=error", callerUid(),
+                  qUtf8Printable(zone));
+        return result(false, removeError);
+    }
+    QString reloadError;
+    if (!reloadResolved(&reloadError)) {
+        qCWarning(lcHelper, "RemoveDnsZone uid=%u zone=%s result=reload-error", callerUid(),
+                  qUtf8Printable(zone));
+        return result(false, reloadError);
+    }
+    qCInfo(lcHelper, "RemoveDnsZone uid=%u zone=%s result=ok", callerUid(), qUtf8Printable(zone));
+    return result(true, QStringLiteral("Drop-in do resolved removido para %1.").arg(zone));
+}
+
+QVariantMap HelperService::InstallDnsZone(const QString &zone, const QString &upstream)
+{
+    return changeDnsZone(zone, upstream, true);
+}
+
+QVariantMap HelperService::RemoveDnsZone(const QString &zone)
+{
+    return changeDnsZone(zone, QString(), false);
 }
 
 } // namespace PodStack

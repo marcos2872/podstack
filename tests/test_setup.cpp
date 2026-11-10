@@ -3,6 +3,7 @@
 #include "core/Paths.h"
 #include "daemon/DbusUtils.h"
 #include "daemon/SetupManager.h"
+#include "helper/DnsZone.h"
 #include "helper/Firewall.h"
 #include "helper/HelperService.h"
 #include "helper/Polkit.h"
@@ -14,6 +15,7 @@
 #include <QDBusMetaType>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QScopeGuard>
 #include <QSet>
@@ -67,6 +69,23 @@ public:
 
 protected:
     bool authorize(const QString &, QString *) const override { return true; }
+};
+
+class DnsZoneHelper : public PodStack::HelperService {
+public:
+    QString directory;
+    mutable int reloads = 0;
+    mutable bool avahi = false;
+
+protected:
+    bool authorize(const QString &, QString *) const override { return true; }
+    QString resolvedDirectory() const override { return directory; }
+    bool reloadResolved(QString *) const override
+    {
+        ++reloads;
+        return true;
+    }
+    bool avahiActive() const override { return avahi; }
 };
 
 class FakeSetupManager : public PodStack::SetupManager {
@@ -123,6 +142,9 @@ private slots:
     void helperRejectsPackagesOutsideAllowlist();
     void helperRequiresDBusAuthorization();
     void helperValidatesPorts();
+    void dnsZoneInstallBackupAndRemove();
+    void helperValidatesDnsZone();
+    void helperInstallsDnsZone();
     void setupRunsSocketJob();
     void setupTracksActiveJob();
     void setupCompletesOnboarding();
@@ -502,6 +524,106 @@ void SetupTest::helperValidatesPorts()
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(reply.value(QStringLiteral("message")).toString(),
              QStringLiteral("Chamada local não autorizada."));
+}
+
+void SetupTest::dnsZoneInstallBackupAndRemove()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("podstack.conf"));
+    QString error;
+
+    QVERIFY(PodStack::DnsZone::install(dir.path(), QStringLiteral("podstack.local"),
+                                       QStringLiteral("127.0.0.1:5353"), &error));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QByteArray content = file.readAll();
+    file.close();
+    QVERIFY(content.contains("[Resolve]"));
+    QVERIFY(content.contains("DNS=127.0.0.1:5353"));
+    QVERIFY(content.contains("Domains=~podstack.local"));
+
+    // Zona/upstream fora da allowlist.
+    QVERIFY(!PodStack::DnsZone::validate(QStringLiteral("evil.local"),
+                                         QStringLiteral("127.0.0.1:5353"), &error));
+    QVERIFY(!PodStack::DnsZone::validate(QStringLiteral("podstack.local"),
+                                         QStringLiteral("8.8.8.8:53"), &error));
+    QVERIFY(!PodStack::DnsZone::install(dir.path(), QStringLiteral("evil.local"),
+                                        QStringLiteral("127.0.0.1:5353"), &error));
+
+    // Instalação idempotente e backup do conteúdo anterior.
+    QVERIFY(PodStack::DnsZone::install(dir.path(), QStringLiteral("podstack.local"),
+                                       QStringLiteral("127.0.0.1:5353"), &error));
+    QFile truncate(path);
+    QVERIFY(truncate.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    truncate.close();
+    QVERIFY(PodStack::DnsZone::install(dir.path(), QStringLiteral("podstack.local"),
+                                       QStringLiteral("127.0.0.1:5353"), &error));
+    const QString backup = dir.filePath(QStringLiteral("podstack.conf.bak"));
+    QVERIFY(QFile::exists(backup));
+    QCOMPARE(QFileInfo(backup).size(), qint64(0));
+
+    QVERIFY(PodStack::DnsZone::remove(dir.path(), QStringLiteral("podstack.local"), &error));
+    QVERIFY(!QFile::exists(path));
+    QVERIFY(PodStack::DnsZone::remove(dir.path(), QStringLiteral("podstack.local"), &error));
+}
+
+void SetupTest::helperValidatesDnsZone()
+{
+    PodStack::HelperService helper;
+
+    QVariantMap reply =
+        helper.InstallDnsZone(QStringLiteral("evil.local"), QStringLiteral("127.0.0.1:5353"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(
+        reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("allowlist")));
+
+    reply = helper.InstallDnsZone(QStringLiteral("podstack.local"), QStringLiteral("8.8.8.8:53"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(
+        reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("allowlist")));
+
+    reply =
+        helper.InstallDnsZone(QStringLiteral("podstack.local"), QStringLiteral("127.0.0.1:5353"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("message")).toString(),
+             QStringLiteral("Chamada local não autorizada."));
+
+    reply = helper.RemoveDnsZone(QStringLiteral("park.local"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(
+        reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("allowlist")));
+}
+
+void SetupTest::helperInstallsDnsZone()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    DnsZoneHelper helper;
+    helper.directory = dir.path();
+    const QString path = dir.filePath(QStringLiteral("podstack.conf"));
+
+    QVariantMap reply =
+        helper.InstallDnsZone(QStringLiteral("podstack.local"), QStringLiteral("127.0.0.1:5353"));
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(helper.reloads, 1);
+    QVERIFY(QFile::exists(path));
+    QVERIFY(!reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("Avahi")));
+
+    helper.avahi = true;
+    reply =
+        helper.InstallDnsZone(QStringLiteral("podstack.local"), QStringLiteral("127.0.0.1:5353"));
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("Avahi")));
+
+    reply = helper.RemoveDnsZone(QStringLiteral("podstack.local"));
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(!QFile::exists(path));
+    QCOMPARE(helper.reloads, 3);
+
+    reply = helper.RemoveDnsZone(QStringLiteral("podstack.local"));
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(helper.reloads, 4);
 }
 
 void SetupTest::setupRunsSocketJob()

@@ -2,6 +2,7 @@
 #include "core/Logging.h"
 #include "core/Paths.h"
 #include "daemon/Daemon.h"
+#include "daemon/DnsServer.h"
 #include "daemon/HttpProxy.h"
 #include "daemon/RpcServer.h"
 
@@ -92,6 +93,17 @@ int main(int argc, char *argv[])
             qCWarning(lcRpc) << "Proxy HTTP de *.localhost indisponível:" << proxyError.message
                              << proxyError.detail;
             httpProxy.reset();
+        }
+    }
+
+    std::unique_ptr<PodStack::DnsServer> dnsServer;
+    if (config.get(QStringLiteral("network.bridge")).toBool(true)) {
+        dnsServer = std::make_unique<PodStack::DnsServer>();
+        PodStack::Error dnsError;
+        if (!dnsServer->listen(5353, &dnsError)) {
+            qCWarning(lcRpc) << "DNS de *.podstack.local indisponível:" << dnsError.message
+                             << dnsError.detail;
+            dnsServer.reset();
         }
     }
 
