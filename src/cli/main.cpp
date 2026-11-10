@@ -3544,7 +3544,8 @@ void printKubeUsage(QTextStream &stream)
            << "  info [--cluster NOME] [--json]  Estado do cluster\n"
            << "  env [--cluster NOME]            Imprime export KUBECONFIG=...\n"
            << "  start                           Cria a VM e instala o k3s\n"
-           << "  stop|disable [--force]          Remove a VM e o kubeconfig\n";
+           << "  stop|disable [--force]          Remove a VM e o kubeconfig\n"
+           << "  context [use <nome>]            Mostra ou troca o contexto\n";
     stream.flush();
 }
 
@@ -3696,6 +3697,50 @@ int kubeDisableCommand(const QStringList &args)
                           QJsonObject{{QStringLiteral("force"), force}});
 }
 
+int kubeContextCommand(const QStringList &args)
+{
+    if (args.size() >= 3 && args.at(1) == QStringLiteral("use")) {
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("k8s.context.use"),
+                        QJsonObject{{QStringLiteral("context"), args.at(2)}}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        out() << "contexto: " << result.value(QStringLiteral("context")).toString() << '\n';
+        out().flush();
+        return kExitOk;
+    }
+    if (args.size() != 1) {
+        err() << "Uso: podstack kube context [use <nome>]\n";
+        return kExitUsage;
+    }
+
+    QJsonObject status;
+    PodStack::Error error;
+    const int code = kubeStatus(QStringLiteral("default"), &status, &error);
+    if (code != kExitOk) {
+        return code;
+    }
+    const QString path = status.value(QStringLiteral("kubeconfigPath")).toString();
+    QFile file(path);
+    if (path.isEmpty() || !file.open(QIODevice::ReadOnly)) {
+        err() << "kubeconfig indisponível\n";
+        return kExitError;
+    }
+    const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        if (line.startsWith(QStringLiteral("current-context:"))) {
+            out() << line.mid(QStringLiteral("current-context:").size()).trimmed() << '\n';
+            out().flush();
+            return kExitOk;
+        }
+    }
+    err() << "current-context não encontrado\n";
+    return kExitError;
+}
+
 int commandKube(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -3719,6 +3764,9 @@ int commandKube(const QStringList &args)
     }
     if (subcommand == QStringLiteral("stop") || subcommand == QStringLiteral("disable")) {
         return kubeDisableCommand(args);
+    }
+    if (subcommand == QStringLiteral("context")) {
+        return kubeContextCommand(args);
     }
     err() << "comando kube desconhecido: " << subcommand << '\n';
     printKubeUsage(err());

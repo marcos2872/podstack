@@ -812,6 +812,15 @@ void CliTest::kubeCommands()
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("cluster removido")));
 
+    result = run({QStringLiteral("kube"), QStringLiteral("context")}, env);
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("kubeconfig")));
+
+    result = run({QStringLiteral("kube"), QStringLiteral("context"), QStringLiteral("use"),
+                  QStringLiteral("podstack-default")},
+                 env);
+    QCOMPARE(result.code, 1);
+
     result = run({QStringLiteral("kube"), QStringLiteral("bogus")}, env);
     QCOMPARE(result.code, 2);
     QVERIFY(result.err.contains(QStringLiteral("desconhecido")));

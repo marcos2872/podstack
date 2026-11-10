@@ -602,6 +602,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("k8s.portforward.stop")) {
         return k8sPortForwardStop(params, error);
     }
+    if (method == QStringLiteral("k8s.context.use")) {
+        return k8sContextUse(params, error);
+    }
     if (method == QStringLiteral("setup.status")) {
         return setupStatus();
     }
@@ -4375,6 +4378,15 @@ QJsonObject Daemon::k8sPortForwardStop(const QJsonObject &params, Error *error)
     }
     subscription->cancel.store(true);
     return QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("stopped"), true}};
+}
+
+QJsonObject Daemon::k8sContextUse(const QJsonObject &params, Error *error)
+{
+    const QString context = params.value(QStringLiteral("context")).toString().trimmed();
+    if (!m_k8s.useContext(context, error)) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("context"), context}};
 }
 
 QJsonObject Daemon::setupStatus()
