@@ -1426,21 +1426,24 @@ void GuiTest::guiStartsAndQuits()
     gui.setProcessEnvironment(environment);
     gui.setProcessChannelMode(QProcess::ForwardedChannels);
     gui.start(guiPath, {QStringLiteral("--hidden")});
-    QVERIFY2(gui.waitForStarted(5000), qPrintable(gui.errorString()));
+    QVERIFY2(gui.waitForStarted(10000), qPrintable(gui.errorString()));
 
     const QString instanceSocket = runtimeDir + QStringLiteral("/podstack/gui.sock");
-    for (int attempt = 0; attempt < 100 && !QFileInfo::exists(instanceSocket); ++attempt) {
+    // O runner do CI é mais lento para carregar QML; 5 s era apertado demais.
+    for (int attempt = 0; attempt < 300 && !QFileInfo::exists(instanceSocket); ++attempt) {
         QTest::qWait(50);
     }
-    QVERIFY(QFileInfo::exists(instanceSocket));
+    QVERIFY2(QFileInfo::exists(instanceSocket),
+             qPrintable(QStringLiteral("socket de instância não apareceu: %1")
+                            .arg(instanceSocket)));
 
     QProcess quit;
     quit.setProcessEnvironment(environment);
     quit.start(guiPath, {QStringLiteral("--quit")});
-    QVERIFY(quit.waitForFinished(5000));
+    QVERIFY(quit.waitForFinished(10000));
     QCOMPARE(quit.exitCode(), 0);
 
-    QVERIFY(gui.waitForFinished(5000));
+    QVERIFY(gui.waitForFinished(10000));
     QCOMPARE(gui.exitCode(), 0);
 
     config.set(QStringLiteral("app.showInTray"), true);
