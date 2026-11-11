@@ -1,8 +1,8 @@
 #pragma once
 
-#include <QString>
 #include <QHash>
 #include <QPair>
+#include <QString>
 
 #include <atomic>
 #include <mutex>
