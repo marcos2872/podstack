@@ -442,6 +442,9 @@ Estados: `provisioning → running → stopping → stopped → starting → run
 - `podstack machine ssh --x11` adiciona `-X` (X11 forwarding) e `--x11-trusted` adiciona `-Y`;
   o host precisa de `DISPLAY`/`XAUTHORITY` e o guest de `xauth`/cliente X11 (T8-04). Wayland
   nativo depende do compositor/cliente do guest e não é encaminhado pelo SSH.
+- Novas VMs recebem via cloud-init `xauth`, `x11-apps` (Debian/Ubuntu) ou `xorg-x11-apps`
+  (Fedora) e o drop-in `/etc/ssh/sshd_config.d/10-podstack-x11.conf` com `X11Forwarding yes`;
+  o sshd é reiniciado no final. VMs criadas antes disso precisam do passo manual.
 
 - Chave ed25519 por máquina em `~/.local/share/podstack/machines/<id>/id_ed25519` (0600),
   gerada por `ssh-keygen` na criação; a pública (`.pub`, 0644) vai para o seed cloud-init.

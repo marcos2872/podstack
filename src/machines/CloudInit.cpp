@@ -25,14 +25,13 @@ constexpr int kMaxLabelLength = 63;
 constexpr int kMaxUserLength = 32;
 constexpr int kMaxMachineIdLength = 128;
 constexpr int kSaltLength = 16;
-constexpr char kSaltAlphabet[] =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./";
+constexpr char kSaltAlphabet[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./";
 
 bool isAsciiAlphaNumeric(QChar character)
 {
     const ushort value = character.unicode();
-    return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z')
-           || (value >= '0' && value <= '9');
+    return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
+           (value >= '0' && value <= '9');
 }
 
 bool isValidHostname(const QString &hostname)
@@ -42,8 +41,8 @@ bool isValidHostname(const QString &hostname)
     }
     const QStringList labels = hostname.split(QLatin1Char('.'));
     for (const QString &label : labels) {
-        if (label.isEmpty() || label.size() > kMaxLabelLength
-            || label.startsWith(QLatin1Char('-')) || label.endsWith(QLatin1Char('-'))) {
+        if (label.isEmpty() || label.size() > kMaxLabelLength ||
+            label.startsWith(QLatin1Char('-')) || label.endsWith(QLatin1Char('-'))) {
             return false;
         }
         for (const QChar character : label) {
@@ -61,14 +60,13 @@ bool isValidUser(const QString &user)
         return false;
     }
     const QChar first = user.front();
-    if (!(first == QLatin1Char('_')
-          || (first.unicode() >= 'a' && first.unicode() <= 'z'))) {
+    if (!(first == QLatin1Char('_') || (first.unicode() >= 'a' && first.unicode() <= 'z'))) {
         return false;
     }
     for (const QChar character : user) {
         const ushort value = character.unicode();
-        const bool valid = (value >= 'a' && value <= 'z') || (value >= '0' && value <= '9')
-                           || value == '_' || value == '-';
+        const bool valid = (value >= 'a' && value <= 'z') || (value >= '0' && value <= '9') ||
+                           value == '_' || value == '-';
         if (!valid) {
             return false;
         }
@@ -82,9 +80,9 @@ bool isValidMachineId(const QString &machineId)
         return false;
     }
     for (const QChar character : machineId) {
-        if (!isAsciiAlphaNumeric(character) && character != QLatin1Char('.')
-            && character != QLatin1Char('_') && character != QLatin1Char(':')
-            && character != QLatin1Char('-')) {
+        if (!isAsciiAlphaNumeric(character) && character != QLatin1Char('.') &&
+            character != QLatin1Char('_') && character != QLatin1Char(':') &&
+            character != QLatin1Char('-')) {
             return false;
         }
     }
@@ -107,14 +105,14 @@ bool isValidEnvironmentName(const QString &name)
         return false;
     }
     const QChar first = name.front();
-    if (!(first == QLatin1Char('_') || (first.unicode() >= 'A' && first.unicode() <= 'Z')
-          || (first.unicode() >= 'a' && first.unicode() <= 'z'))) {
+    if (!(first == QLatin1Char('_') || (first.unicode() >= 'A' && first.unicode() <= 'Z') ||
+          (first.unicode() >= 'a' && first.unicode() <= 'z'))) {
         return false;
     }
     for (const QChar character : name) {
         const ushort value = character.unicode();
-        if (!((value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z')
-              || (value >= '0' && value <= '9') || value == '_')) {
+        if (!((value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||
+              (value >= '0' && value <= '9') || value == '_')) {
             return false;
         }
     }
@@ -141,8 +139,7 @@ QString passwordHash(const QString &password)
     crypt_data data{};
     const QByteArray passwordBytes = password.toUtf8();
     const QByteArray saltBytes = salt.toLatin1();
-    const char *hash =
-        crypt_r(passwordBytes.constData(), saltBytes.constData(), &data);
+    const char *hash = crypt_r(passwordBytes.constData(), saltBytes.constData(), &data);
     return hash ? QString::fromLatin1(hash) : QString();
 }
 
@@ -158,8 +155,7 @@ QString userDataFor(const CloudInitOptions &options, const QString &hash)
         return options.userData;
     }
 
-    const QString user =
-        options.user.isEmpty() ? QStringLiteral("podstack") : options.user;
+    const QString user = options.user.isEmpty() ? QStringLiteral("podstack") : options.user;
     QString data = QStringLiteral("#cloud-config\n"
                                   "users:\n"
                                   "  - name: %1\n"
@@ -169,8 +165,7 @@ QString userDataFor(const CloudInitOptions &options, const QString &hash)
     if (hash.isEmpty()) {
         data += QStringLiteral("    lock_passwd: true\n");
     } else {
-        data += QStringLiteral("    lock_passwd: false\n    passwd: %1\n")
-                    .arg(yamlQuote(hash));
+        data += QStringLiteral("    lock_passwd: false\n    passwd: %1\n").arg(yamlQuote(hash));
     }
     if (!options.sshAuthorizedKeys.isEmpty()) {
         data += QStringLiteral("    ssh_authorized_keys:\n");
@@ -179,9 +174,12 @@ QString userDataFor(const CloudInitOptions &options, const QString &hash)
         }
     }
     data += QStringLiteral("ssh_pwauth: false\n");
+    data += QStringLiteral("package_update: true\n"
+                           "packages:\n"
+                           "  - xauth\n"
+                           "write_files:\n");
     if (!options.environment.isEmpty()) {
-        data += QStringLiteral("write_files:\n"
-                               "  - path: /etc/environment\n"
+        data += QStringLiteral("  - path: /etc/environment\n"
                                "    append: true\n"
                                "    permissions: '0644'\n"
                                "    content: |\n");
@@ -190,6 +188,30 @@ QString userDataFor(const CloudInitOptions &options, const QString &hash)
             data += QStringLiteral("      %1=%2\n").arg(it.key(), it.value());
         }
     }
+    data += QStringLiteral("  - path: /etc/ssh/sshd_config.d/10-podstack-x11.conf\n"
+                           "    permissions: '0644'\n"
+                           "    content: |\n"
+                           "      X11Forwarding yes\n"
+                           "runcmd:\n"
+                           "  - |\n"
+                           "    if command -v apt-get >/dev/null 2>&1; then\n"
+                           "      DEBIAN_FRONTEND=noninteractive apt-get install -y x11-apps "
+                           "|| true\n"
+                           "      ssh_service=ssh\n"
+                           "    elif command -v dnf >/dev/null 2>&1; then\n"
+                           "      dnf install -y xorg-x11-apps || true\n"
+                           "      ssh_service=sshd\n"
+                           "    else\n"
+                           "      ssh_service=ssh\n"
+                           "    fi\n"
+                           "    if command -v sshd >/dev/null 2>&1 \\\n"
+                           "       && ! sshd -T 2>/dev/null | grep -qi '^x11forwarding yes'; "
+                           "then\n"
+                           "      sed -i 's/^#\\?X11Forwarding.*/X11Forwarding yes/' "
+                           "/etc/ssh/sshd_config || true\n"
+                           "    fi\n"
+                           "    systemctl restart \"$ssh_service\" 2>/dev/null \\\n"
+                           "      || systemctl restart sshd 2>/dev/null || true\n");
     return data;
 }
 
@@ -223,8 +245,7 @@ bool ensureParentDirectory(const QString &parent, Error *error)
     if (info.exists()) {
         if (!info.isDir()) {
             if (error) {
-                *error = ioError(QStringLiteral("O caminho do seed não é um diretório."),
-                                 parent);
+                *error = ioError(QStringLiteral("O caminho do seed não é um diretório."), parent);
             }
             return false;
         }
@@ -233,13 +254,12 @@ bool ensureParentDirectory(const QString &parent, Error *error)
 
     if (!QDir().mkpath(parent)) {
         if (error) {
-            *error = ioError(QStringLiteral("Não foi possível criar o diretório do seed."),
-                             parent);
+            *error = ioError(QStringLiteral("Não foi possível criar o diretório do seed."), parent);
         }
         return false;
     }
-    QFile::setPermissions(parent, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                      | QFileDevice::ExeOwner);
+    QFile::setPermissions(parent,
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
     return true;
 }
 
@@ -313,9 +333,8 @@ bool writeIso(const QString &path, const QByteArray &metaData, const QByteArray 
 
         int result = archive_write_header(handle.get(), entry);
         if (result == ARCHIVE_OK && !file.data->isEmpty()) {
-            const la_ssize_t written = archive_write_data(
-                handle.get(), file.data->constData(),
-                static_cast<size_t>(file.data->size()));
+            const la_ssize_t written = archive_write_data(handle.get(), file.data->constData(),
+                                                          static_cast<size_t>(file.data->size()));
             if (written != file.data->size()) {
                 result = ARCHIVE_FATAL;
             }
@@ -343,8 +362,7 @@ bool writeIso(const QString &path, const QByteArray &metaData, const QByteArray 
 
 } // namespace
 
-bool CloudInit::writeSeedIso(const QString &path, const CloudInitOptions &options,
-                             Error *error)
+bool CloudInit::writeSeedIso(const QString &path, const CloudInitOptions &options, Error *error)
 {
     if (error) {
         *error = {};
@@ -359,9 +377,9 @@ bool CloudInit::writeSeedIso(const QString &path, const CloudInitOptions &option
     }
     if (!isValidMachineId(options.machineId)) {
         if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
-                                 QStringLiteral("instance-id inválido para o seed."),
-                                 options.machineId);
+            *error =
+                Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                            QStringLiteral("instance-id inválido para o seed."), options.machineId);
         }
         return false;
     }
@@ -374,8 +392,7 @@ bool CloudInit::writeSeedIso(const QString &path, const CloudInitOptions &option
         return false;
     }
 
-    const QString user =
-        options.user.isEmpty() ? QStringLiteral("podstack") : options.user;
+    const QString user = options.user.isEmpty() ? QStringLiteral("podstack") : options.user;
     if (!isValidUser(user)) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
@@ -392,8 +409,7 @@ bool CloudInit::writeSeedIso(const QString &path, const CloudInitOptions &option
             return false;
         }
     }
-    for (auto it = options.environment.constBegin(); it != options.environment.constEnd();
-         ++it) {
+    for (auto it = options.environment.constBegin(); it != options.environment.constEnd(); ++it) {
         if (!isValidEnvironmentName(it.key()) || hasControlCharacters(it.value())) {
             if (error) {
                 *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
@@ -424,8 +440,7 @@ bool CloudInit::writeSeedIso(const QString &path, const CloudInitOptions &option
     const QFileInfo target(path);
     if (target.isDir()) {
         if (error) {
-            *error = ioError(QStringLiteral("O caminho do seed aponta para um diretório."),
-                             path);
+            *error = ioError(QStringLiteral("O caminho do seed aponta para um diretório."), path);
         }
         return false;
     }
@@ -449,8 +464,7 @@ bool CloudInit::writeSeedIso(const QString &path, const CloudInitOptions &option
         return false;
     }
 
-    if (!QFile::setPermissions(temporaryPath, QFileDevice::ReadOwner
-                                                | QFileDevice::WriteOwner)) {
+    if (!QFile::setPermissions(temporaryPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
         QFile::remove(temporaryPath);
         if (error) {
             *error = ioError(QStringLiteral("Não foi possível restringir o seed a 0600."),
