@@ -82,7 +82,7 @@ void printUsage()
           << "                          Gerencia machines QEMU/KVM\n"
           << "  kube <info|env> [--cluster NOME]\n"
           << "                          Cluster Kubernetes e KUBECONFIG\n"
-          << "  ssh [id|nome] [-- cmd...]\n"
+          << "  ssh [id|nome] [--x11|--x11-trusted] [-- cmd...]\n"
           << "                          Abre SSH (sem id usa a machine default)\n"
           << "  top [--once] [--interval S] [--json] [--plain]\n"
           << "                          Monitora CPU/memória/containers\n"
@@ -1577,9 +1577,9 @@ void printMachineUsage(QTextStream &stream)
            << "                          Remove um snapshot do disco\n"
            << "  default [<id|nome>] [--json]\n"
            << "                          Mostra ou define a machine default\n"
-           << "  ssh [id|nome] [-- cmd...]\n"
+           << "  ssh [id|nome] [--x11|--x11-trusted] [-- cmd...]\n"
            << "                          Abre SSH (sem id usa a machine default; -A se\n"
-           << "                          o SSH agent estiver encaminhado)\n"
+           << "                          o SSH agent estiver encaminhado; -X/-Y para X11)\n"
            << "  files ls <id|nome> [--path P] [--json]\n"
            << "                          Lista arquivos da machine via SSH\n"
            << "  pull <id|nome> <remoto> <local>\n"
@@ -3434,6 +3434,7 @@ int machineSshCommand(const QStringList &args)
 {
     QString id;
     QStringList command;
+    QString x11Flag;
     for (int i = 0; i < args.size(); ++i) {
         const QString &arg = args.at(i);
         if (arg == QStringLiteral("--")) {
@@ -3444,7 +3445,11 @@ int machineSshCommand(const QStringList &args)
             printMachineUsage(out());
             return kExitOk;
         }
-        if (id.isEmpty() && !arg.startsWith(QLatin1Char('-'))) {
+        if (arg == QStringLiteral("--x11") || arg == QStringLiteral("-X")) {
+            x11Flag = QStringLiteral("-X");
+        } else if (arg == QStringLiteral("--x11-trusted") || arg == QStringLiteral("-Y")) {
+            x11Flag = QStringLiteral("-Y");
+        } else if (id.isEmpty() && !arg.startsWith(QLatin1Char('-'))) {
             id = arg;
         } else {
             err() << "opção desconhecida: " << arg << '\n';
@@ -3487,6 +3492,9 @@ int machineSshCommand(const QStringList &args)
     }
 
     QStringList sshArguments;
+    if (!x11Flag.isEmpty()) {
+        sshArguments << x11Flag;
+    }
     if (forwardAgent) {
         sshArguments << QStringLiteral("-A");
     }
