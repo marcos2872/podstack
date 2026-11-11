@@ -147,6 +147,11 @@ Rectangle {
         if (root.tab !== "logs") {
             backend.stopMachineConsole()
         }
+        if (root.machineId.length > 0) {
+            if (typeof appWindow !== "undefined" && appWindow) {
+                appWindow.rememberDetailTab("machine", root.tab)
+            }
+        }
         root.syncTerminalArea()
     }
     onWidthChanged: root.syncTerminalArea()

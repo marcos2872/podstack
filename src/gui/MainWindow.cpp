@@ -8,16 +8,20 @@
 #include "gui/SingleInstance.h"
 #include "gui/TerminalView.h"
 #include "gui/Tray.h"
+#include "gui/UiState.h"
 
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDebug>
 #include <QDockWidget>
+#include <QGuiApplication>
 #include <QQmlContext>
 #include <QQmlError>
 #include <QQuickItem>
 #include <QQuickWidget>
+#include <QScreen>
 #include <QTabWidget>
+#include <QTimer>
 
 namespace PodStack {
 
@@ -31,6 +35,7 @@ MainWindow::MainWindow(Backend *backend, TrayController *tray,
     , m_singleInstance(singleInstance)
     , m_startHidden(startHidden)
 {
+    m_uiState.load();
     setWindowTitle(QStringLiteral("PodStack"));
     if (m_tray) {
         setWindowIcon(m_tray->icon());
@@ -42,6 +47,11 @@ MainWindow::MainWindow(Backend *backend, TrayController *tray,
         loadMainQml();
     }
     createTerminalDock();
+    restoreUiState();
+
+    m_uiStateSaveTimer.setSingleShot(true);
+    m_uiStateSaveTimer.setInterval(500);
+    connect(&m_uiStateSaveTimer, &QTimer::timeout, this, &MainWindow::saveUiState);
 
     if (m_backend) {
         connect(m_backend, &Backend::terminalRequested, this, &MainWindow::openTerminal);
@@ -71,6 +81,7 @@ void MainWindow::loadMainQml()
     context->setContextProperty(QStringLiteral("singleInstance"), m_singleInstance);
     context->setContextProperty(QStringLiteral("startHidden"), m_startHidden);
     context->setContextProperty(QStringLiteral("appWindow"), this);
+    context->setContextProperty(QStringLiteral("startupSection"), m_uiState.section);
 
     connect(m_quickWidget, &QQuickWidget::statusChanged, this,
             [this](QQuickWidget::Status status) {
@@ -188,7 +199,7 @@ void MainWindow::openContainerDetail(const QString &id)
     if (id.isEmpty()) {
         return;
     }
-    ensureDetailDialog()->openContainer(id);
+    ensureDetailDialog()->openContainer(id, m_uiState.containerTab);
 }
 
 void MainWindow::openContainerDetailTab(const QString &id, int detailTab)
@@ -212,11 +223,96 @@ void MainWindow::openMachineDetail(const QString &id, int tab)
     if (id.isEmpty()) {
         return;
     }
+    if (tab < 0) {
+        tab = UiState::supportedMachineTabs().indexOf(m_uiState.machineTab);
+        if (tab < 0) {
+            tab = 0;
+        }
+    }
     ensureMachineDetailDialog()->openMachine(id, tab);
+}
+
+QString MainWindow::startupSection() const
+{
+    return m_uiState.section;
+}
+
+int MainWindow::startupContainerTab() const
+{
+    return m_uiState.containerTab;
+}
+
+QString MainWindow::startupMachineTab() const
+{
+    return m_uiState.machineTab;
+}
+
+void MainWindow::rememberSection(const QString &section)
+{
+    if (!UiState::isValidSection(section) || m_uiState.section == section) {
+        return;
+    }
+    m_uiState.section = section;
+    scheduleUiStateSave();
+}
+
+void MainWindow::rememberDetailTab(const QString &kind, const QVariant &tab)
+{
+    if (kind == QStringLiteral("container")) {
+        const int index = tab.toInt();
+        if (!UiState::isValidContainerTab(index) || m_uiState.containerTab == index) {
+            return;
+        }
+        m_uiState.containerTab = index;
+    } else if (kind == QStringLiteral("machine")) {
+        const QString name = tab.toString();
+        if (!UiState::isValidMachineTab(name) || m_uiState.machineTab == name) {
+            return;
+        }
+        m_uiState.machineTab = name;
+    } else {
+        return;
+    }
+    scheduleUiStateSave();
+}
+
+void MainWindow::restoreUiState()
+{
+    if (m_uiState.windowGeometry.isEmpty() || !restoreGeometry(m_uiState.windowGeometry)) {
+        return;
+    }
+    const QRect frame = frameGeometry();
+    bool onScreen = false;
+    for (QScreen *screen : QGuiApplication::screens()) {
+        if (screen->availableGeometry().intersects(frame)) {
+            onScreen = true;
+            break;
+        }
+    }
+    if (!onScreen) {
+        resize(1240, 780);
+        if (QScreen *screen = QGuiApplication::primaryScreen()) {
+            move(screen->availableGeometry().center() - rect().center());
+        }
+    }
+}
+
+void MainWindow::scheduleUiStateSave()
+{
+    m_uiStateSaveTimer.start();
+}
+
+void MainWindow::saveUiState()
+{
+    if (!m_uiState.windowGeometry.isEmpty() || isVisible()) {
+        m_uiState.windowGeometry = saveGeometry();
+    }
+    (void) m_uiState.save();
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    saveUiState();
     updateQuitOnLastWindowClosed();
 
     if (m_tray && m_tray->canHideToTray()) {

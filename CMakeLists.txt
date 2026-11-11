@@ -174,6 +174,7 @@ add_library(podstack_gui_lib STATIC
     src/gui/TerminalView.cpp
     src/gui/TerminalWindow.cpp
     src/gui/Tray.cpp
+    src/gui/UiState.cpp
 )
 target_include_directories(podstack_gui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_gui_lib PUBLIC

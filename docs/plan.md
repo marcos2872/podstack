@@ -307,6 +307,7 @@ qemu-system-x86_64 \
 | `~/.local/share/podstack/ca/` | CA/chaves | 0600 |
 | `~/.cache/podstack/images/` | imagens cloud | 0700 |
 | `~/.local/state/podstack/logs/` | logs rotacionados | 0700 |
+| `~/.local/state/podstack/ui-state.json` | geometria, seção e abas da UI | 0600 |
 | `$XDG_RUNTIME_DIR/podstack/` | sockets, PID, locks | 0700 |
 
 ---

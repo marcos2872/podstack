@@ -9,6 +9,7 @@
 #include "gui/TerminalView.h"
 #include "gui/TerminalWindow.h"
 #include "gui/Tray.h"
+#include "gui/UiState.h"
 
 #include <QDockWidget>
 #include <QFile>
@@ -74,6 +75,7 @@ private slots:
     void machineDetailOverlayErrors();
     void mainWindowTerminalDock();
     void mainWindowQml();
+    void mainWindowRestoresSection();
 
 private:
     QTemporaryDir m_runtime;
@@ -814,6 +816,45 @@ void TerminalTest::mainWindowTerminalDock()
 
     window.close();
     QVERIFY(!window.isVisible());
+}
+
+void TerminalTest::mainWindowRestoresSection()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString statePath = dir.filePath(QStringLiteral("ui-state.json"));
+    qputenv("PODSTACK_UI_STATE", statePath.toUtf8());
+
+    PodStack::UiState state;
+    state.section = QStringLiteral("machines");
+    state.containerTab = 3;
+    state.machineTab = QStringLiteral("logs");
+    QVERIFY(state.save(statePath));
+
+    PodStack::Backend backend;
+    PodStack::TrayController tray(false);
+    PodStack::NotificationService notifications;
+    PodStack::SingleInstance singleInstance;
+    PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance,
+                                /*startHidden=*/true, /*loadQml=*/true);
+
+    QTRY_VERIFY_WITH_TIMEOUT(window.qmlLoaded(), 5000);
+    auto *quick = qobject_cast<QQuickWidget *>(window.centralWidget());
+    QVERIFY(quick != nullptr);
+    QObject *root = quick->rootObject();
+    QVERIFY(root != nullptr);
+    QCOMPARE(root->property("section").toString(), QStringLiteral("machines"));
+
+    QMetaObject::invokeMethod(root, "openSection", Q_ARG(QVariant, QStringLiteral("images")));
+    QTRY_COMPARE_WITH_TIMEOUT(root->property("section").toString(), QStringLiteral("images"), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&statePath]() {
+            PodStack::UiState saved;
+            return saved.load(statePath) && saved.section == QStringLiteral("images");
+        }(),
+        3000);
+
+    qunsetenv("PODSTACK_UI_STATE");
 }
 
 void TerminalTest::mainWindowQml()
