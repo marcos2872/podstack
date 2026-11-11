@@ -366,10 +366,10 @@ void CoreTest::redactionHidesSecrets()
     QCOMPARE(PodStack::Redaction::text(QStringLiteral("http://user:pass@proxy:3128")),
              QStringLiteral("http://[redacted]@proxy:3128"));
 
-    const QJsonObject input{{QStringLiteral("network.proxy"),
-                             QStringLiteral("http://user:pass@proxy:3128")},
-                            {QStringLiteral("app.theme"), QStringLiteral("dark")},
-                            {QStringLiteral("apiKey"), QStringLiteral("xyz")}};
+    const QJsonObject input{
+        {QStringLiteral("network.proxy"), QStringLiteral("http://user:pass@proxy:3128")},
+        {QStringLiteral("app.theme"), QStringLiteral("dark")},
+        {QStringLiteral("apiKey"), QStringLiteral("xyz")}};
     const QJsonObject output = PodStack::Redaction::json(input).toObject();
     QVERIFY(!output.value(QStringLiteral("network.proxy")).toString().contains("pass"));
     QVERIFY(output.value(QStringLiteral("network.proxy")).toString().contains("[redacted]"));

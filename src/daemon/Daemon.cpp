@@ -2055,9 +2055,9 @@ QJsonObject Daemon::systemReport(const QJsonObject &params, Error *error)
     QJsonObject result;
     result.insert(QStringLiteral("path"), path);
     result.insert(QStringLiteral("bytes"), payload.size());
-    result.insert(QStringLiteral("sha256"),
-                  QString::fromLatin1(
-                      QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex()));
+    result.insert(
+        QStringLiteral("sha256"),
+        QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex()));
     return result;
 }
 
