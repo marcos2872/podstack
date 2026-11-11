@@ -89,6 +89,7 @@ void printUsage()
           << "                          Uso de disco e prévia de prune\n"
           << "  setup [--check|--status|--validate]\n"
           << "        [--apply podman|qemu|components|socket]\n"
+          << "        [--docker-impact [--json]]\n"
           << "        [--remove-docker --yes]\n"
           << "                          Setup/onboarding da máquina\n"
           << "  config <show|get|set|add|remove|reset|schema> [args]\n"
@@ -4108,16 +4109,54 @@ int commandSetup(const QStringList &args)
         }
     };
 
+    const auto printDockerImpact = [](const QJsonObject &impact) {
+        const QJsonObject containers = impact.value(QStringLiteral("containers")).toObject();
+        out() << QStringLiteral("Impacto do Docker: %1 containers (%2 em execução), "
+                                "%3 imagens, %4 redes e %5 volumes.\n")
+                     .arg(containers.value(QStringLiteral("total")).toInt())
+                     .arg(containers.value(QStringLiteral("running")).toInt())
+                     .arg(impact.value(QStringLiteral("images")).toInt())
+                     .arg(impact.value(QStringLiteral("networks")).toInt())
+                     .arg(impact.value(QStringLiteral("volumes")).toInt());
+    };
+
+    const bool dockerImpactFlag = args.contains(QStringLiteral("--docker-impact"));
     const bool removeDocker = args.contains(QStringLiteral("--remove-docker"));
+    if (dockerImpactFlag) {
+        const QJsonObject impact = client.call(QStringLiteral("setup.dockerImpact"), {}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        if (args.contains(QStringLiteral("--json"))) {
+            QJsonObject json = impact;
+            json.insert(QStringLiteral("api"), 1);
+            out() << QJsonDocument(json).toJson(QJsonDocument::Indented);
+        } else if (impact.value(QStringLiteral("available")).toBool()) {
+            printDockerImpact(impact);
+        } else {
+            out() << "Inventário do Docker indisponível: "
+                  << impact.value(QStringLiteral("error")).toString() << '\n';
+        }
+        out().flush();
+        return kExitOk;
+    }
+
     if (removeDocker) {
         if (!args.contains(QStringLiteral("--yes"))) {
             err() << "A remoção do Docker exige --yes e aviso explícito de perda de dados.\n";
             err().flush();
             return kExitUsage;
         }
-        const QJsonObject result = client.call(
-            QStringLiteral("setup.removeDocker"),
-            QJsonObject{{QStringLiteral("confirm"), true}}, &error);
+        PodStack::Error impactError;
+        const QJsonObject impact =
+            client.call(QStringLiteral("setup.dockerImpact"), {}, &impactError);
+        if (impactError.isEmpty() && impact.value(QStringLiteral("available")).toBool()) {
+            printDockerImpact(impact);
+            out().flush();
+        }
+        const QJsonObject result =
+            client.call(QStringLiteral("setup.removeDocker"),
+                        QJsonObject{{QStringLiteral("confirm"), true}}, &error);
         if (!error.isEmpty()) {
             return fail(error);
         }

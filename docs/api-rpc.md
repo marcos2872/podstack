@@ -723,6 +723,7 @@ privilegiadas passam pelo helper allowlisted e nunca por shell na GUI.
 | `setup.check` | `{deep?:bool}` | `{checks: SetupCheck[]}` |
 | `setup.apply` | `{action:"install-podman"\|"upgrade-podman"\|"install-qemu"\|"install-components"\|"enable-socket", components?:string[]}` | `{jobId, state}` |
 | `setup.removeDocker` | `{confirm:true}` | `{jobId, state}` |
+| `setup.dockerImpact` | `{}` | `{available, socket, checkedAt, containers:{total,running}, images, networks, volumes, estimatedSizeBytes, error}` |
 | `setup.cancel` | `{jobId}` | `{cancelled:bool}` |
 | `setup.complete` | `{skipped?:bool}` | `{completed, skipped}` |
 | `setup.subscribe` | `{jobId}` | `{jobId}` — anexa o cliente ao job e envia `setup.delta` |
@@ -731,6 +732,9 @@ privilegiadas passam pelo helper allowlisted e nunca por shell na GUI.
 - `SetupCheck`: `{id, status:"ok"|"warn"|"missing"|"optional", version, detail, remediation}`.
 - `setup.apply` **não** remove o Docker; `setup.removeDocker` é separado, opt-in e exige `confirm:true`
   (sem isso retorna `PODSTACK_CONFIRMATION_REQUIRED`).
+- `setup.dockerImpact` lê `/system/df` e `/networks` do socket do Docker em modo **read-only** e
+  devolve as contagens usadas no aviso de remoção. Sem socket/permissão, retorna `available:false`
+  com `error` (não é erro RPC) e nunca bloqueia a remoção.
 - `setup.complete` grava `setup.completed`/`completedAt`/`lastValidation`; com `skipped:true` grava
   apenas `app.showOnboarding=false`, mantendo o setup pendente.
 - Progresso via `setup.delta`/`setup.done`; o job continua no daemon se a janela fechar e pode ser

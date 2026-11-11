@@ -73,7 +73,10 @@ QByteArray httpResponse(int status, const QByteArray &reason, const QByteArray &
 
 MockPodmanServer::MockPodmanServer()
 {
-    m_path = QDir::tempPath() + QStringLiteral("/podstack-mock-%1.sock").arg(::getpid());
+    static std::atomic<int> instanceCounter{0};
+    m_path = QDir::tempPath() + QStringLiteral("/podstack-mock-%1-%2.sock")
+                                    .arg(::getpid())
+                                    .arg(instanceCounter.fetch_add(1));
     ::unlink(m_path.toUtf8().constData());
 
     m_listenFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -161,6 +164,12 @@ void MockPodmanServer::setNativeContainers(bool enabled)
     m_nativeContainers.store(enabled);
 }
 
+void MockPodmanServer::setResponse(const QString &path, int status, const QByteArray &body)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_responses.insert(path, qMakePair(status, body));
+}
+
 void MockPodmanServer::run()
 {
     while (!m_stopping.load()) {
@@ -220,6 +229,17 @@ void MockPodmanServer::handleClient(int clientFd)
             && pathOnly.endsWith(QStringLiteral("/containers/create"))) {
             m_lastCreateBody = body;
             ++m_createCount;
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        const auto it = m_responses.constFind(pathOnly);
+        if (it != m_responses.constEnd()) {
+            const QByteArray custom = httpResponse(it->first, "OK", it->second);
+            [[maybe_unused]] const ssize_t written =
+                ::write(clientFd, custom.constData(), custom.size());
+            return;
         }
     }
 

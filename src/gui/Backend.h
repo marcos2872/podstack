@@ -131,6 +131,7 @@ class Backend : public QObject {
     Q_PROPERTY(bool setupMandatoryOk READ setupMandatoryOk NOTIFY setupChanged)
     Q_PROPERTY(QVariantList setupChecks READ setupChecks NOTIFY setupChanged)
     Q_PROPERTY(QVariantMap setupSummary READ setupSummary NOTIFY setupChanged)
+    Q_PROPERTY(QVariantMap setupDockerImpact READ setupDockerImpact NOTIFY setupChanged)
     Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
     Q_PROPERTY(QString setupJobId READ setupJobId NOTIFY setupJobChanged)
     Q_PROPERTY(bool setupJobActive READ setupJobActive NOTIFY setupJobChanged)
@@ -247,6 +248,7 @@ public:
     bool setupMandatoryOk() const;
     QVariantList setupChecks() const { return m_setupChecks; }
     QVariantMap setupSummary() const { return m_setupSummary; }
+    QVariantMap setupDockerImpact() const { return m_setupDockerImpact; }
     QString setupDockerPolicy() const { return m_setupDockerPolicy; }
     QString setupJobId() const { return m_setupJobId; }
     bool setupJobActive() const { return m_setupJobActive; }
@@ -404,6 +406,7 @@ public:
     Q_INVOKABLE void setupCheck();
     Q_INVOKABLE void setupValidate();
     Q_INVOKABLE void setupApply(const QString &action, const QVariantList &components = {});
+    Q_INVOKABLE void setupLoadDockerImpact();
     Q_INVOKABLE void setupRemoveDocker();
     Q_INVOKABLE void setupCancel();
     Q_INVOKABLE void setupComplete();
@@ -666,6 +669,7 @@ private:
     bool m_setupShowOnboarding = true;
     QVariantList m_setupChecks;
     QVariantMap m_setupSummary;
+    QVariantMap m_setupDockerImpact;
     QString m_setupDockerPolicy = QStringLiteral("keep");
     QString m_setupJobId;
     bool m_setupJobActive = false;

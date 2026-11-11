@@ -214,7 +214,7 @@ rootless; o M6 está concluído no código.
 | T7-10 | P1 | Atalhos e acessibilidade | T0-11 | Teclado completo |
 | T7-11 | P2 | Migração **opcional** de dados de Docker/Podman | T2-05 | Prévia/rollback; não é pré-requisito |
 | T7-12 | P2 | Licença/conta (opcional) | T7-01 | Offline funciona |
-| T7-13 | P1 | Coexistência Docker/Podman e remoção opt-in com confirmação | T7-07 | Docker presente não bloqueia; remoção exige confirmação |
+| T7-13 | P1 | Coexistência Docker/Podman e remoção opt-in com confirmação | T7-07 | ✅ — Docker presente não bloqueia o setup; a remoção exige `confirm:true`/`--yes` e o helper allowlisted. `setup.dockerImpact` lê `/system/df` + `/networks` do socket (read-only) e mostra containers (total/em execução), imagens, redes e volumes no diálogo e no CLI (`setup --docker-impact [--json]`); o job registra o impacto antes de remover e logs do helper incluem `uid`. Evidência: `test_setup/dockerInventoryCounts`, `dockerInventoryNoSocket`, `helperAuditsUid`; `test_rpc/setupDockerImpact`; `test_cli/setupCommand`. |
 | T7-14 | P0 | Helper allowlisted para setup (pacotes e remoção) | T7-07 | Sem shell/sudo na GUI; auditoria — implementado (`podstack-helper`, polkit, allowlist); falta validação em máquina limpa |
 
 **Evidência T7-01 (2026-11-09):** `cmake --build --preset dev` sem erros; `ctest --preset dev`

@@ -5,6 +5,7 @@
 #include "core/Config.h"
 #include "core/Paths.h"
 #include "core/SetupPolicy.h"
+#include "daemon/DockerInventory.h"
 
 #include <QFileInfo>
 #include <QJsonArray>
@@ -411,6 +412,11 @@ QJsonObject SetupManager::validate()
     return result;
 }
 
+QJsonObject SetupManager::dockerImpact() const
+{
+    return DockerInventory().inspect().toJson();
+}
+
 std::shared_ptr<SetupManager::Job> SetupManager::createJob(const QString &action,
                                                            const Notify &notify)
 {
@@ -706,6 +712,20 @@ void SetupManager::runJob(const std::shared_ptr<Job> &job, const QJsonObject &op
     };
 
     if (job->action == QStringLiteral("remove-docker")) {
+        const DockerImpact impact = DockerInventory().inspect();
+        if (impact.available) {
+            appendLog(job, QStringLiteral("Impacto do Docker: %1 containers (%2 em execução), "
+                                          "%3 imagens, %4 redes e %5 volumes.")
+                               .arg(impact.containers)
+                               .arg(impact.running)
+                               .arg(impact.images)
+                               .arg(impact.networks)
+                               .arg(impact.volumes));
+        } else {
+            appendLog(
+                job,
+                QStringLiteral("Não foi possível ler o impacto do Docker: %1").arg(impact.error));
+        }
         appendLog(job, QStringLiteral("Removendo pacotes do Docker (containers, imagens, redes e "
                                       "volumes do Docker podem ser perdidos)…"));
         setProgress(job, 30);

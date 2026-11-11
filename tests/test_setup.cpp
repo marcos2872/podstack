@@ -2,6 +2,7 @@
 #include "core/Config.h"
 #include "core/Paths.h"
 #include "daemon/DbusUtils.h"
+#include "daemon/DockerInventory.h"
 #include "daemon/SetupManager.h"
 #include "helper/CaTrust.h"
 #include "helper/DnsZone.h"
@@ -26,6 +27,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QThreadPool>
+
+#include "MockPodmanServer.h"
 
 namespace {
 
@@ -52,6 +55,13 @@ QString readLog(const QString &path)
         return {};
     }
     return QString::fromUtf8(file.readAll()).trimmed();
+}
+
+QStringList g_capturedMessages;
+
+void captureMessage(QtMsgType, const QMessageLogContext &, const QString &message)
+{
+    g_capturedMessages.append(message);
 }
 
 QByteArray testCaPem()
@@ -189,6 +199,9 @@ private slots:
 
     void helperRejectsPackagesOutsideAllowlist();
     void helperRequiresDBusAuthorization();
+    void helperAuditsUid();
+    void dockerInventoryCounts();
+    void dockerInventoryNoSocket();
     void helperValidatesPorts();
     void dnsZoneInstallBackupAndRemove();
     void helperValidatesDnsZone();
@@ -552,6 +565,65 @@ void SetupTest::helperRequiresDBusAuthorization()
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(reply.value(QStringLiteral("message")).toString(),
              QStringLiteral("Chamada local não autorizada."));
+}
+
+void SetupTest::helperAuditsUid()
+{
+    PodStack::HelperService helper;
+    g_capturedMessages.clear();
+    const QtMessageHandler previous = qInstallMessageHandler(captureMessage);
+    const QVariantMap reply = helper.InstallPackages({QStringLiteral("podman")});
+    qInstallMessageHandler(previous);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    const QString log = g_capturedMessages.join(QLatin1Char('\n'));
+    QVERIFY2(log.contains(QStringLiteral("installation requested: uid=")), qPrintable(log));
+    QVERIFY2(log.contains(QStringLiteral("installation denied: uid=")), qPrintable(log));
+}
+
+void SetupTest::dockerInventoryCounts()
+{
+    MockPodmanServer server;
+    QVERIFY(server.isListening());
+    server.setResponse(QStringLiteral("/system/df"), 200, R"({
+        "LayersSize": 5000000,
+        "Containers": [
+            {"Id":"a","State":"running","SizeRw":100},
+            {"Id":"b","State":"exited","SizeRw":200}
+        ],
+        "Images": [{"Id":"i1"},{"Id":"i2"}],
+        "Volumes": [{"Name":"v1","UsageData":{"Size":3000}}]
+    })");
+    server.setResponse(QStringLiteral("/networks"), 200, R"([{"Id":"n1"},{"Id":"n2"}])");
+
+    PodStack::DockerInventory inventory(server.socketPath());
+    const PodStack::DockerImpact impact = inventory.inspect();
+
+    QVERIFY2(impact.available, qPrintable(impact.error));
+    QCOMPARE(impact.containers, 2);
+    QCOMPARE(impact.running, 1);
+    QCOMPARE(impact.images, 2);
+    QCOMPARE(impact.networks, 2);
+    QCOMPARE(impact.volumes, 1);
+    QCOMPARE(impact.estimatedSizeBytes, 5003300);
+
+    const QJsonObject json = impact.toJson();
+    QCOMPARE(
+        json.value(QStringLiteral("containers")).toObject().value(QStringLiteral("total")).toInt(),
+        2);
+    QCOMPARE(json.value(QStringLiteral("available")).toBool(), true);
+}
+
+void SetupTest::dockerInventoryNoSocket()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    PodStack::DockerInventory inventory(dir.filePath(QStringLiteral("missing.sock")));
+
+    const PodStack::DockerImpact impact = inventory.inspect(200);
+    QCOMPARE(impact.available, false);
+    QVERIFY(!impact.error.isEmpty());
+    QCOMPARE(impact.toJson().value(QStringLiteral("available")).toBool(), false);
 }
 
 void SetupTest::helperValidatesPorts()
