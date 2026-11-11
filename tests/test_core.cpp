@@ -9,8 +9,11 @@
 #include "core/Settings.h"
 #include "core/SetupActions.h"
 #include "core/SetupPolicy.h"
+#include "core/UpdateManifest.h"
 #include "daemon/BuildStore.h"
 #include "daemon/ManifestBuilder.h"
+
+#include "UpdateTestUtils.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -50,6 +53,12 @@ private slots:
     void configValidation();
     void configResetPreservesSetup();
     void proxyValidation();
+    void updateVersionOrdering();
+    void updateManifestParsesChannels();
+    void updateManifestRejectsMalformed();
+    void updateSignatureVerifiesDetached();
+    void updateSignatureRejectsTampered();
+    void updateSignaturePrehashed();
     void redactionHidesSecrets();
     void proxyEnvironment();
     void setupActionsMapPodmanStatus();
@@ -199,7 +208,7 @@ void CoreTest::configInvalidFallsBack()
 void CoreTest::configSchemaCoversDocumentedKeys()
 {
     const QVector<PodStack::SettingDef> &definitions = PodStack::Settings::definitions();
-    QCOMPARE(definitions.size(), 83);
+    QCOMPARE(definitions.size(), 85);
 
     QSet<QString> keys;
     for (const PodStack::SettingDef &definition : definitions) {
@@ -244,7 +253,7 @@ void CoreTest::configSchemaCoversDocumentedKeys()
     QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 1);
 
     const QJsonObject schema = PodStack::Config::schema();
-    QCOMPARE(schema.value(QStringLiteral("schema")).toArray().size(), 83);
+    QCOMPARE(schema.value(QStringLiteral("schema")).toArray().size(), 85);
     const PodStack::SettingDef *proxy = PodStack::Settings::find(QStringLiteral("network.proxy"));
     QVERIFY(proxy != nullptr);
     QVERIFY(proxy->secret);
@@ -434,6 +443,107 @@ void CoreTest::proxyValidation()
     QCOMPARE(PodStack::Proxy::defaultExcludes(),
              QStringList({QStringLiteral("localhost"), QStringLiteral("127.0.0.1"),
                           QStringLiteral("::1"), QStringLiteral("*.localhost")}));
+}
+
+void CoreTest::updateVersionOrdering()
+{
+    QVERIFY(PodStack::compareVersions(QStringLiteral("0.1.0"), QStringLiteral("0.2.0")) < 0);
+    QVERIFY(PodStack::compareVersions(QStringLiteral("v1.2.3"), QStringLiteral("1.2.3")) == 0);
+    QVERIFY(PodStack::compareVersions(QStringLiteral("1.10.0"), QStringLiteral("1.9.9")) > 0);
+    QVERIFY(PodStack::compareVersions(QStringLiteral("1.0.0-beta.1"), QStringLiteral("1.0.0")) < 0);
+    QVERIFY(PodStack::compareVersions(QStringLiteral("1.0.0-beta.2"),
+                                      QStringLiteral("1.0.0-beta.10")) < 0);
+    QVERIFY(PodStack::compareVersions(QStringLiteral("1.0.0+build.5"), QStringLiteral("1.0.0")) ==
+            0);
+}
+
+void CoreTest::updateManifestParsesChannels()
+{
+    const QByteArray json = R"({
+        "schemaVersion": 1,
+        "channels": {
+            "stable": {
+                "version": "0.2.0",
+                "releaseUrl": "https://example.test/v0.2.0",
+                "notes": "notas",
+                "artifacts": [
+                    {"arch":"x86_64","format":"rpm","url":"https://example.test/p.rpm",
+                     "sha256":"abc"}
+                ]
+            },
+            "beta": {"version": "0.3.0-beta.1"}
+        }
+    })";
+    PodStack::UpdateManifest manifest;
+    QString error;
+    QVERIFY2(PodStack::parseUpdateManifest(json, &manifest, &error), qPrintable(error));
+    QCOMPARE(manifest.schemaVersion, 1);
+    QCOMPARE(manifest.channels.size(), 2);
+    QCOMPARE(manifest.channels.value(QStringLiteral("stable")).version, QStringLiteral("0.2.0"));
+    QCOMPARE(manifest.channels.value(QStringLiteral("stable")).artifacts.size(), 1);
+    QCOMPARE(manifest.channels.value(QStringLiteral("stable")).artifacts.first().arch,
+             QStringLiteral("x86_64"));
+    QCOMPARE(manifest.channels.value(QStringLiteral("beta")).version,
+             QStringLiteral("0.3.0-beta.1"));
+}
+
+void CoreTest::updateManifestRejectsMalformed()
+{
+    PodStack::UpdateManifest manifest;
+    QString error;
+    QVERIFY(!PodStack::parseUpdateManifest(QByteArrayLiteral("not json"), &manifest, &error));
+    QVERIFY(!error.isEmpty());
+
+    error.clear();
+    QVERIFY(!PodStack::parseUpdateManifest(
+        QByteArrayLiteral(R"({"schemaVersion":2,"channels":{"stable":{"version":"1.0.0"}}})"),
+        &manifest, &error));
+    QVERIFY(!error.isEmpty());
+
+    error.clear();
+    QVERIFY(!PodStack::parseUpdateManifest(
+        QByteArrayLiteral(R"({"schemaVersion":1,"channels":{"stable":{}}})"), &manifest, &error));
+    QVERIFY(!error.isEmpty());
+}
+
+void CoreTest::updateSignatureVerifiesDetached()
+{
+    const UpdateTestUtils::KeyPair key = UpdateTestUtils::generateKeyPair();
+    QVERIFY(!key.publicKey.isEmpty());
+    const QByteArray message = UpdateTestUtils::manifestForVersion("0.2.0", "stable");
+    const QByteArray signature = UpdateTestUtils::minisignFile(message, key, false);
+    QVERIFY(!signature.isEmpty());
+
+    QString error;
+    QVERIFY2(PodStack::verifyUpdateSignature(message, signature,
+                                             UpdateTestUtils::publicKeyBase64(key), &error),
+             qPrintable(error));
+    QVERIFY(error.isEmpty());
+}
+
+void CoreTest::updateSignatureRejectsTampered()
+{
+    const UpdateTestUtils::KeyPair key = UpdateTestUtils::generateKeyPair();
+    const QByteArray message = UpdateTestUtils::manifestForVersion("0.2.0", "stable");
+    const QByteArray signature = UpdateTestUtils::minisignFile(message, key, false);
+
+    const QByteArray tampered = UpdateTestUtils::manifestForVersion("9.9.9", "stable");
+    QString error;
+    QVERIFY(!PodStack::verifyUpdateSignature(tampered, signature,
+                                             UpdateTestUtils::publicKeyBase64(key), &error));
+    QVERIFY(!error.isEmpty());
+}
+
+void CoreTest::updateSignaturePrehashed()
+{
+    const UpdateTestUtils::KeyPair key = UpdateTestUtils::generateKeyPair();
+    const QByteArray message = UpdateTestUtils::manifestForVersion("0.3.0", "beta");
+    const QByteArray signature = UpdateTestUtils::minisignFile(message, key, true);
+
+    QString error;
+    QVERIFY2(PodStack::verifyUpdateSignature(message, signature,
+                                             UpdateTestUtils::publicKeyBase64(key), &error),
+             qPrintable(error));
 }
 
 void CoreTest::proxyEnvironment()

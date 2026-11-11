@@ -5,6 +5,7 @@
 #include "daemon/ComposeManager.h"
 #include "daemon/HelperClient.h"
 #include "daemon/SetupManager.h"
+#include "daemon/UpdateChecker.h"
 #include "k8s/K8sManager.h"
 #include "machines/CloudImageCache.h"
 #include "machines/MachineManager.h"
@@ -43,6 +44,7 @@ private:
     QJsonObject systemStatus();
     QJsonObject systemDoctor();
     QJsonObject systemReport(const QJsonObject &params, Error *error);
+    QJsonObject updatesCheck(const QJsonObject &params, Error *error);
     QJsonObject containersList(const QJsonObject &params, Error *error);
     QJsonObject containerAction(const QString &method, const QJsonObject &params, Error *error);
     QJsonObject containerExec(const QJsonObject &params, Error *error);
@@ -162,6 +164,7 @@ private:
     ComposeManager m_compose;
     BuildStore m_buildStore;
     SetupManager m_setup;
+    UpdateChecker m_updates;
     HelperClient m_helper;
     MachineManager m_machines;
     K8sManager m_k8s;

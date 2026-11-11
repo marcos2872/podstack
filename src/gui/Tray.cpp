@@ -71,6 +71,7 @@ TrayController::TrayController(bool trayEnabled, QObject *parent)
     m_kubernetesMenu = m_menu->addMenu(tr("Kubernetes"));
     m_menu->addSeparator();
     m_activityAction = m_menu->addAction(tr("Activity Monitor"));
+    m_updateAction = m_menu->addAction(tr("Verificar atualizações…"));
     m_settingsAction = m_menu->addAction(tr("Configurações"));
     m_menu->addSeparator();
     m_quitAction = m_menu->addAction(tr("Sair"));
@@ -81,6 +82,7 @@ TrayController::TrayController(bool trayEnabled, QObject *parent)
     connect(m_openAction, &QAction::triggered, this, &TrayController::openRequested);
     connect(m_activityAction, &QAction::triggered, this,
             &TrayController::activityMonitorRequested);
+    connect(m_updateAction, &QAction::triggered, this, &TrayController::updateCheckRequested);
     connect(m_settingsAction, &QAction::triggered, this, &TrayController::settingsRequested);
     connect(m_quitAction, &QAction::triggered, this, &TrayController::quitRequested);
 

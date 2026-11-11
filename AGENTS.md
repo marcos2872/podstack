@@ -147,7 +147,7 @@ sudo dnf install cmake ninja-build gcc-c++ \
   qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
   qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
   qtermwidget-devel libarchive-devel libcurl-devel libxcrypt-devel sqlite-devel \
-  docker-compose openssh-clients
+  openssl-devel docker-compose openssh-clients
 
 # build
 cmake --preset dev

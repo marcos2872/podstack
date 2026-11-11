@@ -33,6 +33,10 @@ public:
     /// Aplica um cooldown por container/ação para evitar enxurrada de eventos.
     bool shouldNotify(const QVariantMap &event, qint64 nowMs);
 
+    /// Notifica uma atualização disponível (cooldown de 24 h por versão).
+    void notifyUpdate(const QString &version, const QString &channel, const QString &url);
+    void notifyUpdateError(const QString &reason);
+
 public slots:
     void notifyContainerEvent(const QVariantMap &event);
 
@@ -45,6 +49,7 @@ private slots:
 
 private:
     void send(const QString &summary, const QString &body, const QString &containerId);
+    bool cooldownAllows(const QString &key, qint64 nowMs, qint64 windowMs);
 
     QSystemTrayIcon *m_trayIcon = nullptr;
     Sender m_sender;

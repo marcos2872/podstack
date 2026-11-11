@@ -108,6 +108,50 @@ bool NotificationService::shouldNotify(const QVariantMap &event, qint64 nowMs)
     return true;
 }
 
+bool NotificationService::cooldownAllows(const QString &key, qint64 nowMs, qint64 windowMs)
+{
+    const qint64 lastSent = m_lastSent.value(key, 0);
+    if (lastSent > 0 && nowMs - lastSent < windowMs) {
+        return false;
+    }
+    m_lastSent.insert(key, nowMs);
+    if (m_lastSent.size() > 256) {
+        m_lastSent.clear();
+        m_lastSent.insert(key, nowMs);
+    }
+    return true;
+}
+
+void NotificationService::notifyUpdate(const QString &version, const QString &channel,
+                                       const QString &url)
+{
+    if (!notificationsEnabled() || version.isEmpty()) {
+        return;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!cooldownAllows(QStringLiteral("update|") + version, now, 24LL * 60 * 60 * 1000)) {
+        return;
+    }
+    QString body = tr("PodStack %1 está disponível no canal %2.").arg(version, channel);
+    if (!url.isEmpty()) {
+        body += QLatin1Char('\n') + url;
+    }
+    send(tr("Atualização disponível"), body, {});
+}
+
+void NotificationService::notifyUpdateError(const QString &reason)
+{
+    if (!notificationsEnabled()) {
+        return;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!cooldownAllows(QStringLiteral("update-error"), now, 24LL * 60 * 60 * 1000)) {
+        return;
+    }
+    send(tr("Falha ao verificar atualizações"),
+         reason.isEmpty() ? tr("A assinatura do feed de updates é inválida.") : reason, {});
+}
+
 void NotificationService::notifyContainerEvent(const QVariantMap &event)
 {
     if (!notificationsEnabled()) {

@@ -30,6 +30,7 @@ jobs:
       - name: Dependências
         run: |
           dnf install -y cmake ninja-build gcc-c++ gcovr clang-tools-extra \
+            openssl-devel \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
             qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
             libxcrypt-devel openssh-clients

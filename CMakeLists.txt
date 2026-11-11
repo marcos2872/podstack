@@ -23,6 +23,7 @@ find_package(CURL REQUIRED)
 find_package(qtermwidget6 REQUIRED)
 find_package(LibArchive REQUIRED)
 find_package(SQLite3 REQUIRED)
+find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto)
 
 find_library(CRYPT_LIBRARY crypt)
 if(NOT CRYPT_LIBRARY)
@@ -45,11 +46,12 @@ add_library(podstack_core STATIC
     src/core/Logging.cpp
     src/core/Redaction.cpp
     src/core/Proxy.cpp
+    src/core/UpdateManifest.cpp
     src/core/RpcClient.cpp
     src/core/RpcStream.cpp
 )
 target_include_directories(podstack_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(podstack_core PUBLIC Qt6::Core Qt6::Network)
+target_link_libraries(podstack_core PUBLIC Qt6::Core Qt6::Network OpenSSL::Crypto)
 target_compile_definitions(podstack_core PUBLIC PODSTACK_VERSION="${PROJECT_VERSION}")
 
 # ---------------------------------------------------------------------------
@@ -114,6 +116,7 @@ add_executable(podstackd
     src/daemon/ManifestBuilder.cpp
     src/daemon/ComposeManager.cpp
     src/daemon/SetupManager.cpp
+    src/daemon/UpdateChecker.cpp
     src/daemon/HelperClient.cpp
     src/daemon/StatsCollector.cpp
     src/daemon/HttpProxy.cpp

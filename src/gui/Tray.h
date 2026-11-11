@@ -60,6 +60,7 @@ signals:
     void statusChanged();
     void refreshRequested();
     void activityMonitorRequested();
+    void updateCheckRequested();
     void containerActionRequested(const QString &action, const QString &id);
     void openContainerRequested(const QString &id, const QString &tab);
     void composeActionRequested(const QString &action, const QString &projectPath);
@@ -91,6 +92,7 @@ private:
     QMenu *m_kubernetesMenu = nullptr;
     QAction *m_openAction = nullptr;
     QAction *m_activityAction = nullptr;
+    QAction *m_updateAction = nullptr;
     QAction *m_settingsAction = nullptr;
     QAction *m_quitAction = nullptr;
     QVariantList m_containers;

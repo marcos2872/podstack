@@ -278,6 +278,9 @@ encerra a janela da instância já em execução.
 
 - Pacotes RPM assinados (GPG) pelo repositório.
 - AppImage/atualizador próprio: assinatura Ed25519 + TLS + verificação antes de executar.
+- Feed de updates: manifesto JSON assinado (`Ed` ou pré-hash BLAKE2b-512 `ED`, formato minisign)
+  baixado de `updates.feedUrl`; a chave pública é configurável (`updates.publicKey`) e o padrão
+  fica embutido no binário. Assinatura inválida é rejeitada e notificada, nunca aceita.
 - Nunca auto-update silencioso em modo headless.
 - SBOM (CycloneDX) por release; dependências pinadas.
 - Builds reproduzíveis quando possível; `SOURCE_DATE_EPOCH`.

@@ -26,7 +26,7 @@ qt_add_executable(test_caddy test_caddy.cpp ../src/daemon/CaddyProxy.cpp)
 target_link_libraries(test_caddy PRIVATE podstack_core Qt6::Network Qt6::Test)
 add_test(NAME caddy COMMAND test_caddy)
 
-qt_add_executable(test_rpc test_rpc.cpp MockPodmanServer.cpp
+qt_add_executable(test_rpc test_rpc.cpp MockPodmanServer.cpp MockHttpServer.cpp
     ../src/daemon/ComposeManager.cpp)
 target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_k8s
     podstack_podman Qt6::Test
@@ -34,7 +34,7 @@ target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_
 add_dependencies(test_rpc podstackd)
 add_test(NAME rpc COMMAND test_rpc)
 
-qt_add_executable(test_cli test_cli.cpp MockPodmanServer.cpp)
+qt_add_executable(test_cli test_cli.cpp MockPodmanServer.cpp MockHttpServer.cpp)
 target_link_libraries(test_cli PRIVATE podstack_machines Qt6::Test Qt6::Network)
 add_dependencies(test_cli podstack podstackd)
 add_test(NAME cli COMMAND test_cli)
