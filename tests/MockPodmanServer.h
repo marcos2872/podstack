@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QHash>
+#include <QPair>
 #include <QString>
 
 #include <atomic>
@@ -31,6 +33,9 @@ public:
     /// na listagem de containers.
     void setNativeContainers(bool enabled);
 
+    /// Responde `path` (sem query) com status/corpo fixos, antes do roteamento padrão.
+    void setResponse(const QString &path, int status, const QByteArray &body);
+
 private:
     void run();
     void handleClient(int clientFd);
@@ -47,4 +52,5 @@ private:
     QByteArray m_lastCreateBody;
     int m_createCount = 0;
     std::atomic_bool m_nativeContainers{false};
+    QHash<QString, QPair<int, QByteArray>> m_responses;
 };

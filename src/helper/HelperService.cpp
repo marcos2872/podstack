@@ -187,7 +187,14 @@ QVariantMap HelperService::install(const QStringList &packages, const QString &a
     if (!validatePackages(packages, allowed, &error)) {
         return result(false, error);
     }
+
+    const uint uid = callerUid();
+    qCInfo(lcHelper, "installation requested: uid=%u packages=%s", uid,
+           qUtf8Printable(packages.join(',')));
+
     if (!authorize(actionId, &error)) {
+        qCInfo(lcHelper, "installation denied: uid=%u packages=%s", uid,
+               qUtf8Printable(packages.join(',')));
         return result(false, error);
     }
 
@@ -196,7 +203,8 @@ QVariantMap HelperService::install(const QStringList &packages, const QString &a
         return result(false, QStringLiteral("Gerenciador de pacotes não suportado."));
     }
 
-    qCInfo(lcHelper, "installation requested: %s", qUtf8Printable(packages.join(',')));
+    qCInfo(lcHelper, "installation started: uid=%u packages=%s", uid,
+           qUtf8Printable(packages.join(',')));
 
     QStringList arguments;
     if (manager == QStringLiteral("dnf")) {
@@ -211,8 +219,12 @@ QVariantMap HelperService::install(const QStringList &packages, const QString &a
 
     const QString failure = runProcess(manager, arguments, 900000);
     if (!failure.isEmpty()) {
+        qCInfo(lcHelper, "installation failed: uid=%u packages=%s", uid,
+               qUtf8Printable(packages.join(',')));
         return result(false, QStringLiteral("Falha ao instalar: %1").arg(failure));
     }
+    qCInfo(lcHelper, "installation finished: uid=%u packages=%s", uid,
+           qUtf8Printable(packages.join(',')));
     return result(true, QStringLiteral("Pacotes instalados: %1")
                             .arg(packages.join(QStringLiteral(", "))));
 }
@@ -228,12 +240,21 @@ QVariantMap HelperService::RemovePackages(const QStringList &packages)
     if (!validatePackages(packages, removeAllowlist(), &error)) {
         return result(false, error);
     }
+
+    const uint uid = callerUid();
+    qCInfo(lcHelper, "removal requested: uid=%u packages=%s", uid,
+           qUtf8Printable(packages.join(',')));
+
     if (!authorize(QString::fromLatin1(kRemoveAction), &error)) {
+        qCInfo(lcHelper, "removal denied: uid=%u packages=%s", uid,
+               qUtf8Printable(packages.join(',')));
         return result(false, error);
     }
 
     const QStringList installed = installedPackages(packages);
     if (installed.isEmpty()) {
+        qCInfo(lcHelper, "removal skipped: uid=%u packages=%s reason=not-installed", uid,
+               qUtf8Printable(packages.join(',')));
         return result(true, QStringLiteral("Nenhum pacote do Docker estava instalado."));
     }
 
@@ -248,7 +269,8 @@ QVariantMap HelperService::RemovePackages(const QStringList &packages)
         return result(false, QStringLiteral("Gerenciador de pacotes não suportado."));
     }
 
-    qCInfo(lcHelper, "removal requested: %s", qUtf8Printable(installed.join(',')));
+    qCInfo(lcHelper, "removal started: uid=%u packages=%s", uid,
+           qUtf8Printable(installed.join(',')));
 
     QStringList arguments;
     if (manager == QStringLiteral("dnf") || manager == QStringLiteral("apt-get")) {
@@ -260,8 +282,12 @@ QVariantMap HelperService::RemovePackages(const QStringList &packages)
 
     const QString failure = runProcess(manager, arguments, 900000);
     if (!failure.isEmpty()) {
+        qCInfo(lcHelper, "removal failed: uid=%u packages=%s", uid,
+               qUtf8Printable(installed.join(',')));
         return result(false, QStringLiteral("Falha ao remover o Docker: %1").arg(failure));
     }
+    qCInfo(lcHelper, "removal finished: uid=%u packages=%s", uid,
+           qUtf8Printable(installed.join(',')));
     return result(true, QStringLiteral("Pacotes removidos: %1")
                             .arg(installed.join(QStringLiteral(", "))));
 }

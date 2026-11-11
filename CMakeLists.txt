@@ -114,6 +114,7 @@ add_executable(podstackd
     src/daemon/ManifestBuilder.cpp
     src/daemon/ComposeManager.cpp
     src/daemon/SetupManager.cpp
+    src/daemon/DockerInventory.cpp
     src/daemon/HelperClient.cpp
     src/daemon/StatsCollector.cpp
     src/daemon/HttpProxy.cpp

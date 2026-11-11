@@ -2327,6 +2327,9 @@ void Backend::onSetupFinished()
         m_setupStatus = ready ? QStringLiteral("Tudo pronto.")
                               : QStringLiteral("Alguns itens precisam de atenção.");
         emit setupChanged();
+    } else if (m_setupPendingMethod == QStringLiteral("setup.dockerImpact")) {
+        m_setupDockerImpact = result.toVariantMap();
+        emit setupChanged();
     } else if (m_setupPendingMethod == QStringLiteral("setup.complete")) {
         m_setupCompleted = result.value(QStringLiteral("completed")).toBool();
         if (result.value(QStringLiteral("skipped")).toBool()) {
@@ -2445,6 +2448,16 @@ void Backend::setupApply(const QString &action, const QVariantList &components)
     m_setupStatus = QStringLiteral("Iniciando…");
     emit setupJobChanged();
     m_setupStream.startSetup(params);
+}
+
+void Backend::setupLoadDockerImpact()
+{
+    if (m_setupWatcher.isRunning()) {
+        return;
+    }
+    m_setupDockerImpact.clear();
+    emit setupChanged();
+    runSetupRequest(QStringLiteral("setup.dockerImpact"), {});
 }
 
 void Backend::setupRemoveDocker()
