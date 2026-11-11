@@ -8,6 +8,7 @@
 #include <QColor>
 #include <QDebug>
 #include <QEvent>
+#include <QFileInfo>
 #include <QFrame>
 #include <QLabel>
 #include <QMessageBox>
@@ -294,7 +295,9 @@ QStringList MachineDetailDialog::sshArguments() const
     arguments << QStringLiteral("-i") << keyPath << QStringLiteral("-p")
               << QString::number(port) << QStringLiteral("-o")
               << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
-              << QStringLiteral("StrictHostKeyChecking=accept-new")
+              << QStringLiteral("StrictHostKeyChecking=accept-new") << QStringLiteral("-o")
+              << QStringLiteral("UserKnownHostsFile=%1/known_hosts")
+                     .arg(QFileInfo(keyPath).absolutePath())
               << QStringLiteral("%1@127.0.0.1").arg(user);
     return arguments;
 }

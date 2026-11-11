@@ -68,6 +68,7 @@ private slots:
     void composeAndBuild();
     void setupCommand();
     void updateCommand();
+    void goldenExitCodes();
     void configCommands();
     void reportCommand();
     void errorPaths();
@@ -1241,7 +1242,9 @@ void CliTest::machineSsh()
     const QStringList args =
         QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     log.close();
-    QCOMPARE(args.size(), 11);
+    const QString knownHosts = QFileInfo(meta.sshKeyPath).absolutePath()
+                               + QStringLiteral("/known_hosts");
+    QCOMPARE(args.size(), 13);
     QCOMPARE(args.value(0), QStringLiteral("-i"));
     QCOMPARE(args.value(1), meta.sshKeyPath);
     QCOMPARE(args.value(2), QStringLiteral("-p"));
@@ -1250,9 +1253,11 @@ void CliTest::machineSsh()
     QCOMPARE(args.value(5), QStringLiteral("IdentitiesOnly=yes"));
     QCOMPARE(args.value(6), QStringLiteral("-o"));
     QCOMPARE(args.value(7), QStringLiteral("StrictHostKeyChecking=accept-new"));
-    QCOMPARE(args.value(8), QStringLiteral("podstack@127.0.0.1"));
-    QCOMPARE(args.value(9), QStringLiteral("echo"));
-    QCOMPARE(args.value(10), QStringLiteral("hello"));
+    QCOMPARE(args.value(8), QStringLiteral("-o"));
+    QCOMPARE(args.value(9), QStringLiteral("UserKnownHostsFile=%1").arg(knownHosts));
+    QCOMPARE(args.value(10), QStringLiteral("podstack@127.0.0.1"));
+    QCOMPARE(args.value(11), QStringLiteral("echo"));
+    QCOMPARE(args.value(12), QStringLiteral("hello"));
 
     result = run({QStringLiteral("ssh"), QStringLiteral("cli-ssh")}, sshEnv);
     QCOMPARE(result.code, 0);
@@ -1260,8 +1265,8 @@ void CliTest::machineSsh()
     const QStringList directArgs =
         QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     log.close();
-    QCOMPARE(directArgs.size(), 9);
-    QCOMPARE(directArgs.value(8), QStringLiteral("podstack@127.0.0.1"));
+    QCOMPARE(directArgs.size(), 11);
+    QCOMPARE(directArgs.value(10), QStringLiteral("podstack@127.0.0.1"));
 
     result = run({QStringLiteral("machine"), QStringLiteral("ssh"), QStringLiteral("cli-ssh"),
                   QStringLiteral("--x11"), QStringLiteral("--"), QStringLiteral("echo")},
@@ -1305,13 +1310,13 @@ void CliTest::machineSsh()
     const QStringList forwardedArgs =
         QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     log.close();
-    QCOMPARE(forwardedArgs.size(), 12);
+    QCOMPARE(forwardedArgs.size(), 14);
     QCOMPARE(forwardedArgs.value(0), QStringLiteral("-A"));
     QCOMPARE(forwardedArgs.value(1), QStringLiteral("-i"));
     QCOMPARE(forwardedArgs.value(2), meta.sshKeyPath);
-    QCOMPARE(forwardedArgs.value(9), QStringLiteral("podstack@127.0.0.1"));
-    QCOMPARE(forwardedArgs.value(10), QStringLiteral("echo"));
-    QCOMPARE(forwardedArgs.value(11), QStringLiteral("agent"));
+    QCOMPARE(forwardedArgs.value(11), QStringLiteral("podstack@127.0.0.1"));
+    QCOMPARE(forwardedArgs.value(12), QStringLiteral("echo"));
+    QCOMPARE(forwardedArgs.value(13), QStringLiteral("agent"));
 
     result = run({QStringLiteral("machine"), QStringLiteral("update"),
                   QStringLiteral("cli-ssh"), QStringLiteral("--no-forward-agent")},
@@ -1330,7 +1335,7 @@ void CliTest::machineSsh()
     const QStringList plainArgs =
         QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     log.close();
-    QCOMPARE(plainArgs.size(), 9);
+    QCOMPARE(plainArgs.size(), 11);
     QVERIFY(!plainArgs.contains(QStringLiteral("-A")));
 
     result = run({QStringLiteral("machine"), QStringLiteral("update"),
@@ -1942,6 +1947,122 @@ void CliTest::updateCommand()
 
     const CliResult usage = run({QStringLiteral("update")}, env);
     QCOMPARE(usage.code, 2);
+}
+
+void CliTest::goldenExitCodes()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    // `update --check` passa pelo daemon; usa-se um feed loopback que responde
+    // 404 para exercitar o contrato `no-feed` (exit 0) sem rede externa.
+    const UpdateTestUtils::KeyPair key = UpdateTestUtils::generateKeyPair();
+    QVERIFY(!key.publicKey.isEmpty());
+    m_updateServer.setResponse(QStringLiteral("/golden-missing.json"), 404, "{}");
+    QCOMPARE(
+        run({QStringLiteral("config"), QStringLiteral("set"), QStringLiteral("updates.feedUrl"),
+             m_updateServer.url(QStringLiteral("/golden-missing.json"))},
+            env)
+            .code,
+        0);
+    QCOMPARE(run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("updates.publicKey"), UpdateTestUtils::publicKeyBase64(key)},
+                 env)
+                 .code,
+             0);
+    QCOMPARE(run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("updates.mode"), QStringLiteral("check")},
+                 env)
+                 .code,
+             0);
+
+    struct GoldenCase {
+        const char *name;
+        QStringList args;
+        int expectedCode;
+        QString stdoutNeedle;
+        QString stderrNeedle;
+        bool jsonUpdate;
+    };
+
+    const QList<GoldenCase> cases{
+        // O contrato real da CLI usa exit 2 (kExitUsage) para comando inexistente.
+        {"comando-inexistente",
+         {QStringLiteral("does-not-exist")},
+         2,
+         QStringLiteral("Uso:"),
+         QStringLiteral("comando desconhecido: does-not-exist"),
+         false},
+        {"opcao-invalida",
+         {QStringLiteral("ps"), QStringLiteral("--nope")},
+         2,
+         {},
+         QStringLiteral("opção desconhecida: --nope"),
+         false},
+        // `commandVersion()` ignora `--json` e imprime o texto estável.
+        {"version-json",
+         {QStringLiteral("version"), QStringLiteral("--json")},
+         0,
+         QStringLiteral("PodStack 0.1.0"),
+         {},
+         false},
+        {"help", {QStringLiteral("help")}, 0, QStringLiteral("Uso:"), {}, false},
+        {"config-get-sem-chave",
+         {QStringLiteral("config"), QStringLiteral("get")},
+         2,
+         {},
+         QStringLiteral("Uso: podstack config get"),
+         false},
+        {"update-check-json",
+         {QStringLiteral("update"), QStringLiteral("--check"), QStringLiteral("--json")},
+         0,
+         QStringLiteral("\"status\": \"no-feed\""),
+         {},
+         true},
+    };
+
+    for (const GoldenCase &testCase : cases) {
+        const CliResult result = run(testCase.args, env);
+        const QString label = QStringLiteral("%1 (%2)")
+                                  .arg(QString::fromLatin1(testCase.name),
+                                       testCase.args.join(QLatin1Char(' ')));
+        QVERIFY2(result.code == testCase.expectedCode,
+                 qPrintable(QStringLiteral("%1 -> exit %2, esperado %3 (stderr: %4)")
+                                .arg(label)
+                                .arg(result.code)
+                                .arg(testCase.expectedCode)
+                                .arg(result.err.trimmed())));
+        if (!testCase.stdoutNeedle.isEmpty()) {
+            QVERIFY2(result.out.contains(testCase.stdoutNeedle),
+                     qPrintable(QStringLiteral("%1: stdout sem %2: %3")
+                                    .arg(label, testCase.stdoutNeedle, result.out.trimmed())));
+        }
+        if (!testCase.stderrNeedle.isEmpty()) {
+            QVERIFY2(result.err.contains(testCase.stderrNeedle),
+                     qPrintable(QStringLiteral("%1: stderr sem %2: %3")
+                                    .arg(label, testCase.stderrNeedle, result.err.trimmed())));
+        }
+        if (testCase.jsonUpdate) {
+            QJsonParseError parseError{};
+            const QJsonDocument document =
+                QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+            QCOMPARE(parseError.error, QJsonParseError::NoError);
+            QCOMPARE(document.object().value(QStringLiteral("api")).toInt(), 1);
+            QCOMPARE(document.object().value(QStringLiteral("status")).toString(),
+                     QStringLiteral("no-feed"));
+            QCOMPARE(document.object().value(QStringLiteral("currentVersion")).toString(),
+                     QStringLiteral("0.1.0"));
+        }
+    }
+
+    // `version --json` não emite JSON no contrato atual; o JSON com a versão
+    // publicada é coberto por `report --json`.
+    const CliResult report = run({QStringLiteral("report"), QStringLiteral("--json")}, env);
+    QCOMPARE(report.code, 0);
+    QJsonParseError parseError{};
+    const QJsonDocument reportJson = QJsonDocument::fromJson(report.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QCOMPARE(reportJson.object().value(QStringLiteral("version")).toString(),
+             QStringLiteral("0.1.0"));
 }
 
 void CliTest::configCommands()

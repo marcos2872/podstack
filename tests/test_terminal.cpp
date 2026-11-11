@@ -15,6 +15,7 @@
 
 #include <QDockWidget>
 #include <QFile>
+#include <QFileInfo>
 #include <QFrame>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -615,6 +616,9 @@ void TerminalTest::machineDetailDialog()
              QStringList({QStringLiteral("-i"), keyPath, QStringLiteral("-p"), QStringLiteral("1"),
                           QStringLiteral("-o"), QStringLiteral("IdentitiesOnly=yes"),
                           QStringLiteral("-o"), QStringLiteral("StrictHostKeyChecking=accept-new"),
+                          QStringLiteral("-o"),
+                          QStringLiteral("UserKnownHostsFile=%1/known_hosts")
+                              .arg(QFileInfo(keyPath).absolutePath()),
                           QStringLiteral("podstack@127.0.0.1")}));
     // A sessão é criada ao abrir, mas só aparece quando o QML confirma que a
     // aba Terminal está ativa e informa a área do placeholder.
@@ -1032,6 +1036,19 @@ void TerminalTest::mainWindowQml()
 
     QObject *settings = rootObject->findChild<QObject *>(QStringLiteral("settingsDialog"));
     QVERIFY(settings != nullptr);
+    bool hasUpdatesCategory = false;
+    const QVariantList categories = settings->property("categories").toList();
+    for (const QVariant &entry : categories) {
+        if (entry.toMap().value(QStringLiteral("value")).toString()
+            == QStringLiteral("Updates")) {
+            hasUpdatesCategory = true;
+        }
+    }
+    QVERIFY(!hasUpdatesCategory);
+    QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("updateCheckRow")) != nullptr);
+    QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("updateAutoCheckBox")) != nullptr);
+    QVERIFY(
+        rootObject->findChild<QObject *>(QStringLiteral("updateCheckNowButton")) != nullptr);
     QVERIFY(QMetaObject::invokeMethod(settings, "open"));
     // Sem daemon no teste, o schema fica vazio; o importante é o dialog abrir
     // sem ReferenceError e o array de linhas existir.

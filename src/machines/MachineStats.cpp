@@ -175,6 +175,9 @@ QJsonObject MachineStatsCollector::sample(const MachineMeta &machine, const SshI
         QStringLiteral("-o"),
         QStringLiteral("StrictHostKeyChecking=accept-new"),
         QStringLiteral("-o"),
+        QStringLiteral("UserKnownHostsFile=%1/known_hosts")
+            .arg(QFileInfo(identity).absolutePath()),
+        QStringLiteral("-o"),
         QStringLiteral("BatchMode=yes"),
         QStringLiteral("-o"),
         QStringLiteral("ConnectTimeout=3"),

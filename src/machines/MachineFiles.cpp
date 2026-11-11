@@ -162,13 +162,18 @@ QString processDetail(const QByteArray &output)
     return detail;
 }
 
-QStringList sshOptions()
+QStringList sshOptions(const QString &identityFile)
 {
     return {
         QStringLiteral("-o"),
         QStringLiteral("IdentitiesOnly=yes"),
         QStringLiteral("-o"),
         QStringLiteral("StrictHostKeyChecking=accept-new"),
+        // known_hosts próprio da machine: a porta SSH pode ser reutilizada por
+        // outra VM e a chave no known_hosts global faria o SSH recusar.
+        QStringLiteral("-o"),
+        QStringLiteral("UserKnownHostsFile=%1/known_hosts")
+            .arg(QFileInfo(identityFile).absolutePath()),
         QStringLiteral("-o"),
         QStringLiteral("BatchMode=yes"),
         QStringLiteral("-o"),
@@ -269,7 +274,7 @@ bool MachineFiles::list(const SshInfo &ssh, const QString &path, QJsonArray *ite
         QStringLiteral("-p"),
         QString::number(ssh.port),
     };
-    arguments += sshOptions();
+    arguments += sshOptions(ssh.identityFile);
     arguments.append(QStringLiteral("%1@%2").arg(ssh.user, ssh.host));
     arguments.append(QStringLiteral("ls -la --time-style=long-iso -- %1")
                          .arg(shellQuote(path)));
@@ -353,7 +358,7 @@ bool MachineFiles::download(const SshInfo &ssh, const QString &remotePath,
         QStringLiteral("-i"),
         ssh.identityFile,
     };
-    arguments += sshOptions();
+    arguments += sshOptions(ssh.identityFile);
     arguments.append(remoteSpec(ssh, remotePath));
     arguments.append(destination);
 
@@ -390,7 +395,7 @@ bool MachineFiles::upload(const SshInfo &ssh, const QString &localPath,
         QStringLiteral("-i"),
         ssh.identityFile,
     };
-    arguments += sshOptions();
+    arguments += sshOptions(ssh.identityFile);
     arguments.append(localPath);
     arguments.append(remoteSpec(ssh, remotePath));
 

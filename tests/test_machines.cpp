@@ -970,6 +970,7 @@ private slots:
     void machineManagerStartFallback();
     void machineManagerRemoveOrphan();
     void sshConfigPreserves();
+    void sshConfigPrefixNames();
     void sshConfigErrors();
     void machineManagerSsh();
     void machineStats();
@@ -2095,10 +2096,24 @@ void MachinesTest::seedYamlDefaults()
     QVERIFY(yaml.contains(QStringLiteral("packages:\n  - xauth\n")));
     QVERIFY(yaml.contains(QStringLiteral("10-podstack-x11.conf\n")));
     QVERIFY(yaml.contains(QStringLiteral("      X11Forwarding yes\n")));
-    QVERIFY(
-        yaml.contains(QStringLiteral("apt-get install -y xauth x11-apps pulseaudio alsa-utils")));
+    QVERIFY(yaml.contains(
+        QStringLiteral("apt-get install -y x11-apps xdg-utils pulseaudio alsa-utils")));
+    QVERIFY(yaml.contains(QStringLiteral("if ! command -v xauth")));
+    QVERIFY(yaml.contains(QStringLiteral("apt-get install -y xauth")));
     QVERIFY(yaml.contains(QStringLiteral("dnf install -y xauth xorg-x11-apps")));
     QVERIFY(yaml.contains(QStringLiteral("linux-image-$arch")));
+    QVERIFY(yaml.contains(QStringLiteral("generic_ok=1")));
+    QVERIFY(yaml.contains(QStringLiteral("update-initramfs -u -k all")));
+    QVERIFY(yaml.contains(QStringLiteral("if [ \"$generic_ok\" = \"1\" ]")));
+    QVERIFY(yaml.contains(QStringLiteral("usermod -aG audio")));
+    QVERIFY(yaml.contains(QStringLiteral("loginctl enable-linger")));
+    QVERIFY(yaml.contains(QStringLiteral("PermitUserEnvironment yes")));
+    QVERIFY(yaml.contains(QStringLiteral(".ssh/environment")));
+    QVERIFY(yaml.contains(QStringLiteral("GRUB_DEFAULT")));
+    QVERIFY(!yaml.contains(QStringLiteral("apt-get purge -y $cloud_kernels")));
+    QVERIFY(yaml.contains(
+        QStringLiteral("dnf install -y kernel-modules kernel-modules-extra")));
+    QVERIFY(!yaml.contains(QStringLiteral("kernel-modules-extra-$(uname -r)")));
     QVERIFY(yaml.contains(QStringLiteral("pulseaudio --start")));
     QVERIFY(yaml.contains(QStringLiteral("/usr/local/sbin/podstack-guest-setup")));
     QVERIFY(yaml.contains(QStringLiteral("need_reboot=1")));
@@ -9040,6 +9055,9 @@ void MachinesTest::sshConfigPreserves()
     QVERIFY(content.contains(QStringLiteral("  User alice")));
     QVERIFY(content.contains(QStringLiteral("  IdentityFile ") + meta.sshKeyPath));
     QVERIFY(content.contains(QStringLiteral("  IdentitiesOnly yes")));
+    QVERIFY(content.contains(QStringLiteral("  UserKnownHostsFile ")
+                             + QFileInfo(meta.sshKeyPath).absolutePath()
+                             + QStringLiteral("/known_hosts")));
     QVERIFY(!content.contains(QStringLiteral("ForwardAgent yes")));
     QVERIFY(content.contains(QStringLiteral("# <<< podstack: ssh-demo")));
     QVERIFY(ownerOnly(QFileInfo(configPath).permissions(), false));
@@ -9088,6 +9106,46 @@ void MachinesTest::sshConfigPreserves()
     meta.sshPort = 0;
     QVERIFY(!config.sync(meta, false, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void MachinesTest::sshConfigPrefixNames()
+{
+    const QString root = m_root + QStringLiteral("/ssh-config-prefix");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString configPath = root + QStringLiteral("/config");
+    SshConfig config(configPath);
+    PodStack::Error error;
+
+    MachineMeta longer = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000071"),
+                                     QStringLiteral("teste02"));
+    longer.sshPort = 32222;
+    longer.sshKeyPath = root + QStringLiteral("/machines/a/id_ed25519");
+    QVERIFY2(config.sync(longer, false, &error), qPrintable(error.message));
+
+    MachineMeta shorter = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000072"),
+                                      QStringLiteral("teste"));
+    shorter.sshPort = 32223;
+    shorter.sshKeyPath = root + QStringLiteral("/machines/b/id_ed25519");
+    QVERIFY2(config.sync(shorter, false, &error), qPrintable(error.message));
+
+    QFile file(configPath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QString content = QString::fromUtf8(file.readAll());
+    file.close();
+    QCOMPARE(content.count(QStringLiteral("# >>> podstack: teste02")), 1);
+    QCOMPARE(content.count(QStringLiteral("# >>> podstack: teste\n")), 1);
+    QVERIFY(!content.contains(QStringLiteral("\n02\n")));
+
+    QVERIFY2(config.remove(QStringLiteral("teste"), &error), qPrintable(error.message));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    content = QString::fromUtf8(file.readAll());
+    file.close();
+    QVERIFY(content.contains(QStringLiteral("# >>> podstack: teste02")));
+    QVERIFY(content.contains(QStringLiteral("Host teste02.podstack teste02")));
+    QVERIFY(!content.contains(QStringLiteral("# >>> podstack: teste\n")));
+    QVERIFY(!content.contains(QStringLiteral("\n02\n")));
 }
 
 void MachinesTest::sshConfigErrors()
@@ -9389,6 +9447,9 @@ void MachinesTest::machineStats()
     QVERIFY(argsText.contains(QStringLiteral("-p 32222")));
     QVERIFY(argsText.contains(QStringLiteral("IdentitiesOnly=yes")));
     QVERIFY(argsText.contains(QStringLiteral("StrictHostKeyChecking=accept-new")));
+    QVERIFY(argsText.contains(QStringLiteral("UserKnownHostsFile=")
+                              + QFileInfo(keyPath).absolutePath()
+                              + QStringLiteral("/known_hosts")));
     QVERIFY(argsText.contains(QStringLiteral("BatchMode=yes")));
     QVERIFY(argsText.contains(QStringLiteral("ConnectTimeout=3")));
     QVERIFY(argsText.contains(QStringLiteral("podstack@127.0.0.1")));
@@ -9655,6 +9716,9 @@ void MachinesTest::machineFiles()
     QVERIFY(sshArguments.contains(QStringLiteral("32222")));
     QVERIFY(sshArguments.contains(QStringLiteral("IdentitiesOnly=yes")));
     QVERIFY(sshArguments.contains(QStringLiteral("StrictHostKeyChecking=accept-new")));
+    QVERIFY(sshArguments.contains(QStringLiteral("UserKnownHostsFile=")
+                                  + QFileInfo(keyPath).absolutePath()
+                                  + QStringLiteral("/known_hosts")));
     QVERIFY(sshArguments.contains(QStringLiteral("BatchMode=yes")));
     QVERIFY(sshArguments.contains(QStringLiteral("ConnectTimeout=5")));
     QVERIFY(sshArguments.contains(QStringLiteral("podstack@127.0.0.1")));
@@ -9708,6 +9772,9 @@ void MachinesTest::machineFiles()
     QVERIFY(downloadArguments.contains(QStringLiteral("-P")));
     QVERIFY(downloadArguments.contains(QStringLiteral("32222")));
     QVERIFY(downloadArguments.contains(QStringLiteral("IdentitiesOnly=yes")));
+    QVERIFY(downloadArguments.contains(QStringLiteral("UserKnownHostsFile=")
+                                       + QFileInfo(keyPath).absolutePath()
+                                       + QStringLiteral("/known_hosts")));
     QVERIFY(downloadArguments.contains(QStringLiteral("ConnectTimeout=5")));
     QVERIFY(downloadArguments.contains(
         QStringLiteral("podstack@127.0.0.1:/home/podstack/report.txt")));
