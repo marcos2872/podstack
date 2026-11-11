@@ -93,6 +93,8 @@ void printUsage()
           << "  system df [--detailed] [--json]\n"
           << "                          Uso de disco e prévia de prune\n"
           << "  system disk [--json]    Espaço livre e aviso de disco baixo\n"
+          << "  system emulation [--json]\n"
+          << "                          Arquitetura do host e handlers binfmt/FEX\n"
           << "  setup [--check|--status|--validate]\n"
           << "        [--apply podman|qemu|components|socket]\n"
           << "        [--docker-impact [--json]]\n"
@@ -3936,6 +3938,38 @@ int commandSystem(const QStringList &args)
         || sub == QStringLiteral("help")) {
         out() << "Uso: podstack system df [--detailed] [--json]\n"
               << "     podstack system disk [--json]\n";
+        out().flush();
+        return kExitOk;
+    }
+    if (sub == QStringLiteral("emulation")) {
+        const bool json = args.contains(QStringLiteral("--json"));
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result = client.call(QStringLiteral("system.emulation"), {}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        if (json) {
+            out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+            out().flush();
+            return kExitOk;
+        }
+        out() << "host: " << result.value(QStringLiteral("hostArch")).toString() << '\n';
+        const QJsonArray handlers = result.value(QStringLiteral("handlers")).toArray();
+        if (handlers.isEmpty()) {
+            out() << "binfmt: nenhum handler qemu/FEX habilitado ("
+                  << "instale qemu-user-static/binfmt)\n";
+        } else {
+            out() << "binfmt:\n";
+            for (const QJsonValue &value : handlers) {
+                const QJsonObject handler = value.toObject();
+                out() << "  " << handler.value(QStringLiteral("name")).toString() << " -> "
+                      << handler.value(QStringLiteral("interpreter")).toString() << '\n';
+            }
+        }
+        out() << "emulação de arquitetura estrangeira: "
+              << (result.value(QStringLiteral("foreignEmulation")).toBool() ? "sim" : "não")
+              << '\n';
         out().flush();
         return kExitOk;
     }

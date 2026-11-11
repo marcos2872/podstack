@@ -105,6 +105,7 @@ interface Subscription { subscriptionId: string }
 | Método | Params | Result |
 |---|---|---|
 | `system.disk` | `{}` | `{checkedAt, thresholdPercent, low, filesystems:[{path, kind, totalBytes, freeBytes, availableBytes, usedPercent}], errors:[]}` |
+| `system.emulation` | `{}` | `{hostArch, handlers:[{name,interpreter,enabled}], foreignEmulation}` |
 | `system.hello` | `{client, version, api}` | `{apiVersion, daemonVersion, podman:{version,api,socket,rootless}}` |
 | `system.status` | `{}` | `{state, engine, mode, version, uptimeSeconds, counts, warnings[]}` |
 | `system.doctor` | `{deep?:bool}` | `{checks:[{id,status,detail,remediation}]}` |

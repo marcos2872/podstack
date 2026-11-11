@@ -111,6 +111,7 @@ QProcessEnvironment CliTest::environment(const QString &controlSocket) const
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_DOCKER_SOCKET"), m_dockerMock.socketPath());
     env.insert(QStringLiteral("PODSTACK_SYSFS_USB"), m_testDataDir + QStringLiteral("/sys-usb"));
+    env.insert(QStringLiteral("PODSTACK_BINFMT_DIR"), m_testDataDir + QStringLiteral("/binfmt"));
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
     env.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
     env.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeFilesSsh);
@@ -177,6 +178,11 @@ void CliTest::initTestCase()
     QVERIFY(writeSys(sysUsb + QStringLiteral("/idProduct"), "5567\n"));
     QVERIFY(writeSys(sysUsb + QStringLiteral("/manufacturer"), "SanDisk\n"));
     QVERIFY(writeSys(sysUsb + QStringLiteral("/product"), "Cruzer Blade\n"));
+
+    const QString binfmt = m_testDataDir + QStringLiteral("/binfmt");
+    QVERIFY(QDir().mkpath(binfmt));
+    QVERIFY(writeSys(binfmt + QStringLiteral("/qemu-aarch64"),
+                     "enabled\ninterpreter /usr/bin/qemu-aarch64\nflags: F\n"));
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -1717,6 +1723,22 @@ void CliTest::systemDf()
     result = run({QStringLiteral("system"), QStringLiteral("disk")}, env);
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("Disco baixo")));
+
+    result =
+        run({QStringLiteral("system"), QStringLiteral("emulation"), QStringLiteral("--json")}, env);
+    QCOMPARE(result.code, 0);
+    const QJsonDocument emulationDocument =
+        QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QVERIFY(!emulationDocument.object().value(QStringLiteral("hostArch")).toString().isEmpty());
+    QCOMPARE(emulationDocument.object().value(QStringLiteral("handlers")).toArray().size(), 1);
+    QCOMPARE(emulationDocument.object().value(QStringLiteral("foreignEmulation")).toBool(), true);
+
+    result = run({QStringLiteral("system"), QStringLiteral("emulation")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("binfmt:")));
+    QVERIFY(result.out.contains(QStringLiteral("qemu-aarch64")));
+    QVERIFY(result.out.contains(QStringLiteral("emulação de arquitetura estrangeira: sim")));
 }
 
 void CliTest::composeAndBuild()
