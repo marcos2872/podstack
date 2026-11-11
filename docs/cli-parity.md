@@ -126,6 +126,8 @@
 | `docker ps` | `ps` | `--all`, `--running`, `--stopped`, `--format`, `--quiet` | Lista e filtra por estado |
 | `docker pause` / `unpause` | `pause` / `unpause` | — | Ciclo de vida |
 | `docker kill` | `kill` | `--signal` | Sinal opcional (ex.: `SIGTERM`) |
+| `docker checkpoint` | `checkpoint` | `--leave-running`, `--tcp-established`, `--json` | CRIU via Libpod; rootless depende do CRIU/configuração do host |
+| — | `restore` | `--tcp-established`, `--json` | Restaura o checkpoint CRIU |
 | `docker inspect` | `inspect` | — | JSON bruto do container |
 | `docker exec` | `exec` | `-- <cmd...>` | Exec one-shot via hijack |
 

@@ -33,6 +33,7 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
     void lifecycle();
+    void containerCheckpoint();
     void containerMountsLocalCaUnlessOptedOut();
     void systemReportRedactsSettings();
     void proxyEnvironment();
@@ -497,6 +498,33 @@ void RpcTest::lifecycle()
     PodStack::Error unknownError;
     client.call(QStringLiteral("no.such.method"), {}, &unknownError);
     QCOMPARE(unknownError.code, QStringLiteral("PODSTACK_METHOD_NOT_FOUND"));
+}
+
+void RpcTest::containerCheckpoint()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject checkpoint =
+        client.call(QStringLiteral("containers.checkpoint"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("abc123")},
+                                {QStringLiteral("leaveRunning"), true},
+                                {QStringLiteral("tcpEstablished"), true}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(checkpoint.value(QStringLiteral("ok")).toBool(), true);
+
+    const QJsonObject restored =
+        client.call(QStringLiteral("containers.restore"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("abc123")},
+                                {QStringLiteral("tcpEstablished"), true}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(restored.value(QStringLiteral("ok")).toBool(), true);
+
+    error = {};
+    (void) client.call(QStringLiteral("containers.checkpoint"), {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void RpcTest::containerMountsLocalCaUnlessOptedOut()

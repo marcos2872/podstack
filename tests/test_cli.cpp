@@ -51,6 +51,7 @@ private slots:
     void statusAndPs();
     void execAndDoctor();
     void lifecycleAndInspect();
+    void checkpointCommands();
     void catalog();
     void machineDistros();
     void machineCommands();
@@ -411,6 +412,29 @@ void CliTest::execAndDoctor()
     result = run({QStringLiteral("doctor")}, env);
     QCOMPARE(result.code, 0);
     QVERIFY(result.out.contains(QStringLiteral("[ok]")));
+}
+
+void CliTest::checkpointCommands()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("checkpoint"), QStringLiteral("abc123"),
+                            QStringLiteral("--leave-running"), QStringLiteral("--json")},
+                           env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QCOMPARE(document.object().value(QStringLiteral("ok")).toBool(), true);
+
+    result = run({QStringLiteral("restore"), QStringLiteral("abc123")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("restaurado")));
+
+    result = run({QStringLiteral("checkpoint")}, env);
+    QCOMPARE(result.code, 2);
+    result = run({QStringLiteral("restore")}, env);
+    QCOMPARE(result.code, 2);
 }
 
 void CliTest::catalog()

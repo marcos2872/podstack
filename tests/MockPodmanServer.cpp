@@ -499,17 +499,21 @@ void MockPodmanServer::handleClient(int clientFd)
         response = httpResponse(
             200, "OK",
             R"({"ImagesSize":7001000,"Containers":[{"ContainerID":"c-stopped","Names":["mock-stopped"],"Status":"exited","Size":1234},{}],"Images":[{"Repository":"<none>","Tag":"<none>","ImageID":"img1234567890","Size":7000000,"UniqueSize":6000000,"Containers":0},42,{}],"Volumes":[{"VolumeName":"vol1","Links":1,"Size":2048,"ReclaimableSize":2048},{"Links":1}]})");
-    } else if (method == QStringLiteral("POST")
-               && (pathOnly.endsWith(QStringLiteral("/stop"))
-                   || pathOnly.endsWith(QStringLiteral("/restart"))
-                   || pathOnly.endsWith(QStringLiteral("/start"))
-                   || pathOnly.endsWith(QStringLiteral("/pause"))
-                   || pathOnly.endsWith(QStringLiteral("/unpause"))
-                   || pathOnly.endsWith(QStringLiteral("/kill"))
-                   || pathOnly.endsWith(QStringLiteral("/rename")))) {
+    } else if (method == QStringLiteral("POST") &&
+               pathOnly.endsWith(QStringLiteral("/checkpoint"))) {
+        response = httpResponse(200, "OK", R"({"Id":"abc123","Runtime":"criu"})");
+    } else if (method == QStringLiteral("POST") && pathOnly.endsWith(QStringLiteral("/restore"))) {
+        response = httpResponse(200, "OK", R"({"Id":"abc123","Runtime":"criu"})");
+    } else if (method == QStringLiteral("POST") && (pathOnly.endsWith(QStringLiteral("/stop")) ||
+                                                    pathOnly.endsWith(QStringLiteral("/restart")) ||
+                                                    pathOnly.endsWith(QStringLiteral("/start")) ||
+                                                    pathOnly.endsWith(QStringLiteral("/pause")) ||
+                                                    pathOnly.endsWith(QStringLiteral("/unpause")) ||
+                                                    pathOnly.endsWith(QStringLiteral("/kill")) ||
+                                                    pathOnly.endsWith(QStringLiteral("/rename")))) {
         response = httpResponse(204, "No Content", {});
-    } else if (method == QStringLiteral("DELETE")
-               && pathOnly.contains(QStringLiteral("/containers/"))) {
+    } else if (method == QStringLiteral("DELETE") &&
+               pathOnly.contains(QStringLiteral("/containers/"))) {
         response = httpResponse(204, "No Content", {});
     } else {
         response = httpResponse(404, "Not Found",
