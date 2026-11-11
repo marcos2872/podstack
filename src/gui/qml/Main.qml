@@ -18,13 +18,14 @@ Rectangle {
     FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-SemiBold.ttf" }
     FontLoader { source: "qrc:/qt/qml/PodStack/assets/fonts/Inter-Bold.ttf" }
 
-    property string section: "containers"
+    property string section: startupSection
     property string searchText: ""
 
     onSectionChanged: {
         searchText = ""
         searchField.text = ""
         refreshCurrent()
+        appWindow.rememberSection(section)
     }
 
     function applyAppearance() {
