@@ -29,6 +29,7 @@ private slots:
     void prunesCooldownMap();
     void updateNotificationsOncePerVersion();
     void updateNotificationsRespectDisabledConfig();
+    void diskLowNotificationWithHysteresis();
     void ignoresUnknownNotificationActions();
 };
 
@@ -222,6 +223,45 @@ void NotificationsTest::updateNotificationsRespectDisabledConfig()
     service.notifyUpdate(QStringLiteral("0.2.0"), QStringLiteral("stable"), {});
     service.notifyUpdateError(QStringLiteral("erro"));
     QCOMPARE(count, 0);
+}
+
+void NotificationsTest::diskLowNotificationWithHysteresis()
+{
+    PodStack::NotificationService service;
+    int count = 0;
+    QString lastBody;
+    service.setSenderForTesting(
+        [&count, &lastBody](const QString &, const QString &body, const QString &) {
+            ++count;
+            lastBody = body;
+        });
+
+    const auto sample = [](double used) {
+        return QVariantMap{{QStringLiteral("path"), QStringLiteral("/")},
+                           {QStringLiteral("usedPercent"), used},
+                           {QStringLiteral("thresholdPercent"), 90}};
+    };
+
+    service.notifyDiskLow(sample(92.0));
+    QCOMPARE(count, 1);
+    QVERIFY(lastBody.contains(QStringLiteral("/")));
+
+    service.notifyDiskLow(sample(95.0));
+    QCOMPARE(count, 1);
+
+    service.notifyDiskLow(sample(80.0));
+    QCOMPARE(count, 1);
+
+    service.notifyDiskLow(sample(93.0));
+    QCOMPARE(count, 1);
+
+    PodStack::NotificationService timed;
+    const qint64 sixHours = 6LL * 60 * 60 * 1000;
+    QVERIFY(timed.shouldNotifyDisk(sample(92.0), 1000));
+    QVERIFY(!timed.shouldNotifyDisk(sample(95.0), 2000));
+    QVERIFY(!timed.shouldNotifyDisk(sample(80.0), 3000));
+    QVERIFY(!timed.shouldNotifyDisk(sample(93.0), 4000));
+    QVERIFY(timed.shouldNotifyDisk(sample(93.0), 1000 + sixHours));
 }
 
 void NotificationsTest::ignoresUnknownNotificationActions()

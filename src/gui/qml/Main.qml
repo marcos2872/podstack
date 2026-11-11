@@ -840,7 +840,7 @@ Rectangle {
         readonly property var categories: [
             qsTr("Geral"), qsTr("Engine"), qsTr("Docker"), qsTr("Rede"),
             qsTr("Máquinas"), qsTr("Kubernetes"), qsTr("Terminal/Logs"),
-            qsTr("Updates"), qsTr("Avançado"), qsTr("Setup")
+            qsTr("Updates"), qsTr("Notificações"), qsTr("Avançado"), qsTr("Setup")
         ]
 
         function rebuildSettingsRows() {

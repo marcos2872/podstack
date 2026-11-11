@@ -1,4 +1,5 @@
 #include "core/Config.h"
+#include "core/DiskSpace.h"
 #include "core/Error.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
@@ -61,6 +62,9 @@ private slots:
     void updateSignaturePrehashed();
     void updatePublicKeyDecoding();
     void updateSignatureRejectsMalformed();
+    void diskSpaceSamplesRoot();
+    void diskSpaceRejectsMissingPath();
+    void diskSpaceThreshold();
     void redactionHidesSecrets();
     void proxyEnvironment();
     void setupActionsMapPodmanStatus();
@@ -210,7 +214,7 @@ void CoreTest::configInvalidFallsBack()
 void CoreTest::configSchemaCoversDocumentedKeys()
 {
     const QVector<PodStack::SettingDef> &definitions = PodStack::Settings::definitions();
-    QCOMPARE(definitions.size(), 85);
+    QCOMPARE(definitions.size(), 86);
 
     QSet<QString> keys;
     for (const PodStack::SettingDef &definition : definitions) {
@@ -255,7 +259,7 @@ void CoreTest::configSchemaCoversDocumentedKeys()
     QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 1);
 
     const QJsonObject schema = PodStack::Config::schema();
-    QCOMPARE(schema.value(QStringLiteral("schema")).toArray().size(), 85);
+    QCOMPARE(schema.value(QStringLiteral("schema")).toArray().size(), 86);
     const PodStack::SettingDef *proxy = PodStack::Settings::find(QStringLiteral("network.proxy"));
     QVERIFY(proxy != nullptr);
     QVERIFY(proxy->secret);
@@ -606,6 +610,44 @@ void CoreTest::updateSignatureRejectsMalformed()
                                              UpdateTestUtils::minisignFile(message, key, false),
                                              QStringLiteral("bad"), &error));
     QVERIFY(!error.isEmpty());
+}
+
+void CoreTest::diskSpaceSamplesRoot()
+{
+    PodStack::DiskSpaceSample sample;
+    QString error;
+    QVERIFY2(
+        PodStack::sampleDiskSpace(QStringLiteral("/"), QStringLiteral("root"), &sample, &error),
+        qPrintable(error));
+    QCOMPARE(sample.path, QStringLiteral("/"));
+    QVERIFY(sample.totalBytes > 0);
+    QVERIFY(sample.availableBytes <= sample.totalBytes);
+    QVERIFY(sample.usedPercent >= 0.0 && sample.usedPercent <= 100.0);
+}
+
+void CoreTest::diskSpaceRejectsMissingPath()
+{
+    PodStack::DiskSpaceSample sample;
+    QString error;
+    QVERIFY(!PodStack::sampleDiskSpace(QStringLiteral("/definitely/not/here"),
+                                       QStringLiteral("data"), &sample, &error));
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(sample.totalBytes, 0);
+}
+
+void CoreTest::diskSpaceThreshold()
+{
+    PodStack::DiskSpaceSample low;
+    low.path = QStringLiteral("/data");
+    low.usedPercent = 84.9;
+    PodStack::DiskSpaceSample high;
+    high.path = QStringLiteral("/");
+    high.usedPercent = 90.0;
+
+    QVERIFY(!PodStack::isDiskLow({low}, 90));
+    QVERIFY(PodStack::isDiskLow({low, high}, 90));
+    QVERIFY(PodStack::isDiskLow({high}, 85));
+    QVERIFY(!PodStack::isDiskLow({}, 90));
 }
 
 void CoreTest::proxyEnvironment()

@@ -36,6 +36,9 @@ public:
     /// Notifica uma atualização disponível (cooldown de 24 h por versão).
     void notifyUpdate(const QString &version, const QString &channel, const QString &url);
     void notifyUpdateError(const QString &reason);
+    /// Avisa disco baixo com histerese de 5 pontos e cooldown de 6 h por caminho.
+    void notifyDiskLow(const QVariantMap &sample);
+    bool shouldNotifyDisk(const QVariantMap &sample, qint64 nowMs);
 
 public slots:
     void notifyContainerEvent(const QVariantMap &event);
@@ -54,6 +57,7 @@ private:
     QSystemTrayIcon *m_trayIcon = nullptr;
     Sender m_sender;
     QHash<QString, qint64> m_lastSent;
+    QHash<QString, bool> m_diskArmed;
     QHash<uint, QString> m_ids;
 };
 

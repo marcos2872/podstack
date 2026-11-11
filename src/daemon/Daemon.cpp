@@ -1,6 +1,7 @@
 #include "daemon/Daemon.h"
 
 #include "core/Config.h"
+#include "core/DiskSpace.h"
 #include "core/DiskUsage.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
@@ -23,10 +24,14 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
+#include <QStandardPaths>
 #include <QStringDecoder>
 #include <QStringList>
 #include <QSysInfo>
 #include <QtConcurrent>
+
+#include <sys/stat.h>
 
 #include <chrono>
 #include <cmath>
@@ -349,6 +354,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("updates.check")) {
         return updatesCheck(params, error);
+    }
+    if (method == QStringLiteral("system.disk")) {
+        return systemDisk();
     }
     if (method == QStringLiteral("settings.get")) {
         return settingsGet(params, error);
@@ -2092,6 +2100,61 @@ QJsonObject Daemon::updatesCheck(const QJsonObject &params, Error *error)
             (void) config.save(&saveError);
         }
     }
+    return result;
+}
+
+QJsonObject Daemon::systemDisk()
+{
+    const QJsonValue thresholdValue =
+        Config::load().get(QStringLiteral("notifications.diskThresholdPercent"));
+    const int threshold = thresholdValue.isDouble() ? thresholdValue.toInt() : 90;
+
+    QVector<DiskSpaceSample> samples;
+    QJsonArray errors;
+    QSet<quint64> devices;
+    const auto add = [&](const QString &path, const QString &kind) {
+        struct stat info{};
+        if (::stat(path.toUtf8().constData(), &info) == 0) {
+            const quint64 device = static_cast<quint64>(info.st_dev);
+            if (devices.contains(device)) {
+                return;
+            }
+            devices.insert(device);
+        }
+        DiskSpaceSample sample;
+        QString error;
+        if (sampleDiskSpace(path, kind, &sample, &error)) {
+            samples.append(sample);
+        } else {
+            errors.append(error);
+        }
+    };
+
+    add(QStringLiteral("/"), QStringLiteral("root"));
+    add(Paths::dataDir(), QStringLiteral("data"));
+    add(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+            QStringLiteral("/containers"),
+        QStringLiteral("podman"));
+
+    QJsonArray filesystems;
+    for (const DiskSpaceSample &sample : samples) {
+        QJsonObject item;
+        item.insert(QStringLiteral("path"), sample.path);
+        item.insert(QStringLiteral("kind"), sample.kind);
+        item.insert(QStringLiteral("totalBytes"), static_cast<double>(sample.totalBytes));
+        item.insert(QStringLiteral("freeBytes"), static_cast<double>(sample.freeBytes));
+        item.insert(QStringLiteral("availableBytes"), static_cast<double>(sample.availableBytes));
+        item.insert(QStringLiteral("usedPercent"), sample.usedPercent);
+        filesystems.append(item);
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("checkedAt"),
+                  QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    result.insert(QStringLiteral("thresholdPercent"), threshold);
+    result.insert(QStringLiteral("low"), isDiskLow(samples, threshold));
+    result.insert(QStringLiteral("filesystems"), filesystems);
+    result.insert(QStringLiteral("errors"), errors);
     return result;
 }
 

@@ -120,6 +120,8 @@ int main(int argc, char *argv[])
                      });
     QObject::connect(&backend, &PodStack::Backend::updateCheckFailed, &notifications,
                      &PodStack::NotificationService::notifyUpdateError);
+    QObject::connect(&backend, &PodStack::Backend::diskLow, &notifications,
+                     &PodStack::NotificationService::notifyDiskLow);
     tray.setConnected(backend.connected());
     tray.setSetupPending(backend.setupPending());
     tray.setComposeProjects(backend.composeProjects());

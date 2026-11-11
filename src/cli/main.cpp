@@ -88,6 +88,7 @@ void printUsage()
           << "                          Monitora CPU/memória/containers\n"
           << "  system df [--detailed] [--json]\n"
           << "                          Uso de disco e prévia de prune\n"
+          << "  system disk [--json]    Espaço livre e aviso de disco baixo\n"
           << "  setup [--check|--status|--validate]\n"
           << "        [--apply podman|qemu|components|socket]\n"
           << "        [--docker-impact [--json]]\n"
@@ -3550,19 +3551,63 @@ QString imageLabel(const QJsonObject &item)
 int commandSystem(const QStringList &args)
 {
     if (args.isEmpty()) {
-        err() << "Uso: podstack system df [--detailed] [--json]\n";
+        err() << "Uso: podstack system df [--detailed] [--json]\n"
+              << "     podstack system disk [--json]\n";
         return kExitUsage;
     }
     const QString &sub = args.first();
     if (sub == QStringLiteral("--help") || sub == QStringLiteral("-h")
         || sub == QStringLiteral("help")) {
-        out() << "Uso: podstack system df [--detailed] [--json]\n";
+        out() << "Uso: podstack system df [--detailed] [--json]\n"
+              << "     podstack system disk [--json]\n";
+        out().flush();
+        return kExitOk;
+    }
+    if (sub == QStringLiteral("disk")) {
+        const bool json = args.contains(QStringLiteral("--json"));
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result = client.call(QStringLiteral("system.disk"), {}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        if (json) {
+            out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+            out().flush();
+            return kExitOk;
+        }
+        out() << QStringLiteral("%1  %2  %3  %4\n")
+                     .arg(QStringLiteral("CAMINHO").leftJustified(28))
+                     .arg(QStringLiteral("TIPO").leftJustified(8))
+                     .arg(QStringLiteral("USO").rightJustified(7))
+                     .arg(QStringLiteral("LIVRE").rightJustified(11));
+        const QJsonArray filesystems = result.value(QStringLiteral("filesystems")).toArray();
+        for (const QJsonValue &value : filesystems) {
+            const QJsonObject item = value.toObject();
+            out() << QStringLiteral("%1  %2  %3  %4\n")
+                         .arg(item.value(QStringLiteral("path")).toString().leftJustified(28))
+                         .arg(item.value(QStringLiteral("kind")).toString().leftJustified(8))
+                         .arg(QStringLiteral("%1%")
+                                  .arg(QString::number(
+                                      item.value(QStringLiteral("usedPercent")).toDouble(), 'f', 1))
+                                  .rightJustified(7))
+                         .arg(humanBytes(
+                                  static_cast<qint64>(
+                                      item.value(QStringLiteral("availableBytes")).toDouble()))
+                                  .rightJustified(11));
+        }
+        out() << (result.value(QStringLiteral("low")).toBool()
+                      ? QStringLiteral("Disco baixo: sim (limite %1%).\n")
+                            .arg(result.value(QStringLiteral("thresholdPercent")).toInt())
+                      : QStringLiteral("Disco baixo: não (limite %1%).\n")
+                            .arg(result.value(QStringLiteral("thresholdPercent")).toInt()));
         out().flush();
         return kExitOk;
     }
     if (sub != QStringLiteral("df")) {
         err() << "subcomando desconhecido: system " << sub << '\n';
-        err() << "Uso: podstack system df [--detailed] [--json]\n";
+        err() << "Uso: podstack system df [--detailed] [--json]\n"
+              << "     podstack system disk [--json]\n";
         return kExitUsage;
     }
 
@@ -4340,7 +4385,7 @@ void printConfigUsage(QTextStream &stream)
            << "  add <chave> <valor>     Adiciona item a uma lista\n"
            << "  remove <chave> <valor>  Remove item de uma lista\n"
            << "  reset [chave] [--yes]   Restaura uma chave ou todas\n"
-           << "  schema [--json]         Mostra o schema (85 chaves)\n";
+           << "  schema [--json]         Mostra o schema (86 chaves)\n";
     stream.flush();
 }
 

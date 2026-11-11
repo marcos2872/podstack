@@ -152,6 +152,48 @@ void NotificationService::notifyUpdateError(const QString &reason)
          reason.isEmpty() ? tr("A assinatura do feed de updates é inválida.") : reason, {});
 }
 
+void NotificationService::notifyDiskLow(const QVariantMap &sample)
+{
+    if (!notificationsEnabled()) {
+        return;
+    }
+    if (!shouldNotifyDisk(sample, QDateTime::currentMSecsSinceEpoch())) {
+        return;
+    }
+    const QString path = sample.value(QStringLiteral("path")).toString();
+    const double used = sample.value(QStringLiteral("usedPercent")).toDouble();
+    const int threshold = sample.value(QStringLiteral("thresholdPercent")).toInt();
+    send(tr("Disco quase cheio"),
+         tr("%1 está com %2% de uso (limite de %3%).").arg(path).arg(qRound(used)).arg(threshold),
+         {});
+}
+
+bool NotificationService::shouldNotifyDisk(const QVariantMap &sample, qint64 nowMs)
+{
+    const QString path = sample.value(QStringLiteral("path")).toString();
+    if (path.isEmpty()) {
+        return false;
+    }
+    const double used = sample.value(QStringLiteral("usedPercent")).toDouble();
+    const int threshold = sample.value(QStringLiteral("thresholdPercent")).toInt();
+    if (threshold <= 0) {
+        return false;
+    }
+
+    if (used < threshold - 5) {
+        m_diskArmed.insert(path, true);
+        return false;
+    }
+    if (used < threshold || !m_diskArmed.value(path, true)) {
+        return false;
+    }
+    if (!cooldownAllows(QStringLiteral("disk|") + path, nowMs, 6LL * 60 * 60 * 1000)) {
+        return false;
+    }
+    m_diskArmed.insert(path, false);
+    return true;
+}
+
 void NotificationService::notifyContainerEvent(const QVariantMap &event)
 {
     if (!notificationsEnabled()) {

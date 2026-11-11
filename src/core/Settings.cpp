@@ -193,7 +193,7 @@ const QVector<SettingDef> &definitions()
 {
     static const QVector<SettingDef> defs = [] {
         QVector<SettingDef> list;
-        list.reserve(85);
+        list.reserve(86);
 
         // Geral
         list.append(makeBool(QStringLiteral("app.startAtLogin"), false,
@@ -210,6 +210,10 @@ const QVector<SettingDef> &definitions()
         list.append(makeBool(QStringLiteral("app.notifications"), true,
                              QStringLiteral("Geral"),
                              QStringLiteral("Notifica falha, OOM e unhealthy.")));
+        list.append(makeInt(QStringLiteral("notifications.diskThresholdPercent"), 90, 50, 99,
+                            QStringLiteral("Notificações"),
+                            QStringLiteral("Percentual de uso que dispara o aviso de disco "
+                                           "baixo.")));
         list.append(makeEnum(QStringLiteral("app.theme"), QStringLiteral("system"),
                              {QStringLiteral("system"), QStringLiteral("dark"),
                               QStringLiteral("light")},

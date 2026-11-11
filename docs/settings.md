@@ -2,7 +2,7 @@
 
 > Fonte única de configuração no daemon; GUI e CLI leem/escrevem as mesmas chaves via RPC
 > (`settings.*`). Arquivo: `~/.config/podstack/config.json` (0600), escrita atômica, schema
-> versionado. O schema central com as 85 chaves, defaults, enums e faixas vive em
+> versionado. O schema central com as 86 chaves, defaults, enums e faixas vive em
 > `src/core/Settings.cpp`; `Config::defaults()` é gerado a partir dele.
 
 ---
@@ -173,6 +173,12 @@ o conteúdo não é mesclado.
 | `setup.dockerPolicy` | enum `keep\|removed` | `keep` | não | `keep` = coexistência com Docker; `removed` só após ação opt-in confirmada |
 | `setup.components` | string[] | `[]` | não | Componentes opcionais instalados (`caddy`, `k3s`) |
 | `setup.lastValidation` | timestamp? | `null` | não | Última validação do ambiente |
+
+### 2.12 Notificações
+
+| Chave | Tipo | Default | Reinício | Descrição |
+|---|---|---|---|---|
+| `notifications.diskThresholdPercent` | int 50–99 | `90` | não | Uso (%) que dispara o aviso de disco baixo; histerese de 5 pontos e cooldown de 6 h |
 
 > O Docker **não** é removido por padrão. `setup.dockerPolicy=removed` só é gravado depois de confirmação explícita e da ação allowlisted do helper; não há migração automática de dados do Docker.
 
