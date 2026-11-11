@@ -94,6 +94,8 @@ void printUsage()
           << "  config <show|get|set|add|remove|reset|schema> [args]\n"
           << "                          Lê e altera configurações\n"
           << "  doctor                  Diagnóstico rápido\n"
+          << "  report [--include-logs] [--json]\n"
+          << "                          Relatório redigido para suporte\n"
           << "  help                    Esta ajuda\n";
     out().flush();
 }
@@ -383,6 +385,86 @@ int commandExec(const QStringList &args)
 
     const int exitCode = result.value(QStringLiteral("exitCode")).toInt(kExitError);
     return (exitCode >= 0 && exitCode <= 255) ? exitCode : kExitError;
+}
+
+int commandReport(const QStringList &args)
+{
+    bool includeLogs = false;
+    bool asJson = false;
+    for (const QString &argument : args) {
+        if (argument == QStringLiteral("--include-logs")) {
+            includeLogs = true;
+        } else if (argument == QStringLiteral("--json")) {
+            asJson = true;
+        } else {
+            err() << "Opção desconhecida para report: " << argument << '\n';
+            return kExitUsage;
+        }
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result = client.call(
+        QStringLiteral("system.report"),
+        QJsonObject{{QStringLiteral("includeLogs"), includeLogs}}, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    const QString path = result.value(QStringLiteral("path")).toString();
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        err() << "Não foi possível ler o report: " << path << '\n';
+        return kExitError;
+    }
+    const QByteArray payload = file.readAll();
+    file.close();
+
+    if (asJson) {
+        out() << QString::fromUtf8(payload);
+        if (!payload.endsWith('\n')) {
+            out() << '\n';
+        }
+        out().flush();
+        return kExitOk;
+    }
+
+    const QJsonObject report = QJsonDocument::fromJson(payload).object();
+    out() << "Relatório PodStack — revise antes de compartilhar.\n";
+    out() << "arquivo: " << path << '\n';
+    out() << "sha256: " << result.value(QStringLiteral("sha256")).toString() << '\n';
+    out() << "versão: " << report.value(QStringLiteral("version")).toString() << '\n';
+    out() << "plataforma: " << report.value(QStringLiteral("platform")).toString() << '\n';
+    out() << "kernel: " << report.value(QStringLiteral("kernel")).toString() << '\n';
+    out() << "qt: " << report.value(QStringLiteral("qt")).toString() << '\n';
+    out() << "socket: " << report.value(QStringLiteral("controlSocket")).toString() << '\n';
+
+    const QJsonObject settings = report.value(QStringLiteral("settings")).toObject();
+    out() << "\nconfiguração:\n";
+    for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
+        out() << "  " << it.key() << " = "
+              << QString::fromUtf8(QJsonDocument(QJsonArray{it.value()}).toJson(
+                     QJsonDocument::Compact))
+              << '\n';
+    }
+
+    out() << "\ndiagnóstico:\n";
+    const QJsonArray checks = report.value(QStringLiteral("doctor"))
+                                  .toObject()
+                                  .value(QStringLiteral("checks"))
+                                  .toArray();
+    for (const QJsonValue &value : checks) {
+        const QJsonObject check = value.toObject();
+        const bool ok = check.value(QStringLiteral("status")).toString() == QStringLiteral("ok");
+        out() << (ok ? "  [ok]   " : "  [fail] ") << check.value(QStringLiteral("id")).toString()
+              << " - " << check.value(QStringLiteral("detail")).toString() << '\n';
+    }
+    if (report.contains(QStringLiteral("logs"))) {
+        out() << "\nlogs incluídos: "
+              << report.value(QStringLiteral("logs")).toArray().size() << " linhas\n";
+    }
+    out().flush();
+    return kExitOk;
 }
 
 int commandDoctor()
@@ -4717,6 +4799,9 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("doctor")) {
         return commandDoctor();
+    }
+    if (command == QStringLiteral("report")) {
+        return commandReport(args);
     }
     if (command == QStringLiteral("help") || command == QStringLiteral("--help")
         || command == QStringLiteral("-h")) {

@@ -3,6 +3,7 @@
 #include "core/Logging.h"
 #include "core/Paths.h"
 #include "core/Proxy.h"
+#include "core/Redaction.h"
 #include "core/RpcClient.h"
 #include "core/RpcStream.h"
 #include "core/Settings.h"
@@ -49,6 +50,7 @@ private slots:
     void configValidation();
     void configResetPreservesSetup();
     void proxyValidation();
+    void redactionHidesSecrets();
     void proxyEnvironment();
     void setupActionsMapPodmanStatus();
     void setupPolicyMandatoryChecks();
@@ -353,6 +355,26 @@ void CoreTest::configResetPreservesSetup()
     QCOMPARE(config.get(QStringLiteral("setup.completedAt")).toString(),
              QStringLiteral("2026-11-09T12:00:00Z"));
     QCOMPARE(config.get(QStringLiteral("setup.components")).toArray().size(), 1);
+}
+
+void CoreTest::redactionHidesSecrets()
+{
+    QCOMPARE(PodStack::Redaction::text(QStringLiteral("Authorization: Bearer abc123")),
+             QStringLiteral("Authorization: [redacted]"));
+    QCOMPARE(PodStack::Redaction::text(QStringLiteral("token=abc&x=1")),
+             QStringLiteral("token=[redacted]&x=1"));
+    QCOMPARE(PodStack::Redaction::text(QStringLiteral("http://user:pass@proxy:3128")),
+             QStringLiteral("http://[redacted]@proxy:3128"));
+
+    const QJsonObject input{{QStringLiteral("network.proxy"),
+                             QStringLiteral("http://user:pass@proxy:3128")},
+                            {QStringLiteral("app.theme"), QStringLiteral("dark")},
+                            {QStringLiteral("apiKey"), QStringLiteral("xyz")}};
+    const QJsonObject output = PodStack::Redaction::json(input).toObject();
+    QVERIFY(!output.value(QStringLiteral("network.proxy")).toString().contains("pass"));
+    QVERIFY(output.value(QStringLiteral("network.proxy")).toString().contains("[redacted]"));
+    QCOMPARE(output.value(QStringLiteral("app.theme")).toString(), QStringLiteral("dark"));
+    QCOMPARE(output.value(QStringLiteral("apiKey")).toString(), QStringLiteral("[redacted]"));
 }
 
 void CoreTest::proxyValidation()

@@ -5,12 +5,14 @@
 #include "core/Logging.h"
 #include "core/Paths.h"
 #include "core/Proxy.h"
+#include "core/Redaction.h"
 #include "core/Settings.h"
 #include "daemon/ManifestBuilder.h"
 #include "daemon/StatsCollector.h"
 #include "machines/DistroRegistry.h"
 #include "machines/MachineFiles.h"
 
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
@@ -20,8 +22,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QStringDecoder>
 #include <QStringList>
+#include <QSysInfo>
 #include <QtConcurrent>
 
 #include <chrono>
@@ -339,6 +343,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("system.doctor")) {
         return systemDoctor();
+    }
+    if (method == QStringLiteral("system.report")) {
+        return systemReport(params, error);
     }
     if (method == QStringLiteral("settings.get")) {
         return settingsGet(params, error);
@@ -1976,6 +1983,81 @@ QJsonObject Daemon::systemDoctor()
 
     QJsonObject result;
     result.insert(QStringLiteral("checks"), checks);
+    return result;
+}
+
+QJsonObject Daemon::systemReport(const QJsonObject &params, Error *error)
+{
+    const Config config = Config::load();
+    const bool redact = config.get(QStringLiteral("diagnostics.redact")).toBool(true);
+    const bool includeLogs =
+        params.value(QStringLiteral("includeLogs"))
+            .toBool(config.get(QStringLiteral("diagnostics.includeLogs")).toBool(true));
+
+    QJsonObject report;
+    report.insert(QStringLiteral("generatedAt"),
+                  QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    report.insert(QStringLiteral("version"), QString::fromLatin1(PODSTACK_VERSION));
+    report.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
+    report.insert(QStringLiteral("kernel"), QSysInfo::kernelVersion());
+    report.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
+    report.insert(QStringLiteral("controlSocket"), Paths::controlSocket());
+
+    const QJsonObject settings = config.flatValues();
+    report.insert(QStringLiteral("settings"), redact ? Redaction::json(settings) : settings);
+    report.insert(QStringLiteral("doctor"), systemDoctor());
+
+    if (includeLogs) {
+        QJsonArray logs;
+        QFile file(Paths::stateDir() + QStringLiteral("/logs/podstackd.log"));
+        if (file.open(QIODevice::ReadOnly)) {
+            const QStringList lines =
+                QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            const int start = qMax(0, lines.size() - 200);
+            for (int index = start; index < lines.size(); ++index) {
+                logs.append(redact ? Redaction::text(lines.at(index)) : lines.at(index));
+            }
+        }
+        report.insert(QStringLiteral("logs"), logs);
+    }
+
+    const QByteArray payload = QJsonDocument(report).toJson(QJsonDocument::Indented);
+    const QString reportsDir = Paths::stateDir() + QStringLiteral("/reports");
+    if (!QDir().mkpath(reportsDir)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível criar %1.").arg(reportsDir));
+        }
+        return {};
+    }
+    QFile::setPermissions(reportsDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                          QFileDevice::ExeOwner);
+    const QString path = reportsDir + QStringLiteral("/podstack-report-%1.json")
+                                         .arg(QDateTime::currentDateTimeUtc().toString(
+                                             QStringLiteral("yyyyMMdd-HHmmss-zzz")));
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(payload) != payload.size()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível escrever o report."));
+        }
+        return {};
+    }
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    if (!file.commit()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível concluir o report."));
+        }
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("path"), path);
+    result.insert(QStringLiteral("bytes"), payload.size());
+    result.insert(QStringLiteral("sha256"),
+                  QString::fromLatin1(
+                      QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex()));
     return result;
 }
 

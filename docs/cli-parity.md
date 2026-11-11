@@ -92,7 +92,7 @@
 | `reset` | `reset` | `--yes` | Dados Docker + machines |
 | `update` | `update` | `--check` | Pacote/assinatura |
 | `version` | `version` | `--format` | |
-| `report` | `report` | `--include-logs` | Redaction |
+| `report` | `report` | `--include-logs`, `--json` | ✅ T7-08 — arquivo 0600 em `state/reports` com `path/bytes/sha256`; redaction de segredos; revisão local |
 | `top` | `top` | `--once`, `--interval S`, `--json`, `--plain` | ✅ T7-04 — `top --once` espera duas amostras (taxas reais); contínuo até Ctrl+C |
 | — | `system df` | `--detailed`, `--json` | ✅ T2-18 — resumo por seção; `--detailed` lista imagens/containers/volumes e o total recuperável estimado |
 | `completion` | `completion` | `--shell` | bash/zsh/fish |

@@ -209,7 +209,7 @@ rootless; o M6 está concluído no código.
 | T7-05 | P1 | Notificações (OOM, falha, update, disco) | T3-07 | Respeita DND — implementado para OOM/falha/unhealthy (D-Bus, cooldown); update/disco pendentes |
 | T7-06 | P1 | Check de updates assinado + canal | T7-01 | Assinatura validada |
 | T7-07 | P0 | Onboarding e setup da máquina (diagnóstico, Podman, coexistência Docker, QEMU/KVM, componentes, validação) | T0-11 | Fluxo completo; reexecutável — implementado (SetupManager, SetupWindow e setup.*); setup agora é overlay modal e bloqueia a tela principal até os checks obrigatórios; `warn` do Podman usa `enable-socket` (sem helper); helper em dev via `scripts/dev-helper.sh`; validar instalação real em máquina limpa |
-| T7-08 | P1 | Diagnóstico/report com redaction | T0-15 | Revisão antes de enviar |
+| T7-08 | P1 | Diagnóstico/report com redaction | T0-15 | ✅ — `system.report` monta versão/plataforma/kernel/Qt/socket, settings, `doctor` e logs opcionais, grava JSON **0600** em `state/reports` e devolve `{path, bytes, sha256}`; `Redaction` cobre `Authorization`, `password`/`token`/`secret`/`api_key` e credenciais em URLs, recursivamente em JSON. CLI `podstack report [--include-logs|--json]` imprime o arquivo para revisão (nada é enviado). Evidência: `test_core/redactionHidesSecrets`, `test_rpc/systemReportRedactsSettings` (arquivo/hash/redaction) e `test_cli/reportCommand`. |
 | T7-09 | P1 | Janelas/abas múltiplas + restauração | T0-11 | Estado persiste |
 | T7-10 | P1 | Atalhos e acessibilidade | T0-11 | Teclado completo |
 | T7-11 | P2 | Migração **opcional** de dados de Docker/Podman | T2-05 | Prévia/rollback; não é pré-requisito |

@@ -7,6 +7,7 @@
 #include "machines/MachineStore.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -31,6 +32,7 @@ private slots:
     void cleanupTestCase();
     void lifecycle();
     void containerMountsLocalCaUnlessOptedOut();
+    void systemReportRedactsSettings();
     void proxyEnvironment();
     void exposeLan();
     void subscriptions();
@@ -512,6 +514,47 @@ void RpcTest::containerMountsLocalCaUnlessOptedOut()
              .isEmpty());
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(!hasCaMount());
+}
+
+void RpcTest::systemReportRedactsSettings()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+    const QJsonObject proxyValue{
+        {QStringLiteral("key"), QStringLiteral("network.proxy")},
+        {QStringLiteral("value"), QStringLiteral("http://user:s3cr3t@proxy:3128")}};
+    QJsonObject reply = client.call(QStringLiteral("settings.set"), proxyValue, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    Q_UNUSED(reply);
+
+    const QJsonObject result = client.call(
+        QStringLiteral("system.report"),
+        QJsonObject{{QStringLiteral("includeLogs"), false}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QString path = result.value(QStringLiteral("path")).toString();
+    QVERIFY(!path.isEmpty());
+    QFile reportFile(path);
+    QVERIFY(reportFile.open(QIODevice::ReadOnly));
+    const QByteArray payload = reportFile.readAll();
+    reportFile.close();
+    QCOMPARE(payload.size(), result.value(QStringLiteral("bytes")).toInt());
+    QCOMPARE(QString::fromLatin1(
+                 QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex()),
+             result.value(QStringLiteral("sha256")).toString());
+
+    const QJsonObject report = QJsonDocument::fromJson(payload).object();
+    QVERIFY(!report.value(QStringLiteral("version")).toString().isEmpty());
+    QVERIFY(!report.value(QStringLiteral("doctor"))
+                 .toObject()
+                 .value(QStringLiteral("checks"))
+                 .toArray()
+                 .isEmpty());
+    const QJsonObject settings = report.value(QStringLiteral("settings")).toObject();
+    QVERIFY(!settings.value(QStringLiteral("network.proxy")).toString().contains("s3cr3t"));
+    QVERIFY(settings.value(QStringLiteral("network.proxy")).toString().contains("[redacted]"));
+
+    client.call(QStringLiteral("settings.reset"),
+                QJsonObject{{QStringLiteral("key"), QStringLiteral("network.proxy")}}, &error);
 }
 
 void RpcTest::proxyEnvironment()
