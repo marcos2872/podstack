@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "core/Config.h"
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
 #include "gui/MainWindow.h"
 #include "gui/Notifications.h"
 #include "gui/SingleInstance.h"
+#include "gui/Translation.h"
 #include "gui/Tray.h"
 
 #include <QApplication>
@@ -26,11 +28,17 @@ int main(int argc, char *argv[])
     QGuiApplication::setApplicationVersion(QStringLiteral(PODSTACK_VERSION));
     QGuiApplication::setDesktopFileName(QStringLiteral("dev.podstack.PodStack"));
 
+    const QString language =
+        PodStack::Config::load().get(QStringLiteral("app.language")).toString();
+    if (!PodStack::installTranslation(&app, language)) {
+        qWarning("podstack-gui: catálogo de tradução %s não carregou.", qUtf8Printable(language));
+    }
+
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("PodStack"));
     parser.addHelpOption();
-    parser.addOption(QCommandLineOption(QStringLiteral("hidden"),
-                                        QStringLiteral("Inicia apenas na bandeja.")));
+    parser.addOption(
+        QCommandLineOption(QStringLiteral("hidden"), QStringLiteral("Inicia apenas na bandeja.")));
     parser.addOption(QCommandLineOption(QStringLiteral("quit"),
                                         QStringLiteral("Encerra a instância em execução.")));
     parser.process(app);
@@ -40,8 +48,8 @@ int main(int argc, char *argv[])
     const bool requestQuit = parser.isSet(QStringLiteral("quit"));
 
     QString instanceError;
-    const QString command = requestQuit ? QStringLiteral("quit")
-                                        : (startHidden ? QString() : QStringLiteral("show"));
+    const QString command =
+        requestQuit ? QStringLiteral("quit") : (startHidden ? QString() : QStringLiteral("show"));
     if (!singleInstance.start(command, &instanceError)) {
         if (!instanceError.isEmpty()) {
             qWarning("podstack-gui: %s", qUtf8Printable(instanceError));
@@ -66,11 +74,10 @@ int main(int argc, char *argv[])
 
     QObject::connect(&backend, &PodStack::Backend::containersChanged, &tray,
                      &PodStack::TrayController::setContainers);
-    QObject::connect(&backend, &PodStack::Backend::stateChanged, &tray,
-                     [&backend, &tray]() {
-                         tray.setConnected(backend.connected());
-                         tray.setSetupPending(backend.setupPending());
-                     });
+    QObject::connect(&backend, &PodStack::Backend::stateChanged, &tray, [&backend, &tray]() {
+        tray.setConnected(backend.connected());
+        tray.setSetupPending(backend.setupPending());
+    });
     QObject::connect(&backend, &PodStack::Backend::setupChanged, &tray,
                      [&backend, &tray]() { tray.setSetupPending(backend.setupPending()); });
     QObject::connect(&backend, &PodStack::Backend::machinesChanged, &tray,
@@ -78,15 +85,12 @@ int main(int argc, char *argv[])
     QObject::connect(&backend, &PodStack::Backend::k8sChanged, &tray,
                      [&backend, &tray]() { tray.setKubernetes(backend.k8sEnabled()); });
     QObject::connect(&backend, &PodStack::Backend::composeProjectsChanged, &tray,
-                     [&backend, &tray]() {
-                         tray.setComposeProjects(backend.composeProjects());
-                     });
+                     [&backend, &tray]() { tray.setComposeProjects(backend.composeProjects()); });
     QObject::connect(&backend, &PodStack::Backend::actionStateChanged, &tray,
                      [&backend, &tray]() { tray.setActionActive(backend.actionActive()); });
-    QObject::connect(&tray, &PodStack::TrayController::containerActionRequested, &backend,
-                     [&backend](const QString &action, const QString &id) {
-                         backend.lifecycle(action, id);
-                     });
+    QObject::connect(
+        &tray, &PodStack::TrayController::containerActionRequested, &backend,
+        [&backend](const QString &action, const QString &id) { backend.lifecycle(action, id); });
     QObject::connect(&tray, &PodStack::TrayController::composeActionRequested, &backend,
                      [&backend](const QString &action, const QString &path) {
                          if (action == QStringLiteral("start")) {

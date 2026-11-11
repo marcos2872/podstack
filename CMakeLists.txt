@@ -176,10 +176,16 @@ add_library(podstack_gui_lib STATIC
     src/gui/StreamClient.cpp
     src/gui/TerminalView.cpp
     src/gui/TerminalWindow.cpp
+    src/gui/Translation.cpp
     src/gui/Tray.cpp
     src/gui/UiState.cpp
 )
 target_include_directories(podstack_gui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+qt_add_resources(podstack_gui_lib "translations"
+    PREFIX "/i18n"
+    BASE translations
+    FILES translations/podstack_en_US.qm
+)
 target_link_libraries(podstack_gui_lib PUBLIC
     podstack_core
     Qt6::Core
@@ -315,15 +321,25 @@ install(FILES packaging/dev.podstack.PodStack.desktop
     DESTINATION share/applications
 )
 
+install(FILES packaging/dev.podstack.PodStack.metainfo.xml
+    DESTINATION share/metainfo
+)
+
+install(FILES LICENSE NOTICE
+    DESTINATION share/licenses/podstack
+)
+
 install(FILES assets/podstack-icon.svg
     DESTINATION share/icons/hicolor/scalable/apps
     RENAME dev.podstack.PodStack.svg
 )
 
-install(FILES assets/png/podstack-icon-256.png
-    DESTINATION share/icons/hicolor/256x256/apps
-    RENAME dev.podstack.PodStack.png
-)
+foreach(icon_size IN ITEMS 16 24 32 48 64 128 256 512)
+    install(FILES assets/png/podstack-icon-${icon_size}.png
+        DESTINATION share/icons/hicolor/${icon_size}x${icon_size}/apps
+        RENAME dev.podstack.PodStack.png
+    )
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Tests

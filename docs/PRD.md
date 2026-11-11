@@ -183,7 +183,7 @@ O concorrente direto é o **Podman Desktop**; a referência de polimento é o Or
 | **M5 — Kubernetes** | k3s em VM dedicada, contextos, pods/services/logs | J3 completo |
 | **M6 — Domains/HTTPS** | `*.localhost`, `*.podstack.local`, proxy, HTTPS, LAN | G4 completo |
 | **M7 — Desktop** | Tray, activity monitor, settings, updates, notificações | Paridade de desktop |
-| **M8 — Extras** | USB/serial, X11/áudio, migração, i18n, acessibilidade | P2 |
+| **M8 — Extras** | USB/serial, X11/áudio, empacotamento RPM/DEB/Flatpak, migração, i18n, acessibilidade | P2 |
 | **v1.0** | M0–M7 estáveis | Critérios da §14 |
 
 ### 6.2 Fora do escopo do v1.0
@@ -579,7 +579,7 @@ Design tokens e componentes em [`ui-map.md`](ui-map.md).
 |---|---|---|---|---|
 | Q1 | **Resolvida:** licença **GPL-3.0-or-later**; terminal **QTermWidget** (GPL-2.0-or-later, compatível) | — | Produto | resolvido em 2026-11-08 |
 | Q2 | **Resolvida:** Kubernetes com **k3s em VM dedicada**; kind fora do v1 | — | Arquitetura | resolvido em 2026-11-08 |
-| Q3 | **Resolvida:** Flatpak **não** no v1; reavaliar sob demanda | — | Produto | resolvido em 2026-11-08 |
+| Q3 | **Resolvida/atualizada (2026-11-11):** RPM e DEB como pacotes nativos; **Flatpak suportado como cliente desktop**, com daemon/helper instalados no host (limitações documentadas) | — | Produto | atualizado em 2026-11-11 |
 | Q4 | **Resolvida:** **rootful suportado** como opt-in explícito, com aviso | — | Arquitetura | resolvido em 2026-11-08 |
 | Q5 | **Resolvida:** `*.podstack.local` via helper opt-in; `*.localhost` é o padrão sem privilégio | — | Produto | resolvido em 2026-11-08 |
 | Q6 | **Resolvida:** telemetria **opt-in por categoria** (crash, uso, performance, erros), desligada por padrão | — | Produto | resolvido em 2026-11-08 |

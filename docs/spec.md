@@ -185,6 +185,9 @@ Formato único:
 
 ### 3.4 Terminal (exec)
 
+**Idioma:** `app.language` (`pt-BR` fonte, `en-US` catálogo) é aplicado no boot da GUI via
+`QTranslator` (`translations/podstack_en_US.qm`); trocar o idioma exige reiniciar o app.
+
 **Fluxo:**
 
 1. `POST /libpod/containers/{id}/exec` com `Cmd`, `AttachStdin/Stdout/Stderr`, `Tty`, `Env`, `WorkingDir`, `User`.
