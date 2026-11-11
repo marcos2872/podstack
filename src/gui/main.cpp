@@ -133,7 +133,16 @@ int main(int argc, char *argv[])
     tray.setKubernetes(backend.k8sEnabled());
     tray.setActionActive(backend.actionActive());
 
-    QGuiApplication::setWindowIcon(tray.icon());
+    // A dock usa o ícone do desktop entry via app_id; em dev (sem o pacote
+    // instalado) o fallback é o ícone do app embutido no recurso do QML, não
+    // o ícone da bandeja (que carrega o ponto de status).
+    QIcon appIcon = QIcon::fromTheme(
+        QStringLiteral("dev.podstack.PodStack"),
+        QIcon(QStringLiteral(":/qt/qml/PodStack/assets/podstack-icon.svg")));
+    if (appIcon.isNull()) {
+        appIcon = tray.icon();
+    }
+    QGuiApplication::setWindowIcon(appIcon);
 
     PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance, startHidden);
     QObject::connect(&tray, &PodStack::TrayController::openViewRequested, &window,

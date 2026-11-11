@@ -234,6 +234,11 @@ ctest --preset dev
 
 # depois do primeiro build, sem recompilar:
 PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
+
+# opcional: desktop entry no perfil do usuário para a dock/menu mostrarem
+# o ícone do PodStack em dev (sem instalar o pacote)
+./scripts/install-dev-desktop.sh
+./scripts/install-dev-desktop.sh --uninstall
 ```
 
 O `scripts/dev.sh` usa `$XDG_RUNTIME_DIR/podstack/control.sock`, inicia o daemon se necessário e reaproveita um daemon já ativo. Para isolar do daemon do sistema, defina `PODSTACK_CONTROL_SOCKET`:
