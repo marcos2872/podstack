@@ -574,6 +574,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.usb.detach")) {
         return machineUsbDetach(params, error);
     }
+    if (method == QStringLiteral("machines.audio.set")) {
+        return machineAudioSet(params, error);
+    }
     if (method == QStringLiteral("machines.snapshots.list")) {
         return machineSnapshotsList(params, error);
     }
@@ -1447,6 +1450,28 @@ QJsonObject Daemon::machineUsbDetach(const QJsonObject &params, Error *error)
         return {};
     }
     const MachineMeta machine = m_machines.setUsbDevices(id, devices, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineAudioSet(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const QJsonValue enabledValue = params.value(QStringLiteral("enabled"));
+    if (!enabledValue.isBool()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("O campo enabled deve ser booleano."),
+                                 QStringLiteral("enabled"));
+        }
+        return {};
+    }
+    const MachineMeta machine = m_machines.setAudioEnabled(id, enabledValue.toBool(), error);
     if (machine.id.isEmpty() || (error && !error->isEmpty())) {
         return {};
     }

@@ -1826,6 +1826,7 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
     spec.kvm = kvmAvailable();
     spec.isolateNetwork = meta.isolateNetwork;
     spec.serialPorts = meta.serialPorts;
+    spec.audioEnabled = meta.audioEnabled;
     for (const MachineUsbDevice &device : meta.usbDevices) {
         spec.usbDevices.append(QemuUsbDevice{device.bus, device.address});
     }
@@ -2814,6 +2815,78 @@ MachineMeta MachineManager::setUsbDevices(const QString &idOrName,
             *error = Error::make(
                 QStringLiteral("PODSTACK_CONFLICT"),
                 QStringLiteral("Os dispositivos USB foram salvos, mas a machine não reiniciou."),
+                errorText(restartError),
+                QStringLiteral("Inicie a machine manualmente; os metadados já foram salvos."));
+        }
+    }
+    return result;
+}
+
+MachineMeta MachineManager::setAudioEnabled(const QString &idOrName, bool enabled, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    MachineMeta meta = load(idOrName, error);
+    if (meta.id.isEmpty()) {
+        return {};
+    }
+    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("deleting") ||
+        meta.state == QStringLiteral("deleted")) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em transição; tente novamente."),
+                                 meta.id));
+        return meta;
+    }
+
+    std::shared_ptr<std::recursive_mutex> lockHolder;
+    std::unique_lock<std::recursive_mutex> machineGuard;
+    if (!tryLockMachine(meta.id, &lockHolder, &machineGuard)) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em outra operação."), meta.id,
+                                 QStringLiteral("Aguarde a operação atual terminar.")));
+        return meta;
+    }
+
+    const QemuSpec spec = specFor(meta, false, nullptr);
+    const bool wasRunning =
+        meta.state == QStringLiteral("running") || meta.state == QStringLiteral("starting") ||
+        meta.state == QStringLiteral("stopping") || m_runtime->isRunning(spec, nullptr);
+
+    if (wasRunning) {
+        Error stopError;
+        meta = stop(meta.id, false, &stopError);
+        if (!stopError.isEmpty()) {
+            if (error) {
+                *error = stopError;
+            }
+            return meta;
+        }
+    }
+
+    const QString machineId = meta.id;
+    const bool previous = meta.audioEnabled;
+    meta.audioEnabled = enabled;
+    Error persistError;
+    if (!persist(meta, &persistError)) {
+        meta.audioEnabled = previous;
+        if (error) {
+            *error = persistError;
+        }
+        return meta;
+    }
+
+    MachineMeta result = meta;
+    if (wasRunning) {
+        Error restartError;
+        const MachineMeta restarted = start(machineId, &restartError);
+        if (!restarted.id.isEmpty()) {
+            result = restarted;
+        }
+        if (!restartError.isEmpty() && error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_CONFLICT"),
+                QStringLiteral("O áudio foi salvo, mas a machine não reiniciou."),
                 errorText(restartError),
                 QStringLiteral("Inicie a machine manualmente; os metadados já foram salvos."));
         }

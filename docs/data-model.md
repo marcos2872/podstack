@@ -123,6 +123,7 @@ Não persistido. Cache em memória reconstruído por eventos.
 `machine_serial_ports`: `machineId`, `path` (porta serial do host anexada; PK composta).
 `machine_usb_devices`: `machineId`, `bus`, `address`, `vendorId`, `productId`, `description`
 (PK composta por `machineId`, `bus`, `address`).
+`machine_settings`: `machineId`, `audioEnabled` (1/0; default 0).
 
 ### 2.8 Snapshot (efêmero, derivado do qcow2)
 
@@ -277,6 +278,11 @@ CREATE TABLE machine_usb_devices (
   product_id TEXT NOT NULL,
   description TEXT,
   PRIMARY KEY (machine_id, bus, address)
+);
+
+CREATE TABLE machine_settings (
+  machine_id TEXT PRIMARY KEY REFERENCES machines(id) ON DELETE CASCADE,
+  audio_enabled INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE builds (
@@ -476,7 +482,8 @@ CREATE INDEX idx_domains_hostname ON domains(hostname);
   "usbDevices": [
     { "bus": 1, "address": 4, "vendorId": "0781", "productId": "5567",
       "description": "SanDisk Cruzer Blade" }
-  ]
+  ],
+  "audioEnabled": false
 }
 ```
 

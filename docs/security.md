@@ -305,6 +305,8 @@ encerra a janela da instância já em execução.
   Anexar exige caminho absoluto e legível; a mesma porta não pode ser usada por duas machines.
 - Dispositivos USB (T8-01): o QEMU abre o device via `usb-host` com o uid do usuário (grupo/
   udev pode ser necessário); o mesmo `bus:address` não pode estar em duas machines.
+- Áudio (T8-03): o QEMU usa o backend `pipewire` com o uid do usuário; sem servidor PipeWire
+  a inicialização da machine com áudio ativado falha e o erro é reportado no start.
 - Log de mudanças de settings sensíveis (rootful, helper, DNS, CA).
 - `podstack doctor` detecta:
   - socket com permissões erradas;

@@ -290,6 +290,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   portas do host (`ttyUSB`/`ttyACM`) com **Anexar**; aviso de restart e erro inline.
   **USB** abre o diálogo “Dispositivos USB” (`machines.usb.list/attach/detach`): anexados
   com **Desanexar** e dispositivos do host (`bus:address`) com **Anexar**.
+  O botão **Ativar/Desativar áudio** chama `machines.audio.set` (PipeWire; restart se rodando).
   **Snapshots** abre o diálogo
   “Snapshots do disco” (`machines.snapshots.list/create/restore/remove`): lista nome/data/
   tamanho, campo de nome + **Criar**, e **Restaurar**/**Remover** por item com confirmação

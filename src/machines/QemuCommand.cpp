@@ -239,6 +239,11 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
                         .arg(QString::number(device.bus), QString::number(device.address));
         }
     }
+    if (spec.audioEnabled) {
+        args << QStringLiteral("-audiodev") << QStringLiteral("pipewire,id=audio0");
+        args << QStringLiteral("-device") << QStringLiteral("intel-hda");
+        args << QStringLiteral("-device") << QStringLiteral("hda-duplex,audiodev=audio0");
+    }
     args << QStringLiteral("-daemonize");
     args << QStringLiteral("-pidfile") << spec.pidFile;
 

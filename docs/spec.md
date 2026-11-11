@@ -413,7 +413,8 @@ Estados: `provisioning → running → stopping → stopped → starting → run
 
 - O QEMU grava o serial em `machines/<id>/console.log` (`-serial file:`). Portas seriais extras
   anexadas à machine entram como `-serial <path>` adicionais (T8-02); a primeira porta continua
-  sendo o console. O daemon expõe:
+  sendo o console. Com áudio ativado (T8-03), entram `-audiodev pipewire,id=audio0`,
+  `intel-hda` e `hda-duplex,audiodev=audio0`. O daemon expõe:
   - `machines.console.read {id, tailBytes?}` one-shot, default 64 KiB e máximo 512 KiB,
     devolvendo `{id, data}`; arquivo ausente → `{data:""}`.
   - `machines.console {id, tailBytes?}` subscription com tail inicial (`reset:true`) e

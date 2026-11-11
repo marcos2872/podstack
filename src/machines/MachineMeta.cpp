@@ -176,6 +176,7 @@ QJsonObject MachineMeta::toJson() const
         usbArray.append(device.toJson());
     }
     object.insert(QStringLiteral("usbDevices"), usbArray);
+    object.insert(QStringLiteral("audioEnabled"), audioEnabled);
     return object;
 }
 
@@ -231,6 +232,7 @@ MachineMeta MachineMeta::fromJson(const QJsonObject &object)
             meta.usbDevices.append(MachineUsbDevice::fromJson(value.toObject()));
         }
     }
+    meta.audioEnabled = object.value(QStringLiteral("audioEnabled")).toBool();
     return meta;
 }
 

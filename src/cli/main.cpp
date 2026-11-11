@@ -1565,6 +1565,8 @@ void printMachineUsage(QTextStream &stream)
            << "                          Anexa um dispositivo USB (reinicia se rodando)\n"
            << "  usb detach <id|nome> BUS:ADDR [--json]\n"
            << "                          Desanexa um dispositivo USB\n"
+           << "  audio <id|nome> on|off [--json]\n"
+           << "                          Liga/desliga áudio PipeWire (reinicia se rodando)\n"
            << "  snapshot ls <id|nome> [--json]\n"
            << "                          Lista os snapshots internos do disco\n"
            << "  snapshot create <id|nome> <nome> [--json]\n"
@@ -2995,6 +2997,55 @@ int machineSerialCommand(const QStringList &args)
     return kExitOk;
 }
 
+int machineAudioCommand(const QStringList &args)
+{
+    if (args.isEmpty()) {
+        err() << "Uso: podstack machine audio <id|nome> on|off [--json]\n";
+        return kExitUsage;
+    }
+    QString id;
+    QString state;
+    bool json = false;
+    for (const QString &arg : args) {
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && state.isEmpty()) {
+            state = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() || (state != QStringLiteral("on") && state != QStringLiteral("off"))) {
+        err() << "Uso: podstack machine audio <id|nome> on|off [--json]\n";
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("machines.audio.set"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("enabled"), state == QStringLiteral("on")}},
+                    &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+    out() << QStringLiteral("Áudio %1: %2\n")
+                 .arg(state == QStringLiteral("on") ? QStringLiteral("ativado")
+                                                    : QStringLiteral("desativado"),
+                      result.value(QStringLiteral("name")).toString());
+    out().flush();
+    return kExitOk;
+}
+
 int machineUsbCommand(const QStringList &args)
 {
     if (args.isEmpty() || args.first() == QStringLiteral("--help") ||
@@ -4263,6 +4314,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("usb")) {
         return machineUsbCommand(args.mid(1));
+    }
+    if (subcommand == QStringLiteral("audio")) {
+        return machineAudioCommand(args.mid(1));
     }
     if (subcommand == QStringLiteral("snapshot") || subcommand == QStringLiteral("snapshots")) {
         return machineSnapshotCommand(args.mid(1));
