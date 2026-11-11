@@ -39,6 +39,8 @@ public:
     Q_INVOKABLE void openContainerDetail(const QString &id);
     Q_INVOKABLE void openContainerDetailTab(const QString &id, int detailTab);
     Q_INVOKABLE void openMachineDetail(const QString &id, int tab = 0);
+    /// Abre uma seção da navegação (usado pela bandeja/atalhos).
+    Q_INVOKABLE void openSection(const QString &section);
 
     bool qmlLoaded() const;
     bool qmlFailed() const;

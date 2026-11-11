@@ -180,7 +180,7 @@ plataforma continua no Libpod e não usa o override.
 | `test_cli` | `setupCommand` | `podstack setup --check`, `--validate` e a exigência de `--yes` |
 | `test_cli` | `topCommand` | `podstack top --once --json` (amostra com host/containers/totais) e `--help` |
 | `test_cli` | `systemDf` | `podstack system df`, `--detailed` e `--json` sobre o fixture do `system.df` |
-| `test_tray` | `containersMenu*`, `status*` | menu Abrir/Containers/Activity/Sair, agrupamento por projeto, overflow, status normal/atenção/erro e defaults de config |
+| `test_tray` | `containersMenu*`, `machinesSubmenu`, `kubernetesSubmenu`, `status*` | menu Abrir/Containers/Machines/Kubernetes/Activity/Sair, agrupamento por projeto, overflow, ações de machine/SSH, estado do cluster, status normal/atenção/erro e defaults de config |
 | `test_single_instance` | `secondInstance*` | primária/secundária, comandos `show`/`quit`, socket órfão e permissões 0600 |
 | `test_autostart` | `enablesAndDisables` | `.desktop` com `--hidden`, remoção e preservação de arquivo alheio |
 | `test_stats` | `parses*` | parsers de `/proc/stat`, `/proc/meminfo`, `/proc/net/dev` e `/proc/diskstats` |

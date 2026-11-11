@@ -44,6 +44,11 @@ Rectangle {
         appWindow.reveal()
     }
 
+    function openSection(section) {
+        window.section = section
+        reveal()
+    }
+
     Component.onCompleted: {
         applyAppearance()
         backend.refreshSettings()

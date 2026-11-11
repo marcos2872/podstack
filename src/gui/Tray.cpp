@@ -67,6 +67,8 @@ TrayController::TrayController(bool trayEnabled, QObject *parent)
     m_openAction = m_menu->addAction(tr("Abrir PodStack"));
     m_menu->addSeparator();
     m_containersMenu = m_menu->addMenu(tr("Containers"));
+    m_machinesMenu = m_menu->addMenu(tr("Machines"));
+    m_kubernetesMenu = m_menu->addMenu(tr("Kubernetes"));
     m_menu->addSeparator();
     m_activityAction = m_menu->addAction(tr("Activity Monitor"));
     m_settingsAction = m_menu->addAction(tr("Configurações"));
@@ -81,6 +83,9 @@ TrayController::TrayController(bool trayEnabled, QObject *parent)
             &TrayController::activityMonitorRequested);
     connect(m_settingsAction, &QAction::triggered, this, &TrayController::settingsRequested);
     connect(m_quitAction, &QAction::triggered, this, &TrayController::quitRequested);
+
+    rebuildMachinesMenu();
+    rebuildKubernetesMenu();
     connect(m_tray, &QSystemTrayIcon::activated, this,
             [this](QSystemTrayIcon::ActivationReason reason) {
                 if (reason == QSystemTrayIcon::Trigger
@@ -161,6 +166,21 @@ void TrayController::setContainers(const QVariantList &containers)
     updateStatus();
 }
 
+void TrayController::setMachines(const QVariantList &machines)
+{
+    m_machines = machines;
+    rebuildMachinesMenu();
+}
+
+void TrayController::setKubernetes(bool enabled)
+{
+    if (m_k8sEnabled == enabled) {
+        return;
+    }
+    m_k8sEnabled = enabled;
+    rebuildKubernetesMenu();
+}
+
 void TrayController::setComposeProjects(const QVariantList &projects)
 {
     m_composeProjects = projects;
@@ -192,6 +212,7 @@ void TrayController::setActionActive(bool active)
     }
     m_actionActive = active;
     rebuildContainersMenu();
+    rebuildMachinesMenu();
 }
 
 QString TrayController::projectPath(const QString &name) const
@@ -361,6 +382,89 @@ void TrayController::rebuildContainersMenu()
     // O SNI exporta o QMenu como DBusMenu uma única vez; reexportamos após
     // cada mudança para que os submenus dinâmicos cheguem ao host da bandeja.
     m_tray->setContextMenu(m_menu.get());
+}
+
+void TrayController::rebuildMachinesMenu()
+{
+    if (!m_machinesMenu) {
+        return;
+    }
+    m_machinesMenu->clear();
+
+    QAction *openAll = m_machinesMenu->addAction(tr("Abrir Machines"));
+    connect(openAll, &QAction::triggered, this, [this]() {
+        emit openViewRequested(QStringLiteral("machines"));
+    });
+
+    if (m_machines.isEmpty()) {
+        QAction *empty = m_machinesMenu->addAction(tr("Nenhuma machine"));
+        empty->setEnabled(false);
+    } else {
+        m_machinesMenu->addSeparator();
+        for (const QVariant &value : m_machines) {
+            addMachineMenu(m_machinesMenu, value.toMap());
+        }
+    }
+    m_tray->setContextMenu(m_menu.get());
+}
+
+void TrayController::rebuildKubernetesMenu()
+{
+    if (!m_kubernetesMenu) {
+        return;
+    }
+    m_kubernetesMenu->clear();
+
+    QAction *open = m_kubernetesMenu->addAction(tr("Abrir Kubernetes"));
+    connect(open, &QAction::triggered, this, [this]() {
+        emit openViewRequested(QStringLiteral("kubernetes"));
+    });
+    QAction *state =
+        m_kubernetesMenu->addAction(m_k8sEnabled ? tr("Cluster habilitado")
+                                                 : tr("Cluster desabilitado"));
+    state->setEnabled(false);
+    if (!m_k8sEnabled) {
+        QAction *enable = m_kubernetesMenu->addAction(tr("Habilitar no PodStack"));
+        connect(enable, &QAction::triggered, this, [this]() {
+            emit openViewRequested(QStringLiteral("kubernetes"));
+        });
+    }
+    m_tray->setContextMenu(m_menu.get());
+}
+
+void TrayController::addMachineMenu(QMenu *parent, const QVariantMap &machine)
+{
+    const QString id = machine.value(QStringLiteral("id")).toString();
+    QString name = machine.value(QStringLiteral("name")).toString();
+    if (name.isEmpty()) {
+        name = id.left(12);
+    }
+    const QString state = machine.value(QStringLiteral("state")).toString();
+    const bool running = state == QStringLiteral("running");
+    QMenu *menu = parent->addMenu(name);
+
+    QAction *start = menu->addAction(tr("Iniciar"));
+    start->setEnabled(!running && !m_actionActive);
+    connect(start, &QAction::triggered, this, [this, id]() {
+        emit machineActionRequested(QStringLiteral("start"), id);
+    });
+    QAction *stop = menu->addAction(tr("Parar"));
+    stop->setEnabled(running && !m_actionActive);
+    connect(stop, &QAction::triggered, this, [this, id]() {
+        emit machineActionRequested(QStringLiteral("stop"), id);
+    });
+    QAction *restart = menu->addAction(tr("Reiniciar"));
+    restart->setEnabled(running && !m_actionActive);
+    connect(restart, &QAction::triggered, this, [this, id]() {
+        emit machineActionRequested(QStringLiteral("restart"), id);
+    });
+
+    menu->addSeparator();
+    QAction *open = menu->addAction(tr("Abrir detalhe"));
+    connect(open, &QAction::triggered, this, [this, id]() { emit machineOpenRequested(id); });
+    QAction *ssh = menu->addAction(tr("SSH"));
+    ssh->setEnabled(running);
+    connect(ssh, &QAction::triggered, this, [this, id]() { emit machineSshRequested(id); });
 }
 
 void TrayController::addContainerMenu(QMenu *parent, const QVariantMap &container)

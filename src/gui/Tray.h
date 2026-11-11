@@ -47,6 +47,8 @@ public:
 public slots:
     void setContainers(const QVariantList &containers);
     void setComposeProjects(const QVariantList &projects);
+    void setMachines(const QVariantList &machines);
+    void setKubernetes(bool enabled);
     void setConnected(bool connected);
     void setSetupPending(bool pending);
     void setActionActive(bool active);
@@ -62,6 +64,9 @@ signals:
     void openContainerRequested(const QString &id, const QString &tab);
     void composeActionRequested(const QString &action, const QString &projectPath);
     void openComposeRequested(const QString &project, const QString &service, bool logs);
+    void machineActionRequested(const QString &action, const QString &id);
+    void machineOpenRequested(const QString &id);
+    void machineSshRequested(const QString &id);
     void openViewRequested(const QString &section);
 
 private:
@@ -69,7 +74,10 @@ private:
     void updateStatus();
     void updateIcon();
     void rebuildContainersMenu();
+    void rebuildMachinesMenu();
+    void rebuildKubernetesMenu();
     void addContainerMenu(QMenu *parent, const QVariantMap &container);
+    void addMachineMenu(QMenu *parent, const QVariantMap &machine);
     QString projectPath(const QString &name) const;
     int runningCount() const;
     int unhealthyCount() const;
@@ -79,12 +87,16 @@ private:
     QSystemTrayIcon *m_tray = nullptr;
     std::unique_ptr<QMenu> m_menu;
     QMenu *m_containersMenu = nullptr;
+    QMenu *m_machinesMenu = nullptr;
+    QMenu *m_kubernetesMenu = nullptr;
     QAction *m_openAction = nullptr;
     QAction *m_activityAction = nullptr;
     QAction *m_settingsAction = nullptr;
     QAction *m_quitAction = nullptr;
     QVariantList m_containers;
     QVariantList m_composeProjects;
+    QVariantList m_machines;
+    bool m_k8sEnabled = false;
     bool m_connected = true;
     bool m_setupPending = false;
     bool m_actionActive = false;
