@@ -59,6 +59,8 @@ private slots:
     void updateSignatureVerifiesDetached();
     void updateSignatureRejectsTampered();
     void updateSignaturePrehashed();
+    void updatePublicKeyDecoding();
+    void updateSignatureRejectsMalformed();
     void redactionHidesSecrets();
     void proxyEnvironment();
     void setupActionsMapPodmanStatus();
@@ -546,13 +548,72 @@ void CoreTest::updateSignaturePrehashed()
              qPrintable(error));
 }
 
+void CoreTest::updatePublicKeyDecoding()
+{
+    const UpdateTestUtils::KeyPair key = UpdateTestUtils::generateKeyPair();
+    QString error;
+    QCOMPARE(PodStack::decodeUpdatePublicKey(UpdateTestUtils::publicKeyBase64(key), &error).size(),
+             32);
+
+    QByteArray minisignKey("Ed");
+    minisignKey.append(QByteArray(8, '\0'));
+    minisignKey.append(key.publicKey);
+    QCOMPARE(
+        PodStack::decodeUpdatePublicKey(QString::fromLatin1(minisignKey.toBase64()), &error).size(),
+        32);
+
+    error.clear();
+    QVERIFY(PodStack::decodeUpdatePublicKey(QString(), &error).isEmpty());
+    QVERIFY(!error.isEmpty());
+
+    error.clear();
+    QVERIFY(PodStack::decodeUpdatePublicKey(QStringLiteral("not-a-key"), &error).isEmpty());
+    QVERIFY(!error.isEmpty());
+}
+
+void CoreTest::updateSignatureRejectsMalformed()
+{
+    const UpdateTestUtils::KeyPair key = UpdateTestUtils::generateKeyPair();
+    const QString publicKey = UpdateTestUtils::publicKeyBase64(key);
+    const QByteArray message = UpdateTestUtils::manifestForVersion("0.2.0", "stable");
+
+    QString error;
+    QVERIFY(!PodStack::verifyUpdateSignature(message, QByteArray(), publicKey, &error));
+    QVERIFY(!error.isEmpty());
+
+    error.clear();
+    QVERIFY(!PodStack::verifyUpdateSignature(
+        message, QByteArrayLiteral("untrusted comment: x\nnot-base64!!\n"), publicKey, &error));
+    QVERIFY(!error.isEmpty());
+
+    QByteArray shortBlob("Ed");
+    shortBlob.append(QByteArray(8, '\0'));
+    shortBlob.append(QByteArray(10, '\0'));
+    error.clear();
+    QVERIFY(!PodStack::verifyUpdateSignature(message, shortBlob.toBase64(), publicKey, &error));
+    QVERIFY(!error.isEmpty());
+
+    QByteArray unknownAlgorithm("XX");
+    unknownAlgorithm.append(QByteArray(8, '\0'));
+    unknownAlgorithm.append(QByteArray(64, '\0'));
+    error.clear();
+    QVERIFY(
+        !PodStack::verifyUpdateSignature(message, unknownAlgorithm.toBase64(), publicKey, &error));
+    QVERIFY(!error.isEmpty());
+
+    error.clear();
+    QVERIFY(!PodStack::verifyUpdateSignature(message,
+                                             UpdateTestUtils::minisignFile(message, key, false),
+                                             QStringLiteral("bad"), &error));
+    QVERIFY(!error.isEmpty());
+}
+
 void CoreTest::proxyEnvironment()
 {
     const QStringList keys = {
-        QStringLiteral("HTTP_PROXY"),  QStringLiteral("HTTPS_PROXY"),
-        QStringLiteral("ALL_PROXY"),   QStringLiteral("NO_PROXY"),
-        QStringLiteral("http_proxy"),  QStringLiteral("https_proxy"),
-        QStringLiteral("all_proxy"),   QStringLiteral("no_proxy"),
+        QStringLiteral("HTTP_PROXY"), QStringLiteral("HTTPS_PROXY"), QStringLiteral("ALL_PROXY"),
+        QStringLiteral("NO_PROXY"),   QStringLiteral("http_proxy"),  QStringLiteral("https_proxy"),
+        QStringLiteral("all_proxy"),  QStringLiteral("no_proxy"),
     };
     QMap<QString, QByteArray> saved;
     for (const QString &key : keys) {
