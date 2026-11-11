@@ -262,7 +262,7 @@ reinício; o firewall é liberado separadamente. <code>network.bridge</code> des
 DNS quando <code>false</code>.</p>
 <p>As chaves <code>network.subnet4</code>, <code>network.ipv6</code> e
 <code>network.domainsMode</code> estão no schema/CLI, mas ocultas na GUI.</p>
-<pre data-lang="bash"><code>podstack config get network.httpPort
+<pre data-lang="bash" tabindex="0"><code>podstack config get network.httpPort
 podstack config set network.httpPort 18080
 podstack config set network.https true
 podstack config set network.proxy socks5://127.0.0.1:1080
@@ -331,7 +331,7 @@ tocados. Em modo não interativo, <code>config reset</code> sem <code>--yes</cod
 <p>O schema tem 86 chaves e pode ser inspecionado com <code>podstack config schema --json</code>,
 que devolve tipo, default, enum, faixa e <code>restartRequired</code>. Chaves marcadas como
 <code>hidden</code> continuam no schema e na CLI, mas não aparecem no diálogo.</p>
-<pre data-lang="bash"><code>podstack config show
+<pre data-lang="bash" tabindex="0"><code>podstack config show
 podstack config show --json
 podstack config get network.httpPort
 podstack config set app.theme dark
@@ -393,8 +393,7 @@ podstack config reset --all --yes</code></pre><h2 id="referencia-rapida">Referê
       <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
 
       <nav class="pager" aria-label="Navegação entre páginas">
-        <a class="prev" href="domains.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Domínios</span></a>
-        <a class="next" href="cli.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">CLI</span></a>
+        <a class="prev" href="domains.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Domínios</span></a><a class="next" href="cli.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">CLI</span></a>
       </nav>
 
       <footer class="site-footer">

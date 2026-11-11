@@ -273,7 +273,7 @@ são configurados na GUI/RPC. A senha do usuário também é um campo da GUI, n�
 <td><code>--tail BYTES</code>, <code>--no-follow</code>, <code>--json</code> (só com <code>--no-follow</code>)</td>
 <td>Lê o console serial; sem <code>--no-follow</code>, segue até <kbd>Ctrl</kbd>+<kbd>C</kbd>.</td>
 </tr>
-</tbody></table></div><pre data-lang="bash"><code>podstack machine distros
+</tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack machine distros
 podstack machine create ubuntu:24.04 dev --cpus 2 --memory 4G --disk 20G
 podstack machine list --json
 podstack machine info dev
@@ -328,7 +328,7 @@ podstack machine logs dev --tail 200</code></pre><h3 id="cli-ssh">SSH, arquivos 
 <td><code>--json</code></td>
 <td>Remove uma porta; recusa a SSH e hostPort ambíguo.</td>
 </tr>
-</tbody></table></div><pre data-lang="bash"><code>podstack ssh dev
+</tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack ssh dev
 podstack ssh dev -- uname -a
 podstack machine ssh dev --x11 -- xeyes
 podstack machine files ls dev --path /var/log
@@ -392,7 +392,7 @@ publicada automaticamente e não pode ser removida.</p>
 <td><code>--json</code></td>
 <td>Liga/desliga áudio PipeWire; reinicia se rodando.</td>
 </tr>
-</tbody></table></div><pre data-lang="bash"><code>podstack machine snapshot create dev antes-upgrade
+</tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack machine snapshot create dev antes-upgrade
 podstack machine snapshot ls dev
 podstack machine snapshot restore dev antes-upgrade
 podstack machine export dev ~/dev-backup.tar.zst
@@ -492,8 +492,7 @@ podstack machine audio dev on</code></pre><div class="callout warning" role="not
       <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
 
       <nav class="pager" aria-label="Navegação entre páginas">
-        <a class="prev" href="builds.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Builds</span></a>
-        <a class="next" href="kubernetes.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Kubernetes</span></a>
+        <a class="prev" href="builds.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Builds</span></a><a class="next" href="kubernetes.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Kubernetes</span></a>
       </nav>
 
       <footer class="site-footer">

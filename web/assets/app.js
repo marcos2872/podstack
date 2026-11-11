@@ -240,6 +240,7 @@
     filterSidebar("");
     if (searchInput) {
       searchInput.setAttribute("aria-expanded", "false");
+      searchInput.removeAttribute("aria-activedescendant");
       if (clearInput) {
         searchInput.value = "";
       }
@@ -302,6 +303,7 @@
     filterSidebar(query, matchedFiles);
 
     if (results.length === 0) {
+      searchInput.removeAttribute("aria-activedescendant");
       const empty = document.createElement("p");
       empty.className = "search-empty";
       empty.textContent = `Nenhum resultado para “${searchInput.value.trim()}”.`;
@@ -310,6 +312,7 @@
       results.slice(0, 10).forEach((item, index) => {
         const link = document.createElement("a");
         link.href = item.url;
+        link.id = `search-option-${index}`;
         link.setAttribute("role", "option");
         link.dataset.index = String(index);
         if (index === 0) {
@@ -332,6 +335,9 @@
 
     searchResults.hidden = false;
     searchInput.setAttribute("aria-expanded", "true");
+    if (searchResults.querySelector("a")) {
+      searchInput.setAttribute("aria-activedescendant", "search-option-0");
+    }
   }
 
   function moveSearchSelection(direction) {
@@ -350,6 +356,9 @@
       option.setAttribute("aria-selected", String(active));
       if (active) {
         option.scrollIntoView({ block: "nearest" });
+        if (searchInput) {
+          searchInput.setAttribute("aria-activedescendant", option.id);
+        }
       }
     });
   }

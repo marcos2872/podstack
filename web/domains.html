@@ -135,7 +135,7 @@ publicada. Para o navegador, <code>http://web.localhost:8080/</code> chega ao co
 <li>Abra <code>http://&lt;nome&gt;.localhost:8080/</code> para acessar o container pelo nome.</li>
 <li>Se houver várias portas publicadas, o proxy detecta a que responde HTTP; se nenhuma responder, usa a primeira publicada.</li>
 <li>Para forçar uma porta, adicione a label <code>dev.podstack.http-port</code> ao container.</li>
-</ol><pre data-lang="bash"><code># exemplo de criação pela GUI: web com 8080:80
+</ol><pre data-lang="bash" tabindex="0"><code># exemplo de criação pela GUI: web com 8080:80
 curl -I http://web.localhost:8080/
 curl -I http://localhost:8080/
 
@@ -167,7 +167,7 @@ drop-in do <code>systemd-resolved</code>. Em 0.1.0, a instalação do drop-in ai
 <strong>não está ligada à GUI/CLI</strong>; sem ele, o nome não resolve.</p>
 <p>Para usar <code>*.podstack.local</code>, instale o drop-in manualmente (operação de sistema;
 revise antes):</p>
-<pre data-lang="bash"><code>sudo mkdir -p /etc/systemd/resolved.conf.d
+<pre data-lang="bash" tabindex="0"><code>sudo mkdir -p /etc/systemd/resolved.conf.d
 sudo tee /etc/systemd/resolved.conf.d/podstack.conf &gt;/dev/null &lt;&lt;&#x27;EOF&#x27;
 [Resolve]
 DNS=127.0.0.1:5353
@@ -188,7 +188,7 @@ O DNS só sobe com <code>network.bridge=true</code>. Para a maioria dos casos, p
 <li>Reinicie o daemon: <code>systemctl --user restart podstack.service</code>.</li>
 <li>Acesse <code>https://&lt;nome&gt;.localhost:8443/</code>.</li>
 <li>Teste sem alterar o trust store com <code>curl --cacert &lt;root.crt&gt;</code>.</li>
-</ol><pre data-lang="bash"><code>podstack setup --apply components --caddy
+</ol><pre data-lang="bash" tabindex="0"><code>podstack setup --apply components --caddy
 podstack config set network.https true
 systemctl --user restart podstack.service
 
@@ -241,7 +241,7 @@ customizados via Compose ainda está pendente.</p>
 <code>0.0.0.0</code>/<code>::</code> e o Caddyfile usa <code>bind 0.0.0.0</code> no HTTPS. O firewall
 do host precisa ser liberado separadamente; o PodStack não abre as portas do proxy
 automaticamente.</p>
-<pre data-lang="bash"><code>podstack config set network.exposeLan true
+<pre data-lang="bash" tabindex="0"><code>podstack config set network.exposeLan true
 systemctl --user restart podstack.service
 
 # firewalld (regra runtime; um reload/restart a remove)
@@ -284,7 +284,7 @@ resultado com <code>curl</code>.</p>
 <td><code>podstack status</code></td>
 <td>Confirma daemon e engine antes de testar.</td>
 </tr>
-</tbody></table></div><pre data-lang="bash"><code>podstack config get network.httpPort
+</tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack config get network.httpPort
 podstack config get network.httpsPort
 podstack ps
 curl -I http://web.localhost:8080/
@@ -347,8 +347,7 @@ systemctl --user restart podstack.service</code></pre><h2 id="referencia-rapida"
       <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
 
       <nav class="pager" aria-label="Navegação entre páginas">
-        <a class="prev" href="kubernetes.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Kubernetes</span></a>
-        <a class="next" href="settings.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Configurações</span></a>
+        <a class="prev" href="kubernetes.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Kubernetes</span></a><a class="next" href="settings.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Configurações</span></a>
       </nav>
 
       <footer class="site-footer">

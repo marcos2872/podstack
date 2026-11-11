@@ -174,7 +174,7 @@ usuário, SQLite e, opcionalmente, Caddy.</p>
 <li><strong>Inicie o socket de usuário</strong>: <code>systemctl --user daemon-reload</code> e <code>systemctl --user start podstack.socket</code>. O daemon sobe sob demanda na primeira conexão.</li>
 <li><strong>Valide</strong>: <code>podstack status</code> deve mostrar <code>estado: ok</code> e <code>engine: running</code>; <code>podstack doctor</code> deve terminar com exit 0.</li>
 <li><strong>Abra a GUI</strong> pelo menu <strong>PodStack</strong> ou com <code>podstack-gui</code> e conclua o assistente de configuração.</li>
-</ol><pre data-lang="bash"><code># verificação mínima
+</ol><pre data-lang="bash" tabindex="0"><code># verificação mínima
 podstack status
 podstack doctor
 podstack setup --validate
@@ -197,6 +197,7 @@ O guia de instalação detalhado do repositório está em
 <a class="card" href="domains.html" aria-label="Domínios: *.localhost, *.podstack.local, HTTPS e labels."><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><h3>Domínios</h3><p>*.localhost, *.podstack.local, HTTPS e labels.</p></a>
 <a class="card" href="settings.html" aria-label="Configurações: Categorias, chaves, tema, tray, proxy e portas."><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><h3>Configurações</h3><p>Categorias, chaves, tema, tray, proxy e portas.</p></a>
 <a class="card" href="cli.html" aria-label="CLI: Comandos, flags, JSON, exit codes e socket."><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><h3>CLI</h3><p>Comandos, flags, JSON, exit codes e socket.</p></a>
+<a class="card" href="troubleshooting.html" aria-label="Solução de problemas: Daemon, Podman, KVM, SSH, portas, CA, DNS e report."><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><h3>Solução de problemas</h3><p>Daemon, Podman, KVM, SSH, portas, CA, DNS e report.</p></a>
 </div><h2 id="limitacoes">Limitações gerais do 0.1.0</h2>
 <ul>
   <li><strong>O CLI não cria, inicia, para nem remove containers.</strong> Use a GUI para essas ações; o CLI cobre listagem, inspect, exec, pause/unpause, kill e checkpoint/restore.</li>
@@ -216,7 +217,6 @@ O guia de instalação detalhado do repositório está em
       <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
 
       <nav class="pager" aria-label="Navegação entre páginas">
-        <span aria-hidden="true"></span>
         <a class="next" href="containers.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Containers</span></a>
       </nav>
 

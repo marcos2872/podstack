@@ -126,7 +126,7 @@
 <code>podstack-gui</code>. O CLI conversa com o daemon pelo socket Unix do usuário; o daemon sobe
 sob demanda quando <code>podstack.socket</code> está ativo. No build de desenvolvimento, o binário
 fica em <code>build/dev/podstack</code>.</p>
-<pre data-lang="bash"><code>podstack help
+<pre data-lang="bash" tabindex="0"><code>podstack help
 podstack version
 podstack status</code></pre>
 <p>Convenções: <code>&lt;id|nome&gt;</code> aceita o ID ou o nome do recurso. Não há flags globais
@@ -138,13 +138,13 @@ como <code>--machine</code> ou <code>--format</code>; cada comando tem as suas. 
 <code>0700</code> e socket <code>0600</code>. Não há TCP; o daemon roda com o seu usuário. O
 <code>podstack.service</code> não é habilitado no boot: ele é ativado na primeira conexão ao socket
 e permanece ativo até o fim da sessão.</p>
-<pre data-lang="bash"><code>systemctl --user daemon-reload
+<pre data-lang="bash" tabindex="0"><code>systemctl --user daemon-reload
 systemctl --user start podstack.socket
 systemctl --user status podstack.socket
 podstack status
 podstack doctor</code></pre>
 <p>Para isolar um daemon de desenvolvimento, use <code>PODSTACK_CONTROL_SOCKET</code>:</p>
-<pre data-lang="bash"><code>PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock ./build/dev/podstack status
+<pre data-lang="bash" tabindex="0"><code>PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock ./build/dev/podstack status
 PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock ./build/dev/podstackd --socket /tmp/podstack-dev.sock</code></pre><h2 id="comandos">Grupos de comandos</h2><h3 id="diagnostico">Diagnóstico e monitoramento</h3><div class="table-wrap">
 <table>
 <thead><tr>
@@ -293,7 +293,7 @@ duplicar ou remover containers. Use a GUI ou o Podman diretamente.</p>
 <p>O grupo <code>machine</code> cobre ciclo de vida, SSH, arquivos, portas, snapshots, serial, USB,
 áudio, clone, rename, default, distros, update e export/import. A referência completa, com
 exemplos e flags, está em <a href="machines.html#na-cli">Machines → Na CLI</a>.</p>
-<pre data-lang="bash"><code>podstack machine distros
+<pre data-lang="bash" tabindex="0"><code>podstack machine distros
 podstack machine create ubuntu:24.04 dev --cpus 2 --memory 4G --disk 20G
 podstack machine list
 podstack machine info dev
@@ -438,7 +438,7 @@ ação sugerida.</p>
 </tbody></table></div>
 <p>Essas variáveis são principalmente para diagnóstico e desenvolvimento; no uso normal, deixe os
 defaults.</p>
-<h2 id="exemplos">Exemplos de automação</h2><pre data-lang="bash"><code># listar containers parados em JSON e extrair nomes
+<h2 id="exemplos">Exemplos de automação</h2><pre data-lang="bash" tabindex="0"><code># listar containers parados em JSON e extrair nomes
 podstack ps --all --format json | jq -r &#x27;.items[] | select(.state != &quot;running&quot;) | .name&#x27;
 
 # estado e diagnóstico em CI
@@ -471,8 +471,7 @@ kubectl get nodes</code></pre><h2 id="limitacoes">Limitações</h2>
       <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
 
       <nav class="pager" aria-label="Navegação entre páginas">
-        <a class="prev" href="settings.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Configurações</span></a>
-        <a class="next" href="troubleshooting.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Solução de problemas</span></a>
+        <a class="prev" href="settings.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Configurações</span></a><a class="next" href="troubleshooting.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Solução de problemas</span></a>
       </nav>
 
       <footer class="site-footer">

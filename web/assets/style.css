@@ -851,6 +851,10 @@ pre {
   tab-size: 2;
 }
 
+pre:focus-visible {
+  outline-offset: -3px;
+}
+
 pre code {
   padding: 0;
   border: 0;
@@ -1290,6 +1294,10 @@ ol.steps > li > :last-child {
 .pager .next {
   align-items: flex-end;
   text-align: right;
+}
+
+.pager > a:only-child {
+  grid-column: 1 / -1;
 }
 
 .pager .next .pager-label {

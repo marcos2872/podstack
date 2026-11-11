@@ -121,7 +121,7 @@
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg> PodStack Docs</div>
       <h1>Solução de problemas</h1>
 <p class="lede">Comece pelos diagnósticos que não alteram nada, confira socket, Podman, helper e KVM e gere um relatório redigido quando precisar de ajuda.</p>
-<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.0</span><span>Documentação de usuário</span></div><h2 id="primeiros-checks">Primeiros checks</h2><pre data-lang="bash"><code>podstack status
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.0</span><span>Documentação de usuário</span></div><h2 id="primeiros-checks">Primeiros checks</h2><pre data-lang="bash" tabindex="0"><code>podstack status
 podstack doctor
 systemctl --user status podstack.socket podstack.service
 systemctl --user status podman.socket
@@ -135,7 +135,7 @@ mas pode conter nomes de containers, caminhos e configuração.</p>
 <h2 id="daemon-socket">Daemon e socket</h2>
 <p>Sintomas: <code>Tempo esgotado aguardando o podstackd.</code>,
 <code>PODSTACK_DAEMON_UNAVAILABLE</code>, ou <code>podstack status</code> com exit 7.</p>
-<pre data-lang="bash"><code>systemctl --user status podstack.socket
+<pre data-lang="bash" tabindex="0"><code>systemctl --user status podstack.socket
 systemctl --user status podstack.service
 systemctl --user daemon-reload
 systemctl --user start podstack.socket
@@ -147,11 +147,11 @@ seu usuário. O daemon é ativado na primeira conexão. Causas comuns: units nã
 atualização, socket inativo, daemon que falhou no start, <code>PODSTACK_CONTROL_SOCKET</code>
 apontando para outro caminho ou permissão errada. Não use <code>chmod 0666</code>.</p>
 <p>Em desenvolvimento, inicie o daemon manualmente para diagnóstico:</p>
-<pre data-lang="bash"><code>./build/dev/podstackd --socket /tmp/podstack-dev.sock
+<pre data-lang="bash" tabindex="0"><code>./build/dev/podstackd --socket /tmp/podstack-dev.sock
 PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock ./build/dev/podstack status</code></pre><h2 id="podman">Podman e engine</h2>
 <p>Sintomas: <code>PODSTACK_ENGINE_UNAVAILABLE</code>, <code>engine: unavailable</code>,
 <code>podman: unavailable</code> ou listas vazias mesmo com containers existentes.</p>
-<pre data-lang="bash"><code>systemctl --user status podman.socket
+<pre data-lang="bash" tabindex="0"><code>systemctl --user status podman.socket
 systemctl --user enable --now podman.socket
 podman --version
 podman info
@@ -168,7 +168,7 @@ Rootful é opt-in explícito; a GUI mostra o badge e o aviso.</p>
 <h2 id="helper-polkit">Helper e polkit</h2>
 <p>Sintomas: <code>PODSTACK_HELPER_REQUIRED</code>, <code>PODSTACK_HELPER_UNAVAILABLE</code>, setup
 que não instala pacotes e prompt de polkit que não aparece.</p>
-<pre data-lang="bash"><code>systemctl status podstack-helper.service
+<pre data-lang="bash" tabindex="0"><code>systemctl status podstack-helper.service
 journalctl -u podstack-helper.service -n 100 --no-pager
 pkaction --action-id dev.podstack.helper.install-packages --verbose
 
@@ -183,7 +183,7 @@ helper para operar.</p>
 <h2 id="kvm">KVM, QEMU e virtiofsd</h2>
 <p>Sintomas: criação de machine falha ou fica em <code>error</code>, machine muito lenta, erro de
 virtiofsd nos mounts.</p>
-<pre data-lang="bash"><code>ls -l /dev/kvm
+<pre data-lang="bash" tabindex="0"><code>ls -l /dev/kvm
 test -r /dev/kvm &amp;&amp; test -w /dev/kvm &amp;&amp; echo &quot;KVM ok&quot;
 groups
 qemu-system-x86_64 --version
@@ -198,7 +198,7 @@ precisa expor VT-x/AMD-V.</p>
 <p>Se o virtiofsd estiver fora do path padrão, defina <code>PODSTACK_VIRTIOFSD_BINARY</code> ou
 instale em <code>/usr/libexec/virtiofsd</code> (fallback). O setup verifica QEMU, OVMF e virtiofsd;
 se um obrigatório estiver ausente, a tela principal fica bloqueada. Para uma machine que não sobe:</p>
-<pre data-lang="bash"><code>podstack machine info dev
+<pre data-lang="bash" tabindex="0"><code>podstack machine info dev
 podstack machine logs dev --tail 200
 podstack machine console dev --no-follow --tail 65536
 journalctl --user -u podstack.service -n 200 --no-pager</code></pre>
@@ -208,7 +208,7 @@ o log mostra o estágio. O virtiofsd rootless usa <code>--sandbox=namespace</cod
 <h2 id="ssh">Machines, SSH e known_hosts</h2>
 <p>Sintomas: <code>podstack ssh dev</code> não conecta, <code>ssh dev.podstack</code> não existe ou usa
 a chave errada, <code>machine pull</code>/<code>push</code> falham.</p>
-<pre data-lang="bash"><code>podstack machine list
+<pre data-lang="bash" tabindex="0"><code>podstack machine list
 podstack machine info dev
 podstack machine port ls dev
 podstack ssh dev -- uname -a
@@ -229,7 +229,7 @@ schema, mas está oculta e sem efeito no app 0.1.0.</p>
 <code>--x11-trusted</code> (adiciona <code>-Y</code>). O host precisa de <code>DISPLAY</code> e
 <code>XAUTHORITY</code>; o guest precisa de <code>xauth</code> e de um cliente X11. Wayland nativo não
 é encaminhado pelo SSH — o encaminhamento é X11.</p>
-<pre data-lang="bash"><code>echo &quot;$DISPLAY&quot;
+<pre data-lang="bash" tabindex="0"><code>echo &quot;$DISPLAY&quot;
 podstack ssh dev --x11 -- xeyes
 podstack ssh dev --x11-trusted -- xterm</code></pre>
 <p>VMs novas recebem <code>xauth</code> e <code>x11-apps</code> (Debian/Ubuntu) ou
@@ -238,7 +238,7 @@ podstack ssh dev --x11-trusted -- xterm</code></pre>
 <h2 id="portas">Portas, proxy e firewall</h2>
 <p>Sintomas: <code>http://nome.localhost:8080/</code> retorna 404, a porta 8080/8443 está em uso, ou
 o serviço funciona no host mas não na LAN.</p>
-<pre data-lang="bash"><code>ss -ltnp | grep -E &#x27;:8080|:8443&#x27;
+<pre data-lang="bash" tabindex="0"><code>ss -ltnp | grep -E &#x27;:8080|:8443&#x27;
 curl -v http://web.localhost:8080/
 curl -I http://localhost:8080/
 podstack config get network.httpPort
@@ -252,7 +252,7 @@ container.</p>
   <li><strong>Porta em uso</strong>: escolha outra porta com <code>podstack config set network.httpPort 18080</code> e reinicie <code>systemctl --user restart podstack.service</code>.</li>
   <li><strong>LAN</strong>: <code>podstack config set network.exposeLan true</code> e reinicie. O firewall do host precisa ser liberado separadamente.</li>
 </ul>
-<pre data-lang="bash"><code># firewalld (regra runtime; um reload/restart a remove)
+<pre data-lang="bash" tabindex="0"><code># firewalld (regra runtime; um reload/restart a remove)
 sudo firewall-cmd --add-port=8080/tcp
 sudo firewall-cmd --add-port=8443/tcp
 
@@ -261,7 +261,7 @@ sudo ufw allow 8080/tcp
 sudo ufw allow 8443/tcp</code></pre><div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Portas 80/443</p><p>O helper tem a API de <code>BindPorts</code>, mas a GUI/CLI 0.1.0 não a aciona. Use 8080/8443. Se <code>network.bridge=false</code>, o proxy HTTP e o DNS ficam desligados.</p></div></div><h2 id="https-ca">HTTPS e CA</h2>
 <p>Sintomas: <code>https://nome.localhost:8443/</code> não abre, o navegador mostra certificado
 inválido ou o daemon registra que o HTTPS está indisponível.</p>
-<pre data-lang="bash"><code>caddy version
+<pre data-lang="bash" tabindex="0"><code>caddy version
 podstack config get network.https
 podstack config get network.httpsPort
 journalctl --user -u podstack.service -n 100 --no-pager
@@ -272,10 +272,10 @@ systemctl --user restart podstack.service</code></pre>
 <p>A CA local fica em
 <code>~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt</code>. Teste sem alterar
 o trust store:</p>
-<pre data-lang="bash"><code>curl --cacert ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
+<pre data-lang="bash" tabindex="0"><code>curl --cacert ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
   https://web.localhost:8443/</code></pre>
 <p>O navegador não confia na CA por padrão. A importação é manual nesta versão. No Fedora:</p>
-<pre data-lang="bash"><code>sudo cp ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
+<pre data-lang="bash" tabindex="0"><code>sudo cp ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
   /etc/pki/ca-trust/source/anchors/podstack-local-ca.crt
 sudo update-ca-trust
 
@@ -293,7 +293,7 @@ responde. Se o certificado não corresponder ao nome, use um domínio coberto po
 <code>getent hosts web.localhost</code>. <code>*.podstack.local</code> usa o DNS userspace em
 <code>127.0.0.1:5353</code> e um drop-in do <code>systemd-resolved</code>. Em 0.1.0, a instalação
 desse drop-in ainda não está ligada à GUI/CLI; sem ele, o nome não resolve.</p>
-<pre data-lang="bash"><code>getent hosts web.localhost
+<pre data-lang="bash" tabindex="0"><code>getent hosts web.localhost
 curl -I http://web.localhost:8080/
 
 ss -lunp | grep 5353
@@ -318,7 +318,7 @@ resolved. Para a maioria dos casos, prefira <code>*.localhost</code>.</p>
 <code>podstack machine audio &lt;id|nome&gt; on</code> ou pelo botão <strong>Ativar áudio</strong>; a
 machine reinicia se estiver rodando. O guest precisa de stack de áudio compatível (PulseAudio no
 Debian/Ubuntu; PipeWire no Fedora). VMs antigas podem precisar instalar o stack manualmente.</p>
-<pre data-lang="bash"><code>podstack machine audio dev on
+<pre data-lang="bash" tabindex="0"><code>podstack machine audio dev on
 podstack machine info dev
 podstack machine logs dev --tail 100
 
@@ -333,7 +333,7 @@ transmite áudio.</p>
 <p>Sintomas: <code>podstack checkpoint</code> falha com <code>PODSTACK_UNSUPPORTED</code> ou erro do
 engine; <code>restore</code> não encontra o checkpoint; o container não fica no estado esperado após
 o restore.</p>
-<pre data-lang="bash"><code>criu --version
+<pre data-lang="bash" tabindex="0"><code>criu --version
 criu check
 stat -fc %T /sys/fs/cgroup
 podstack inspect web | head
@@ -345,7 +345,7 @@ como substituto de um checkpoint persistente. O <code>restore</code> espera um c
 para o mesmo container.</p>
 <h2 id="compose">Compose e builds</h2>
 <p>Se o Compose não sobe, confira o provider e o socket do Podman:</p>
-<pre data-lang="bash"><code>docker-compose version
+<pre data-lang="bash" tabindex="0"><code>docker-compose version
 podstack compose ls
 PODSTACK_COMPOSE_PROVIDER=docker-compose podstack compose up ~/projetos/app</code></pre>
 <p>O erro <code>PODSTACK_COMPOSE_PROVIDER_MISSING</code> indica que nenhum provider foi encontrado;
@@ -354,9 +354,9 @@ disponível. O <code>compose up</code> do CLI sempre roda destacado e recebe o d
 não um <code>-f</code>.</p>
 <p>Em um build que falha, confira contexto, Dockerfile, <code>--build-arg</code> e o histórico. Para
 múltiplas plataformas, o host precisa de <code>binfmt_misc</code> para as arquiteturas estrangeiras.</p>
-<pre data-lang="bash"><code>podstack builds
+<pre data-lang="bash" tabindex="0"><code>podstack builds
 podstack build ./app -t local/app:dev -f Dockerfile
-podstack build ./app -t local/app:multi --platform linux/amd64,linux/arm64</code></pre><h2 id="updates">Updates</h2><pre data-lang="bash"><code>podstack update --check
+podstack build ./app -t local/app:multi --platform linux/amd64,linux/arm64</code></pre><h2 id="updates">Updates</h2><pre data-lang="bash" tabindex="0"><code>podstack update --check
 podstack update --check --json --channel beta</code></pre>
 <p><code>update --check</code> não instala nada. Exit 3 significa que há versão nova; exit 1 indica que
 a checagem está indisponível. A atualização é feita pelo gerenciador de pacotes
@@ -475,7 +475,7 @@ ou assinatura inválidos; não contorne a verificação. Um feed sem chave retor
 <p>Use o journal do daemon, o <code>podstack doctor</code> e o <code>podstack top</code> para
 monitoramento. Para o estado do engine, <code>podman info</code>. Para inspecionar um container,
 <code>podstack inspect</code>. Para um relatório redigido, <code>podstack report --include-logs</code>.</p>
-<pre data-lang="bash"><code>journalctl --user -u podstack.service -n 200 --no-pager
+<pre data-lang="bash" tabindex="0"><code>journalctl --user -u podstack.service -n 200 --no-pager
 journalctl --user -u podstack.service -f
 
 podstack doctor
@@ -502,7 +502,6 @@ sugerida.</p>
 
       <nav class="pager" aria-label="Navegação entre páginas">
         <a class="prev" href="cli.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">CLI</span></a>
-        <span aria-hidden="true"></span>
       </nav>
 
       <footer class="site-footer">
