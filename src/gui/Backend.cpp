@@ -2198,6 +2198,14 @@ void Backend::onSettingsActionFinished()
             emit settingsChanged();
         }
 
+        // O daemon devolve restartRequired quando o valor mudou e a definição
+        // exige reinício; sem isso o usuário salvava e nada avisava.
+        if (result.value(QStringLiteral("restartRequired")).toBool(false) && !key.isEmpty() &&
+            !m_pendingRestartKeys.contains(key)) {
+            m_pendingRestartKeys.append(key);
+            emit pendingRestartKeysChanged();
+        }
+
         if (request.applyAutostart) {
             QString autostartError;
             const bool enabled =

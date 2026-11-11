@@ -150,6 +150,8 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList settingsSchema READ settingsSchema NOTIFY settingsSchemaChanged)
     Q_PROPERTY(QVariantMap settingsValues READ settingsValues NOTIFY settingsValuesChanged)
     Q_PROPERTY(QString settingsError READ settingsError NOTIFY settingsErrorChanged)
+    Q_PROPERTY(
+        QStringList pendingRestartKeys READ pendingRestartKeys NOTIFY pendingRestartKeysChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -270,6 +272,7 @@ public:
     QString settingsError() const { return m_settingsError; }
     QVariantList settingsSchema() const { return m_settingsSchema; }
     QVariantMap settingsValues() const { return m_settingsValues; }
+    QStringList pendingRestartKeys() const { return m_pendingRestartKeys; }
     bool setupLoaded() const { return m_setupLoaded; }
 
     Q_INVOKABLE void refresh();
@@ -484,6 +487,7 @@ signals:
     void settingsSchemaChanged();
     void settingsValuesChanged();
     void settingsErrorChanged();
+    void pendingRestartKeysChanged();
     void settingFinished(const QString &key, bool ok, const QString &error);
     void setupChanged();
     void setupJobChanged();
@@ -725,6 +729,7 @@ private:
     QVariantList m_settingsSchema;
     QVariantMap m_settingsValues;
     QString m_settingsError;
+    QStringList m_pendingRestartKeys;
 };
 
 } // namespace PodStack
