@@ -445,19 +445,16 @@ void TrayController::addMachineMenu(QMenu *parent, const QVariantMap &machine)
 
     QAction *start = menu->addAction(tr("Iniciar"));
     start->setEnabled(!running && !m_actionActive);
-    connect(start, &QAction::triggered, this, [this, id]() {
-        emit machineActionRequested(QStringLiteral("start"), id);
-    });
+    connect(start, &QAction::triggered, this,
+            [this, id]() { emit machineActionRequested(QStringLiteral("start"), id); });
     QAction *stop = menu->addAction(tr("Parar"));
     stop->setEnabled(running && !m_actionActive);
-    connect(stop, &QAction::triggered, this, [this, id]() {
-        emit machineActionRequested(QStringLiteral("stop"), id);
-    });
+    connect(stop, &QAction::triggered, this,
+            [this, id]() { emit machineActionRequested(QStringLiteral("stop"), id); });
     QAction *restart = menu->addAction(tr("Reiniciar"));
     restart->setEnabled(running && !m_actionActive);
-    connect(restart, &QAction::triggered, this, [this, id]() {
-        emit machineActionRequested(QStringLiteral("restart"), id);
-    });
+    connect(restart, &QAction::triggered, this,
+            [this, id]() { emit machineActionRequested(QStringLiteral("restart"), id); });
 
     menu->addSeparator();
     QAction *open = menu->addAction(tr("Abrir detalhe"));

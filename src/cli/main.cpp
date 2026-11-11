@@ -404,9 +404,9 @@ int commandReport(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result = client.call(
-        QStringLiteral("system.report"),
-        QJsonObject{{QStringLiteral("includeLogs"), includeLogs}}, &error);
+    const QJsonObject result =
+        client.call(QStringLiteral("system.report"),
+                    QJsonObject{{QStringLiteral("includeLogs"), includeLogs}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -443,16 +443,14 @@ int commandReport(const QStringList &args)
     out() << "\nconfiguração:\n";
     for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
         out() << "  " << it.key() << " = "
-              << QString::fromUtf8(QJsonDocument(QJsonArray{it.value()}).toJson(
-                     QJsonDocument::Compact))
+              << QString::fromUtf8(
+                     QJsonDocument(QJsonArray{it.value()}).toJson(QJsonDocument::Compact))
               << '\n';
     }
 
     out() << "\ndiagnóstico:\n";
-    const QJsonArray checks = report.value(QStringLiteral("doctor"))
-                                  .toObject()
-                                  .value(QStringLiteral("checks"))
-                                  .toArray();
+    const QJsonArray checks =
+        report.value(QStringLiteral("doctor")).toObject().value(QStringLiteral("checks")).toArray();
     for (const QJsonValue &value : checks) {
         const QJsonObject check = value.toObject();
         const bool ok = check.value(QStringLiteral("status")).toString() == QStringLiteral("ok");
@@ -460,8 +458,8 @@ int commandReport(const QStringList &args)
               << " - " << check.value(QStringLiteral("detail")).toString() << '\n';
     }
     if (report.contains(QStringLiteral("logs"))) {
-        out() << "\nlogs incluídos: "
-              << report.value(QStringLiteral("logs")).toArray().size() << " linhas\n";
+        out() << "\nlogs incluídos: " << report.value(QStringLiteral("logs")).toArray().size()
+              << " linhas\n";
     }
     out().flush();
     return kExitOk;
