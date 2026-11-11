@@ -22,6 +22,9 @@ struct SerialPortInfo {
 /// Lista portas seriais do host em /dev (ttyUSB*, ttyACM*, ttyS*).
 QVector<SerialPortInfo> listHostSerialPorts();
 
+/// Variante testável: usa `devDir` e `sysClassTty` em vez de /dev e /sys/class/tty.
+QVector<SerialPortInfo> listSerialPortsIn(const QString &devDir, const QString &sysClassTty);
+
 /// Valida um caminho de porta serial para anexar a uma machine.
 bool validateSerialPortPath(const QString &path, QString *error = nullptr);
 

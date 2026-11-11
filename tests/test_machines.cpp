@@ -1229,16 +1229,77 @@ void MachinesTest::machineMetaRoundTrip()
 
 void MachinesTest::serialPortsListing()
 {
-    const QVector<PodStack::SerialPortInfo> ports = PodStack::listHostSerialPorts();
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString dev = dir.filePath(QStringLiteral("dev"));
+    const QString sys = dir.filePath(QStringLiteral("sys"));
+    QVERIFY(QDir().mkpath(dev));
+    QVERIFY(QDir().mkpath(sys));
+
+    const auto touch = [](const QString &path, const QByteArray &content = {}) {
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            return false;
+        }
+        file.write(content);
+        return true;
+    };
+
+    QVERIFY(touch(dev + QStringLiteral("/ttyUSB0")));
+    QVERIFY(touch(sys + QStringLiteral("/ttyUSB0/device/manufacturer"), "Acme\n"));
+    QVERIFY(touch(sys + QStringLiteral("/ttyUSB0/device/product"), "SerialX\n"));
+    QVERIFY(touch(dev + QStringLiteral("/ttyUSB1")));
+    QVERIFY(touch(sys + QStringLiteral("/ttyUSB1/device/uevent"), "DEVTYPE=usb\n"));
+    QVERIFY(touch(dev + QStringLiteral("/ttyACM0")));
+    QVERIFY(touch(sys + QStringLiteral("/ttyACM0/device/manufacturer"), "Acme\n"));
+    QVERIFY(touch(sys + QStringLiteral("/ttyACM0/device/product"), "CDC ACM\n"));
+    QVERIFY(touch(dev + QStringLiteral("/ttyACM1")));
+    QVERIFY(touch(sys + QStringLiteral("/ttyACM1/device/idVendor"), "1a86\n"));
+    QVERIFY(touch(sys + QStringLiteral("/ttyACM1/device/idProduct"), "7523\n"));
+    QVERIFY(touch(dev + QStringLiteral("/ttyUSB2")));
+    QVERIFY(touch(sys + QStringLiteral("/ttyUSB2/device/uevent"), "DEVTYPE=usb\n"));
+    QVERIFY(touch(sys + QStringLiteral("/ttyUSB2/manufacturer"), "Parent\n"));
+    QVERIFY(touch(sys + QStringLiteral("/ttyUSB2/product"), "Device\n"));
+    QVERIFY(touch(dev + QStringLiteral("/ttyS0")));
+    QVERIFY(touch(sys + QStringLiteral("/ttyS0/type"), "4\n"));
+    QVERIFY(touch(dev + QStringLiteral("/ttyS1")));
+    QVERIFY(touch(sys + QStringLiteral("/ttyS1/type"), "0\n"));
+    QVERIFY(touch(dev + QStringLiteral("/ttyS2")));
+    QVERIFY(touch(dev + QStringLiteral("/ttyS3")));
+    QVERIFY(touch(sys + QStringLiteral("/ttyS3/type"), "9\n"));
+    const QList<int> uartTypes{1, 2, 3, 5, 6, 7, 8};
+    for (int index = 0; index < uartTypes.size(); ++index) {
+        const QString name = QStringLiteral("ttyS%1").arg(index + 4);
+        QVERIFY(touch(dev + QStringLiteral("/") + name));
+        QVERIFY(touch(sys + QStringLiteral("/") + name + QStringLiteral("/type"),
+                      QByteArray::number(uartTypes.at(index)) + '\n'));
+    }
+    QVERIFY(touch(dev + QStringLiteral("/notaserial")));
+
+    const QVector<PodStack::SerialPortInfo> ports = PodStack::listSerialPortsIn(dev, sys);
+    QCOMPARE(ports.size(), 14);
+    (void) PodStack::listHostSerialPorts();
+
+    QHash<QString, QString> descriptions;
     for (const PodStack::SerialPortInfo &port : ports) {
+        descriptions.insert(QFileInfo(port.path).fileName(), port.description);
         QVERIFY(!port.path.isEmpty());
         QVERIFY(QDir::isAbsolutePath(port.path));
         QVERIFY(QFileInfo::exists(port.path));
         QVERIFY(!port.description.isEmpty());
-        QVERIFY(port.description != QStringLiteral("UART UART"));
         QVERIFY(port.kind == QStringLiteral("usb") || port.kind == QStringLiteral("acm") ||
                 port.kind == QStringLiteral("uart"));
     }
+    QCOMPARE(descriptions.value(QStringLiteral("ttyUSB0")), QStringLiteral("Acme SerialX"));
+    QCOMPARE(descriptions.value(QStringLiteral("ttyUSB1")), QStringLiteral("Adaptador USB serial"));
+    QCOMPARE(descriptions.value(QStringLiteral("ttyACM0")), QStringLiteral("Acme CDC ACM"));
+    QCOMPARE(descriptions.value(QStringLiteral("ttyACM1")), QStringLiteral("1a86:7523"));
+    QCOMPARE(descriptions.value(QStringLiteral("ttyUSB2")), QStringLiteral("Parent Device"));
+    QCOMPARE(descriptions.value(QStringLiteral("ttyS0")), QStringLiteral("UART 16550A"));
+    QCOMPARE(descriptions.value(QStringLiteral("ttyS3")), QStringLiteral("UART"));
+    QVERIFY(!descriptions.contains(QStringLiteral("ttyS1")));
+    QVERIFY(!descriptions.contains(QStringLiteral("ttyS2")));
 }
 
 void MachinesTest::serialPortsValidation()
@@ -4995,6 +5056,23 @@ void MachinesTest::machineManagerSerialPorts()
     const MachineMeta attached = manager.setSerialPorts(first.id, {portPath}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(attached.serialPorts, QStringList{portPath});
+
+    error = {};
+    const MachineMeta started = manager.start(first.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(started.state, QStringLiteral("running"));
+
+    const QString secondPath = root + QStringLiteral("/ttyACM-test");
+    QFile secondFile(secondPath);
+    QVERIFY(secondFile.open(QIODevice::WriteOnly));
+    secondFile.write("serial");
+    secondFile.close();
+    error = {};
+    const MachineMeta restarted = manager.setSerialPorts(first.id, {portPath, secondPath}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(restarted.serialPorts.contains(secondPath));
+    QCOMPARE(restarted.state, QStringLiteral("running"));
+    QVERIFY(manager.stop(first.id, false, &error).state != QStringLiteral("running"));
 
     error = {};
     (void) manager.setSerialPorts(second.id, {portPath}, &error);

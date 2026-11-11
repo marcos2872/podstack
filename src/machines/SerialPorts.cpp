@@ -52,13 +52,13 @@ QString uartTypeName(int type)
     case 8:
         return QStringLiteral("16950");
     default:
-        return QStringLiteral("UART");
+        return {};
     }
 }
 
-QString uartDescription(const QString &name, bool *present)
+QString uartDescription(const QString &sysClassTty, const QString &name, bool *present)
 {
-    const QString sysPath = QStringLiteral("/sys/class/tty/") + name;
+    const QString sysPath = sysClassTty + QLatin1Char('/') + name;
     bool ok = false;
     const int type = readTrimmed(sysPath + QStringLiteral("/type")).toInt(&ok);
     if (!ok || type <= 0) {
@@ -70,12 +70,13 @@ QString uartDescription(const QString &name, bool *present)
     if (present) {
         *present = true;
     }
-    return QStringLiteral("UART %1").arg(uartTypeName(type));
+    const QString typeName = uartTypeName(type);
+    return typeName.isEmpty() ? QStringLiteral("UART") : QStringLiteral("UART %1").arg(typeName);
 }
 
-QString usbDescription(const QString &name, const char *fallback)
+QString usbDescription(const QString &sysClassTty, const QString &name, const char *fallback)
 {
-    QString directory = QStringLiteral("/sys/class/tty/") + name + QStringLiteral("/device");
+    QString directory = sysClassTty + QLatin1Char('/') + name + QStringLiteral("/device");
     for (int level = 0; level < 4; ++level) {
         const QDir current(directory);
         const QString manufacturer = readTrimmed(current.filePath(QStringLiteral("manufacturer")));
@@ -116,10 +117,10 @@ QJsonObject SerialPortInfo::toJson() const
     return object;
 }
 
-QVector<SerialPortInfo> listHostSerialPorts()
+QVector<SerialPortInfo> listSerialPortsIn(const QString &devDir, const QString &sysClassTty)
 {
     QVector<SerialPortInfo> ports;
-    const QDir dev(QStringLiteral("/dev"));
+    const QDir dev(devDir);
     const QFileInfoList entries = dev.entryInfoList(
         {QStringLiteral("ttyUSB*"), QStringLiteral("ttyACM*"), QStringLiteral("ttyS*")},
         QDir::System | QDir::Files, QDir::Name);
@@ -135,14 +136,15 @@ QVector<SerialPortInfo> listHostSerialPorts()
         info.kind = kindForName(entry.fileName());
         if (info.kind == QStringLiteral("uart")) {
             bool present = false;
-            info.description = uartDescription(entry.fileName(), &present);
+            info.description = uartDescription(sysClassTty, entry.fileName(), &present);
             if (!present) {
                 continue;
             }
         } else if (info.kind == QStringLiteral("usb")) {
-            info.description = usbDescription(entry.fileName(), "Adaptador USB serial");
+            info.description =
+                usbDescription(sysClassTty, entry.fileName(), "Adaptador USB serial");
         } else {
-            info.description = usbDescription(entry.fileName(), "Dispositivo CDC-ACM");
+            info.description = usbDescription(sysClassTty, entry.fileName(), "Dispositivo CDC-ACM");
         }
         info.readable = entry.isReadable();
         bool duplicate = false;
@@ -157,6 +159,11 @@ QVector<SerialPortInfo> listHostSerialPorts()
         }
     }
     return ports;
+}
+
+QVector<SerialPortInfo> listHostSerialPorts()
+{
+    return listSerialPortsIn(QStringLiteral("/dev"), QStringLiteral("/sys/class/tty"));
 }
 
 bool validateSerialPortPath(const QString &path, QString *error)
