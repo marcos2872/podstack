@@ -32,7 +32,7 @@ log (o arquivo original não é apagado; um save posterior o substitui).
 | `app.notifications` | bool | `true` | não | Notifica falha/OOM/unhealthy de containers |
 | `app.theme` | enum `system\|dark\|light` | `system` | não | Tema da UI |
 | `app.fontScale` | int (80–150) | `100` | não | Escala da fonte da UI (%) |
-| `app.language` | string | `pt-BR` | não | Idioma (`pt-BR`, `en-US`) |
+| `app.language` | enum `pt-BR\|en-US` | `pt-BR` | sim | Idioma da interface; catálogo en-US carregado no boot |
 | `app.confirmDestructive` | bool | `true` | não | Confirmação para ações destrutivas |
 | `app.showOnboarding` | bool | `true` | não | Exibe onboarding se incompleto |
 

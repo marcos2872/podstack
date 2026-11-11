@@ -176,10 +176,16 @@ add_library(podstack_gui_lib STATIC
     src/gui/StreamClient.cpp
     src/gui/TerminalView.cpp
     src/gui/TerminalWindow.cpp
+    src/gui/Translation.cpp
     src/gui/Tray.cpp
     src/gui/UiState.cpp
 )
 target_include_directories(podstack_gui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+qt_add_resources(podstack_gui_lib "translations"
+    PREFIX "/i18n"
+    BASE translations
+    FILES translations/podstack_en_US.qm
+)
 target_link_libraries(podstack_gui_lib PUBLIC
     podstack_core
     Qt6::Core
