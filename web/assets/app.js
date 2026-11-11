@@ -376,6 +376,7 @@
         const active = searchResults && searchResults.querySelector("a.is-active");
         if (active) {
           event.preventDefault();
+          closeSearch(false);
           window.location.href = active.getAttribute("href");
         }
       } else if (event.key === "Escape") {
@@ -383,6 +384,14 @@
         searchInput.blur();
       }
     });
+
+    if (searchResults) {
+      searchResults.addEventListener("click", (event) => {
+        if (event.target.closest("a")) {
+          closeSearch(false);
+        }
+      });
+    }
 
     document.addEventListener("click", (event) => {
       if (searchBox && !searchBox.contains(event.target)) {
