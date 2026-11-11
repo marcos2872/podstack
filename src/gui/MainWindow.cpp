@@ -15,6 +15,7 @@
 #include <QDockWidget>
 #include <QQmlContext>
 #include <QQmlError>
+#include <QQuickItem>
 #include <QQuickWidget>
 #include <QTabWidget>
 
@@ -158,6 +159,15 @@ void MainWindow::reveal()
     }
     raise();
     activateWindow();
+}
+
+void MainWindow::openSection(const QString &section)
+{
+    reveal();
+    QObject *root = m_quickWidget ? m_quickWidget->rootObject() : nullptr;
+    if (root) {
+        QMetaObject::invokeMethod(root, "openSection", Q_ARG(QVariant, QVariant(section)));
+    }
 }
 
 void MainWindow::hideToTray()

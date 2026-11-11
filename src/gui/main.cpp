@@ -73,6 +73,10 @@ int main(int argc, char *argv[])
                      });
     QObject::connect(&backend, &PodStack::Backend::setupChanged, &tray,
                      [&backend, &tray]() { tray.setSetupPending(backend.setupPending()); });
+    QObject::connect(&backend, &PodStack::Backend::machinesChanged, &tray,
+                     [&backend, &tray]() { tray.setMachines(backend.machines()); });
+    QObject::connect(&backend, &PodStack::Backend::k8sChanged, &tray,
+                     [&backend, &tray]() { tray.setKubernetes(backend.k8sEnabled()); });
     QObject::connect(&backend, &PodStack::Backend::composeProjectsChanged, &tray,
                      [&backend, &tray]() {
                          tray.setComposeProjects(backend.composeProjects());
@@ -97,16 +101,28 @@ int main(int argc, char *argv[])
                      &PodStack::Backend::refresh);
     QObject::connect(&backend, &PodStack::Backend::settingsChanged, &tray,
                      &PodStack::TrayController::reloadConfig);
+    QObject::connect(&tray, &PodStack::TrayController::machineActionRequested, &backend,
+                     [&backend](const QString &action, const QString &id) {
+                         backend.machineLifecycle(action, id);
+                     });
+    QObject::connect(&tray, &PodStack::TrayController::machineSshRequested, &backend,
+                     [&backend](const QString &id) { backend.openMachineSsh(id); });
     QObject::connect(&backend, &PodStack::Backend::containerEvent, &notifications,
                      &PodStack::NotificationService::notifyContainerEvent);
     tray.setConnected(backend.connected());
     tray.setSetupPending(backend.setupPending());
     tray.setComposeProjects(backend.composeProjects());
+    tray.setMachines(backend.machines());
+    tray.setKubernetes(backend.k8sEnabled());
     tray.setActionActive(backend.actionActive());
 
     QGuiApplication::setWindowIcon(tray.icon());
 
     PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance, startHidden);
+    QObject::connect(&tray, &PodStack::TrayController::openViewRequested, &window,
+                     &PodStack::MainWindow::openSection);
+    QObject::connect(&tray, &PodStack::TrayController::machineOpenRequested, &window,
+                     [&window](const QString &id) { window.openMachineDetail(id); });
     // O QQuickWidget pode carregar de forma assíncrona (especialmente com QML
     // cache frio no CI); só falhe se o carregamento terminou em erro.
     if (window.qmlFailed()) {

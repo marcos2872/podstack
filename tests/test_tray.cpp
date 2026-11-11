@@ -52,6 +52,8 @@ private slots:
     void containersMenuEmptyState();
     void containersMenuDisabledDuringAction();
     void containersMenuOverflow();
+    void machinesSubmenu();
+    void kubernetesSubmenu();
     void activationSignals();
     void pausedContainerActions();
     void requestOpenContainer();
@@ -301,6 +303,52 @@ void TrayTest::containersMenuDisabledDuringAction()
     QAction *stop = findAction(one, QStringLiteral("Parar"));
     QVERIFY(stop != nullptr);
     QVERIFY(!stop->isEnabled());
+}
+
+void TrayTest::machinesSubmenu()
+{
+    PodStack::TrayController tray(false);
+    const QVariantMap machine{{QStringLiteral("id"), QStringLiteral("m1")},
+                              {QStringLiteral("name"), QStringLiteral("dev")},
+                              {QStringLiteral("state"), QStringLiteral("running")}};
+    tray.setMachines({machine});
+
+    QMenu *machines = findSubmenu(tray.contextMenu(), QStringLiteral("Machines"));
+    QVERIFY(machines != nullptr);
+    QVERIFY(findAction(machines, QStringLiteral("Abrir Machines")) != nullptr);
+    QMenu *dev = findSubmenu(machines, QStringLiteral("dev"));
+    QVERIFY(dev != nullptr);
+    QVERIFY(findAction(dev, QStringLiteral("Parar"))->isEnabled());
+    QVERIFY(!findAction(dev, QStringLiteral("Iniciar"))->isEnabled());
+
+    QSignalSpy actionSpy(&tray, &PodStack::TrayController::machineActionRequested);
+    findAction(dev, QStringLiteral("Reiniciar"))->trigger();
+    QCOMPARE(actionSpy.count(), 1);
+    QCOMPARE(actionSpy.first().at(0).toString(), QStringLiteral("restart"));
+
+    QSignalSpy openSpy(&tray, &PodStack::TrayController::machineOpenRequested);
+    findAction(dev, QStringLiteral("Abrir detalhe"))->trigger();
+    QCOMPARE(openSpy.count(), 1);
+
+    QSignalSpy sshSpy(&tray, &PodStack::TrayController::machineSshRequested);
+    findAction(dev, QStringLiteral("SSH"))->trigger();
+    QCOMPARE(sshSpy.count(), 1);
+}
+
+void TrayTest::kubernetesSubmenu()
+{
+    PodStack::TrayController tray(false);
+    QMenu *kubernetes = findSubmenu(tray.contextMenu(), QStringLiteral("Kubernetes"));
+    QVERIFY(kubernetes != nullptr);
+    QVERIFY(findAction(kubernetes, QStringLiteral("Cluster desabilitado")) != nullptr);
+
+    QSignalSpy viewSpy(&tray, &PodStack::TrayController::openViewRequested);
+    findAction(kubernetes, QStringLiteral("Abrir Kubernetes"))->trigger();
+    QCOMPARE(viewSpy.count(), 1);
+    QCOMPARE(viewSpy.first().at(0).toString(), QStringLiteral("kubernetes"));
+
+    tray.setKubernetes(true);
+    QVERIFY(findAction(kubernetes, QStringLiteral("Cluster habilitado")) != nullptr);
 }
 
 void TrayTest::activationSignals()

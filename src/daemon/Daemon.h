@@ -42,6 +42,7 @@ private:
     QJsonObject systemHello() const;
     QJsonObject systemStatus();
     QJsonObject systemDoctor();
+    QJsonObject systemReport(const QJsonObject &params, Error *error);
     QJsonObject containersList(const QJsonObject &params, Error *error);
     QJsonObject containerAction(const QString &method, const QJsonObject &params, Error *error);
     QJsonObject containerExec(const QJsonObject &params, Error *error);

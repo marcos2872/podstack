@@ -63,6 +63,7 @@ private slots:
     void composeAndBuild();
     void setupCommand();
     void configCommands();
+    void reportCommand();
     void errorPaths();
     void invalidInvocations();
     void runtimeErrors();
@@ -1811,6 +1812,32 @@ void CliTest::configCommands()
     QCOMPARE(result.code, 2);
     result = run({QStringLiteral("config"), QStringLiteral("nope")}, env);
     QCOMPARE(result.code, 2);
+}
+
+void CliTest::reportCommand()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+
+    CliResult result = run({QStringLiteral("report"), QStringLiteral("--json")}, env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QVERIFY(!document.object().value(QStringLiteral("version")).toString().isEmpty());
+    QVERIFY(!document.object()
+                 .value(QStringLiteral("doctor"))
+                 .toObject()
+                 .value(QStringLiteral("checks"))
+                 .toArray()
+                 .isEmpty());
+    QVERIFY(document.object().value(QStringLiteral("settings")).isObject());
+
+    result = run({QStringLiteral("report"), QStringLiteral("--include-logs")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("Relatório PodStack")));
+
+    result = run({QStringLiteral("report"), QStringLiteral("--bogus")}, env);
+    QVERIFY(result.code != 0);
 }
 
 void CliTest::errorPaths()
