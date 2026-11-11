@@ -26,17 +26,16 @@ QVector<BinfmtHandler> detectBinfmtHandlers(const QString &root)
 {
     QString directory = root;
     if (directory.isEmpty()) {
-        directory =
-            QProcessEnvironment::systemEnvironment().value(QStringLiteral("PODSTACK_BINFMT_DIR"),
-                                                           "/proc/sys/fs/binfmt_misc");
+        directory = QProcessEnvironment::systemEnvironment().value(
+            QStringLiteral("PODSTACK_BINFMT_DIR"), "/proc/sys/fs/binfmt_misc");
     }
 
     QVector<BinfmtHandler> handlers;
     const QDir dir(directory);
     for (const QFileInfo &entry :
          dir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name)) {
-        if (entry.fileName() == QStringLiteral("register")
-            || entry.fileName() == QStringLiteral("status")) {
+        if (entry.fileName() == QStringLiteral("register") ||
+            entry.fileName() == QStringLiteral("status")) {
             continue;
         }
         const QString content = readTrimmed(entry.absoluteFilePath());
