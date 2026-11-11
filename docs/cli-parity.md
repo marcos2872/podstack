@@ -69,6 +69,9 @@
 | `serial list` | `machine serial list <id\|nome>` | `--json` | Lista portas seriais do host e as anexadas | ✅ T8-02 |
 | `serial attach` | `machine serial attach <id\|nome> <porta>` | `--json` | Anexa porta serial (reinicia se rodando) | ✅ T8-02 |
 | `serial detach` | `machine serial detach <id\|nome> <porta>` | `--json` | Desanexa porta serial | ✅ T8-02 |
+| `usb list` | `machine usb list <id\|nome>` | `--json` | Lista dispositivos USB do host e anexados | ✅ T8-01 |
+| `usb attach` | `machine usb attach <id\|nome> BUS:ADDR` | `--json` | Anexa dispositivo USB (reinicia se rodando) | ✅ T8-01 |
+| `usb detach` | `machine usb detach <id\|nome> BUS:ADDR` | `--json` | Desanexa dispositivo USB | ✅ T8-01 |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
 
 > No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11/T4-12/T4-13/T4-14/T4-15) o CLI cobre `distros`,

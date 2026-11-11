@@ -231,6 +231,14 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
     for (const QString &serialPort : spec.serialPorts) {
         args << QStringLiteral("-serial") << serialPort;
     }
+    if (!spec.usbDevices.isEmpty()) {
+        args << QStringLiteral("-device") << QStringLiteral("qemu-xhci,id=usbhost");
+        for (const QemuUsbDevice &device : spec.usbDevices) {
+            args << QStringLiteral("-device")
+                 << QStringLiteral("usb-host,hostbus=%1,hostaddr=%2")
+                        .arg(QString::number(device.bus), QString::number(device.address));
+        }
+    }
     args << QStringLiteral("-daemonize");
     args << QStringLiteral("-pidfile") << spec.pidFile;
 

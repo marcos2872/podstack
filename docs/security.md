@@ -303,6 +303,8 @@ encerra a janela da instância já em execução.
 - Log de ações privilegiadas: quem (uid), o quê (método), quando, resultado.
 - Portas seriais (T8-02): o QEMU abre o device com o uid do usuário; nenhum helper/root é usado.
   Anexar exige caminho absoluto e legível; a mesma porta não pode ser usada por duas machines.
+- Dispositivos USB (T8-01): o QEMU abre o device via `usb-host` com o uid do usuário (grupo/
+  udev pode ser necessário); o mesmo `bus:address` não pode estar em duas machines.
 - Log de mudanças de settings sensíveis (rootful, helper, DNS, CA).
 - `podstack doctor` detecta:
   - socket com permissões erradas;

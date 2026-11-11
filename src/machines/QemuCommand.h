@@ -25,6 +25,12 @@ struct QemuPort {
     QString hostAddress = QStringLiteral("127.0.0.1"); // 127.0.0.1|0.0.0.0
 };
 
+/// Dispositivo USB do host passado com `usb-host`.
+struct QemuUsbDevice {
+    int bus = 0;
+    int address = 0;
+};
+
 /// Parâmetros imutáveis de uma máquina QEMU/KVM.
 struct QemuSpec {
     QString machineId;  // UUIDv7
@@ -45,6 +51,7 @@ struct QemuSpec {
     QVector<QemuMount> mounts;
     QVector<QemuPort> ports;
     QStringList serialPorts;
+    QVector<QemuUsbDevice> usbDevices;
 };
 
 class QemuCommand {

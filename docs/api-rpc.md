@@ -290,6 +290,12 @@ seguintes.
 | `machines.update` | `{id, cpus?, memoryBytes?, diskBytes?, forwardSshAgent?}` | `Machine` |
 | `machines.ports.list` | `{id}` | `{items: MachinePort[]}` |
 | `machines.ports.set` | `{id, ports}` | `Machine` |
+| `machines.serial.list` | `{id}` | `{ports:[{path,kind,description,readable}], machine:{id,name,serialPorts}}` |
+| `machines.serial.attach` | `{id, path}` | `Machine` (reinicia se estava rodando) |
+| `machines.serial.detach` | `{id, path}` | `Machine` (reinicia se estava rodando) |
+| `machines.usb.list` | `{id}` | `{devices:[{bus,address,vendorId,productId,description}], machine:{id,name,usbDevices}}` |
+| `machines.usb.attach` | `{id, bus, address}` | `Machine` (reinicia se estava rodando) |
+| `machines.usb.detach` | `{id, bus, address}` | `Machine` (reinicia se estava rodando) |
 | `machines.snapshots.list` | `{id}` | `{items: MachineSnapshot[]}` |
 | `machines.snapshots.create` | `{id, name}` | `MachineSnapshot` |
 | `machines.snapshots.restore` | `{id, name}` | `Machine` |
@@ -464,6 +470,16 @@ os levam.
 e não pode ser symlink; a leitura usa no máximo os últimos 512 KiB e devolve as últimas
 `tail` linhas (`tail` default 200, limitado a 1..2000). Se a machine ainda não bootou e o
 arquivo não existe, a resposta é `{lines:[]}`.
+
+**Dispositivos USB (T8-01).** `machines.usb.list {id}` lista os dispositivos do host
+(`/sys/bus/usb/devices`, sem hubs) e os anexados à machine. `attach`/`detach` usam
+`bus`/`address`, recusam o mesmo dispositivo em outra machine e reiniciam se estiver
+rodando. O QEMU recebe `-device qemu-xhci` (uma vez) e `usb-host,hostbus=…,hostaddr=…`.
+
+**Dispositivos USB (T8-01).** `machines.usb.list {id}` lista os dispositivos do host
+(`/sys/bus/usb/devices`, sem hubs) e os anexados. `attach`/`detach` usam `bus`/`address`,
+recusam o mesmo device em outra machine e reiniciam se estiver rodando. O QEMU recebe
+`-device qemu-xhci` (uma vez) e `usb-host,hostbus=…,hostaddr=…`.
 
 **Portas seriais (T8-02).** `machines.serial.list {id}` devolve as portas do host
 (`/dev/ttyUSB*`, `/dev/ttyACM*` e UARTs reais `ttyS*` com `type>0`) e as anexadas à machine.

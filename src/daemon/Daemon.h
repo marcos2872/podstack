@@ -108,6 +108,9 @@ private:
     QJsonObject machineSerialList(const QJsonObject &params, Error *error);
     QJsonObject machineSerialAttach(const QJsonObject &params, Error *error);
     QJsonObject machineSerialDetach(const QJsonObject &params, Error *error);
+    QJsonObject machineUsbList(const QJsonObject &params, Error *error);
+    QJsonObject machineUsbAttach(const QJsonObject &params, Error *error);
+    QJsonObject machineUsbDetach(const QJsonObject &params, Error *error);
     QJsonObject machineSnapshotsList(const QJsonObject &params, Error *error);
     QJsonObject machineSnapshotCreate(const QJsonObject &params, Error *error);
     QJsonObject machineSnapshotRestore(const QJsonObject &params, Error *error);
