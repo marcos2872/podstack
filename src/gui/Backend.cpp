@@ -3309,6 +3309,16 @@ void Backend::detachMachineUsbDevice(const QString &id, int bus, int address)
               180000);
 }
 
+void Backend::setMachineAudio(const QString &id, bool enabled)
+{
+    if (id.isEmpty()) {
+        return;
+    }
+    runAction(QStringLiteral("machines.audio.set"),
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("enabled"), enabled}},
+              180000);
+}
+
 void Backend::loadMachineInfo(const QString &id)
 {
     if (id.isEmpty()) {

@@ -761,6 +761,19 @@ void GuiTest::backendMachines()
     QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 3, 5000);
     QCOMPARE(actionSpy.last().at(0).toBool(), false);
 
+    errorsBefore = errorSpy.count();
+    backend.refreshMachineUsbDevices(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
+    backend.attachMachineUsbDevice(QStringLiteral("missing-machine"), 1, 4);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.detachMachineUsbDevice(QStringLiteral("missing-machine"), 1, 4);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 5, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.setMachineAudio(QStringLiteral("missing-machine"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 6, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
     backend.openMachineSsh(QString());
     QCOMPARE(backend.lastError(), QStringLiteral("Machine inválida."));
     backend.openMachineSsh(QStringLiteral("missing-machine"));

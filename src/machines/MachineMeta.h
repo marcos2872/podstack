@@ -77,6 +77,7 @@ struct MachineMeta {
     QVector<MachineMount> mounts;
     QStringList serialPorts;
     QVector<MachineUsbDevice> usbDevices;
+    bool audioEnabled = false;
     QJsonObject toJson() const;
     static MachineMeta fromJson(const QJsonObject &object);
 };

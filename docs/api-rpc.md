@@ -296,6 +296,7 @@ seguintes.
 | `machines.usb.list` | `{id}` | `{devices:[{bus,address,vendorId,productId,description}], machine:{id,name,usbDevices}}` |
 | `machines.usb.attach` | `{id, bus, address}` | `Machine` (reinicia se estava rodando) |
 | `machines.usb.detach` | `{id, bus, address}` | `Machine` (reinicia se estava rodando) |
+| `machines.audio.set` | `{id, enabled:bool}` | `Machine` (reinicia se estava rodando) |
 | `machines.snapshots.list` | `{id}` | `{items: MachineSnapshot[]}` |
 | `machines.snapshots.create` | `{id, name}` | `MachineSnapshot` |
 | `machines.snapshots.restore` | `{id, name}` | `Machine` |

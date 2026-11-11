@@ -52,6 +52,7 @@ struct QemuSpec {
     QVector<QemuPort> ports;
     QStringList serialPorts;
     QVector<QemuUsbDevice> usbDevices;
+    bool audioEnabled = false;
 };
 
 class QemuCommand {

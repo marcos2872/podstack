@@ -3531,6 +3531,26 @@ void RpcTest::machineDevicesFlow()
                        &error);
     QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
     QVERIFY(store.updateState(machine.id, QStringLiteral("stopped"), QString(), &error));
+
+    error = {};
+    const QJsonObject audioOn = client.call(
+        QStringLiteral("machines.audio.set"),
+        QJsonObject{{QStringLiteral("id"), machine.id}, {QStringLiteral("enabled"), true}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(audioOn.value(QStringLiteral("audioEnabled")).toBool(), true);
+    const QJsonObject audioOff = client.call(
+        QStringLiteral("machines.audio.set"),
+        QJsonObject{{QStringLiteral("id"), machine.id}, {QStringLiteral("enabled"), false}},
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(audioOff.value(QStringLiteral("audioEnabled")).toBool(), false);
+
+    error = {};
+    (void) client.call(QStringLiteral("machines.audio.set"),
+                       QJsonObject{{QStringLiteral("id"), machine.id},
+                                   {QStringLiteral("enabled"), QStringLiteral("yes")}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void RpcTest::settingsFlow()

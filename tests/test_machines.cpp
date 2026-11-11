@@ -883,6 +883,7 @@ private slots:
     void qemuCommandPorts();
     void qemuCommandSerialPorts();
     void qemuCommandUsbDevices();
+    void qemuCommandAudio();
     void qemuCommandInvalid();
     void qmpHandshake();
     void qmpQueryStatus();
@@ -959,6 +960,7 @@ private slots:
     void machineManagerPorts();
     void machineManagerSerialPorts();
     void machineManagerUsbDevices();
+    void machineManagerAudio();
     void machineManagerSnapshots();
     void qemuRuntimeFallback();
     void qemuRuntimePidFile();
@@ -1198,6 +1200,7 @@ void MachinesTest::machineMetaRoundTrip()
     meta.serialPorts = {QStringLiteral("/dev/ttyUSB0"), QStringLiteral("/dev/ttyACM0")};
     meta.usbDevices = {MachineUsbDevice{1, 4, QStringLiteral("0781"), QStringLiteral("5567"),
                                         QStringLiteral("SanDisk Cruzer Blade")}};
+    meta.audioEnabled = true;
 
     PodStack::Error error;
     QVERIFY2(MachineMetaFile::write(path, meta, &error), qPrintable(error.message));
@@ -1222,6 +1225,7 @@ void MachinesTest::machineMetaRoundTrip()
     QCOMPARE(object.value(QStringLiteral("mounts")).toArray().size(), 1);
     QCOMPARE(object.value(QStringLiteral("serialPorts")).toArray().size(), 2);
     QCOMPARE(object.value(QStringLiteral("usbDevices")).toArray().size(), 1);
+    QCOMPARE(object.value(QStringLiteral("audioEnabled")).toBool(), true);
     QVERIFY(!object.contains(QStringLiteral("password")));
 
     const MachineMeta reloaded = MachineMetaFile::read(path, &error);
@@ -1236,6 +1240,7 @@ void MachinesTest::machineMetaRoundTrip()
     QCOMPARE(reloaded.serialPorts, meta.serialPorts);
     QCOMPARE(reloaded.usbDevices.size(), 1);
     QCOMPARE(reloaded.usbDevices.at(0).description, QStringLiteral("SanDisk Cruzer Blade"));
+    QCOMPARE(reloaded.audioEnabled, true);
 }
 
 void MachinesTest::serialPortsListing()
@@ -2560,6 +2565,24 @@ void MachinesTest::qemuCommandUsbDevices()
     QCOMPARE(args.count(QStringLiteral("qemu-xhci,id=usbhost")), 1);
     QCOMPARE(args.count(QStringLiteral("usb-host,hostbus=1,hostaddr=4")), 1);
     QCOMPARE(args.count(QStringLiteral("usb-host,hostbus=2,hostaddr=3")), 1);
+}
+
+void MachinesTest::qemuCommandAudio()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.audioEnabled = true;
+
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(args.contains(QStringLiteral("pipewire,id=audio0")));
+    QVERIFY(args.contains(QStringLiteral("intel-hda")));
+    QVERIFY(args.contains(QStringLiteral("hda-duplex,audiodev=audio0")));
+
+    spec.audioEnabled = false;
+    const QStringList without = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!without.contains(QStringLiteral("pipewire,id=audio0")));
 }
 
 void MachinesTest::qemuCommandInvalid()
@@ -5305,6 +5328,74 @@ void MachinesTest::machineManagerUsbDevices()
     const MachineMeta detached = manager.setUsbDevices(first.id, {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(detached.usbDevices.isEmpty());
+}
+
+void MachinesTest::machineManagerAudio()
+{
+    const QString root = m_root + QStringLiteral("/manager-audio");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'a');
+    m_server.setResponse(QStringLiteral("/manager-audio.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-audio.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest base;
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+    base.name = QStringLiteral("audio-a");
+
+    PodStack::Error error;
+    const MachineMeta machine = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    error = {};
+    const MachineMeta enabled = manager.setAudioEnabled(machine.id, true, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(enabled.audioEnabled);
+
+    error = {};
+    const MachineMeta started = manager.start(machine.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(started.state, QStringLiteral("running"));
+
+    error = {};
+    const MachineMeta restarted = manager.setAudioEnabled(machine.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!restarted.audioEnabled);
+    QCOMPARE(restarted.state, QStringLiteral("running"));
+
+    error = {};
+    (void) manager.setAudioEnabled(machine.id, true, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(manager.stop(machine.id, false, &error).state != QStringLiteral("running"));
 }
 
 void MachinesTest::machineManagerUpdateRemoveErrors()

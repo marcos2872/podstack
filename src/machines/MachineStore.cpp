@@ -271,6 +271,10 @@ CREATE TABLE IF NOT EXISTS machine_usb_devices (
   description TEXT,
   PRIMARY KEY (machine_id, bus, address)
 );
+CREATE TABLE IF NOT EXISTS machine_settings (
+  machine_id TEXT PRIMARY KEY REFERENCES machines(id) ON DELETE CASCADE,
+  audio_enabled INTEGER NOT NULL DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS idx_machines_state ON machines(state);
 )SQL";
 
@@ -504,6 +508,19 @@ VALUES (?, ?, ?, ?, ?, ?)
         }
     }
 
+    bool settingsOk = false;
+    Statement settings = prepare(
+        m_db, "INSERT OR REPLACE INTO machine_settings (machine_id, audio_enabled) VALUES (?, ?);",
+        &settingsOk);
+    if (!settingsOk) {
+        return abort(QStringLiteral("Falha ao preparar as configurações da machine."));
+    }
+    bindText(settings.get(), 1, meta.id);
+    sqlite3_bind_int(settings.get(), 2, meta.audioEnabled ? 1 : 0);
+    if (sqlite3_step(settings.get()) != SQLITE_DONE) {
+        return abort(QStringLiteral("Falha ao gravar as configurações da machine."));
+    }
+
     if (!execSql(m_db, "COMMIT;", &sqlError)) {
         return abort(QStringLiteral("Falha ao confirmar o upsert da machine."));
     }
@@ -676,6 +693,17 @@ FROM machine_usb_devices WHERE machine_id = ? ORDER BY bus, address
     if (rc != SQLITE_DONE) {
         fail(QStringLiteral("Falha ao ler os dispositivos USB da machine."), error);
         return false;
+    }
+
+    Statement settings =
+        prepare(m_db, "SELECT audio_enabled FROM machine_settings WHERE machine_id = ?;", &ok);
+    if (!ok) {
+        fail(QStringLiteral("Falha ao consultar as configurações da machine."), error);
+        return false;
+    }
+    bindText(settings.get(), 1, meta.id);
+    if (sqlite3_step(settings.get()) == SQLITE_ROW) {
+        meta.audioEnabled = sqlite3_column_int(settings.get(), 0) != 0;
     }
     return true;
 }

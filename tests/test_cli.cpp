@@ -937,6 +937,18 @@ void CliTest::machineDevicesCommands()
                   meta.name, QStringLiteral("nope")},
                  env);
     QCOMPARE(result.code, 2);
+
+    result = run(
+        {QStringLiteral("machine"), QStringLiteral("audio"), meta.name, QStringLiteral("on")}, env);
+    QCOMPARE(result.code, 0);
+    result =
+        run({QStringLiteral("machine"), QStringLiteral("audio"), meta.name, QStringLiteral("off")},
+            env);
+    QCOMPARE(result.code, 0);
+    result = run(
+        {QStringLiteral("machine"), QStringLiteral("audio"), meta.name, QStringLiteral("talvez")},
+        env);
+    QCOMPARE(result.code, 2);
 }
 
 void CliTest::machineLifecycleCommands()

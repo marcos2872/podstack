@@ -567,6 +567,21 @@ Rectangle {
             }
 
             ActionButton {
+                text: root.machine && root.machine.audioEnabled ? qsTr("Desativar áudio")
+                                                               : qsTr("Ativar áudio")
+                size: "sm"
+                visible: !root.showTerminalTab
+                enabled: root.machineId.length > 0
+                         && root.machineState !== "provisioning"
+                         && root.machineState !== "deleting"
+                         && backend.actionActive === false
+                onClicked: backend.setMachineAudio(root.machineId,
+                                                   !(root.machine
+                                                     && root.machine.audioEnabled))
+                Accessible.name: qsTr("Alternar áudio da machine")
+            }
+
+            ActionButton {
                 text: qsTr("Snapshots")
                 size: "sm"
                 // O diálogo vive na MachinesPage; no overlay (detalhe) as demais

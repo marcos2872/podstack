@@ -342,6 +342,7 @@ public:
     Q_INVOKABLE void refreshMachineUsbDevices(const QString &id);
     Q_INVOKABLE void attachMachineUsbDevice(const QString &id, int bus, int address);
     Q_INVOKABLE void detachMachineUsbDevice(const QString &id, int bus, int address);
+    Q_INVOKABLE void setMachineAudio(const QString &id, bool enabled);
     Q_INVOKABLE void loadMachineLogs(const QString &id, int tail = 200);
     Q_INVOKABLE void startMachineStats(const QString &id);
     Q_INVOKABLE void stopMachineStats();
