@@ -1,0 +1,94 @@
+Name:           podstack
+Version:        0.1.0
+Release:        1%{?dist}
+Summary:        Native desktop for Podman containers, VMs and Kubernetes
+License:        GPL-3.0-or-later
+URL:            https://podstack.dev
+Source0:        %{name}-%{version}.tar.gz
+
+BuildRequires:  cmake >= 3.24
+BuildRequires:  ninja-build
+BuildRequires:  gcc-c++
+BuildRequires:  qt6-qtbase-devel >= 6.10
+BuildRequires:  qt6-qtdeclarative-devel >= 6.10
+BuildRequires:  qt6-qtwayland-devel >= 6.10
+BuildRequires:  qt6-qt5compat-devel
+BuildRequires:  kf6-kstatusnotifieritem-devel
+BuildRequires:  qtermwidget-devel
+BuildRequires:  libarchive-devel
+BuildRequires:  libcurl-devel
+BuildRequires:  libxcrypt-devel
+BuildRequires:  sqlite-devel
+BuildRequires:  openssl-devel
+
+Requires:       podman >= 5.8
+Requires:       systemd >= 257
+Requires:       qtermwidget
+Requires:       qt6-qtsvg
+Requires:       openssh-clients
+
+%description
+PodStack is a native Linux desktop for Podman: containers, images, volumes,
+networks, Compose projects, QEMU/KVM machines, Kubernetes and local HTTPS
+domains in one application. The GUI/CLI talk to a per-user daemon over a
+0600 Unix socket; privileged setup actions use an allowlisted helper with
+polkit.
+
+%package helper
+Summary:        Privileged allowlisted helper for PodStack setup
+Requires:       systemd
+Requires:       polkit
+Requires:       podstack = %{version}-%{release}
+
+%description helper
+System service and polkit policy used by PodStack to install/remove
+allowlisted packages, configure the local DNS zone, bind ports 80/443 and
+trust the local CA. No shell or arbitrary command execution is exposed.
+
+%prep
+%autosetup -n %{name}-%{version}
+
+%build
+%cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+%cmake_build
+
+%install
+%cmake_install
+
+%post
+# O socket do usuário sobe sob demanda na primeira conexão da GUI/CLI.
+systemctl --global enable podstack.socket >/dev/null 2>&1 || :
+
+%preun helper
+if [ "$1" -eq 0 ]; then
+    systemctl stop podstack-helper.service >/dev/null 2>&1 || :
+fi
+
+%files
+%license LICENSE NOTICE
+%{_bindir}/podstack
+%{_bindir}/podstackd
+%{_bindir}/podstack-gui
+%{_userunitdir}/podstack.socket
+%{_userunitdir}/podstack.service
+%{_datadir}/applications/dev.podstack.PodStack.desktop
+%{_datadir}/metainfo/dev.podstack.PodStack.metainfo.xml
+%{_datadir}/icons/hicolor/scalable/apps/dev.podstack.PodStack.svg
+%{_datadir}/icons/hicolor/16x16/apps/dev.podstack.PodStack.png
+%{_datadir}/icons/hicolor/24x24/apps/dev.podstack.PodStack.png
+%{_datadir}/icons/hicolor/32x32/apps/dev.podstack.PodStack.png
+%{_datadir}/icons/hicolor/48x48/apps/dev.podstack.PodStack.png
+%{_datadir}/icons/hicolor/64x64/apps/dev.podstack.PodStack.png
+%{_datadir}/icons/hicolor/128x128/apps/dev.podstack.PodStack.png
+%{_datadir}/icons/hicolor/256x256/apps/dev.podstack.PodStack.png
+%{_datadir}/icons/hicolor/512x512/apps/dev.podstack.PodStack.png
+
+%files helper
+%{_libexecdir}/podstack/podstack-helper
+%{_unitdir}/podstack-helper.service
+%{_datadir}/polkit-1/actions/dev.podstack.helper.policy
+%{_datadir}/dbus-1/system.d/dev.podstack.Helper1.conf
+
+%changelog
+* Wed Nov 11 2026 PodStack contributors <dev@podstack.dev> - 0.1.0-1
+- Initial RPM packaging for the 0.1.0 release.

@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+# O socket do usuário sobe sob demanda na primeira conexão da GUI/CLI.
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl --global enable podstack.socket >/dev/null 2>&1 || true
+fi
+
+exit 0

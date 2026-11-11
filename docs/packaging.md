@@ -1,6 +1,8 @@
 # Empacotamento e distribuição — PodStack
 
-> Alvo primário: **Fedora 43+** via RPM. AppImage para demonstração. **Flatpak não está previsto no v1** (reavaliar sob demanda). O produto precisa de integração com systemd, polkit, SELinux e `/dev/kvm`, o que um sandbox Flatpak não entrega.
+> Alvos: **RPM** (Fedora, primário), **DEB** (Debian/Ubuntu) e **Flatpak** (cliente
+> desktop). O produto precisa de systemd, polkit, SELinux, `/dev/kvm` e do socket do Podman;
+> no Flatpak essas integrações dependem do host (daemon/helper instalados fora do sandbox).
 
 ---
 
@@ -229,6 +231,21 @@ Ações separadas por método; nunca uma ação "root genérica".
 
 ## 7. RPM spec (esqueleto)
 
+O spec real está em [`packaging/rpm/podstack.spec`](../packaging/rpm/podstack.spec) e o build local em
+[`scripts/build-rpm.sh`](../scripts/build-rpm.sh):
+
+```bash
+./scripts/build-rpm.sh
+# saída: build/rpm/RPMS/
+```
+
+Além do pacote principal, o subpacote **podstack-helper** leva o binário root, a unit system,
+a política polkit e o D-Bus conf. O `%post` do pacote principal habilita `podstack.socket`
+globalmente (`systemctl --global enable`).
+
+<details>
+<summary>Referência do spec</summary>
+
 ```spec
 Name:           podstack
 Version:        0.1.0
@@ -327,11 +344,46 @@ fedpkg local          # COPR
 rpmbuild -ba podstack.spec
 ```
 
+</details>
+
 ---
 
-## 8. AppImage
+## 8. DEB (Debian/Ubuntu)
 
-- Objetivo: demo e testes em distros sem RPM.
+- Metadados em [`packaging/deb/control`](../packaging/deb/control); build local:
+  ```bash
+  ./scripts/build-deb.sh
+  # saída: build/deb/podstack_<versão>_<arch>.deb
+  ```
+- O script usa `cmake --install` em uma árvore staging com `DESTDIR` e fecha o pacote com
+  `dpkg-deb --root-owner-group`; requer `dpkg-dev`.
+- Dependências de runtime declaradas em `control` (`podman`, `systemd`, `openssh-client`,
+  Qt 6, qtermwidget, libcurl/archive/crypt/sqlite/ssl). Recomenda QEMU/KVM, virtiofsd, Caddy
+  e o provider Compose.
+- O `postinst` habilita `podstack.socket` por usuário (`systemctl --global enable`).
+- Para publicar em repositório APT, gerar `Packages`/`Release` assinados no CI (não incluído).
+
+---
+
+## 9. Flatpak
+
+- Manifest em [`packaging/flatpak/dev.podstack.PodStack.yml`](../packaging/flatpak/dev.podstack.PodStack.yml);
+  build:
+  ```bash
+  ./scripts/build-flatpak.sh
+  # saída: build/flatpak/repo
+  ```
+- Runtime `org.kde.Platform` 6.10 + SDK, com `qtermwidget` compilado como módulo.
+- Permissões: Wayland/X11, DRI, `--device=all` (para `/dev/kvm`), sockets do Podman e do
+  PodStack, state/config/cache e notificações/StatusNotifier.
+- **Limitações:** o helper privilegiado e as units systemd vivem **fora** do sandbox; o
+  Flatpak funciona como cliente de um daemon/helper já instalados no host. O daemon não é
+  iniciado pelo Flatpak; a conexão usa `xdg-run/podstack`. Documentar no AppStream/README.
+- Requer `flatpak-builder` e o runtime; não é o canal primário.
+
+## 10. AppImage
+
+- Objetivo: demo e testes em distros sem RPM/DEB.
 - Empacotar GUI + CLI + daemon; **sem** helper/systemd units (limitações documentadas).
 - QML modules e platform plugins no AppDir.
 - `linuxdeploy` + `appimagetool`.
@@ -339,19 +391,7 @@ rpmbuild -ba podstack.spec
 
 ---
 
-## 9. Flatpak (não previsto no v1; reavaliar)
-
-- **Não** é requisito do v1 e não entrega o produto completo: sem helper, sem units, sem `/dev/kvm` por padrão.
-- Se avaliado no futuro, só faz sentido como cliente de um daemon já instalado no host:
-  - `--filesystem=xdg-run/podman`
-  - `--filesystem=xdg-run/podstack`
-  - `--talk-name=org.freedesktop.Notifications`
-  - `--talk-name=org.kde.StatusNotifierWatcher`
-- Documentar claramente; não é o canal primário.
-
----
-
-## 10. Atualizações
+## 11. Atualizações
 
 - RPM: `dnf upgrade podstack` (recomendado).
 - AppImage: atualizador próprio com assinatura Ed25519 (opt-in).
@@ -367,7 +407,7 @@ rpmbuild -ba podstack.spec
 
 ---
 
-## 11. Instalação limpa (checklist)
+## 12. Instalação limpa (checklist)
 
 1. `dnf install podstack` em Fedora 43 limpo.
 2. `systemctl --user status podstack.socket` ativo.
@@ -380,7 +420,7 @@ rpmbuild -ba podstack.spec
 
 ---
 
-## 12. Desinstalação
+## 13. Desinstalação
 
 - RPM remove binários/units/polkit; **não** remove dados em `~/.config`, `~/.local/share`, `~/.cache`.
 - `podstack reset` remove dados de runtime.
