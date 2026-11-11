@@ -187,6 +187,8 @@ Regras de normalização:
 | `containers.kill` | `{id, signal?}` | `{id, ok:true}` |
 | `containers.remove` | `{id, force?, volumes?}` | `{id, ok:true}` |
 | `containers.rename` | `{id, name}` | `{id, ok:true}` |
+| `containers.checkpoint` | `{id, leaveRunning?, tcpEstablished?}` | `{id, ok:true}` (CRIU) |
+| `containers.restore` | `{id, tcpEstablished?}` | `{id, ok:true}` (CRIU) |
 | `containers.inspect` | `{id}` | `{id, json: object}` |
 | `containers.top` | `{id}` | `{titles:[], processes:[][]}` |
 | `containers.changes` | `{id}` | `{changes:[{path,kind}]}` |

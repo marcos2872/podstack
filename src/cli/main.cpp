@@ -59,6 +59,10 @@ void printUsage()
           << "  pause <id|nome>         Pausa um container\n"
           << "  unpause <id|nome>       Despausa um container\n"
           << "  kill [--signal S] <id>  Mata um container\n"
+          << "  checkpoint <id> [--leave-running] [--tcp-established] [--json]\n"
+          << "                          Cria um checkpoint CRIU do container\n"
+          << "  restore <id> [--tcp-established] [--json]\n"
+          << "                          Restaura o checkpoint CRIU do container\n"
           << "  inspect <id|nome>       Mostra o JSON do container\n"
           << "  exec <id|nome> -- <cmd...>\n"
           << "                          Executa um comando no container (hijack)\n"
@@ -543,6 +547,92 @@ int commandUpdate(const QStringList &args)
         result.value(QStringLiteral("updateAvailable")).toBool()) {
         return kExitOutdated;
     }
+    return kExitOk;
+}
+
+int commandCheckpoint(const QStringList &args)
+{
+    QString id;
+    bool json = false;
+    bool leaveRunning = false;
+    bool tcpEstablished = false;
+    for (const QString &arg : args) {
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--leave-running")) {
+            leaveRunning = true;
+        } else if (arg == QStringLiteral("--tcp-established")) {
+            tcpEstablished = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        err() << "Uso: podstack checkpoint <id|nome> [--leave-running] [--tcp-established] "
+                 "[--json]\n";
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result =
+        client.call(QStringLiteral("containers.checkpoint"),
+                    QJsonObject{{QStringLiteral("id"), id},
+                                {QStringLiteral("leaveRunning"), leaveRunning},
+                                {QStringLiteral("tcpEstablished"), tcpEstablished}},
+                    &error, 120000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+    } else {
+        out() << "checkpoint criado: " << id << '\n';
+    }
+    out().flush();
+    return kExitOk;
+}
+
+int commandRestore(const QStringList &args)
+{
+    QString id;
+    bool json = false;
+    bool tcpEstablished = false;
+    for (const QString &arg : args) {
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--tcp-established")) {
+            tcpEstablished = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty()) {
+        err() << "Uso: podstack restore <id|nome> [--tcp-established] [--json]\n";
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result = client.call(
+        QStringLiteral("containers.restore"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("tcpEstablished"), tcpEstablished}},
+        &error, 120000);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+    } else {
+        out() << "checkpoint restaurado: " << id << '\n';
+    }
+    out().flush();
     return kExitOk;
 }
 
@@ -5204,6 +5294,12 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("kill")) {
         return commandLifecycle(QStringLiteral("kill"), args);
+    }
+    if (command == QStringLiteral("checkpoint")) {
+        return commandCheckpoint(args);
+    }
+    if (command == QStringLiteral("restore")) {
+        return commandRestore(args);
     }
     if (command == QStringLiteral("inspect")) {
         return commandInspect(args);

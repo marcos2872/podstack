@@ -886,6 +886,53 @@ bool PodmanClient::pauseContainer(const QString &id, Error *error)
     return false;
 }
 
+bool PodmanClient::checkpointContainer(const QString &id, bool leaveRunning, bool tcpEstablished,
+                                       Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+    const QString suffix =
+        QStringLiteral("/containers/%1/checkpoint?keep=false&leaveRunning=%2"
+                       "&tcpEstablished=%3")
+            .arg(encodeId(id), leaveRunning ? QStringLiteral("true") : QStringLiteral("false"),
+                 tcpEstablished ? QStringLiteral("true") : QStringLiteral("false"));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("POST"), path(suffix));
+    if (response.status == 200 || response.status == 204) {
+        return true;
+    }
+    if (error) {
+        *error = errorFromResponse(response,
+                                   QStringLiteral("Falha ao criar o checkpoint do container."));
+    }
+    return false;
+}
+
+bool PodmanClient::restoreContainer(const QString &id, bool tcpEstablished, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+    const QString suffix =
+        QStringLiteral("/containers/%1/restore?tcpEstablished=%2")
+            .arg(encodeId(id), tcpEstablished ? QStringLiteral("true") : QStringLiteral("false"));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("POST"), path(suffix));
+    if (response.status == 200 || response.status == 204) {
+        return true;
+    }
+    if (error) {
+        *error = errorFromResponse(response,
+                                   QStringLiteral("Falha ao restaurar o checkpoint do container."));
+    }
+    return false;
+}
+
 bool PodmanClient::unpauseContainer(const QString &id, Error *error)
 {
     if (error) {

@@ -241,7 +241,7 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 | T8-05 | P2 | i18n completa + pt-BR/en-US | T0-11 | Strings externalizadas |
 | T8-06 | P2 | Avaliar Flatpak sob demanda (não no v1) | T7-01 | Documentado |
 | T8-07 | P2 | Snapshots de máquina | T4-03 | ✅ já entregue na T4-16 (`machines.snapshots.list/create/restore/remove`, CLI/GUI e testes) |
-| T8-08 | P2 | Checkpoint/restore containers | T1-02 | CRIU |
+| T8-08 | P2 | Checkpoint/restore containers | T1-02 | ✅ — `containers.checkpoint`/`containers.restore` mapeiam os endpoints CRIU do Libpod (flag `leaveRunning`/`tcpEstablished`); CLI `podstack checkpoint <id>` e `podstack restore <id>`. Limitação rootless/CRIU documentada; teste com MockPodmanServer. |
 | T8-09 | P2 | Multi-arch/emulação | T2-02 | binfmt/FEX |
 
 ---
