@@ -2091,6 +2091,17 @@ void MachinesTest::seedYamlDefaults()
     QVERIFY(yaml.contains(QStringLiteral("      - 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI"
                                          "PODSTACK podstack'\n")));
     QVERIFY(yaml.contains(QStringLiteral("ssh_pwauth: false\n")));
+    QVERIFY(yaml.contains(QStringLiteral("package_update: true\n")));
+    QVERIFY(yaml.contains(QStringLiteral("packages:\n  - xauth\n")));
+    QVERIFY(yaml.contains(QStringLiteral("10-podstack-x11.conf\n")));
+    QVERIFY(yaml.contains(QStringLiteral("      X11Forwarding yes\n")));
+    QVERIFY(
+        yaml.contains(QStringLiteral("apt-get install -y xauth x11-apps pulseaudio alsa-utils")));
+    QVERIFY(yaml.contains(QStringLiteral("dnf install -y xauth xorg-x11-apps")));
+    QVERIFY(yaml.contains(QStringLiteral("linux-image-$arch")));
+    QVERIFY(yaml.contains(QStringLiteral("pulseaudio --start")));
+    QVERIFY(yaml.contains(QStringLiteral("/usr/local/sbin/podstack-guest-setup")));
+    QVERIFY(yaml.contains(QStringLiteral("need_reboot=1")));
     QVERIFY(!yaml.contains(QStringLiteral("    passwd:")));
 
     QCOMPARE(QString::fromUtf8(networkConfig),
@@ -2179,6 +2190,7 @@ void MachinesTest::seedEnvironment()
     QVERIFY(yaml.contains(QStringLiteral("    content: |\n")));
     QVERIFY(yaml.contains(QStringLiteral("      HTTP_PROXY=http://127.0.0.1:3128\n")));
     QVERIFY(yaml.contains(QStringLiteral("      NO_PROXY=localhost,127.0.0.1\n")));
+    QVERIFY(yaml.contains(QStringLiteral("10-podstack-x11.conf\n")));
 
     options.userData = QStringLiteral("#cloud-config\nruncmd:\n  - echo verbatim\n");
     QVERIFY2(CloudInit::writeSeedIso(seedPath, options, &error), qPrintable(error.message));

@@ -47,7 +47,7 @@
 | `info M` | `machine info M` | `--json` | Aceita ID ou nome | ✅ T4-03 |
 | `logs [M]` | `machine logs <id\|nome>` | `--tail N` | Console/boot one-shot (sem follow) | ✅ T4-06 |
 | `serial [M]` | `machine console <id\|nome>` | `--tail BYTES`, `--no-follow`, `--json` (só com `--no-follow`) | Console serial: follow por padrão até Ctrl+C/erro; `--no-follow` imprime o tail one-shot (default 64 KiB, máximo 512 KiB) | ✅ T4-15 |
-| `ssh` | `machine ssh` / `ssh M` | `-- cmd...` | Chave + bloco gerenciado em `~/.ssh/config`; `--` anexa comando; `-A` quando o SSH agent está encaminhado | ✅ T4-04 (agent na T4-13) |
+| `ssh` | `machine ssh` / `ssh M` | `--x11` (`-X`), `--x11-trusted` (`-Y`), `-- cmd...` | Chave + bloco gerenciado em `~/.ssh/config`; `--` anexa comando; `-A` quando o SSH agent está encaminhado; `-X`/`-Y` para X11 | ✅ T4-04 (agent T4-13; X11 T8-04) |
 | — | `machine files ls <id\|nome>` | `--path`, `--json` | Lista arquivos via SSH; `.`/`..` omitidos, caminho remoto escapado | ✅ T4-08 |
 | `run [-m M] CMD` | `machine run [-m M] CMD` | `--user`, `--workdir`, `--shell`, `--path` | | ⬜ |
 | `pull [-m M] SRC [DST]` | `machine pull <id\|nome> <remoto> <local>` | — | Guest → host via `scp -r`; o local precisa existir como diretório ou arquivo | ✅ T4-08 |

@@ -1233,6 +1233,26 @@ void CliTest::machineSsh()
     QCOMPARE(directArgs.size(), 9);
     QCOMPARE(directArgs.value(8), QStringLiteral("podstack@127.0.0.1"));
 
+    result = run({QStringLiteral("machine"), QStringLiteral("ssh"), QStringLiteral("cli-ssh"),
+                  QStringLiteral("--x11"), QStringLiteral("--"), QStringLiteral("echo")},
+                 sshEnv);
+    QCOMPARE(result.code, 0);
+    QVERIFY(log.open(QIODevice::ReadOnly));
+    const QStringList x11Args =
+        QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    log.close();
+    QCOMPARE(x11Args.value(0), QStringLiteral("-X"));
+
+    result = run({QStringLiteral("machine"), QStringLiteral("ssh"), QStringLiteral("cli-ssh"),
+                  QStringLiteral("--x11-trusted")},
+                 sshEnv);
+    QCOMPARE(result.code, 0);
+    QVERIFY(log.open(QIODevice::ReadOnly));
+    const QStringList trustedArgs =
+        QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    log.close();
+    QCOMPARE(trustedArgs.value(0), QStringLiteral("-Y"));
+
     // O toggle pós-criação sincroniza o metadado e o bloco do ssh config.
     result = run({QStringLiteral("machine"), QStringLiteral("update"),
                   QStringLiteral("cli-ssh"), QStringLiteral("--forward-agent")},

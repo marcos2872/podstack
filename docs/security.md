@@ -307,6 +307,9 @@ encerra a janela da instância já em execução.
   udev pode ser necessário); o mesmo `bus:address` não pode estar em duas machines.
 - Áudio (T8-03): o QEMU usa o backend `pipewire` com o uid do usuário; sem servidor PipeWire
   a inicialização da machine com áudio ativado falha e o erro é reportado no start.
+- X11 (T8-04): `-X`/`-Y` delegam a autenticação ao `xauth` do host; `-Y` (trusted) permite que
+  apps do guest acessem o X server sem as restrições de segurança do `-X` — usar só quando
+  necessário e documentar o risco.
 - Log de mudanças de settings sensíveis (rootful, helper, DNS, CA).
 - `podstack doctor` detecta:
   - socket com permissões erradas;
