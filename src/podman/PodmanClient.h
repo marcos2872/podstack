@@ -157,6 +157,9 @@ public:
     bool removeContainer(const QString &id, bool force, bool volumes, Error *error = nullptr);
     bool pauseContainer(const QString &id, Error *error = nullptr);
     bool unpauseContainer(const QString &id, Error *error = nullptr);
+    bool checkpointContainer(const QString &id, bool leaveRunning, bool tcpEstablished,
+                             Error *error = nullptr);
+    bool restoreContainer(const QString &id, bool tcpEstablished, Error *error = nullptr);
     bool killContainer(const QString &id, const QString &signal, Error *error = nullptr);
     bool renameContainer(const QString &id, const QString &name, Error *error = nullptr);
     QJsonObject inspectContainer(const QString &id, Error *error = nullptr);

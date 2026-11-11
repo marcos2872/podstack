@@ -375,13 +375,16 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("containers.list")) {
         return containersList(params, error);
     }
-    if (method == QStringLiteral("containers.start") || method == QStringLiteral("containers.stop")
-        || method == QStringLiteral("containers.restart")
-        || method == QStringLiteral("containers.remove")
-        || method == QStringLiteral("containers.pause")
-        || method == QStringLiteral("containers.unpause")
-        || method == QStringLiteral("containers.kill")
-        || method == QStringLiteral("containers.rename")) {
+    if (method == QStringLiteral("containers.start") ||
+        method == QStringLiteral("containers.stop") ||
+        method == QStringLiteral("containers.restart") ||
+        method == QStringLiteral("containers.remove") ||
+        method == QStringLiteral("containers.pause") ||
+        method == QStringLiteral("containers.unpause") ||
+        method == QStringLiteral("containers.kill") ||
+        method == QStringLiteral("containers.rename") ||
+        method == QStringLiteral("containers.checkpoint") ||
+        method == QStringLiteral("containers.restore")) {
         return containerAction(method, params, error);
     }
     if (method == QStringLiteral("containers.exec")) {
@@ -2470,6 +2473,13 @@ QJsonObject Daemon::containerAction(const QString &method, const QJsonObject &pa
         ok = m_podman.killContainer(id, params.value(QStringLiteral("signal")).toString(), error);
     } else if (method == QStringLiteral("containers.rename")) {
         ok = m_podman.renameContainer(id, params.value(QStringLiteral("name")).toString(), error);
+    } else if (method == QStringLiteral("containers.checkpoint")) {
+        ok = m_podman.checkpointContainer(
+            id, params.value(QStringLiteral("leaveRunning")).toBool(false),
+            params.value(QStringLiteral("tcpEstablished")).toBool(false), error);
+    } else if (method == QStringLiteral("containers.restore")) {
+        ok = m_podman.restoreContainer(
+            id, params.value(QStringLiteral("tcpEstablished")).toBool(false), error);
     }
 
     if (!ok) {

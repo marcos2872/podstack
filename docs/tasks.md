@@ -241,7 +241,7 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 | T8-05 | P2 | i18n completa + pt-BR/en-US | T0-11 | ✅ infra + UI principal — `QTranslator` carrega `translations/podstack_en_US.qm` no boot conforme `app.language` (enum `pt-BR`/`en-US`, requer reinício); catálogo en-US cobre Main/Setup/Tray/Notifications/MainWindow (158 strings). Strings internas do daemon/CLI continuam em pt-BR nesta rodada. Evidência: `test_terminal/translationCatalog`; `lrelease` gera 158/158. |
 | T8-06 | P2 | Empacotamento RPM + DEB + Flatpak | T7-01 | ✅ — `packaging/rpm/podstack.spec` (pacote + `podstack-helper`), `scripts/build-rpm.sh`; `packaging/deb/*` + `scripts/build-deb.sh` (staging + `dpkg-deb`); `packaging/flatpak/dev.podstack.PodStack.yml` + `scripts/build-flatpak.sh` (runtime KDE 6.10, qtermwidget, sockets do Podman/PodStack, `--device=all` para KVM). AppStream valida; RPM spec parseia (`rpmspec -P`). Limitações do Flatpak (helper/daemon no host) documentadas. |
 | T8-07 | P2 | Snapshots de máquina | T4-03 | ✅ já entregue na T4-16 (`machines.snapshots.list/create/restore/remove`, CLI/GUI e testes) |
-| T8-08 | P2 | Checkpoint/restore containers | T1-02 | CRIU |
+| T8-08 | P2 | Checkpoint/restore containers | T1-02 | ✅ — `containers.checkpoint`/`containers.restore` mapeiam os endpoints CRIU do Libpod (flag `leaveRunning`/`tcpEstablished`); CLI `podstack checkpoint <id>` e `podstack restore <id>`. Limitação rootless/CRIU documentada; teste com MockPodmanServer. |
 | T8-09 | P2 | Multi-arch/emulação | T2-02 | binfmt/FEX |
 
 ---
