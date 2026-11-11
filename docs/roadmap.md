@@ -224,6 +224,9 @@ Pendências externas: validação em máquina limpa e benchmarks/auditoria de re
 
 ### M8 — Extras (pós-v1, 6+ semanas)
 
+**Status:** concluído no código em 2026-11-11 (USB/serial/áudio/X11, i18n principal,
+RPM/DEB/Flatpak, CRIU e emulação binfmt/FEX).
+
 - USB/serial, áudio, X11/Wayland.
 - Snapshots de máquina.
 - CRIU/gVisor.
