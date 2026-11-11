@@ -842,16 +842,26 @@ Rectangle {
         // primeiro append (String -> Bool falhava ao trocar de categoria).
         property var settingsRows: []
 
+        // `value` é a categoria do schema (pt-BR, estável no daemon); `label`
+        // é só o texto traduzido exibido no select.
         readonly property var categories: [
-            qsTr("Geral"), qsTr("Engine"), qsTr("Docker"), qsTr("Rede"),
-            qsTr("Máquinas"), qsTr("Kubernetes"), qsTr("Terminal/Logs"),
-            qsTr("Updates"), qsTr("Notificações"), qsTr("Avançado"), qsTr("Setup")
+            { value: "Geral", label: qsTr("Geral") },
+            { value: "Engine", label: qsTr("Engine") },
+            { value: "Docker", label: qsTr("Docker") },
+            { value: "Rede", label: qsTr("Rede") },
+            { value: "Máquinas", label: qsTr("Máquinas") },
+            { value: "Kubernetes", label: qsTr("Kubernetes") },
+            { value: "Terminal/Logs", label: qsTr("Terminal/Logs") },
+            { value: "Updates", label: qsTr("Updates") },
+            { value: "Notificações", label: qsTr("Notificações") },
+            { value: "Avançado", label: qsTr("Avançado") },
+            { value: "Setup", label: qsTr("Setup") }
         ]
 
         function rebuildSettingsRows() {
             const rows = []
             const schema = backend.settingsSchema
-            const category = categoryBox.currentText
+            const category = categoryBox.currentValue
             for (let index = 0; index < schema.length; ++index) {
                 const definition = schema[index]
                 // `hidden` = chave ainda sem efeito no app; o schema/CLI continua
@@ -896,7 +906,9 @@ Rectangle {
                     id: categoryBox
                     Layout.preferredWidth: 220
                     model: settingsDialog.categories
-                    onCurrentTextChanged: settingsDialog.rebuildSettingsRows()
+                    textRole: "label"
+                    valueRole: "value"
+                    onCurrentValueChanged: settingsDialog.rebuildSettingsRows()
                 }
 
                 Item { Layout.fillWidth: true }
@@ -981,12 +993,15 @@ Rectangle {
                     Text {
                         visible: settingsDialog.settingsRows.length === 0
                         width: parent.width
-                        text: qsTr("Carregando schema de configurações…")
+                        text: backend.settingsSchema.length === 0
+                              ? qsTr("Carregando schema de configurações…")
+                              : qsTr("Nenhuma configuração nesta categoria.")
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontBody
                         horizontalAlignment: Text.AlignHCenter
                         topPadding: 20
+                        wrapMode: Text.WordWrap
                     }
                 }
             }
