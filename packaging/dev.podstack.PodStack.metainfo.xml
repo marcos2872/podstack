@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.podstack.PodStack</id>
+  <name>PodStack</name>
+  <summary>Containers, Compose, Linux VMs and Kubernetes on Podman</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>
+      PodStack is a native Linux desktop for Podman: containers, images, volumes,
+      networks, Compose projects, QEMU/KVM machines, Kubernetes and local HTTPS
+      domains in one app.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.podstack.PodStack.desktop</launchable>
+  <url type="homepage">https://podstack.dev</url>
+  <url type="bugtracker">https://github.com/marcos2872/podstack/issues</url>
+  <developer_name>PodStack contributors</developer_name>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-11"/>
+  </releases>
+</component>

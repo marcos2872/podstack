@@ -321,15 +321,25 @@ install(FILES packaging/dev.podstack.PodStack.desktop
     DESTINATION share/applications
 )
 
+install(FILES packaging/dev.podstack.PodStack.metainfo.xml
+    DESTINATION share/metainfo
+)
+
+install(FILES LICENSE NOTICE
+    DESTINATION share/licenses/podstack
+)
+
 install(FILES assets/podstack-icon.svg
     DESTINATION share/icons/hicolor/scalable/apps
     RENAME dev.podstack.PodStack.svg
 )
 
-install(FILES assets/png/podstack-icon-256.png
-    DESTINATION share/icons/hicolor/256x256/apps
-    RENAME dev.podstack.PodStack.png
-)
+foreach(icon_size IN ITEMS 16 24 32 48 64 128 256 512)
+    install(FILES assets/png/podstack-icon-${icon_size}.png
+        DESTINATION share/icons/hicolor/${icon_size}x${icon_size}/apps
+        RENAME dev.podstack.PodStack.png
+    )
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Tests
