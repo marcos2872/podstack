@@ -2650,7 +2650,7 @@ MachineMeta MachineManager::setSerialPorts(const QString &idOrName, const QStrin
 
     if (wasRunning) {
         Error stopError;
-        meta = stop(meta.id, false, &stopError);
+        meta = stop(meta.id, true, &stopError);
         if (!stopError.isEmpty()) {
             if (error) {
                 *error = stopError;
@@ -2783,7 +2783,7 @@ MachineMeta MachineManager::setUsbDevices(const QString &idOrName,
 
     if (wasRunning) {
         Error stopError;
-        meta = stop(meta.id, false, &stopError);
+        meta = stop(meta.id, true, &stopError);
         if (!stopError.isEmpty()) {
             if (error) {
                 *error = stopError;
@@ -2855,7 +2855,7 @@ MachineMeta MachineManager::setAudioEnabled(const QString &idOrName, bool enable
 
     if (wasRunning) {
         Error stopError;
-        meta = stop(meta.id, false, &stopError);
+        meta = stop(meta.id, true, &stopError);
         if (!stopError.isEmpty()) {
             if (error) {
                 *error = stopError;

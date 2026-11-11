@@ -11,6 +11,7 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QSocketNotifier>
+#include <QThreadPool>
 
 #include <csignal>
 #include <memory>
@@ -126,5 +127,9 @@ int main(int argc, char *argv[])
     }
 
     qInfo("podstackd %s pronto", PODSTACK_VERSION);
-    return app.exec();
+    const int exitCode = app.exec();
+    // Workers de RPC ainda podem estar usando o Daemon/RpcServer (ex.: um
+    // restart de machine em andamento). Espera antes de destruir os objetos.
+    QThreadPool::globalInstance()->waitForDone();
+    return exitCode;
 }
