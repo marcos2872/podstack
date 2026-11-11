@@ -197,6 +197,7 @@ Formato único:
 - [ ] TTY alocado quando o shell é interativo; sem TTY para comandos.
 - [ ] Ctrl+C envia SIGINT; Ctrl+D encerra; resize funciona em Wayland com escala fracionária.
 - [ ] Shell padrão: `/bin/sh` se existir; fallback `/bin/bash`; erro claro se não houver.
+- [ ] Copiar/colar: `Ctrl+Shift+C`/`Ctrl+Shift+V`, `Ctrl+Insert`/`Shift+Insert` e menu de contexto (Copiar/Colar) funcionam no terminal embutido.
 - [ ] Sessão sobrevive à troca de aba (buffer preservado).
 - [ ] Fechar a aba encerra o processo remoto (sem sessões órfãs).
 
