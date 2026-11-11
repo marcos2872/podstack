@@ -20,6 +20,7 @@ Rectangle {
 
     property string section: startupSection
     property string searchText: ""
+    property bool sidebarVisible: true
 
     onSectionChanged: {
         searchText = ""
@@ -214,6 +215,8 @@ Rectangle {
 
         // Sidebar
         Rectangle {
+            id: sidebar
+            visible: window.sidebarVisible
             Layout.preferredWidth: window.compactLayout ? 196 : Theme.sidebarWidth
             Layout.fillHeight: true
             color: Theme.bgSidebar
@@ -418,6 +421,7 @@ Rectangle {
                             TextField {
                                 id: searchField
                                 Layout.fillWidth: true
+                                Accessible.name: qsTr("Buscar containers")
                                 placeholderText: qsTr("Buscar containers…")
                                 color: Theme.textPrimary
                                 placeholderTextColor: Theme.textTertiary
@@ -746,6 +750,69 @@ Rectangle {
         sequence: StandardKey.Find
         enabled: !setupWindow.visible && window.section === "containers"
         onActivated: searchField.forceActiveFocus()
+    }
+
+    Shortcut {
+        objectName: "shortcutNew"
+        sequence: StandardKey.New
+        enabled: !setupWindow.visible && window.section === "containers"
+        onActivated: containersPage.openCreate()
+    }
+
+    Shortcut {
+        objectName: "shortcutSettings"
+        sequence: StandardKey.Preferences
+        enabled: !setupWindow.visible
+        onActivated: settingsDialog.open()
+    }
+
+    Shortcut {
+        objectName: "shortcutSidebar"
+        sequences: [ "Ctrl+B" ]
+        enabled: !setupWindow.visible
+        onActivated: window.sidebarVisible = !window.sidebarVisible
+    }
+
+    Shortcut {
+        objectName: "shortcutRefresh"
+        sequences: [ StandardKey.Refresh, "F5" ]
+        enabled: !setupWindow.visible
+        onActivated: window.refreshCurrent()
+    }
+
+    Shortcut {
+        objectName: "shortcutQuit"
+        sequence: StandardKey.Quit
+        onActivated: appWindow.quitApp()
+    }
+
+    Shortcut {
+        objectName: "shortcutContainerLogs"
+        sequences: [ "Ctrl+Shift+L" ]
+        enabled: !setupWindow.visible && window.section === "containers"
+                 && containersPage.currentId.length > 0
+        onActivated: appWindow.openContainerDetailTab(containersPage.currentId, 1)
+    }
+
+    Shortcut {
+        objectName: "shortcutContainerTerminal"
+        sequences: [ "Ctrl+Shift+T" ]
+        enabled: !setupWindow.visible && window.section === "containers"
+                 && containersPage.currentId.length > 0
+        onActivated: appWindow.openContainerDetailTab(containersPage.currentId, 7)
+    }
+
+    Shortcut {
+        objectName: "shortcutContainerLifecycle"
+        sequences: [ "Ctrl+Return", "Ctrl+Enter" ]
+        enabled: !setupWindow.visible && window.section === "containers"
+                 && containersPage.currentId.length > 0
+        onActivated: {
+            const item = containersPage.currentItem()
+            if (item && item.id) {
+                backend.lifecycle(item.state === "running" ? "stop" : "start", item.id)
+            }
+        }
     }
 
     AppDialog {

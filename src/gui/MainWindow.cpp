@@ -12,6 +12,7 @@
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QCoreApplication>
 #include <QDebug>
 #include <QDockWidget>
 #include <QGuiApplication>
@@ -170,6 +171,11 @@ void MainWindow::reveal()
     }
     raise();
     activateWindow();
+}
+
+void MainWindow::quitApp()
+{
+    QCoreApplication::quit();
 }
 
 void MainWindow::openSection(const QString &section)

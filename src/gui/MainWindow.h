@@ -47,6 +47,7 @@ public:
     Q_INVOKABLE void openMachineDetail(const QString &id, int tab = -1);
     /// Abre uma seção da navegação (usado pela bandeja/atalhos).
     Q_INVOKABLE void openSection(const QString &section);
+    Q_INVOKABLE void quitApp();
     Q_INVOKABLE void rememberSection(const QString &section);
     Q_INVOKABLE void rememberDetailTab(const QString &kind, const QVariant &tab);
 
