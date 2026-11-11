@@ -358,6 +358,12 @@ rpmbuild -ba podstack.spec
 - Canal beta: COPR separado (`podstack-beta`).
 - Verificação de versão: `podstack update --check` (exit 3 se desatualizado).
 - Nunca auto-update silencioso em headless/CI.
+- Feed oficial: `podstack-update.json` anexado à release do GitHub + `podstack-update.json.minisig`
+  (Ed25519/minisign). O manifesto assinado contém os canais `stable`/`beta` com versão, notas,
+  `releaseUrl` e artefatos (`arch`, `format`, `url`, `sha256`).
+- Checklist de release: assinar o manifesto com a chave de release, anexar os dois arquivos e
+  substituir `updates.publicKey` (ou a chave embutida) antes de publicar; sem chave, a checagem
+  retorna `unconfigured` e não aceita nada.
 
 ---
 

@@ -347,6 +347,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("system.report")) {
         return systemReport(params, error);
     }
+    if (method == QStringLiteral("updates.check")) {
+        return updatesCheck(params, error);
+    }
     if (method == QStringLiteral("settings.get")) {
         return settingsGet(params, error);
     }
@@ -2062,6 +2065,33 @@ QJsonObject Daemon::systemReport(const QJsonObject &params, Error *error)
     result.insert(
         QStringLiteral("sha256"),
         QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex()));
+    return result;
+}
+
+QJsonObject Daemon::updatesCheck(const QJsonObject &params, Error *error)
+{
+    if (params.contains(QStringLiteral("force")) &&
+        !params.value(QStringLiteral("force")).isBool()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("force deve ser booleano."));
+        }
+        return {};
+    }
+    const bool force = params.value(QStringLiteral("force")).toBool(false);
+    const QString channel = params.value(QStringLiteral("channel")).toString();
+
+    QJsonObject result = m_updates.check(channel, force, error);
+    if (!error || error->isEmpty()) {
+        if (result.value(QStringLiteral("status")).toString() == QStringLiteral("ok")) {
+            std::lock_guard<std::mutex> lock(m_settingsMutex);
+            Config config = Config::load();
+            config.set(QStringLiteral("updates.lastCheck"),
+                       result.value(QStringLiteral("checkedAt")).toString());
+            QString saveError;
+            (void) config.save(&saveError);
+        }
+    }
     return result;
 }
 

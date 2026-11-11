@@ -1,4 +1,6 @@
+#include "MockHttpServer.h"
 #include "MockPodmanServer.h"
+#include "UpdateTestUtils.h"
 
 #include "core/RpcClient.h"
 #include "core/RpcStream.h"
@@ -55,6 +57,7 @@ private slots:
     void composeAndBuilds();
     void multiPlatformBuild();
     void setupFlow();
+    void updatesCheck();
     void setupDockerImpact();
     void settingsFlow();
     void invalidRequests();
@@ -65,6 +68,7 @@ private:
 
     MockPodmanServer m_mock;
     MockPodmanServer m_dockerMock;
+    MockHttpServer m_updateServer;
     QProcess m_daemon;
     QString m_controlSocket;
     QString m_testDataDir;
@@ -3119,6 +3123,172 @@ void RpcTest::setupFlow()
     QVERIFY(!afterComplete.value(QStringLiteral("completedAt")).isNull());
 }
 
+void RpcTest::updatesCheck()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const UpdateTestUtils::KeyPair key = UpdateTestUtils::generateKeyPair();
+    QVERIFY(!key.publicKey.isEmpty());
+    const QByteArray manifest = UpdateTestUtils::manifestForVersion("0.2.0", "stable");
+    const QByteArray signature = UpdateTestUtils::minisignFile(manifest, key, false);
+    m_updateServer.setResponse(QStringLiteral("/manifest.json"), 200, manifest);
+    m_updateServer.setResponse(QStringLiteral("/manifest.json.minisig"), 200, signature);
+
+    const QJsonObject settings{
+        {QStringLiteral("feedUrl"), m_updateServer.url(QStringLiteral("/manifest.json"))},
+        {QStringLiteral("publicKey"), UpdateTestUtils::publicKeyBase64(key)},
+    };
+    for (auto it = settings.begin(); it != settings.end(); ++it) {
+        const QString fullKey = QStringLiteral("updates.") + it.key();
+        const QJsonObject result = client.call(
+            QStringLiteral("settings.set"),
+            QJsonObject{{QStringLiteral("key"), fullKey}, {QStringLiteral("value"), it.value()}},
+            &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error.message));
+        QVERIFY(!result.isEmpty());
+    }
+
+    const QJsonObject available = client.call(QStringLiteral("updates.check"),
+                                              QJsonObject{{QStringLiteral("force"), true}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(available.value(QStringLiteral("status")).toString(), QStringLiteral("ok"));
+    QCOMPARE(available.value(QStringLiteral("latestVersion")).toString(), QStringLiteral("0.2.0"));
+    QCOMPARE(available.value(QStringLiteral("updateAvailable")).toBool(), true);
+    QCOMPARE(available.value(QStringLiteral("channel")).toString(), QStringLiteral("stable"));
+
+    const QJsonObject lastCheck = client.call(
+        QStringLiteral("settings.get"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("updates.lastCheck")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!lastCheck.value(QStringLiteral("values"))
+                 .toObject()
+                 .value(QStringLiteral("updates.lastCheck"))
+                 .isNull());
+
+    m_updateServer.setResponse(QStringLiteral("/manifest.json"), 200,
+                               UpdateTestUtils::manifestForVersion("9.9.9", "stable"));
+    error = {};
+    (void) client.call(QStringLiteral("updates.check"),
+                       QJsonObject{{QStringLiteral("force"), true}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_SIGNATURE"));
+
+    m_updateServer.setResponse(QStringLiteral("/manifest.json"), 200, manifest);
+    const int requestsBeforeCache = m_updateServer.requestCount(QStringLiteral("/manifest.json"));
+    const QJsonObject cached = client.call(QStringLiteral("updates.check"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(cached.value(QStringLiteral("cached")).toBool(), true);
+    QCOMPARE(m_updateServer.requestCount(QStringLiteral("/manifest.json")), requestsBeforeCache);
+
+    const QString missingUrl = m_updateServer.url(QStringLiteral("/missing.json"));
+    m_updateServer.setResponse(QStringLiteral("/missing.json"), 404, "{}");
+    (void) client.call(QStringLiteral("settings.set"),
+                       QJsonObject{{QStringLiteral("key"), QStringLiteral("updates.feedUrl")},
+                                   {QStringLiteral("value"), missingUrl}},
+                       &error);
+    const QJsonObject noFeed = client.call(QStringLiteral("updates.check"),
+                                           QJsonObject{{QStringLiteral("force"), true}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(noFeed.value(QStringLiteral("status")).toString(), QStringLiteral("no-feed"));
+    QCOMPARE(noFeed.value(QStringLiteral("updateAvailable")).toBool(), false);
+
+    (void) client.call(QStringLiteral("settings.set"),
+                       QJsonObject{{QStringLiteral("key"), QStringLiteral("updates.mode")},
+                                   {QStringLiteral("value"), QStringLiteral("off")}},
+                       &error);
+    const int missingRequests = m_updateServer.requestCount(QStringLiteral("/missing.json"));
+    const QJsonObject disabled = client.call(QStringLiteral("updates.check"),
+                                             QJsonObject{{QStringLiteral("force"), true}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(disabled.value(QStringLiteral("status")).toString(), QStringLiteral("disabled"));
+    QCOMPARE(m_updateServer.requestCount(QStringLiteral("/missing.json")), missingRequests);
+
+    (void) client.call(QStringLiteral("settings.set"),
+                       QJsonObject{{QStringLiteral("key"), QStringLiteral("updates.mode")},
+                                   {QStringLiteral("value"), QStringLiteral("check")}},
+                       &error);
+
+    (void) client.call(QStringLiteral("settings.set"),
+                       QJsonObject{{QStringLiteral("key"), QStringLiteral("updates.publicKey")},
+                                   {QStringLiteral("value"), QJsonValue::Null}},
+                       &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonObject unconfigured = client.call(
+        QStringLiteral("updates.check"), QJsonObject{{QStringLiteral("force"), true}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(unconfigured.value(QStringLiteral("status")).toString(),
+             QStringLiteral("unconfigured"));
+
+    (void) client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("updates.publicKey")},
+                    {QStringLiteral("value"), UpdateTestUtils::publicKeyBase64(key)}},
+        &error);
+    (void) client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("updates.feedUrl")},
+                    {QStringLiteral("value"), QStringLiteral("http://127.0.0.1:1/manifest.json")}},
+        &error);
+    const QJsonObject unavailable = client.call(
+        QStringLiteral("updates.check"), QJsonObject{{QStringLiteral("force"), true}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(unavailable.value(QStringLiteral("status")).toString(), QStringLiteral("unavailable"));
+
+    const QByteArray invalidManifest = QByteArrayLiteral("not json");
+    m_updateServer.setResponse(QStringLiteral("/invalid.json"), 200, invalidManifest);
+    m_updateServer.setResponse(QStringLiteral("/invalid.json.minisig"), 200,
+                               UpdateTestUtils::minisignFile(invalidManifest, key, false));
+    (void) client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("updates.feedUrl")},
+                    {QStringLiteral("value"), m_updateServer.url(QStringLiteral("/invalid.json"))}},
+        &error);
+    error = {};
+    (void) client.call(QStringLiteral("updates.check"),
+                       QJsonObject{{QStringLiteral("force"), true}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST"));
+
+    const QByteArray betaManifest = UpdateTestUtils::manifestForVersion("0.4.0-beta.2", "beta");
+    m_updateServer.setResponse(QStringLiteral("/beta.json"), 200, betaManifest);
+    m_updateServer.setResponse(QStringLiteral("/beta.json.minisig"), 200,
+                               UpdateTestUtils::minisignFile(betaManifest, key, false));
+    (void) client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("updates.feedUrl")},
+                    {QStringLiteral("value"), m_updateServer.url(QStringLiteral("/beta.json"))}},
+        &error);
+    const QJsonObject beta =
+        client.call(QStringLiteral("updates.check"),
+                    QJsonObject{{QStringLiteral("force"), true},
+                                {QStringLiteral("channel"), QStringLiteral("beta")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(beta.value(QStringLiteral("channel")).toString(), QStringLiteral("beta"));
+    QCOMPARE(beta.value(QStringLiteral("latestVersion")).toString(),
+             QStringLiteral("0.4.0-beta.2"));
+    QCOMPARE(beta.value(QStringLiteral("updateAvailable")).toBool(), true);
+
+    const QJsonObject missingChannel =
+        client.call(QStringLiteral("updates.check"),
+                    QJsonObject{{QStringLiteral("force"), true},
+                                {QStringLiteral("channel"), QStringLiteral("stable")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(missingChannel.value(QStringLiteral("status")).toString(), QStringLiteral("no-feed"));
+
+    error = {};
+    (void) client.call(QStringLiteral("updates.check"),
+                       QJsonObject{{QStringLiteral("force"), true},
+                                   {QStringLiteral("channel"), QStringLiteral("nightly")}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    error = {};
+    (void) client.call(QStringLiteral("updates.check"),
+                       QJsonObject{{QStringLiteral("force"), QStringLiteral("yes")}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
 void RpcTest::setupDockerImpact()
 {
     PodStack::RpcClient client(m_controlSocket);
@@ -3152,7 +3322,7 @@ void RpcTest::settingsFlow()
     const QJsonObject schema = client.call(QStringLiteral("settings.schema"), {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     const QJsonArray definitions = schema.value(QStringLiteral("schema")).toArray();
-    QCOMPARE(definitions.size(), 83);
+    QCOMPARE(definitions.size(), 85);
     bool engineRestart = false;
     bool proxySecret = false;
     for (const QJsonValue &value : definitions) {
@@ -3172,7 +3342,7 @@ void RpcTest::settingsFlow()
     const QJsonObject all = client.call(QStringLiteral("settings.get"), {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     const QJsonObject defaults = all.value(QStringLiteral("values")).toObject();
-    QCOMPARE(defaults.size(), 83);
+    QCOMPARE(defaults.size(), 85);
     QCOMPARE(defaults.value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
     QCOMPARE(defaults.value(QStringLiteral("app.theme")).toString(),

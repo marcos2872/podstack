@@ -685,7 +685,7 @@ logado.
 
 | Método | Params | Result |
 |---|---|---|
-| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 83 chaves; com `key`, um único item |
+| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 85 chaves; com `key`, um único item |
 | `settings.set` | `{key, value}` | `{values, key, restartRequired}` — `value` é validado antes de salvar |
 | `settings.reset` | `{key?}` | `{values, restartRequired}` — sem `key`, restaura todos |
 | `settings.schema` | `{}` | `{schema:[{key,type,default,category,description,restartRequired,secret,nullable,enum?,min?,max?}]}` |
@@ -741,6 +741,20 @@ privilegiadas passam pelo helper allowlisted e nunca por shell na GUI.
   retomado com `setup.subscribe`. `setup.done` inclui os checks recalculados.
 - Ações que instalam pacotes exigem o helper (`dev.podstack.Helper1` no barramento de sistema) e
   retornam `PODSTACK_HELPER_UNAVAILABLE` quando ele não está instalado.
+
+### 4.13 `updates.*`
+
+| Método | Params | Result |
+|---|---|---|
+| `updates.check` | `{force?:bool, channel?:"stable"\|"beta"}` | `{status, checkedAt, channel, currentVersion, latestVersion, updateAvailable, releaseUrl, notes, artifacts, cached, reason, publishedAt?}` |
+
+- `status`: `ok` · `no-feed` · `disabled` (`updates.mode=off`) · `unavailable` (rede/TLS) ·
+  `unconfigured` (sem chave pública). Só `ok` persiste `updates.lastCheck`.
+- O manifesto é baixado de `updates.feedUrl` e a assinatura irmã `<url>.minisig`, verificada com
+  Ed25519/minisign (`Ed` ou `ED`/BLAKE2b-512) antes de qualquer comparação de versão.
+- `force=false` usa cache em memória de 6 h; o comando explícito do CLI envia `force=true`.
+- Erros: `PODSTACK_UPDATE_MANIFEST` (JSON/schema inválido) e `PODSTACK_UPDATE_SIGNATURE`
+  (assinatura ausente/inválida). Nenhum artefato é baixado ou instalado.
 
 ---
 

@@ -2,7 +2,7 @@
 
 > Fonte única de configuração no daemon; GUI e CLI leem/escrevem as mesmas chaves via RPC
 > (`settings.*`). Arquivo: `~/.config/podstack/config.json` (0600), escrita atômica, schema
-> versionado. O schema central com as 83 chaves, defaults, enums e faixas vive em
+> versionado. O schema central com as 85 chaves, defaults, enums e faixas vive em
 > `src/core/Settings.cpp`; `Config::defaults()` é gerado a partir dele.
 
 ---
@@ -142,6 +142,8 @@ o conteúdo não é mesclado.
 | `updates.mode` | enum `off\|check\|auto` | `check` | não | Política de update |
 | `updates.channel` | enum `stable\|beta` | `stable` | não | Canal |
 | `updates.lastCheck` | timestamp? | `null` | não | Última verificação |
+| `updates.feedUrl` | string (URL) | feed oficial no GitHub | não | Manifesto assinado; `https` (ou `http` em loopback para testes) |
+| `updates.publicKey` | string? | `null` | não | Chave Ed25519 em base64/minisign; `null` usa a chave embutida |
 | `diagnostics.includeLogs` | bool | `true` | não | Inclui logs no report |
 | `diagnostics.redact` | bool | `true` | não | Redige segredos |
 | `telemetry.enabled` | bool | `false` | não | Master switch da telemetria (opt-in) |
@@ -221,6 +223,7 @@ o conteúdo não é mesclado.
 | `terminal.fontSize`, `logs.fontSize` | 8..32 | `PODSTACK_VALIDATION` |
 | `terminal.scrollback` | 1000..100000 | `PODSTACK_VALIDATION` |
 | `updates.mode`, `updates.channel` | enum | `PODSTACK_VALIDATION` |
+| `updates.feedUrl` | URL `https` (ou `http` em loopback) | `PODSTACK_VALIDATION` |
 | `advanced.logLevel` | enum | `PODSTACK_VALIDATION` |
 | `telemetry.*` | bool; categorias só têm efeito com `enabled=true` | `PODSTACK_VALIDATION` |
 | `updates.lastCheck`, `setup.completedAt`, `setup.lastValidation` | `null` ou ISO 8601 | `PODSTACK_VALIDATION` |

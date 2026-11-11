@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QHostAddress>
 #include <QJsonArray>
+#include <QUrl>
 
 #include <cmath>
 
@@ -192,7 +193,7 @@ const QVector<SettingDef> &definitions()
 {
     static const QVector<SettingDef> defs = [] {
         QVector<SettingDef> list;
-        list.reserve(83);
+        list.reserve(85);
 
         // Geral
         list.append(makeBool(QStringLiteral("app.startAtLogin"), false,
@@ -412,6 +413,16 @@ const QVector<SettingDef> &definitions()
                              QStringLiteral("Updates"), QStringLiteral("Canal de updates.")));
         list.append(makeTimestamp(QStringLiteral("updates.lastCheck"), QStringLiteral("Updates"),
                                   QStringLiteral("Última verificação de updates.")));
+        list.append(makeString(
+            QStringLiteral("updates.feedUrl"),
+            QStringLiteral("https://github.com/marcos2872/podstack/releases/latest/download/"
+                           "podstack-update.json"),
+            QStringLiteral("Updates"),
+            QStringLiteral("URL do manifesto assinado de updates (https; http só em loopback).")));
+        list.append(makeString(
+            QStringLiteral("updates.publicKey"), QJsonValue(), QStringLiteral("Updates"),
+            QStringLiteral("Chave pública Ed25519 (base64/minisign) usada para validar o feed; "
+                           "null usa a chave embutida.")));
         list.append(makeBool(QStringLiteral("diagnostics.includeLogs"), true,
                              QStringLiteral("Updates"),
                              QStringLiteral("Inclui logs no report.")));
@@ -665,6 +676,16 @@ bool validate(const SettingDef &definition, const QJsonValue &value, Error *erro
                 return fail(QStringLiteral("esperado um CIDR IPv4 RFC 1918."),
                             QStringLiteral("Use uma faixa 10.0.0.0/8, 172.16.0.0/12 ou "
                                            "192.168.0.0/16."));
+            }
+        } else if (definition.key == QStringLiteral("updates.feedUrl")) {
+            const QUrl url(text);
+            const bool loopback = url.host() == QStringLiteral("127.0.0.1") ||
+                                  url.host() == QStringLiteral("localhost") ||
+                                  url.host() == QStringLiteral("::1");
+            if (!url.isValid() || (url.scheme() != QStringLiteral("https") &&
+                                   !(url.scheme() == QStringLiteral("http") && loopback))) {
+                return fail(QStringLiteral("esperado uma URL https (http só em loopback)."),
+                            QStringLiteral("Use https://… ou http://127.0.0.1/… em testes."));
             }
         }
         return true;

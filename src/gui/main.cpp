@@ -109,6 +109,17 @@ int main(int argc, char *argv[])
                      [&backend](const QString &id) { backend.openMachineSsh(id); });
     QObject::connect(&backend, &PodStack::Backend::containerEvent, &notifications,
                      &PodStack::NotificationService::notifyContainerEvent);
+    QObject::connect(&tray, &PodStack::TrayController::updateCheckRequested, &backend,
+                     [&backend]() { backend.checkForUpdates(true); });
+    QObject::connect(&backend, &PodStack::Backend::updateAvailable, &notifications,
+                     [&notifications](const QVariantMap &release) {
+                         notifications.notifyUpdate(
+                             release.value(QStringLiteral("latestVersion")).toString(),
+                             release.value(QStringLiteral("channel")).toString(),
+                             release.value(QStringLiteral("releaseUrl")).toString());
+                     });
+    QObject::connect(&backend, &PodStack::Backend::updateCheckFailed, &notifications,
+                     &PodStack::NotificationService::notifyUpdateError);
     tray.setConnected(backend.connected());
     tray.setSetupPending(backend.setupPending());
     tray.setComposeProjects(backend.composeProjects());

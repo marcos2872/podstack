@@ -192,6 +192,12 @@ Backend::Backend(QObject *parent)
             &Backend::onCatalogFinished);
     connect(&m_setupWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onSetupFinished);
+    connect(&m_updateWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onUpdateFinished);
+    m_updateTimer.setInterval(6 * 60 * 60 * 1000);
+    connect(&m_updateTimer, &QTimer::timeout, this, [this] { checkForUpdates(false); });
+    m_updateTimer.start();
+    QTimer::singleShot(30000, this, [this] { checkForUpdates(false); });
     connect(&m_settingsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onSettingsFinished);
     connect(&m_settingsActionWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -2448,6 +2454,62 @@ void Backend::setupApply(const QString &action, const QVariantList &components)
     m_setupStatus = QStringLiteral("Iniciando…");
     emit setupJobChanged();
     m_setupStream.startSetup(params);
+}
+
+void Backend::checkForUpdates(bool interactive)
+{
+    if (m_updateCheckRunning) {
+        return;
+    }
+    m_updateCheckRunning = true;
+    m_updateInteractive = interactive;
+
+    QJsonObject params;
+    params.insert(QStringLiteral("force"), interactive);
+    m_updateWatcher.setFuture(QtConcurrent::run([params] {
+        RpcClient client;
+        Error error;
+        QJsonObject result = client.call(QStringLiteral("updates.check"), params, &error);
+        if (!error.isEmpty()) {
+            result.insert(QStringLiteral("__error"), error.message);
+        }
+        return result;
+    }));
+}
+
+void Backend::onUpdateFinished()
+{
+    m_updateCheckRunning = false;
+    const QJsonObject result = m_updateWatcher.result();
+    if (result.contains(QStringLiteral("__error"))) {
+        const QString reason = result.value(QStringLiteral("__error")).toString();
+        m_updateStatus = QVariantMap{{QStringLiteral("status"), QStringLiteral("unavailable")},
+                                     {QStringLiteral("reason"), reason}};
+        emit updateStatusChanged();
+        emit updateCheckFailed(reason);
+        if (m_updateInteractive) {
+            m_eventKind = QStringLiteral("error");
+            m_eventMessage = tr("Falha ao verificar atualizações: %1").arg(reason);
+            emit eventsChanged();
+        }
+        return;
+    }
+
+    m_updateStatus = result.toVariantMap();
+    emit updateStatusChanged();
+
+    const bool available = result.value(QStringLiteral("updateAvailable")).toBool();
+    if (available) {
+        emit updateAvailable(m_updateStatus);
+    }
+    if (m_updateInteractive) {
+        m_eventKind = QStringLiteral("info");
+        m_eventMessage = available
+                             ? tr("PodStack %1 está disponível.")
+                                   .arg(result.value(QStringLiteral("latestVersion")).toString())
+                             : tr("Nenhuma atualização disponível.");
+        emit eventsChanged();
+    }
 }
 
 void Backend::setupLoadDockerImpact()

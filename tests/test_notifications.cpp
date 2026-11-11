@@ -27,6 +27,8 @@ private slots:
     void respectsDisabledConfig();
     void bodyFallbacks();
     void prunesCooldownMap();
+    void updateNotificationsOncePerVersion();
+    void updateNotificationsRespectDisabledConfig();
     void ignoresUnknownNotificationActions();
 };
 
@@ -175,6 +177,51 @@ void NotificationsTest::prunesCooldownMap()
                                 {QStringLiteral("exitCode"), QStringLiteral("1")}};
         QVERIFY(service.shouldNotify(event, 1000 + index));
     }
+}
+
+void NotificationsTest::updateNotificationsOncePerVersion()
+{
+    PodStack::NotificationService service;
+    int count = 0;
+    QString lastBody;
+    service.setSenderForTesting(
+        [&count, &lastBody](const QString &, const QString &body, const QString &) {
+            ++count;
+            lastBody = body;
+        });
+
+    service.notifyUpdate(QStringLiteral("0.2.0"), QStringLiteral("stable"),
+                         QStringLiteral("https://example.test/release"));
+    QCOMPARE(count, 1);
+    QVERIFY(lastBody.contains(QStringLiteral("0.2.0")));
+
+    service.notifyUpdate(QStringLiteral("0.2.0"), QStringLiteral("stable"),
+                         QStringLiteral("https://example.test/release"));
+    QCOMPARE(count, 1);
+
+    service.notifyUpdate(QStringLiteral("0.3.0"), QStringLiteral("beta"), {});
+    QCOMPARE(count, 2);
+
+    service.notifyUpdateError(QStringLiteral("assinatura inválida"));
+    QCOMPARE(count, 3);
+    service.notifyUpdateError(QStringLiteral("assinatura inválida"));
+    QCOMPARE(count, 3);
+}
+
+void NotificationsTest::updateNotificationsRespectDisabledConfig()
+{
+    PodStack::Config config = PodStack::Config::load();
+    config.set(QStringLiteral("app.notifications"), false);
+    QString error;
+    QVERIFY2(config.save(&error), qPrintable(error));
+
+    PodStack::NotificationService service;
+    int count = 0;
+    service.setSenderForTesting(
+        [&count](const QString &, const QString &, const QString &) { ++count; });
+    service.notifyUpdate(QStringLiteral("0.2.0"), QStringLiteral("stable"), {});
+    service.notifyUpdateError(QStringLiteral("erro"));
+    QCOMPARE(count, 0);
 }
 
 void NotificationsTest::ignoresUnknownNotificationActions()

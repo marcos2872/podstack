@@ -1,4 +1,6 @@
+#include "MockHttpServer.h"
 #include "MockPodmanServer.h"
+#include "UpdateTestUtils.h"
 
 #include "machines/MachineStore.h"
 
@@ -62,6 +64,7 @@ private slots:
     void systemDf();
     void composeAndBuild();
     void setupCommand();
+    void updateCommand();
     void configCommands();
     void reportCommand();
     void errorPaths();
@@ -77,6 +80,7 @@ private:
     CliResult run(const QStringList &args, const QProcessEnvironment &env) const;
 
     MockPodmanServer m_mock;
+    MockHttpServer m_updateServer;
     MockPodmanServer m_dockerMock;
     QProcess m_daemon;
     QString m_controlSocket;
@@ -1689,6 +1693,70 @@ void CliTest::setupCommand()
     QCOMPARE(impactDocument.object().value(QStringLiteral("available")).toBool(), true);
 }
 
+void CliTest::updateCommand()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+    const UpdateTestUtils::KeyPair key = UpdateTestUtils::generateKeyPair();
+    QVERIFY(!key.publicKey.isEmpty());
+
+    const QByteArray manifest = UpdateTestUtils::manifestForVersion("0.2.0", "stable");
+    m_updateServer.setResponse(QStringLiteral("/manifest.json"), 200, manifest);
+    m_updateServer.setResponse(QStringLiteral("/manifest.json.minisig"), 200,
+                               UpdateTestUtils::minisignFile(manifest, key, false));
+
+    QCOMPARE(
+        run({QStringLiteral("config"), QStringLiteral("set"), QStringLiteral("updates.feedUrl"),
+             m_updateServer.url(QStringLiteral("/manifest.json"))},
+            env)
+            .code,
+        0);
+    QCOMPARE(run({QStringLiteral("config"), QStringLiteral("set"),
+                  QStringLiteral("updates.publicKey"), UpdateTestUtils::publicKeyBase64(key)},
+                 env)
+                 .code,
+             0);
+
+    const CliResult outdated = run({QStringLiteral("update"), QStringLiteral("--check")}, env);
+    QCOMPARE(outdated.code, 3);
+    QVERIFY(outdated.out.contains(QStringLiteral("0.2.0")));
+
+    const CliResult json =
+        run({QStringLiteral("update"), QStringLiteral("--check"), QStringLiteral("--json")}, env);
+    QCOMPARE(json.code, 3);
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(json.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QCOMPARE(document.object().value(QStringLiteral("api")).toInt(), 1);
+    QCOMPARE(document.object().value(QStringLiteral("updateAvailable")).toBool(), true);
+
+    const QByteArray currentManifest = UpdateTestUtils::manifestForVersion("0.1.0", "stable");
+    m_updateServer.setResponse(QStringLiteral("/manifest.json"), 200, currentManifest);
+    m_updateServer.setResponse(QStringLiteral("/manifest.json.minisig"), 200,
+                               UpdateTestUtils::minisignFile(currentManifest, key, false));
+    const CliResult current = run({QStringLiteral("update"), QStringLiteral("--check")}, env);
+    QCOMPARE(current.code, 0);
+    QVERIFY(current.out.contains(QStringLiteral("atualizado")));
+
+    m_updateServer.setResponse(QStringLiteral("/manifest.json"), 200,
+                               UpdateTestUtils::manifestForVersion("9.9.9", "stable"));
+    const CliResult tampered = run({QStringLiteral("update"), QStringLiteral("--check")}, env);
+    QCOMPARE(tampered.code, 1);
+    QVERIFY(tampered.err.contains(QStringLiteral("assinatura")));
+
+    QCOMPARE(
+        run({QStringLiteral("config"), QStringLiteral("set"), QStringLiteral("updates.feedUrl"),
+             m_updateServer.url(QStringLiteral("/missing.json"))},
+            env)
+            .code,
+        0);
+    m_updateServer.setResponse(QStringLiteral("/missing.json"), 404, "{}");
+    const CliResult noFeed = run({QStringLiteral("update"), QStringLiteral("--check")}, env);
+    QCOMPARE(noFeed.code, 0);
+
+    const CliResult usage = run({QStringLiteral("update")}, env);
+    QCOMPARE(usage.code, 2);
+}
+
 void CliTest::configCommands()
 {
     const QProcessEnvironment env = environment(m_controlSocket);
@@ -1700,13 +1768,12 @@ void CliTest::configCommands()
     QJsonParseError parseError{};
     QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().size(), 83);
+    QCOMPARE(document.object().size(), 85);
     QCOMPARE(document.object().value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
 
-    result = run({QStringLiteral("config"), QStringLiteral("get"),
-                  QStringLiteral("network.httpPort")},
-                 env);
+    result = run(
+        {QStringLiteral("config"), QStringLiteral("get"), QStringLiteral("network.httpPort")}, env);
     QCOMPARE(result.code, 0);
     QCOMPARE(result.out.trimmed(), QStringLiteral("8080"));
 
@@ -1800,7 +1867,7 @@ void CliTest::configCommands()
     QCOMPARE(result.code, 0);
     document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 83);
+    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 85);
 
     result = run({QStringLiteral("config"), QStringLiteral("reset"),
                   QStringLiteral("app.theme")},

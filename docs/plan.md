@@ -24,6 +24,7 @@
 | UI | Qt Quick / QML + Qt Widgets (embed) | Qt 6.10 | Fedora 43: 6.10.3; F44: 6.11.2 |
 | Build | CMake + Ninja | 3.24 / 1.11 | `CMakePresets.json` |
 | HTTP/streams | libcurl | 8.x | Unix socket + hijack |
+| Updates (Ed25519) | OpenSSL (libcrypto) | 3.0 | verificação do manifesto/minisign; `openssl-devel` no build |
 | RPC | JSON-RPC 2.0 | — | `QLocalSocket` + `QJsonDocument` |
 | Persistência | SQLite (WAL) | 3.45 | metadados de machines/builds/config |
 | VM | QEMU/KVM + `qemu-img` + QMP | QEMU 9+ | `virtiofsd` 1.13+ |

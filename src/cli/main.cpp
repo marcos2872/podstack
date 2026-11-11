@@ -31,6 +31,7 @@ namespace {
 constexpr int kExitOk = 0;
 constexpr int kExitError = 1;
 constexpr int kExitUsage = 2;
+constexpr int kExitOutdated = 3;
 constexpr int kExitEngineUnavailable = 7;
 
 QTextStream &out()
@@ -95,6 +96,8 @@ void printUsage()
           << "  config <show|get|set|add|remove|reset|schema> [args]\n"
           << "                          Lê e altera configurações\n"
           << "  doctor                  Diagnóstico rápido\n"
+          << "  update --check [--json] [--channel stable|beta]\n"
+          << "                          Verifica updates assinados (exit 3 se houver)\n"
           << "  report [--include-logs] [--json]\n"
           << "                          Relatório redigido para suporte\n"
           << "  help                    Esta ajuda\n";
@@ -463,6 +466,82 @@ int commandReport(const QStringList &args)
               << " linhas\n";
     }
     out().flush();
+    return kExitOk;
+}
+
+int commandUpdate(const QStringList &args)
+{
+    if (!args.contains(QStringLiteral("--check"))) {
+        err() << "Uso: podstack update --check [--json] [--channel stable|beta]\n";
+        err().flush();
+        return kExitUsage;
+    }
+
+    QString channel;
+    const int channelIndex = args.indexOf(QStringLiteral("--channel"));
+    if (channelIndex >= 0) {
+        if (channelIndex + 1 >= args.size() ||
+            args.at(channelIndex + 1).startsWith(QStringLiteral("--"))) {
+            err() << "Uso: podstack update --check [--json] [--channel stable|beta]\n";
+            err().flush();
+            return kExitUsage;
+        }
+        channel = args.at(channelIndex + 1);
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("force"), true);
+    if (!channel.isEmpty()) {
+        params.insert(QStringLiteral("channel"), channel);
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    const QJsonObject result = client.call(QStringLiteral("updates.check"), params, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    const QString status = result.value(QStringLiteral("status")).toString();
+    if (args.contains(QStringLiteral("--json"))) {
+        QJsonObject json = result;
+        json.insert(QStringLiteral("api"), 1);
+        out() << QJsonDocument(json).toJson(QJsonDocument::Indented);
+        out().flush();
+    } else if (status == QStringLiteral("ok")) {
+        const QString current = result.value(QStringLiteral("currentVersion")).toString();
+        const QString latest = result.value(QStringLiteral("latestVersion")).toString();
+        if (result.value(QStringLiteral("updateAvailable")).toBool()) {
+            out() << QStringLiteral("PodStack %1 disponível (canal %2); atual: %3.\n")
+                         .arg(latest, result.value(QStringLiteral("channel")).toString(), current);
+            const QString url = result.value(QStringLiteral("releaseUrl")).toString();
+            if (!url.isEmpty()) {
+                out() << url << '\n';
+            }
+        } else {
+            out() << QStringLiteral("PodStack %1 está atualizado (canal %2).\n")
+                         .arg(current, result.value(QStringLiteral("channel")).toString());
+        }
+        out().flush();
+    } else {
+        const QString reason = result.value(QStringLiteral("reason")).toString();
+        if (status == QStringLiteral("unavailable")) {
+            err() << "Não foi possível verificar updates: " << reason << '\n';
+            err().flush();
+        } else {
+            out() << (reason.isEmpty() ? QStringLiteral("Nenhum update disponível.\n")
+                                       : reason + QStringLiteral("\n"));
+            out().flush();
+        }
+    }
+
+    if (status == QStringLiteral("unavailable")) {
+        return kExitError;
+    }
+    if (status == QStringLiteral("ok") &&
+        result.value(QStringLiteral("updateAvailable")).toBool()) {
+        return kExitOutdated;
+    }
     return kExitOk;
 }
 
@@ -4261,7 +4340,7 @@ void printConfigUsage(QTextStream &stream)
            << "  add <chave> <valor>     Adiciona item a uma lista\n"
            << "  remove <chave> <valor>  Remove item de uma lista\n"
            << "  reset [chave] [--yes]   Restaura uma chave ou todas\n"
-           << "  schema [--json]         Mostra o schema (83 chaves)\n";
+           << "  schema [--json]         Mostra o schema (85 chaves)\n";
     stream.flush();
 }
 
@@ -4836,6 +4915,9 @@ int main(int argc, char *argv[])
     }
     if (command == QStringLiteral("doctor")) {
         return commandDoctor();
+    }
+    if (command == QStringLiteral("update")) {
+        return commandUpdate(args);
     }
     if (command == QStringLiteral("report")) {
         return commandReport(args);
