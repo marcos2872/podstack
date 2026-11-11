@@ -934,6 +934,17 @@ Window {
         function openPopup() { popup.open() }
         function closePopup() { popup.close() }
     }
+
+    AppSelect {
+        objectName: "selectObjects"
+        y: 60
+        width: 200
+        model: [{ value: "Geral", label: "General" },
+                { value: "Engine", label: "Engine" }]
+        textRole: "label"
+        valueRole: "value"
+        currentIndex: 0
+    }
 }
 )";
     engine.loadData(qml);
@@ -955,6 +966,13 @@ Window {
 
     QVERIFY(QMetaObject::invokeMethod(select, "closePopup"));
     QTRY_COMPARE(select->property("displayText").toString(), QStringLiteral("dark"));
+
+    // Categoria traduzida: o texto exibido é o label, mas o valor estável
+    // (usado para filtrar o schema) continua sendo a categoria em pt-BR.
+    auto *selectObjects = window->findChild<QObject *>(QStringLiteral("selectObjects"));
+    QVERIFY(selectObjects != nullptr);
+    QCOMPARE(selectObjects->property("displayText").toString(), QStringLiteral("General"));
+    QCOMPARE(selectObjects->property("currentValue").toString(), QStringLiteral("Geral"));
 }
 
 void TerminalTest::mainWindowQml()
