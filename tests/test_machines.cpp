@@ -21,6 +21,7 @@
 #include "machines/QemuCommand.h"
 #include "machines/QemuRuntime.h"
 #include "machines/QmpClient.h"
+#include "machines/SerialPorts.h"
 #include "machines/SshConfig.h"
 #include "machines/VirtiofsdProcess.h"
 
@@ -844,6 +845,8 @@ private slots:
     void pathsCacheDir();
     void pathsMachinesDir();
     void machineMetaRoundTrip();
+    void serialPortsListing();
+    void serialPortsValidation();
     void machineMetaInvalid();
     void machineMetaFileErrors();
     void machineStoreCrud();
@@ -874,6 +877,7 @@ private slots:
     void qemuCommandIsolated();
     void qemuCommandMounts();
     void qemuCommandPorts();
+    void qemuCommandSerialPorts();
     void qemuCommandInvalid();
     void qmpHandshake();
     void qmpQueryStatus();
@@ -948,6 +952,7 @@ private slots:
     void machineManagerCancelled();
     void machineManagerPort();
     void machineManagerPorts();
+    void machineManagerSerialPorts();
     void machineManagerSnapshots();
     void qemuRuntimeFallback();
     void qemuRuntimePidFile();
@@ -1184,6 +1189,7 @@ void MachinesTest::machineMetaRoundTrip()
                      QStringLiteral("/home/marcos/Projetos"),
                      QStringLiteral("/mnt/projetos"), false, QStringLiteral("host")},
     };
+    meta.serialPorts = {QStringLiteral("/dev/ttyUSB0"), QStringLiteral("/dev/ttyACM0")};
 
     PodStack::Error error;
     QVERIFY2(MachineMetaFile::write(path, meta, &error), qPrintable(error.message));
@@ -1206,6 +1212,7 @@ void MachinesTest::machineMetaRoundTrip()
     QCOMPARE(object.value(QStringLiteral("forwardSshAgent")).toBool(), true);
     QCOMPARE(object.value(QStringLiteral("ports")).toArray().size(), 2);
     QCOMPARE(object.value(QStringLiteral("mounts")).toArray().size(), 1);
+    QCOMPARE(object.value(QStringLiteral("serialPorts")).toArray().size(), 2);
     QVERIFY(!object.contains(QStringLiteral("password")));
 
     const MachineMeta reloaded = MachineMetaFile::read(path, &error);
@@ -1217,6 +1224,38 @@ void MachinesTest::machineMetaRoundTrip()
     QCOMPARE(reloaded.ports.at(1).label, QStringLiteral("http"));
     QCOMPARE(reloaded.mounts.size(), 1);
     QCOMPARE(reloaded.mounts.at(0).tag, QStringLiteral("host"));
+    QCOMPARE(reloaded.serialPorts, meta.serialPorts);
+}
+
+void MachinesTest::serialPortsListing()
+{
+    const QVector<PodStack::SerialPortInfo> ports = PodStack::listHostSerialPorts();
+    for (const PodStack::SerialPortInfo &port : ports) {
+        QVERIFY(!port.path.isEmpty());
+        QVERIFY(QDir::isAbsolutePath(port.path));
+        QVERIFY(QFileInfo::exists(port.path));
+        QVERIFY(!port.description.isEmpty());
+        QVERIFY(port.description != QStringLiteral("UART UART"));
+        QVERIFY(port.kind == QStringLiteral("usb") || port.kind == QStringLiteral("acm") ||
+                port.kind == QStringLiteral("uart"));
+    }
+}
+
+void MachinesTest::serialPortsValidation()
+{
+    QString error;
+    QVERIFY(!PodStack::validateSerialPortPath(QString(), &error));
+    QVERIFY(!error.isEmpty());
+    QVERIFY(!PodStack::validateSerialPortPath(QStringLiteral("dev/ttyUSB0"), &error));
+    QVERIFY(!PodStack::validateSerialPortPath(m_root + QStringLiteral("/missing-tty"), &error));
+
+    const QString path = m_root + QStringLiteral("/fake-tty");
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("serial");
+    file.close();
+    QVERIFY(PodStack::validateSerialPortPath(path, &error));
+    QVERIFY(error.isEmpty());
 }
 
 void MachinesTest::machineMetaInvalid()
@@ -2358,6 +2397,27 @@ void MachinesTest::qemuCommandPorts()
     spec = qemuSpec(m_root);
     spec.ports.clear();
     QVERIFY(rejects(spec));
+}
+
+void MachinesTest::qemuCommandSerialPorts()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.serialPorts = {QStringLiteral("/dev/ttyUSB0"), QStringLiteral("/dev/ttyACM0")};
+
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QStringList serialValues;
+    for (int index = 0; index + 1 < args.size(); ++index) {
+        if (args.at(index) == QStringLiteral("-serial")) {
+            serialValues.append(args.at(index + 1));
+        }
+    }
+    QCOMPARE(serialValues.size(), 3);
+    QCOMPARE(serialValues.at(0), QStringLiteral("file:%1").arg(spec.consoleLogPath));
+    QCOMPARE(serialValues.at(1), QStringLiteral("/dev/ttyUSB0"));
+    QCOMPARE(serialValues.at(2), QStringLiteral("/dev/ttyACM0"));
 }
 
 void MachinesTest::qemuCommandInvalid()
@@ -4875,6 +4935,83 @@ void MachinesTest::machineManagerPortsErrors()
                          &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(updated.ports.size() >= 2);
+}
+
+void MachinesTest::machineManagerSerialPorts()
+{
+    const QString root = m_root + QStringLiteral("/manager-serial-ports");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'p');
+    m_server.setResponse(QStringLiteral("/manager-serial-ports.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-serial-ports.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest base;
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    base.name = QStringLiteral("serial-a");
+    const MachineMeta first = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    base.name = QStringLiteral("serial-b");
+    const MachineMeta second = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const QString portPath = root + QStringLiteral("/ttyUSB-test");
+    QFile portFile(portPath);
+    QVERIFY(portFile.open(QIODevice::WriteOnly));
+    portFile.write("serial");
+    portFile.close();
+
+    const MachineMeta attached = manager.setSerialPorts(first.id, {portPath}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(attached.serialPorts, QStringList{portPath});
+
+    error = {};
+    (void) manager.setSerialPorts(second.id, {portPath}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    error = {};
+    (void) manager.setSerialPorts(first.id, {QStringLiteral("relative")}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    (void) manager.setSerialPorts(first.id, {root + QStringLiteral("/missing-tty")}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    const MachineMeta detached = manager.setSerialPorts(first.id, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(detached.serialPorts.isEmpty());
 }
 
 void MachinesTest::machineManagerUpdateRemoveErrors()

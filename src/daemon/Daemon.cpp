@@ -12,6 +12,7 @@
 #include "daemon/StatsCollector.h"
 #include "machines/DistroRegistry.h"
 #include "machines/MachineFiles.h"
+#include "machines/SerialPorts.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -553,6 +554,15 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("machines.ports.set")) {
         return machinePortsSet(params, error);
+    }
+    if (method == QStringLiteral("machines.serial.list")) {
+        return machineSerialList(params, error);
+    }
+    if (method == QStringLiteral("machines.serial.attach")) {
+        return machineSerialAttach(params, error);
+    }
+    if (method == QStringLiteral("machines.serial.detach")) {
+        return machineSerialDetach(params, error);
     }
     if (method == QStringLiteral("machines.snapshots.list")) {
         return machineSnapshotsList(params, error);
@@ -1223,6 +1233,99 @@ QJsonObject Daemon::machinePortsSet(const QJsonObject &params, Error *error)
     }
 
     const MachineMeta machine = m_machines.setPorts(id, ports, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineSerialList(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+
+    QJsonArray ports;
+    for (const SerialPortInfo &info : listHostSerialPorts()) {
+        ports.append(info.toJson());
+    }
+    QJsonArray attached;
+    for (const QString &path : machine.serialPorts) {
+        attached.append(path);
+    }
+    QJsonObject machineJson;
+    machineJson.insert(QStringLiteral("id"), machine.id);
+    machineJson.insert(QStringLiteral("name"), machine.name);
+    machineJson.insert(QStringLiteral("serialPorts"), attached);
+    return QJsonObject{{QStringLiteral("ports"), ports}, {QStringLiteral("machine"), machineJson}};
+}
+
+QJsonObject Daemon::machineSerialAttach(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const QString path = params.value(QStringLiteral("path")).toString();
+    if (path.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o caminho da porta serial."),
+                                 QStringLiteral("path"));
+        }
+        return {};
+    }
+
+    const MachineMeta current = m_machines.get(id, error);
+    if (current.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    QStringList paths = current.serialPorts;
+    if (!paths.contains(path)) {
+        paths.append(path);
+    }
+    const MachineMeta machine = m_machines.setSerialPorts(id, paths, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineSerialDetach(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const QString path = params.value(QStringLiteral("path")).toString();
+    if (path.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o caminho da porta serial."),
+                                 QStringLiteral("path"));
+        }
+        return {};
+    }
+
+    const MachineMeta current = m_machines.get(id, error);
+    if (current.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    if (!current.serialPorts.contains(path)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("A porta serial não está anexada."), path);
+        }
+        return {};
+    }
+    QStringList paths = current.serialPorts;
+    paths.removeAll(path);
+    const MachineMeta machine = m_machines.setSerialPorts(id, paths, error);
     if (machine.id.isEmpty() || (error && !error->isEmpty())) {
         return {};
     }

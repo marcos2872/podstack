@@ -1553,6 +1553,12 @@ void printMachineUsage(QTextStream &stream)
            << "                          Adiciona uma porta (reinicia se rodando)\n"
            << "  port rm <id|nome> <portId|hostPort> [--json]\n"
            << "                          Remove uma porta (a SSH é gerenciada)\n"
+           << "  serial list <id|nome> [--json]\n"
+           << "                          Lista portas seriais do host e as anexadas\n"
+           << "  serial attach <id|nome> <porta> [--json]\n"
+           << "                          Anexa uma porta serial (reinicia se rodando)\n"
+           << "  serial detach <id|nome> <porta> [--json]\n"
+           << "                          Desanexa uma porta serial\n"
            << "  snapshot ls <id|nome> [--json]\n"
            << "                          Lista os snapshots internos do disco\n"
            << "  snapshot create <id|nome> <nome> [--json]\n"
@@ -2884,6 +2890,105 @@ int machinePortCommand(const QStringList &args)
     return kExitUsage;
 }
 
+int machineSerialCommand(const QStringList &args)
+{
+    if (args.isEmpty() || args.first() == QStringLiteral("--help") ||
+        args.first() == QStringLiteral("-h") || args.first() == QStringLiteral("help")) {
+        printMachineUsage(args.isEmpty() ? err() : out());
+        return args.isEmpty() ? kExitUsage : kExitOk;
+    }
+    const QString &action = args.first();
+    if (action != QStringLiteral("list") && action != QStringLiteral("ls") &&
+        action != QStringLiteral("attach") && action != QStringLiteral("detach")) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QString id;
+    QString path;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && path.isEmpty()) {
+            path = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() ||
+        (action != QStringLiteral("list") && action != QStringLiteral("ls") && path.isEmpty())) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+
+    if (action == QStringLiteral("list") || action == QStringLiteral("ls")) {
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.serial.list"), params, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        if (json) {
+            out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+            out().flush();
+            return kExitOk;
+        }
+        const QJsonArray attached = result.value(QStringLiteral("machine"))
+                                        .toObject()
+                                        .value(QStringLiteral("serialPorts"))
+                                        .toArray();
+        QStringList attachedList;
+        for (const QJsonValue &value : attached) {
+            attachedList.append(value.toString());
+        }
+        out() << QStringLiteral("%1  %2  %3  %4\n")
+                     .arg(QStringLiteral("PORTA").leftJustified(20),
+                          QStringLiteral("TIPO").leftJustified(6),
+                          QStringLiteral("LEITURA").leftJustified(8), QStringLiteral("ANEXADA"));
+        for (const QJsonValue &value : result.value(QStringLiteral("ports")).toArray()) {
+            const QJsonObject port = value.toObject();
+            const QString pathValue = port.value(QStringLiteral("path")).toString();
+            out() << QStringLiteral("%1  %2  %3  %4\n")
+                         .arg(pathValue.leftJustified(20),
+                              port.value(QStringLiteral("kind")).toString().leftJustified(6),
+                              port.value(QStringLiteral("readable")).toBool()
+                                  ? QStringLiteral("sim").leftJustified(8)
+                                  : QStringLiteral("não").leftJustified(8),
+                              attachedList.contains(pathValue) ? QStringLiteral("sim")
+                                                               : QStringLiteral("não"));
+        }
+        out().flush();
+        return kExitOk;
+    }
+
+    params.insert(QStringLiteral("path"), path);
+    const QString method = action == QStringLiteral("attach")
+                               ? QStringLiteral("machines.serial.attach")
+                               : QStringLiteral("machines.serial.detach");
+    const QJsonObject result = client.call(method, params, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+    out() << (action == QStringLiteral("attach") ? "Porta anexada: " : "Porta desanexada: ") << path
+          << '\n';
+    out().flush();
+    return kExitOk;
+}
+
 int machineSnapshotListCommand(const QStringList &args)
 {
     QString id;
@@ -4030,6 +4135,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("port") || subcommand == QStringLiteral("ports")) {
         return machinePortCommand(args.mid(1));
+    }
+    if (subcommand == QStringLiteral("serial")) {
+        return machineSerialCommand(args.mid(1));
     }
     if (subcommand == QStringLiteral("snapshot") || subcommand == QStringLiteral("snapshots")) {
         return machineSnapshotCommand(args.mid(1));

@@ -6,6 +6,7 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 namespace PodStack {
@@ -62,7 +63,7 @@ struct MachineMeta {
     QString error;
     QVector<MachinePort> ports;
     QVector<MachineMount> mounts;
-
+    QStringList serialPorts;
     QJsonObject toJson() const;
     static MachineMeta fromJson(const QJsonObject &object);
 };

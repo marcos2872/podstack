@@ -105,6 +105,9 @@ private:
     QJsonObject machineUpdate(const QJsonObject &params, Error *error);
     QJsonObject machinePortsList(const QJsonObject &params, Error *error);
     QJsonObject machinePortsSet(const QJsonObject &params, Error *error);
+    QJsonObject machineSerialList(const QJsonObject &params, Error *error);
+    QJsonObject machineSerialAttach(const QJsonObject &params, Error *error);
+    QJsonObject machineSerialDetach(const QJsonObject &params, Error *error);
     QJsonObject machineSnapshotsList(const QJsonObject &params, Error *error);
     QJsonObject machineSnapshotCreate(const QJsonObject &params, Error *error);
     QJsonObject machineSnapshotRestore(const QJsonObject &params, Error *error);

@@ -181,7 +181,7 @@ bool MachineStore::open(Error *error)
     QString sqlError;
     if (!execSql(m_db, "PRAGMA journal_mode=WAL;", &sqlError)
         || !execSql(m_db, "PRAGMA foreign_keys=ON;", &sqlError)) {
-        const QString detail = sqlError;
+        const QString &detail = sqlError;
         sqlite3_close(m_db);
         m_db = nullptr;
         if (error) {
@@ -256,6 +256,11 @@ CREATE TABLE IF NOT EXISTS machine_mounts (
   target TEXT NOT NULL,
   read_only INTEGER NOT NULL DEFAULT 0,
   tag TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS machine_serial_ports (
+  machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  PRIMARY KEY (machine_id, path)
 );
 CREATE INDEX IF NOT EXISTS idx_machines_state ON machines(state);
 )SQL";
@@ -388,6 +393,17 @@ ON CONFLICT(id) DO UPDATE SET
     }
     deleteMounts.reset();
 
+    Statement deleteSerialPorts =
+        prepare(m_db, "DELETE FROM machine_serial_ports WHERE machine_id = ?;", &deleteOk);
+    if (!deleteOk) {
+        return abort(QStringLiteral("Falha ao preparar a limpeza das portas seriais."));
+    }
+    bindText(deleteSerialPorts.get(), 1, meta.id);
+    if (sqlite3_step(deleteSerialPorts.get()) != SQLITE_DONE) {
+        return abort(QStringLiteral("Falha ao limpar as portas seriais da machine."));
+    }
+    deleteSerialPorts.reset();
+
     const char *portSql = R"SQL(
 INSERT INTO machine_ports (id, machine_id, host_port, guest_port, protocol, expose_lan, label)
 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -431,13 +447,28 @@ VALUES (?, ?, ?, ?, ?, ?)
         }
     }
 
+    const char *serialSql = R"SQL(
+INSERT INTO machine_serial_ports (machine_id, path) VALUES (?, ?)
+)SQL";
+    for (const QString &path : meta.serialPorts) {
+        bool serialOk = false;
+        Statement statement = prepare(m_db, serialSql, &serialOk);
+        if (!serialOk) {
+            return abort(QStringLiteral("Falha ao preparar a porta serial da machine."));
+        }
+        bindText(statement.get(), 1, meta.id);
+        bindText(statement.get(), 2, path);
+        if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+            return abort(QStringLiteral("Falha ao gravar a porta serial da machine."));
+        }
+    }
+
     if (!execSql(m_db, "COMMIT;", &sqlError)) {
         return abort(QStringLiteral("Falha ao confirmar o upsert da machine."));
     }
     restrictDatabaseFiles(m_path);
     return true;
 }
-
 bool MachineStore::updateState(const QString &id, const QString &state,
                                const QString &errorText, Error *error)
 {
@@ -549,7 +580,6 @@ FROM machine_mounts WHERE machine_id = ? ORDER BY target, id
         return false;
     }
     bindText(mounts.get(), 1, meta.id);
-    rc = SQLITE_ROW;
     while ((rc = sqlite3_step(mounts.get())) == SQLITE_ROW) {
         MachineMount mount;
         mount.id = columnText(mounts.get(), 0);
@@ -561,6 +591,24 @@ FROM machine_mounts WHERE machine_id = ? ORDER BY target, id
     }
     if (rc != SQLITE_DONE) {
         fail(QStringLiteral("Falha ao ler os mounts da machine."), error);
+        return false;
+    }
+
+    Statement serialPorts = prepare(m_db,
+                                    R"SQL(
+SELECT path FROM machine_serial_ports WHERE machine_id = ? ORDER BY path
+)SQL",
+                                    &ok);
+    if (!ok) {
+        fail(QStringLiteral("Falha ao consultar as portas seriais da machine."), error);
+        return false;
+    }
+    bindText(serialPorts.get(), 1, meta.id);
+    while ((rc = sqlite3_step(serialPorts.get())) == SQLITE_ROW) {
+        meta.serialPorts.append(columnText(serialPorts.get(), 0));
+    }
+    if (rc != SQLITE_DONE) {
+        fail(QStringLiteral("Falha ao ler as portas seriais da machine."), error);
         return false;
     }
     return true;

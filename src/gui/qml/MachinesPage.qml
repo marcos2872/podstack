@@ -15,6 +15,8 @@ ColumnLayout {
     property string pendingPortsId: ""
     property bool portsActionPending: false
     property var portsDraft: []
+    property string pendingSerialId: ""
+    property bool serialActionPending: false
     property bool resourcesActionPending: false
     property int resourcesOriginalCpus: 0
     property int resourcesOriginalMemoryGiB: 0
@@ -152,8 +154,34 @@ ColumnLayout {
         portsDialog.open()
     }
 
-    function addPortDraft() {
-        const hostPort = parseInt(portsHost.text)
+    function openSerialDialog(id) {
+        pendingSerialId = id
+        serialActionPending = false
+        serialError.text = ""
+        backend.refreshMachineSerialPorts(id)
+        backend.loadMachineInfo(id)
+        serialDialog.open()
+    }
+
+    function attachSerialPort(path) {
+        if (pendingSerialId.length === 0 || serialActionPending) {
+            return
+        }
+        serialActionPending = true
+        serialError.text = ""
+        backend.attachMachineSerialPort(pendingSerialId, path)
+    }
+
+    function detachSerialPort(path) {
+        if (pendingSerialId.length === 0 || serialActionPending) {
+            return
+        }
+        serialActionPending = true
+        serialError.text = ""
+        backend.detachMachineSerialPort(pendingSerialId, path)
+    }
+
+    function addPortDraft() {        const hostPort = parseInt(portsHost.text)
         const guestPort = parseInt(portsGuest.text)
         if (isNaN(hostPort) || hostPort < 1 || hostPort > 65535) {
             portsError.text = qsTr("Informe a porta do host (1..65535).")
@@ -490,6 +518,9 @@ ColumnLayout {
             onPortsRequested: function(id) {
                 machinesPage.openPortsDialog(id)
             }
+            onSerialRequested: function(id) {
+                machinesPage.openSerialDialog(id)
+            }
             onSnapshotsRequested: function(id) {
                 machinesPage.pendingSnapshotsId = id
                 machinesPage.snapshotActionPending = false
@@ -563,6 +594,20 @@ ColumnLayout {
                     }
                 } else {
                     snapshotsError.text = message.length > 0 ? message : backend.lastError
+                }
+                return
+            }
+            if (machinesPage.serialActionPending) {
+                machinesPage.serialActionPending = false
+                if (ok) {
+                    serialError.text = ""
+                    backend.refreshMachineSerialPorts(machinesPage.pendingSerialId)
+                    backend.loadMachineInfo(machinesPage.pendingSerialId)
+                } else {
+                    serialError.text = message.length > 0 ? message : backend.lastError
+                }
+                if (!serialDialog.opened) {
+                    machinesPage.pendingSerialId = ""
                 }
                 return
             }
@@ -1251,6 +1296,149 @@ ColumnLayout {
                          && backend.machineCreateStage !== "done"
                 onClicked: backend.cloneMachine(machinesPage.pendingCloneId,
                                                 cloneName.text.trim())
+            }
+        }
+    }
+
+    AppDialog {
+        id: serialDialog
+        title: qsTr("Portas seriais")
+        modal: true
+        width: 560
+        anchors.centerIn: parent
+        closePolicy: machinesPage.serialActionPending ? Popup.NoAutoClose
+                                                       : Popup.CloseOnEscape
+                                                         | Popup.CloseOnPressOutside
+        onClosed: {
+            machinesPage.pendingSerialId = ""
+            machinesPage.serialActionPending = false
+            serialError.text = ""
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 9
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Anexe dispositivos seriais do host (ttyUSB/ttyACM/UART). "
+                           + "A máquina reinicia ao anexar ou desanexar se estiver rodando.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                text: qsTr("Anexadas")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: (backend.machineInfo.serialPorts || []).length === 0
+                text: qsTr("Nenhuma porta anexada.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+
+            ListView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(160, Math.max(1,
+                    (backend.machineInfo.serialPorts || []).length) * 36)
+                clip: true
+                model: backend.machineInfo.serialPorts || []
+                delegate: RowLayout {
+                    required property var modelData
+                    width: ListView.view.width
+                    height: 36
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        text: String(modelData)
+                        color: Theme.textPrimary
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontMeta
+                        elide: Text.ElideMiddle
+                    }
+                    ActionButton {
+                        text: qsTr("Desanexar")
+                        size: "sm"
+                        variant: "danger"
+                        enabled: !machinesPage.serialActionPending
+                        onClicked: machinesPage.detachSerialPort(String(modelData))
+                    }
+                }
+            }
+
+            Text {
+                text: qsTr("Disponíveis no host")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: backend.machineSerialPorts.length === 0
+                text: qsTr("Nenhuma porta serial disponível no host.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+
+            ListView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(220, Math.max(1,
+                    backend.machineSerialPorts.length) * 36)
+                clip: true
+                model: backend.machineSerialPorts
+                delegate: RowLayout {
+                    required property var modelData
+                    width: ListView.view.width
+                    height: 36
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        text: String(modelData.path) + "  " + String(modelData.description || "")
+                        color: Theme.textPrimary
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontMeta
+                        elide: Text.ElideMiddle
+                    }
+                    ActionButton {
+                        text: qsTr("Anexar")
+                        size: "sm"
+                        enabled: !machinesPage.serialActionPending
+                                 && modelData.readable === true
+                                 && !(backend.machineInfo.serialPorts || []).includes(
+                                     String(modelData.path))
+                        onClicked: machinesPage.attachSerialPort(String(modelData.path))
+                    }
+                }
+            }
+
+            Text {
+                id: serialError
+                Layout.fillWidth: true
+                visible: text.length > 0
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                ActionButton {
+                    text: qsTr("Fechar")
+                    onClicked: serialDialog.close()
+                }
             }
         }
     }

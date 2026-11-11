@@ -45,6 +45,7 @@ private slots:
     void machineConsole();
     void machineSsh();
     void machinePorts();
+    void machineSerialPorts();
     void machineSnapshots();
     void machineStats();
     void machineFiles();
@@ -3355,6 +3356,41 @@ void RpcTest::systemDisk()
                     {QStringLiteral("value"), 90}},
         &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
+}
+
+void RpcTest::machineSerialPorts()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    (void) client.call(QStringLiteral("machines.serial.list"), {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    (void) client.call(QStringLiteral("machines.serial.list"),
+                       QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    (void) client.call(QStringLiteral("machines.serial.attach"),
+                       QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    (void) client.call(QStringLiteral("machines.serial.attach"),
+                       QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")},
+                                   {QStringLiteral("path"), QStringLiteral("/dev/null")}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    (void) client.call(QStringLiteral("machines.serial.detach"),
+                       QJsonObject{{QStringLiteral("id"), QStringLiteral("missing-machine")},
+                                   {QStringLiteral("path"), QStringLiteral("/dev/null")}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 }
 
 void RpcTest::settingsFlow()

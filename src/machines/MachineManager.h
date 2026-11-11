@@ -103,6 +103,8 @@ public:
     /// Substitui as portas não-SSH; preserva a SSH e reinicia a machine se preciso.
     MachineMeta setPorts(const QString &idOrName, const QVector<MachinePort> &ports,
                          Error *error = nullptr);
+    MachineMeta setSerialPorts(const QString &idOrName, const QStringList &paths,
+                               Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
     bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
     /// Renomeia a machine, atualiza o bloco SSH e a máquina default do Config.

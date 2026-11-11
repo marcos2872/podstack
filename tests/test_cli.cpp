@@ -615,6 +615,20 @@ void CliTest::machineCommands()
     QCOMPARE(result.code, 2);
     QVERIFY(result.err.contains(QStringLiteral("Uso: podstack machine")));
 
+    result = run({QStringLiteral("machine"), QStringLiteral("serial")}, env);
+    QCOMPARE(result.code, 2);
+    result =
+        run({QStringLiteral("machine"), QStringLiteral("serial"), QStringLiteral("list")}, env);
+    QCOMPARE(result.code, 2);
+    result = run({QStringLiteral("machine"), QStringLiteral("serial"), QStringLiteral("list"),
+                  QStringLiteral("missing")},
+                 env);
+    QCOMPARE(result.code, 1);
+    result = run({QStringLiteral("machine"), QStringLiteral("serial"), QStringLiteral("attach"),
+                  QStringLiteral("missing"), QStringLiteral("/dev/null")},
+                 env);
+    QCOMPARE(result.code, 1);
+
     result = run({QStringLiteral("machine"), QStringLiteral("info"), QStringLiteral("missing")},
                  env);
     QCOMPARE(result.code, 1);

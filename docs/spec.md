@@ -411,7 +411,9 @@ Estados: `provisioning → running → stopping → stopped → starting → run
 
 ### 7.2.1 Console serial (T4-15)
 
-- O QEMU grava o serial em `machines/<id>/console.log` (`-serial file:`). O daemon expõe:
+- O QEMU grava o serial em `machines/<id>/console.log` (`-serial file:`). Portas seriais extras
+  anexadas à machine entram como `-serial <path>` adicionais (T8-02); a primeira porta continua
+  sendo o console. O daemon expõe:
   - `machines.console.read {id, tailBytes?}` one-shot, default 64 KiB e máximo 512 KiB,
     devolvendo `{id, data}`; arquivo ausente → `{data:""}`.
   - `machines.console {id, tailBytes?}` subscription com tail inicial (`reset:true`) e

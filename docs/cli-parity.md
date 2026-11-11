@@ -66,7 +66,9 @@
 | — | `machine snapshot restore <id\|nome> <nome>` | `--json` | Restaura o disco (substitui o estado atual); imprime aviso e para/reinicia se rodando | ✅ T4-16 |
 | — | `machine snapshot rm <id\|nome> <nome>` | `--json` | Remove o snapshot; para/reinicia se rodando | ✅ T4-16 |
 | — | `machine distros` | `--json` | Lista imagens cloud pinadas (ubuntu/debian/fedora), checksum e cache local; não baixa | ✅ T4-01 |
-| `serial list` | — | — | Não implementado; o troubleshooting serial é feito por `machine console` | ⬜ fora do v1 |
+| `serial list` | `machine serial list <id\|nome>` | `--json` | Lista portas seriais do host e as anexadas | ✅ T8-02 |
+| `serial attach` | `machine serial attach <id\|nome> <porta>` | `--json` | Anexa porta serial (reinicia se rodando) | ✅ T8-02 |
+| `serial detach` | `machine serial detach <id\|nome> <porta>` | `--json` | Desanexa porta serial | ✅ T8-02 |
 | `usb list\|info\|attach\|detach` | `device usb ...` | `--machine` | QEMU usb-host | ⬜ T8-01 |
 
 > No M4 (T4-03/T4-04/T4-06/T4-08/T4-09/T4-10/T4-11/T4-12/T4-13/T4-14/T4-15) o CLI cobre `distros`,
