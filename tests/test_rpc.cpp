@@ -527,9 +527,9 @@ void RpcTest::systemReportRedactsSettings()
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     Q_UNUSED(reply);
 
-    const QJsonObject result = client.call(
-        QStringLiteral("system.report"),
-        QJsonObject{{QStringLiteral("includeLogs"), false}}, &error);
+    const QJsonObject result =
+        client.call(QStringLiteral("system.report"),
+                    QJsonObject{{QStringLiteral("includeLogs"), false}}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     const QString path = result.value(QStringLiteral("path")).toString();
     QVERIFY(!path.isEmpty());
@@ -538,9 +538,9 @@ void RpcTest::systemReportRedactsSettings()
     const QByteArray payload = reportFile.readAll();
     reportFile.close();
     QCOMPARE(payload.size(), result.value(QStringLiteral("bytes")).toInt());
-    QCOMPARE(QString::fromLatin1(
-                 QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex()),
-             result.value(QStringLiteral("sha256")).toString());
+    QCOMPARE(
+        QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex()),
+        result.value(QStringLiteral("sha256")).toString());
 
     const QJsonObject report = QJsonDocument::fromJson(payload).object();
     QVERIFY(!report.value(QStringLiteral("version")).toString().isEmpty());
