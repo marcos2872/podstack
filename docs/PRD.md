@@ -412,6 +412,10 @@ O concorrente direto é o **Podman Desktop**; a referência de polimento é o Or
 | FR-UPD-004 | Licença/conta opcional (sem bloquear recursos básicos). | P2 | App funciona offline sem conta. |
 | FR-UPD-005 | Migração **opcional** de dados de Docker/Podman existente (imagens, volumes). | P2 | Prévia e rollback; não é pré-requisito para usar o PodStack. |
 
+> **Decisão (2026-11-11):** FR-UPD-004 (licença/conta) e FR-UPD-005 (migração de dados) ficam
+> no pós-v1 (M8). O PodStack é offline por padrão e não exige conta; a migração permanece
+> opcional, com o Docker preservado por padrão.
+
 ### 7.18 Primeira execução e setup (`FR-SETUP`)
 
 | ID | Requisito | Prioridade | Critério de aceite |
@@ -583,6 +587,8 @@ Design tokens e componentes em [`ui-map.md`](ui-map.md).
 | Q8 | **Resolvida:** Docker e Podman coexistem; o Docker é opcional e a remoção é opt-in, com confirmação e helper allowlisted | — | Arquitetura | resolvido em 2026-11-08 |
 | Q9 | **Resolvida:** onboarding/setup em janela separada, 7 etapas, reexecutável; detecção read-only e ações privilegiadas via helper | — | Produto | resolvido em 2026-11-08 |
 | Q10 | **Resolvida:** Pods do Podman ficam no grupo **Engine**; o grupo **Kubernetes** é reservado para k3s/clusters (M5) | — | Produto | resolvido em 2026-11-08 |
+| Q11 | **Resolvida:** migração opcional de dados Docker/Podman fica para o **pós-v1 (M8)**; o Docker não é removido nem migrado automaticamente | — | Produto | resolvido em 2026-11-11 |
+| Q12 | **Resolvida:** **sem conta obrigatória**; o app funciona 100% offline e nenhum recurso básico depende de rede | — | Produto | resolvido em 2026-11-11 |
 
 ---
 
