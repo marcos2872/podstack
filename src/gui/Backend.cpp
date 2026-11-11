@@ -404,7 +404,8 @@ Backend::Backend(QObject *parent)
     connect(&m_detailLogsStream, &StreamClient::logLine, this, [this](const QString &line) {
         m_containerDetailLogLines.append(line);
         if (m_containerDetailLogLines.size() > m_logBufferLines) {
-            m_containerDetailLogLines = m_containerDetailLogLines.mid(qMax(1, m_logBufferLines / 5));
+            m_containerDetailLogLines =
+                m_containerDetailLogLines.mid(qMax(1, m_logBufferLines / 5));
         }
         if (!m_detailLogsPending) {
             m_detailLogsPending = true;

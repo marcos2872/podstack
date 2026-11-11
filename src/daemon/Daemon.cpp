@@ -814,24 +814,24 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
     request.user = params.value(QStringLiteral("user")).toString();
     request.password = params.value(QStringLiteral("password")).toString();
     request.userData = params.value(QStringLiteral("userData")).toString();
-    request.cpus =
-        params.value(QStringLiteral("cpus"))
-            .toInt(config.get(QStringLiteral("machines.cpus")).toInt(request.cpus));
-    request.memoryBytes = params.value(QStringLiteral("memoryBytes"))
-                              .toInteger(config.get(QStringLiteral("machines.memoryBytes"))
-                                             .toInteger(request.memoryBytes));
+    request.cpus = params.value(QStringLiteral("cpus"))
+                       .toInt(config.get(QStringLiteral("machines.cpus")).toInt(request.cpus));
+    request.memoryBytes =
+        params.value(QStringLiteral("memoryBytes"))
+            .toInteger(
+                config.get(QStringLiteral("machines.memoryBytes")).toInteger(request.memoryBytes));
     request.diskBytes =
         params.value(QStringLiteral("diskBytes"))
-            .toInteger(config.get(QStringLiteral("machines.diskBytes")).toInteger(request.diskBytes));
+            .toInteger(
+                config.get(QStringLiteral("machines.diskBytes")).toInteger(request.diskBytes));
     request.isolateNetwork =
         params.value(QStringLiteral("isolateNetwork")).toBool(request.isolateNetwork);
-    request.forwardSshAgent =
-        params.value(QStringLiteral("forwardSshAgent"))
-            .toBool(config.get(QStringLiteral("machines.forwardSshAgent"))
-                        .toBool(request.forwardSshAgent));
-    request.isolated = params.value(QStringLiteral("isolated"))
-                           .toBool(config.get(QStringLiteral("machines.isolated"))
-                                       .toBool(request.isolated));
+    request.forwardSshAgent = params.value(QStringLiteral("forwardSshAgent"))
+                                  .toBool(config.get(QStringLiteral("machines.forwardSshAgent"))
+                                              .toBool(request.forwardSshAgent));
+    request.isolated =
+        params.value(QStringLiteral("isolated"))
+            .toBool(config.get(QStringLiteral("machines.isolated")).toBool(request.isolated));
 
     const QJsonValue mountsValue = params.value(QStringLiteral("mounts"));
     if (!mountsValue.isUndefined() && !mountsValue.isNull()) {

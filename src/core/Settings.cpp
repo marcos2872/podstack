@@ -281,8 +281,7 @@ const QVector<SettingDef> &definitions()
                              true));
         list.append(makeBool(QStringLiteral("network.ipv6"), false, QStringLiteral("Rede"),
                              QStringLiteral("Habilita IPv6 nos containers."), true));
-        list.append(makeBool(QStringLiteral("network.exposeLan"), false,
-                             QStringLiteral("Rede"),
+        list.append(makeBool(QStringLiteral("network.exposeLan"), false, QStringLiteral("Rede"),
                              QStringLiteral("Expõe portas e domínios na LAN."), true));
         list.append(makeEnum(QStringLiteral("network.domainsMode"),
                              QStringLiteral("localhost"),

@@ -664,18 +664,13 @@ void CoreTest::settingsSchemaHonesty()
     };
 
     // Chaves sem efeito ficam no schema, mas marcadas para o diálogo ocultar.
-    QCOMPARE(entry(QStringLiteral("telemetry.enabled"))
-                 .value(QStringLiteral("hidden"))
-                 .toBool(),
+    QCOMPARE(entry(QStringLiteral("telemetry.enabled")).value(QStringLiteral("hidden")).toBool(),
              true);
-    QCOMPARE(entry(QStringLiteral("docker.defaultNetwork"))
-                 .value(QStringLiteral("hidden"))
-                 .toBool(),
-             true);
+    QCOMPARE(
+        entry(QStringLiteral("docker.defaultNetwork")).value(QStringLiteral("hidden")).toBool(),
+        true);
     QCOMPARE(entry(QStringLiteral("app.theme")).value(QStringLiteral("hidden")).toBool(), false);
-    QCOMPARE(entry(QStringLiteral("terminal.fontSize"))
-                 .value(QStringLiteral("hidden"))
-                 .toBool(),
+    QCOMPARE(entry(QStringLiteral("terminal.fontSize")).value(QStringLiteral("hidden")).toBool(),
              false);
     QCOMPARE(entry(QStringLiteral("machines.cpus")).value(QStringLiteral("hidden")).toBool(),
              false);
