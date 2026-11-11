@@ -2030,11 +2030,12 @@ QJsonObject Daemon::systemReport(const QJsonObject &params, Error *error)
         }
         return {};
     }
-    QFile::setPermissions(reportsDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
-                                          QFileDevice::ExeOwner);
-    const QString path = reportsDir + QStringLiteral("/podstack-report-%1.json")
-                                         .arg(QDateTime::currentDateTimeUtc().toString(
-                                             QStringLiteral("yyyyMMdd-HHmmss-zzz")));
+    QFile::setPermissions(reportsDir,
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    const QString path =
+        reportsDir +
+        QStringLiteral("/podstack-report-%1.json")
+            .arg(QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz")));
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly) || file.write(payload) != payload.size()) {
         if (error) {
