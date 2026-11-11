@@ -1709,6 +1709,12 @@ void CliTest::systemDf()
     QVERIFY(!emulationDocument.object().value(QStringLiteral("hostArch")).toString().isEmpty());
     QCOMPARE(emulationDocument.object().value(QStringLiteral("handlers")).toArray().size(), 1);
     QCOMPARE(emulationDocument.object().value(QStringLiteral("foreignEmulation")).toBool(), true);
+
+    result = run({QStringLiteral("system"), QStringLiteral("emulation")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("binfmt:")));
+    QVERIFY(result.out.contains(QStringLiteral("qemu-aarch64")));
+    QVERIFY(result.out.contains(QStringLiteral("emulação de arquitetura estrangeira: sim")));
 }
 
 void CliTest::composeAndBuild()

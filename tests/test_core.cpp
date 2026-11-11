@@ -665,11 +665,15 @@ void CoreTest::emulationDetectsBinfmt()
                   "enabled\ninterpreter /usr/bin/FEX-x86_64\nflags: F\n"));
     QVERIFY(write(QStringLiteral("disabled"), "disabled\ninterpreter /usr/bin/none\nflags: F\n"));
     QVERIFY(write(QStringLiteral("status"), "enabled\n"));
+    QVERIFY(write(QStringLiteral("no-interpreter"), "enabled\nflags: F\n"));
+    QVERIFY(write(QStringLiteral("empty"), ""));
 
     const QVector<PodStack::BinfmtHandler> handlers = PodStack::detectBinfmtHandlers(dir.path());
-    QCOMPARE(handlers.size(), 2);
+    QCOMPARE(handlers.size(), 3);
     QCOMPARE(handlers.at(0).name, QStringLiteral("FEX-x86_64"));
-    QCOMPARE(handlers.at(1).name, QStringLiteral("qemu-aarch64"));
+    QCOMPARE(handlers.at(1).name, QStringLiteral("no-interpreter"));
+    QVERIFY(handlers.at(1).interpreter.isEmpty());
+    QCOMPARE(handlers.at(2).name, QStringLiteral("qemu-aarch64"));
     QVERIFY(!PodStack::hostArchitecture().isEmpty());
 }
 
