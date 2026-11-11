@@ -5015,9 +5015,11 @@ void MachinesTest::machineManagerSerialPorts()
     const DistroImage image = testImage(QStringLiteral("/manager-serial-ports.qcow2"), payload);
 
     auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *runtimePtr = runtime.get();
     MachineManager::Options options;
     QVERIFY(configureSshOptions(&options, root));
-    options.storePath = root + QStringLiteral("/podstack.db");
+    const QString storePath = root + QStringLiteral("/podstack.db");
+    options.storePath = storePath;
     options.machinesRoot = root + QStringLiteral("/machines");
     options.imageCacheDir = root + QStringLiteral("/images");
     options.qemuImgBinary = qemuImg;
@@ -5072,7 +5074,23 @@ void MachinesTest::machineManagerSerialPorts()
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(restarted.serialPorts.contains(secondPath));
     QCOMPARE(restarted.state, QStringLiteral("running"));
+
+    runtimePtr->failStart = true;
+    error = {};
+    (void) manager.setSerialPorts(first.id, {portPath}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QVERIFY(error.message.contains(QStringLiteral("não reiniciou")));
+    runtimePtr->failStart = false;
+
     QVERIFY(manager.stop(first.id, false, &error).state != QStringLiteral("running"));
+
+    PodStack::MachineStore store(storePath);
+    QVERIFY(store.open(&error));
+    QVERIFY(store.updateState(first.id, QStringLiteral("deleting"), QString(), &error));
+    error = {};
+    (void) manager.setSerialPorts(first.id, {portPath}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QVERIFY(store.updateState(first.id, QStringLiteral("stopped"), QString(), &error));
 
     error = {};
     (void) manager.setSerialPorts(second.id, {portPath}, &error);

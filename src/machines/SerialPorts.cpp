@@ -99,12 +99,6 @@ QString usbDescription(const QString &sysClassTty, const QString &name, const ch
     return QString::fromLatin1(fallback);
 }
 
-bool matchesSerialName(const QString &name)
-{
-    return name.startsWith(QStringLiteral("ttyUSB")) || name.startsWith(QStringLiteral("ttyACM")) ||
-           name.startsWith(QStringLiteral("ttyS"));
-}
-
 } // namespace
 
 QJsonObject SerialPortInfo::toJson() const
@@ -125,9 +119,6 @@ QVector<SerialPortInfo> listSerialPortsIn(const QString &devDir, const QString &
         {QStringLiteral("ttyUSB*"), QStringLiteral("ttyACM*"), QStringLiteral("ttyS*")},
         QDir::System | QDir::Files, QDir::Name);
     for (const QFileInfo &entry : entries) {
-        if (!matchesSerialName(entry.fileName())) {
-            continue;
-        }
         SerialPortInfo info;
         info.path = entry.canonicalFilePath();
         if (info.path.isEmpty()) {
@@ -147,16 +138,7 @@ QVector<SerialPortInfo> listSerialPortsIn(const QString &devDir, const QString &
             info.description = usbDescription(sysClassTty, entry.fileName(), "Dispositivo CDC-ACM");
         }
         info.readable = entry.isReadable();
-        bool duplicate = false;
-        for (const SerialPortInfo &existing : ports) {
-            if (existing.path == info.path) {
-                duplicate = true;
-                break;
-            }
-        }
-        if (!duplicate) {
-            ports.append(info);
-        }
+        ports.append(info);
     }
     return ports;
 }
