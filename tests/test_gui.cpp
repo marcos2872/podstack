@@ -5,6 +5,7 @@
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
 #include "gui/StreamClient.h"
+#include "gui/UiState.h"
 #include "k8s/K8sStore.h"
 #include "machines/MachineStore.h"
 
@@ -65,6 +66,9 @@ private slots:
     void backendTray();
     void backendActivityMonitor();
     void streamClientProtocol();
+    void uiStateRoundTrip();
+    void uiStateInvalidFallsBack();
+    void uiStateRejectsInvalidValues();
     void guiStartsAndQuits();
 
 private:
@@ -1532,6 +1536,78 @@ void GuiTest::backendTray()
     QTRY_COMPARE(backend.settings().value(QStringLiteral("startAtLogin")).toBool(), false);
     QTRY_COMPARE(backend.settings().value(QStringLiteral("notifications")).toBool(), true);
     QTRY_VERIFY(!QFile::exists(PodStack::Autostart::filePath()));
+}
+
+void GuiTest::uiStateRoundTrip()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("ui-state.json"));
+
+    PodStack::UiState state;
+    state.windowGeometry = QByteArrayLiteral("geometry");
+    state.section = QStringLiteral("machines");
+    state.containerTab = 5;
+    state.machineTab = QStringLiteral("stats");
+    QVERIFY(state.save(path));
+
+    const QFileInfo info(path);
+    QVERIFY(info.exists());
+    QCOMPARE(info.permissions() & QFileDevice::ReadOther, QFileDevice::Permissions());
+    QCOMPARE(info.permissions() & QFileDevice::WriteOther, QFileDevice::Permissions());
+
+    PodStack::UiState loaded;
+    QVERIFY(loaded.load(path));
+    QCOMPARE(loaded.windowGeometry, QByteArrayLiteral("geometry"));
+    QCOMPARE(loaded.section, QStringLiteral("machines"));
+    QCOMPARE(loaded.containerTab, 5);
+    QCOMPARE(loaded.machineTab, QStringLiteral("stats"));
+}
+
+void GuiTest::uiStateInvalidFallsBack()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("ui-state.json"));
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("not json");
+    file.close();
+
+    PodStack::UiState state;
+    QVERIFY(!state.load(path));
+    QCOMPARE(state.section, QStringLiteral("containers"));
+    QCOMPARE(state.containerTab, 0);
+    QCOMPARE(state.machineTab, QStringLiteral("info"));
+
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(R"({"version":2,"section":"machines"})");
+    file.close();
+    QVERIFY(!state.load(path));
+    QCOMPARE(state.section, QStringLiteral("containers"));
+}
+
+void GuiTest::uiStateRejectsInvalidValues()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("ui-state.json"));
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(R"({"version":1,"section":"bogus","detail":{"containerTab":99,"machineTab":"x"}})");
+    file.close();
+
+    PodStack::UiState state;
+    QVERIFY(state.load(path));
+    QCOMPARE(state.section, QStringLiteral("containers"));
+    QCOMPARE(state.containerTab, 0);
+    QCOMPARE(state.machineTab, QStringLiteral("info"));
+    QVERIFY(PodStack::UiState::isValidSection(QStringLiteral("kubernetes")));
+    QVERIFY(!PodStack::UiState::isValidSection(QStringLiteral("bogus")));
+    QVERIFY(!PodStack::UiState::isValidContainerTab(-1));
+    QVERIFY(!PodStack::UiState::isValidMachineTab(QStringLiteral("bogus")));
 }
 
 void GuiTest::guiStartsAndQuits()

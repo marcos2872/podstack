@@ -210,6 +210,11 @@ Rectangle {
         if (root.tabIndex === 6 && root.containerId.length > 0) {
             backend.listFiles(root.containerId, "/")
         }
+        if (root.containerId.length > 0) {
+            if (typeof appWindow !== "undefined" && appWindow) {
+                appWindow.rememberDetailTab("container", root.tabIndex)
+            }
+        }
         root.syncTerminalArea()
     }
 

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "gui/UiState.h"
+
 #include <QMainWindow>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 
 class QCloseEvent;
 class QDockWidget;
@@ -26,6 +29,9 @@ class TrayController;
 /// apenas pede `reveal()`/`hideToTray()` via contexto `appWindow`.
 class MainWindow : public QMainWindow {
     Q_OBJECT
+    Q_PROPERTY(QString startupSection READ startupSection CONSTANT)
+    Q_PROPERTY(int startupContainerTab READ startupContainerTab CONSTANT)
+    Q_PROPERTY(QString startupMachineTab READ startupMachineTab CONSTANT)
 
 public:
     /// `loadQml=false` é um hook de teste: monta a janela e o dock sem carregar
@@ -38,9 +44,15 @@ public:
     Q_INVOKABLE void hideToTray();
     Q_INVOKABLE void openContainerDetail(const QString &id);
     Q_INVOKABLE void openContainerDetailTab(const QString &id, int detailTab);
-    Q_INVOKABLE void openMachineDetail(const QString &id, int tab = 0);
+    Q_INVOKABLE void openMachineDetail(const QString &id, int tab = -1);
     /// Abre uma seção da navegação (usado pela bandeja/atalhos).
     Q_INVOKABLE void openSection(const QString &section);
+    Q_INVOKABLE void rememberSection(const QString &section);
+    Q_INVOKABLE void rememberDetailTab(const QString &kind, const QVariant &tab);
+
+    QString startupSection() const;
+    int startupContainerTab() const;
+    QString startupMachineTab() const;
 
     bool qmlLoaded() const;
     bool qmlFailed() const;
@@ -57,6 +69,9 @@ protected:
 private:
     void createTerminalDock();
     void loadMainQml();
+    void restoreUiState();
+    void scheduleUiStateSave();
+    void saveUiState();
     void closeTerminalTab(int index);
     void updateQuitOnLastWindowClosed();
     ContainerDetailDialog *ensureDetailDialog();
@@ -72,6 +87,8 @@ private:
     QTabWidget *m_terminalTabs = nullptr;
     ContainerDetailDialog *m_detailDialog = nullptr;
     MachineDetailDialog *m_machineDetailDialog = nullptr;
+    UiState m_uiState;
+    QTimer m_uiStateSaveTimer;
 };
 
 } // namespace PodStack
