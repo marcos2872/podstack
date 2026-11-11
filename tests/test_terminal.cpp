@@ -27,6 +27,7 @@
 #include <QQuickWidget>
 #include <QRectF>
 #include <QScopedPointer>
+#include <QShortcut>
 #include <QSignalSpy>
 #include <QTabWidget>
 #include <QTemporaryDir>
@@ -119,6 +120,16 @@ void TerminalTest::terminalViewConfiguration()
     auto *terminal = view.findChild<QTermWidget *>();
     QVERIFY(terminal != nullptr);
     QCOMPARE(terminal->keyBindings(), QStringLiteral("linux"));
+    QCOMPARE(terminal->contextMenuPolicy(), Qt::CustomContextMenu);
+
+    auto *copyShortcut = view.findChild<QShortcut *>(QStringLiteral("terminalCopyShortcut"));
+    QVERIFY(copyShortcut != nullptr);
+    QCOMPARE(copyShortcut->key(), QKeySequence(QStringLiteral("Ctrl+Shift+C")));
+    auto *pasteShortcut = view.findChild<QShortcut *>(QStringLiteral("terminalPasteShortcut"));
+    QVERIFY(pasteShortcut != nullptr);
+    QCOMPARE(pasteShortcut->key(), QKeySequence(QStringLiteral("Ctrl+Shift+V")));
+    QVERIFY(view.findChild<QShortcut *>(QStringLiteral("terminalCopyInsertShortcut")) != nullptr);
+    QVERIFY(view.findChild<QShortcut *>(QStringLiteral("terminalPasteInsertShortcut")) != nullptr);
 
     auto *title = view.findChild<QLabel *>(QStringLiteral("terminalTitle"));
     QVERIFY(title != nullptr);
