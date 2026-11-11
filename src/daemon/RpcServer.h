@@ -15,6 +15,7 @@ namespace PodStack {
 class RpcServer : public QObject {
 public:
     explicit RpcServer(Daemon *daemon, QObject *parent = nullptr);
+    ~RpcServer() override;
 
     bool listen(const QString &socketPath, Error *error);
 

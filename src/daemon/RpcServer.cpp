@@ -29,6 +29,20 @@ RpcServer::RpcServer(Daemon *daemon, QObject *parent)
     connect(&m_server, &QLocalServer::newConnection, this, &RpcServer::onNewConnection);
 }
 
+RpcServer::~RpcServer()
+{
+    // Os sockets são filhos do QLocalServer; se ele destruir antes do
+    // m_buffers, o sinal disconnected volta para onDisconnected e acessa o
+    // hash já liberado. Fecha e desconecta explicitamente primeiro.
+    m_server.close();
+    const QList<QLocalSocket *> sockets = m_buffers.keys();
+    for (QLocalSocket *socket : sockets) {
+        QObject::disconnect(socket, nullptr, this, nullptr);
+        socket->disconnectFromServer();
+    }
+    m_buffers.clear();
+}
+
 bool RpcServer::listen(const QString &socketPath, Error *error)
 {
     if (error) {
