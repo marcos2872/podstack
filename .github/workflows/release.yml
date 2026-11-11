@@ -31,6 +31,7 @@ jobs:
           dnf install -y cmake ninja-build gcc-c++ clang-tools-extra \
             openssl-devel \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
+            qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
             qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
             libxcrypt-devel openssh-clients \
             rpm-build rpm-sign dpkg appstream minisign gnupg2 jq curl zip gh \

@@ -32,6 +32,7 @@ jobs:
           dnf install -y cmake ninja-build gcc-c++ gcovr clang-tools-extra \
             appstream openssl-devel \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
+            qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
             qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
             libxcrypt-devel openssh-clients
 
