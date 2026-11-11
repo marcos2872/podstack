@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Solução de problemas · PodStack 0.1.0</title>
+  <meta name="description" content="Diagnóstico de daemon, Podman, polkit, KVM, virtiofsd, SSH, X11, portas, CA, DNS, áudio, CRIU e report.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("podstack-docs-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 8 9 5 9-5"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="2" y="15" width="6" height="6" rx="1"/><rect x="16" y="15" width="6" height="6" rx="1"/><path d="M12 9v3"/><path d="M5 15v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></symbol>
+    <symbol id="i-terminal-2" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6"/><path d="M12 18h8"/></symbol>
+    <symbol id="i-hammer" viewBox="0 0 24 24"><path d="m14 5 5 5-3 3-5-5 3-3Z"/><path d="m3 21 7-7"/><path d="M11 3 3 11l4 4 8-8-4-4Z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.2 9.3 4.5 4.5 0 0 0 7 18Z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3 3.7-3.7Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path class="icon-fill" d="M12 .5C5.73.5.98 5.24.98 11.5c0 4.86 3.15 8.98 7.52 10.44.55.1.75-.24.75-.53 0-.26-.01-1.12-.02-2.03-3.06.67-3.71-1.3-3.71-1.3-.5-1.27-1.22-1.61-1.22-1.61-1-.68.08-.67.08-.67 1.1.08 1.68 1.13 1.68 1.13.98 1.68 2.57 1.2 3.2.92.1-.71.38-1.2.7-1.48-2.44-.28-5.01-1.22-5.01-5.43 0-1.2.43-2.18 1.13-2.95-.11-.28-.49-1.4.11-2.91 0 0 .92-.29 3.02 1.13a10.5 10.5 0 0 1 5.5 0c2.1-1.42 3.02-1.13 3.02-1.13.6 1.51.22 2.63.11 2.91.7.77 1.13 1.75 1.13 2.95 0 4.22-2.58 5.15-5.03 5.42.4.34.75 1.01.75 2.04 0 1.47-.01 2.65-.01 3.01 0 .29.2.64.76.53a11.02 11.02 0 0 0 7.51-10.44C23.02 5.24 18.27.5 12 .5Z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M10.3 4.1 2.7 18a2 2 0 0 0 1.8 3h15a2 2 0 0 0 1.8-3L13.7 4.1a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+  </defs>
+</svg>
+
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="icon-btn nav-toggle" type="button" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Abrir navegação">
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+      </button>
+      <a class="topbar-brand" href="index.html">
+        <img src="assets/podstack-capsule.svg" alt="" width="28" height="28">
+        <span>PodStack</span>
+      </a>
+      <span class="topbar-label">Documentação</span>
+    </div>
+
+    <div class="search" role="search">
+      <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input id="site-search" type="search" role="combobox" aria-label="Buscar na documentação"
+             aria-controls="search-results" aria-expanded="false" aria-autocomplete="list"
+             placeholder="Buscar na documentação…" autocomplete="off" spellcheck="false">
+      <kbd aria-hidden="true">/</kbd>
+      <div class="search-results" id="search-results" role="listbox" aria-label="Resultados da busca" hidden></div>
+    </div>
+
+    <div class="topbar-actions">
+      <a class="icon-btn" href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"></use></svg>
+      </a>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Alternar tema">
+        <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="nav-overlay" data-nav-overlay aria-hidden="true"></div>
+
+  <aside class="sidebar" id="sidebar" aria-label="Navegação da documentação">
+    <a class="sidebar-brand" href="index.html">
+      <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
+      <span>
+        <span class="brand-name">PodStack</span>
+        <span class="brand-sub">Documentação 0.1.0</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="Seções da documentação">
+      <div class="nav-section"><p class="nav-group">Introdução</p><ul><li><a href="index.html"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg><span>Visão geral</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Engine</p><ul><li><a href="containers.html"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg><span>Containers</span></a></li><li><a href="images.html"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg><span>Imagens</span></a></li><li><a href="volumes.html"><svg class="icon" aria-hidden="true"><use href="#i-database"></use></svg><span>Volumes</span></a></li><li><a href="networks.html"><svg class="icon" aria-hidden="true"><use href="#i-network"></use></svg><span>Redes</span></a></li><li><a href="pods.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Pods</span></a></li><li><a href="compose.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal"></use></svg><span>Compose</span></a></li><li><a href="builds.html"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg><span>Builds</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Linux e Kubernetes</p><ul><li><a href="machines.html"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span>Machines</span></a></li><li><a href="kubernetes.html"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Kubernetes</span></a></li><li><a href="domains.html"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span>Domínios</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Referência</p><ul><li><a href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Configurações</span></a></li><li><a href="cli.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><span>CLI</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
+    </nav>
+    <div class="sidebar-foot">
+      <p>Versão 0.1.0 · GPL-3.0-or-later</p>
+      <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
+    </div>
+  </aside>
+
+  <div class="main">
+    <main class="page" id="conteudo">
+      <nav class="breadcrumb" aria-label="Trilha de navegação">
+        <a href="index.html">Documentação</a>
+        <span class="sep" aria-hidden="true">›</span>
+        <span aria-current="page">Solução de problemas</span>
+      </nav>
+
+      <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg> PodStack Docs</div>
+      <h1>Solução de problemas</h1>
+<p class="lede">Comece pelos diagnósticos que não alteram nada, confira socket, Podman, helper e KVM e gere um relatório redigido quando precisar de ajuda.</p>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.0</span><span>Documentação de usuário</span></div><h2 id="primeiros-checks">Primeiros checks</h2><pre data-lang="bash"><code>podstack status
+podstack doctor
+systemctl --user status podstack.socket podstack.service
+systemctl --user status podman.socket
+journalctl --user -u podstack.service -n 200 --no-pager
+
+# relatório redigido para suporte
+podstack report --include-logs</code></pre>
+<p>O report fica em <code>~/.local/state/podstack/reports/</code> com permissão <code>0600</code>;
+o comando imprime o caminho e o SHA-256. Revise o conteúdo antes de compartilhar: ele é redigido,
+mas pode conter nomes de containers, caminhos e configuração.</p>
+<h2 id="daemon-socket">Daemon e socket</h2>
+<p>Sintomas: <code>Tempo esgotado aguardando o podstackd.</code>,
+<code>PODSTACK_DAEMON_UNAVAILABLE</code>, ou <code>podstack status</code> com exit 7.</p>
+<pre data-lang="bash"><code>systemctl --user status podstack.socket
+systemctl --user status podstack.service
+systemctl --user daemon-reload
+systemctl --user start podstack.socket
+ls -l &quot;$XDG_RUNTIME_DIR/podstack/control.sock&quot;
+stat -c &#x27;%a %U %G&#x27; &quot;$XDG_RUNTIME_DIR/podstack/control.sock&quot;
+journalctl --user -u podstack.service -n 200 --no-pager</code></pre>
+<p>O socket deve ser um Unix socket <code>0600</code>, no diretório <code>0700</code>, pertencente ao
+seu usuário. O daemon é ativado na primeira conexão. Causas comuns: units não recarregadas após
+atualização, socket inativo, daemon que falhou no start, <code>PODSTACK_CONTROL_SOCKET</code>
+apontando para outro caminho ou permissão errada. Não use <code>chmod 0666</code>.</p>
+<p>Em desenvolvimento, inicie o daemon manualmente para diagnóstico:</p>
+<pre data-lang="bash"><code>./build/dev/podstackd --socket /tmp/podstack-dev.sock
+PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock ./build/dev/podstack status</code></pre><h2 id="podman">Podman e engine</h2>
+<p>Sintomas: <code>PODSTACK_ENGINE_UNAVAILABLE</code>, <code>engine: unavailable</code>,
+<code>podman: unavailable</code> ou listas vazias mesmo com containers existentes.</p>
+<pre data-lang="bash"><code>systemctl --user status podman.socket
+systemctl --user enable --now podman.socket
+podman --version
+podman info
+ls -l &quot;$XDG_RUNTIME_DIR/podman/podman.sock&quot;
+podstack setup --apply socket
+podstack status</code></pre>
+<p>O PodStack usa o Podman rootless por padrão e espera o socket em
+<code>$XDG_RUNTIME_DIR/podman/podman.sock</code>. Se você usa outro caminho, ajuste
+<code>PODSTACK_PODMAN_SOCKET</code> ou <code>engine.socketPath</code>. O PodStack 0.1.0 espera
+Podman 5.8 ou mais novo.</p>
+<p>No modo rootful (<code>engine.mode=rootful</code>), o socket é
+<code>/run/podman/podman.sock</code> e seu usuário precisa de acesso ao grupo correspondente.
+Rootful é opt-in explícito; a GUI mostra o badge e o aviso.</p>
+<h2 id="helper-polkit">Helper e polkit</h2>
+<p>Sintomas: <code>PODSTACK_HELPER_REQUIRED</code>, <code>PODSTACK_HELPER_UNAVAILABLE</code>, setup
+que não instala pacotes e prompt de polkit que não aparece.</p>
+<pre data-lang="bash"><code>systemctl status podstack-helper.service
+journalctl -u podstack-helper.service -n 100 --no-pager
+pkaction --action-id dev.podstack.helper.install-packages --verbose
+
+sudo dnf install ./podstack-helper-0.1.0-1.fc44.x86_64.rpm
+sudo systemctl enable --now podstack-helper.service</code></pre>
+<p>O helper usa D-Bus de sistema e polkit. Ele precisa de uma sessão ativa com agente de autenticação
+(GNOME/KDE/niri com polkit agent). Em SSH sem sessão gráfica, a autorização pode falhar; rode o setup
+no desktop. O helper não aceita <code>Exec</code>/shell: ações fora da allowlist são recusadas por
+design. Se você não precisa de ações privilegiadas, o <code>podman.socket</code> pode ser ativado
+manualmente ou por <code>podstack setup --apply socket</code>; containers e machines não dependem do
+helper para operar.</p>
+<h2 id="kvm">KVM, QEMU e virtiofsd</h2>
+<p>Sintomas: criação de machine falha ou fica em <code>error</code>, machine muito lenta, erro de
+virtiofsd nos mounts.</p>
+<pre data-lang="bash"><code>ls -l /dev/kvm
+test -r /dev/kvm &amp;&amp; test -w /dev/kvm &amp;&amp; echo &quot;KVM ok&quot;
+groups
+qemu-system-x86_64 --version
+virtiofsd --version
+podstack setup --check
+
+# liberar KVM para o seu usuário (depois saia e entre na sessão)
+sudo usermod -aG kvm &quot;$USER&quot;</code></pre>
+<p>Sem <code>/dev/kvm</code>, o PodStack usa TCG (<code>-accel tcg</code>), que funciona mas é muito
+mais lento. A virtualização precisa estar habilitada na BIOS/UEFI; em VM aninhada, o hipervisor
+precisa expor VT-x/AMD-V.</p>
+<p>Se o virtiofsd estiver fora do path padrão, defina <code>PODSTACK_VIRTIOFSD_BINARY</code> ou
+instale em <code>/usr/libexec/virtiofsd</code> (fallback). O setup verifica QEMU, OVMF e virtiofsd;
+se um obrigatório estiver ausente, a tela principal fica bloqueada. Para uma machine que não sobe:</p>
+<pre data-lang="bash"><code>podstack machine info dev
+podstack machine logs dev --tail 200
+podstack machine console dev --no-follow --tail 65536
+journalctl --user -u podstack.service -n 200 --no-pager</code></pre>
+<p>O console é texto do serial; não há VNC. Se o cloud-init falhar, o estado fica <code>error</code> e
+o log mostra o estágio. O virtiofsd rootless usa <code>--sandbox=namespace</code>; o modo
+<code>chroot</code> exige root.</p>
+<h2 id="ssh">Machines, SSH e known_hosts</h2>
+<p>Sintomas: <code>podstack ssh dev</code> não conecta, <code>ssh dev.podstack</code> não existe ou usa
+a chave errada, <code>machine pull</code>/<code>push</code> falham.</p>
+<pre data-lang="bash"><code>podstack machine list
+podstack machine info dev
+podstack machine port ls dev
+podstack ssh dev -- uname -a
+
+# se a machine foi recriada e a chave de host mudou
+ssh-keygen -R &quot;[127.0.0.1]:32222&quot;</code></pre>
+<p>A machine precisa estar <code>running</code>. O usuário padrão é <code>podstack</code>; a porta SSH
+é publicada em <code>127.0.0.1</code> e aparece em <code>machine info</code>/<code>machine list</code>.
+O PodStack gera a chave ed25519 e grava o bloco gerenciado em <code>~/.ssh/config</code> quando
+<code>ssh.manageConfig=true</code>. Se você desativou essa opção, o alias
+<code>&lt;nome&gt;.podstack</code> não existe; use <code>podstack ssh dev</code>.</p>
+<p>O agent forwarding é desligado por padrão. Com <code>--forward-ssh-agent</code>/<code>ForwardAgent yes</code>,
+processos no guest podem usar as chaves do seu agent; ative só em machines confiáveis. A porta SSH
+administrativa é publicada em <code>127.0.0.1</code>; a chave <code>ssh.exposePort</code> existe no
+schema, mas está oculta e sem efeito no app 0.1.0.</p>
+<h2 id="x11">X11</h2>
+<p>Use <code>podstack ssh dev --x11</code> (adiciona <code>-X</code>) ou
+<code>--x11-trusted</code> (adiciona <code>-Y</code>). O host precisa de <code>DISPLAY</code> e
+<code>XAUTHORITY</code>; o guest precisa de <code>xauth</code> e de um cliente X11. Wayland nativo não
+é encaminhado pelo SSH — o encaminhamento é X11.</p>
+<pre data-lang="bash"><code>echo &quot;$DISPLAY&quot;
+podstack ssh dev --x11 -- xeyes
+podstack ssh dev --x11-trusted -- xterm</code></pre>
+<p>VMs novas recebem <code>xauth</code> e <code>x11-apps</code> (Debian/Ubuntu) ou
+<code>xorg-x11-apps</code> (Fedora) via cloud-init, além do drop-in
+<code>/etc/ssh/sshd_config.d/10-podstack-x11.conf</code>. VMs antigas precisam do passo manual.</p>
+<h2 id="portas">Portas, proxy e firewall</h2>
+<p>Sintomas: <code>http://nome.localhost:8080/</code> retorna 404, a porta 8080/8443 está em uso, ou
+o serviço funciona no host mas não na LAN.</p>
+<pre data-lang="bash"><code>ss -ltnp | grep -E &#x27;:8080|:8443&#x27;
+curl -v http://web.localhost:8080/
+curl -I http://localhost:8080/
+podstack config get network.httpPort
+podstack config get network.httpsPort
+podstack ps</code></pre>
+<p>O proxy HTTP escuta em loopback na <code>network.httpPort</code> (8080). O HTTPS, quando habilitado,
+escuta na <code>network.httpsPort</code> (8443). A URL usa a porta do proxy, não a porta interna do
+container.</p>
+<ul>
+  <li><strong>404</strong>: o container não tem porta TCP publicada ou o nome não corresponde a um container. Publique a porta na criação; o Podman rootless não publica portas depois do create (T6-10).</li>
+  <li><strong>Porta em uso</strong>: escolha outra porta com <code>podstack config set network.httpPort 18080</code> e reinicie <code>systemctl --user restart podstack.service</code>.</li>
+  <li><strong>LAN</strong>: <code>podstack config set network.exposeLan true</code> e reinicie. O firewall do host precisa ser liberado separadamente.</li>
+</ul>
+<pre data-lang="bash"><code># firewalld (regra runtime; um reload/restart a remove)
+sudo firewall-cmd --add-port=8080/tcp
+sudo firewall-cmd --add-port=8443/tcp
+
+# ufw
+sudo ufw allow 8080/tcp
+sudo ufw allow 8443/tcp</code></pre><div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Portas 80/443</p><p>O helper tem a API de <code>BindPorts</code>, mas a GUI/CLI 0.1.0 não a aciona. Use 8080/8443. Se <code>network.bridge=false</code>, o proxy HTTP e o DNS ficam desligados.</p></div></div><h2 id="https-ca">HTTPS e CA</h2>
+<p>Sintomas: <code>https://nome.localhost:8443/</code> não abre, o navegador mostra certificado
+inválido ou o daemon registra que o HTTPS está indisponível.</p>
+<pre data-lang="bash"><code>caddy version
+podstack config get network.https
+podstack config get network.httpsPort
+journalctl --user -u podstack.service -n 100 --no-pager
+
+podstack setup --apply components --caddy
+podstack config set network.https true
+systemctl --user restart podstack.service</code></pre>
+<p>A CA local fica em
+<code>~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt</code>. Teste sem alterar
+o trust store:</p>
+<pre data-lang="bash"><code>curl --cacert ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
+  https://web.localhost:8443/</code></pre>
+<p>O navegador não confia na CA por padrão. A importação é manual nesta versão. No Fedora:</p>
+<pre data-lang="bash"><code>sudo cp ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
+  /etc/pki/ca-trust/source/anchors/podstack-local-ca.crt
+sudo update-ca-trust
+
+# remover a confiança
+sudo rm -f /etc/pki/ca-trust/source/anchors/podstack-local-ca.crt
+sudo update-ca-trust</code></pre>
+<p>No Debian/Ubuntu, copie para <code>/usr/local/share/ca-certificates/podstack-local-ca.crt</code> e
+rode <code>sudo update-ca-certificates</code>. Em Firefox, importe o <code>root.crt</code> nas
+autoridades do próprio navegador. Se o TLS funcionar mas a resposta for 502, o problema está no
+backend: confirme que o container publica a porta e que <code>http://web.localhost:8080/</code>
+responde. Se o certificado não corresponder ao nome, use um domínio coberto por
+<code>*.localhost</code>/<code>*.podstack.local</code> ou ajuste a label de porta/domínio.</p>
+<h2 id="dns">DNS e *.podstack.local</h2>
+<p><code>*.localhost</code> não precisa de configuração. Teste com
+<code>getent hosts web.localhost</code>. <code>*.podstack.local</code> usa o DNS userspace em
+<code>127.0.0.1:5353</code> e um drop-in do <code>systemd-resolved</code>. Em 0.1.0, a instalação
+desse drop-in ainda não está ligada à GUI/CLI; sem ele, o nome não resolve.</p>
+<pre data-lang="bash"><code>getent hosts web.localhost
+curl -I http://web.localhost:8080/
+
+ss -lunp | grep 5353
+journalctl --user -u podstack.service -n 100 --no-pager
+
+# drop-in manual (revise antes)
+sudo mkdir -p /etc/systemd/resolved.conf.d
+sudo tee /etc/systemd/resolved.conf.d/podstack.conf &gt;/dev/null &lt;&lt;&#x27;EOF&#x27;
+[Resolve]
+DNS=127.0.0.1:5353
+Domains=~podstack.local
+EOF
+sudo systemctl reload systemd-resolved
+
+resolvectl query web.podstack.local</code></pre>
+<p>Se o Avahi estiver ocupando <code>0.0.0.0:5353</code>, o daemon tenta conviver com
+<code>SO_REUSEADDR</code>; se ainda assim o DNS não responder, o journal mostra o aviso. O DNS só
+sobe com <code>network.bridge=true</code>. Para remover o drop-in, apague o arquivo e recarregue o
+resolved. Para a maioria dos casos, prefira <code>*.localhost</code>.</p>
+<h2 id="audio">Áudio no guest</h2>
+<p>O áudio usa PipeWire no host e é ativado por máquina. Ligue com
+<code>podstack machine audio &lt;id|nome&gt; on</code> ou pelo botão <strong>Ativar áudio</strong>; a
+machine reinicia se estiver rodando. O guest precisa de stack de áudio compatível (PulseAudio no
+Debian/Ubuntu; PipeWire no Fedora). VMs antigas podem precisar instalar o stack manualmente.</p>
+<pre data-lang="bash"><code>podstack machine audio dev on
+podstack machine info dev
+podstack machine logs dev --tail 100
+
+# dentro do guest
+aplay -l
+pactl info
+pw-cli info 0</code></pre>
+<p>Se o dispositivo não aparecer no guest, confirme que o áudio está ligado no host, que o guest tem
+o servidor de áudio rodando e que a machine foi reiniciada após a mudança. O console serial não
+transmite áudio.</p>
+<h2 id="criu">CRIU, checkpoint e cgroup rootless</h2>
+<p>Sintomas: <code>podstack checkpoint</code> falha com <code>PODSTACK_UNSUPPORTED</code> ou erro do
+engine; <code>restore</code> não encontra o checkpoint; o container não fica no estado esperado após
+o restore.</p>
+<pre data-lang="bash"><code>criu --version
+criu check
+stat -fc %T /sys/fs/cgroup
+podstack inspect web | head
+podstack ps --all</code></pre>
+<p>O checkpoint/restore usa CRIU e depende do host. Em rootless, é preciso cgroup v2 com delegação e
+o binário <code>criu</code>. Muitos hosts não permitem o checkpoint rootless. Se o host não oferecer
+suporte, use rootful (opt-in) ou trate o recurso como indisponível. Não use <code>kill</code>/<code>pause</code>
+como substituto de um checkpoint persistente. O <code>restore</code> espera um checkpoint criado
+para o mesmo container.</p>
+<h2 id="compose">Compose e builds</h2>
+<p>Se o Compose não sobe, confira o provider e o socket do Podman:</p>
+<pre data-lang="bash"><code>docker-compose version
+podstack compose ls
+PODSTACK_COMPOSE_PROVIDER=docker-compose podstack compose up ~/projetos/app</code></pre>
+<p>O erro <code>PODSTACK_COMPOSE_PROVIDER_MISSING</code> indica que nenhum provider foi encontrado;
+instale <code>docker-compose</code> ou configure <code>PODSTACK_COMPOSE_PROVIDER</code> com o binário
+disponível. O <code>compose up</code> do CLI sempre roda destacado e recebe o diretório do projeto,
+não um <code>-f</code>.</p>
+<p>Em um build que falha, confira contexto, Dockerfile, <code>--build-arg</code> e o histórico. Para
+múltiplas plataformas, o host precisa de <code>binfmt_misc</code> para as arquiteturas estrangeiras.</p>
+<pre data-lang="bash"><code>podstack builds
+podstack build ./app -t local/app:dev -f Dockerfile
+podstack build ./app -t local/app:multi --platform linux/amd64,linux/arm64</code></pre><h2 id="updates">Updates</h2><pre data-lang="bash"><code>podstack update --check
+podstack update --check --json --channel beta</code></pre>
+<p><code>update --check</code> não instala nada. Exit 3 significa que há versão nova; exit 1 indica que
+a checagem está indisponível. A atualização é feita pelo gerenciador de pacotes
+(<code>sudo dnf upgrade podstack</code>/<code>sudo apt upgrade podstack</code>) ou pelo canal que você
+usa. Erros <code>PODSTACK_UPDATE_SIGNATURE</code>/<code>PODSTACK_UPDATE_MANIFEST</code> indicam feed
+ou assinatura inválidos; não contorne a verificação. Um feed sem chave retorna
+<code>unconfigured</code>.</p>
+<h2 id="erros">Códigos de erro PODSTACK</h2><div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Código</th>
+<th scope="col">Significado</th>
+<th scope="col">O que fazer</th>
+</tr></thead><tbody>
+<tr>
+<td><code>PODSTACK_DAEMON_UNAVAILABLE</code></td>
+<td>O CLI não conseguiu conectar ao podstackd.</td>
+<td>Confira o socket e o journal.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_ENGINE_UNAVAILABLE</code></td>
+<td>Podman/socket indisponível.</td>
+<td>Ative <code>podman.socket</code>, confira <code>podman info</code> e a versão.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_HELPER_REQUIRED</code></td>
+<td>A ação exige o helper privilegiado.</td>
+<td>Instale/habilite o helper e autentique no polkit.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_HELPER_UNAVAILABLE</code></td>
+<td>O helper não respondeu.</td>
+<td>Confira <code>systemctl status podstack-helper.service</code> e o journal.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_PERMISSION_DENIED</code></td>
+<td>Permissão negada no socket, arquivo ou grupo.</td>
+<td>Verifique UID, modo <code>0600</code> e acesso rootful.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_NOT_FOUND</code></td>
+<td>Container, machine, arquivo ou recurso não existe.</td>
+<td>Confira nome/ID com <code>ps --all</code>/<code>machine list</code>.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_CONFLICT</code></td>
+<td>Nome, porta ou subnet em uso.</td>
+<td>Escolha outro nome/porta ou remova o conflito.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_VALIDATION</code></td>
+<td>Valor de configuração inválido.</td>
+<td>Consulte <code>podstack config schema</code> e corrija.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_INVALID_PARAMS</code></td>
+<td>Argumentos ou parâmetros inválidos.</td>
+<td>Revise a sintaxe e as flags.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_UNSUPPORTED</code></td>
+<td>Recurso não suportado no ambiente (KVM, CRIU, virtiofsd, Caddy).</td>
+<td>Instale/habilite o componente ou use a alternativa.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_TIMEOUT</code></td>
+<td>A operação excedeu o tempo.</td>
+<td>Verifique engine/VM/rede e tente novamente.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_CANCELLED</code></td>
+<td>O job foi cancelado.</td>
+<td>Reexecute quando estiver pronto.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_COMPOSE_PROVIDER_MISSING</code></td>
+<td>Provider Compose não encontrado.</td>
+<td>Instale <code>docker-compose</code> ou defina <code>PODSTACK_COMPOSE_PROVIDER</code>.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_UPDATE_SIGNATURE</code>/<code>PODSTACK_UPDATE_MANIFEST</code></td>
+<td>Feed inválido ou assinatura rejeitada.</td>
+<td>Confira rede, URL e chave; não ignore a assinatura.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_IO_ERROR</code></td>
+<td>Falha de arquivo, SSH/SCP, arquivo compactado ou rede.</td>
+<td>Confira caminhos, permissões, espaço e conectividade.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_DB_ERROR</code></td>
+<td>Falha no SQLite/estado do daemon.</td>
+<td>Reinicie o daemon; se persistir, preserve o estado e gere um report.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_CONFIRMATION_REQUIRED</code></td>
+<td>Ação destrutiva sem confirmação explícita.</td>
+<td>Use a GUI ou <code>--force</code>/<code>--yes</code> quando o comando oferecer.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_CONFIG_WRITE_FAILED</code></td>
+<td>Não foi possível gravar a configuração.</td>
+<td>Confira permissões de <code>~/.config/podstack</code> e espaço.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_BUILD_ERROR</code></td>
+<td>O build falhou.</td>
+<td>Leia a saída do <code>podstack build</code> e confira contexto/Dockerfile.</td>
+</tr>
+<tr>
+<td><code>PODSTACK_EXEC_FAILED</code></td>
+<td>O comando no container falhou ao executar.</td>
+<td>Confira se o container está rodando e se o comando existe.</td>
+</tr>
+</tbody></table></div><h2 id="logs">Logs e diagnóstico avançado</h2>
+<p>Use o journal do daemon, o <code>podstack doctor</code> e o <code>podstack top</code> para
+monitoramento. Para o estado do engine, <code>podman info</code>. Para inspecionar um container,
+<code>podstack inspect</code>. Para um relatório redigido, <code>podstack report --include-logs</code>.</p>
+<pre data-lang="bash"><code>journalctl --user -u podstack.service -n 200 --no-pager
+journalctl --user -u podstack.service -f
+
+podstack doctor
+podstack top --once --plain
+podstack system df --detailed
+podstack system disk
+podstack report --include-logs</code></pre>
+<p>Se o daemon não responder, o CLI retorna exit 7; se um check do <code>doctor</code> falhar, exit 1.
+Erros de engine <code>PODSTACK_ENGINE_UNAVAILABLE</code> também usam exit 7. O formato de erro do RPC
+é <code>{code, message, detail, remediation}</code>; a CLI mostra a mensagem, o detalhe e a ação
+sugerida.</p>
+<h2 id="limitacoes">Limitações relacionadas</h2>
+<ul>
+  <li>Console serial sem VNC; não há console gráfico para diagnosticar o boot.</li>
+  <li>Export/clone não preservam snapshots internos do qcow2.</li>
+  <li>Portas não publicadas não são suportadas em rootless (T6-10).</li>
+  <li>T5-07/T5-08 parciais: sem NodePort/LoadBalancer e sem troca de contexto automática por projeto.</li>
+  <li>Flatpak é cliente de um daemon/helper instalados no host.</li>
+  <li>CA, DNS <code>*.podstack.local</code> e portas 80/443 ainda não têm fiação automática na GUI/CLI.</li>
+</ul>
+
+
+      <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
+
+      <nav class="pager" aria-label="Navegação entre páginas">
+        <a class="prev" href="cli.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">CLI</span></a>
+        <span aria-hidden="true"></span>
+      </nav>
+
+      <footer class="site-footer">
+        <p>PodStack 0.1.0 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <div class="footer-links">
+          <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>
+          <a href="index.html#limitacoes">Limitações</a>
+        </div>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

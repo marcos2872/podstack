@@ -210,14 +210,14 @@ rootless; o M6 está concluído no código.
 | T7-04 | P1 | Activity Monitor (gráficos + `podstack top`) | T1-07 | Dados corretos — implementado (`system.stats.subscribe` + `ActivityMonitorWindow` + `podstack top [--once|--interval|--json|--plain]`); `test_cli::topCommand` |
 | T7-05 | P1 | Notificações (OOM, falha, update, disco) | T3-07 | ✅ — OOM/falha/unhealthy via D-Bus (cooldown 30 s), update/erro da T7-06 (cooldown 24 h) e disco baixo via `system.disk` (limiar configurável, histerese de 5 pontos e cooldown de 6 h por caminho); tudo respeita `app.notifications`. Provider de notificação do desktop aplica o DND. Evidência: `test_notifications` (update/disk), `test_rpc/systemDisk`, `test_cli/systemDf` e `test_core/diskSpace*`. |
 | T7-06 | P1 | Check de updates assinado + canal | T7-01 | ✅ — `updates.check` baixa o manifesto de `updates.feedUrl`, valida a assinatura Ed25519/minisign (`Ed`/`ED`) com `updates.publicKey`, compara versões por canal (`stable`/`beta`) e devolve `updateAvailable`; cache de 6 h e `updates.lastCheck` persistido. CLI `podstack update --check [--json] [--channel]` (exit 3 quando há versão nova), ação na bandeja e notificação; sem chave pública o status é `unconfigured` e o feed é rejeitado, nunca aceito sem verificação. Evidência: `test_core/updateVersion*`/`updateSignature*`, `test_rpc/updatesCheck`, `test_cli/updateCommand`, `test_notifications/updateNotifications*`. |
-| T7-07 | P0 | Onboarding e setup da máquina (diagnóstico, Podman, coexistência Docker, QEMU/KVM, componentes, validação) | T0-11 | ✅ código — SetupManager, SetupWindow e setup.*; overlay modal bloqueia a tela principal até os checks obrigatórios; `warn` do Podman usa `enable-socket` (sem helper); helper em dev via `scripts/dev-helper.sh`. ⏳ Pendente: validar a instalação real em máquina limpa. |
+| T7-07 | P0 | Onboarding e setup da máquina (diagnóstico, Podman, coexistência Docker, QEMU/KVM, componentes, validação) | T0-11 | Código + smoke de instalação (container) — SetupManager, SetupWindow e setup.*; overlay modal bloqueia a tela principal até os checks obrigatórios; `warn` do Podman usa `enable-socket` (sem helper); helper em dev via `scripts/dev-helper.sh`. `scripts/clean-install-check.sh` cobre instalação de pacote, binários, units, socket 0600, `status` e `doctor` em container Fedora 44. Pendente: GUI, KVM e polkit reais em máquina limpa. |
 | T7-08 | P1 | Diagnóstico/report com redaction | T0-15 | ✅ — `system.report` monta versão/plataforma/kernel/Qt/socket, settings, `doctor` e logs opcionais, grava JSON **0600** em `state/reports` e devolve `{path, bytes, sha256}`; `Redaction` cobre `Authorization`, `password`/`token`/`secret`/`api_key` e credenciais em URLs, recursivamente em JSON. CLI `podstack report [--include-logs|--json]` imprime o arquivo para revisão (nada é enviado). Evidência: `test_core/redactionHidesSecrets`, `test_rpc/systemReportRedactsSettings` (arquivo/hash/redaction) e `test_cli/reportCommand`. |
 | T7-09 | P1 | Janelas/abas múltiplas + restauração | T0-11 | ✅ — `UiState` grava `state/ui-state.json` (0600, atômico) com geometria, seção atual e abas de detalhe (container 0–8, machine info/logs/stats/terminal/files); a `MainWindow` restaura a geometria se ainda houver tela válida e o QML salva seção/abas com debounce. Evidência: `test_gui/uiStateRoundTrip`, `uiStateInvalidFallsBack`, `uiStateRejectsInvalidValues` e `test_terminal/mainWindowRestoresSection`. |
 | T7-10 | P1 | Atalhos e acessibilidade | T0-11 | ✅ — atalhos implementados: `Ctrl+N` (novo container), `Ctrl+,`, `Ctrl+B`, `F5`, `Ctrl+Q`, `Ctrl+Enter`, `Ctrl+Shift+L`, `Ctrl+Shift+T` (Containers) e `Ctrl+F`; listas de Containers/catálogo com foco por Tab, setas, Enter e Esc; `Accessible.name`/`role` nos controles principais. `Ctrl+W`/`Ctrl+Shift+B` são não aplicáveis (conflito com o shell/inspector por página); `Delete`/`Ctrl+Delete` e `Ctrl+Shift+F` ficam planejados com a auditoria WCAG (TX-14). Evidência: `test_terminal/mainWindowShortcuts`, `qmllint` em `Main/CatalogList/ContainersPage`. |
 | T7-11 | P2 | Migração **opcional** de dados de Docker/Podman | T2-05 | 📄 Pós-v1 (M8): decisão de 2026-11-11 mantém a migração fora do v1; não é pré-requisito e o Docker continua intacto por padrão. |
 | T7-12 | P2 | Licença/conta (opcional) | T7-01 | 📄 Pós-v1: o app é 100% offline e não exige conta; nenhum recurso básico depende de rede (decisão de 2026-11-11). |
 | T7-13 | P1 | Coexistência Docker/Podman e remoção opt-in com confirmação | T7-07 | ✅ — Docker presente não bloqueia o setup; a remoção exige `confirm:true`/`--yes` e o helper allowlisted. `setup.dockerImpact` lê `/system/df` + `/networks` do socket (read-only) e mostra containers (total/em execução), imagens, redes e volumes no diálogo e no CLI (`setup --docker-impact [--json]`); o job registra o impacto antes de remover e logs do helper incluem `uid`. Evidência: `test_setup/dockerInventoryCounts`, `dockerInventoryNoSocket`, `helperAuditsUid`; `test_rpc/setupDockerImpact`; `test_cli/setupCommand`. |
-| T7-14 | P0 | Helper allowlisted para setup (pacotes e remoção) | T7-07 | ✅ código — `podstack-helper` com polkit/allowlist (`InstallPackages`/`RemovePackages` auditam uid) e sem shell/sudo na GUI. ⏳ Pendente: validação em máquina limpa. |
+| T7-14 | P0 | Helper allowlisted para setup (pacotes e remoção) | T7-07 | Código + smoke de instalação (container) — `podstack-helper` com polkit/allowlist (`InstallPackages`/`RemovePackages` auditam uid) e sem shell/sudo na GUI; o smoke confere a unit, a policy polkit e o módulo SELinux instalados. Pendente: fluxo polkit real (systemd como PID 1) e remoção em máquina limpa. |
 
 **Evidência T7-01 (2026-11-09):** `cmake --build --preset dev` sem erros; `ctest --preset dev`
 com 14/14 testes verdes (core, podman, contract, rpc, cli, gui, terminal, tray, single_instance,
@@ -254,20 +254,20 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 | ID | P | Tarefa | Conclusão |
 |---|---|---|---|
-| TX-01 | P0 | `security.md` + threat model revisados | Ameaças e mitigações mapeadas |
-| TX-02 | P0 | Testes unitários do core (≥ 70%) | Cobertura medida |
-| TX-03 | P0 | Testes de integração com Podman real | Matriz rootless/rootful |
-| TX-04 | P0 | Testes E2E das jornadas J1–J3 | Critérios do PRD |
-| TX-05 | P0 | `clang-format` + `clang-tidy` no CI | Sem warnings novos |
-| TX-06 | P0 | Documentação de usuário (install, quickstart, CLI, troubleshooting) | Publicada |
-| TX-07 | P0 | RPM + systemd + polkit + SELinux | Instalação limpa |
-| TX-08 | P0 | Auditoria de segurança (socket, helper, proxy) | Relatório |
-| TX-09 | P1 | Benchmark de performance (startup/mem/idle) | Metas §8.1 |
-| TX-10 | P1 | Matriz de compatibilidade (F43/F44, Wayland/X11, GNOME/KDE/niri) | Verde |
-| TX-11 | P1 | Golden tests de CLI/exit codes | Estáveis |
-| TX-12 | P1 | AppStream/metainfo + ícones | `appstreamcli validate` |
-| TX-13 | P2 | Telemetria opt-in por categoria (crash/uso/perf/erros) | Off por padrão |
-| TX-14 | P2 | Acessibilidade (WCAG AA) auditada | Checklist |
+| TX-01 | P0 | `security.md` + threat model revisados | Parcial — `security.md` §3 (modelo de ameaças) e §12 (checklist) revisados internamente; auditoria externa pendente (ver TX-08). |
+| TX-02 | P0 | Testes unitários do core (≥ 70%) | Concluído — última medição documentada: **80,1%** de linhas em `src/`, com gate bloqueante de **80%** no CI (`--fail-under-line 80`). |
+| TX-03 | P0 | Testes de integração com Podman real | Parcial — os testes de integração com Podman/Libpod existem e rodam quando há socket; no CI o caminho é coberto por `MockPodmanServer`/contrato e a integração faz `QSKIP` sem socket. Matriz rootless medida; rootful pendente. |
+| TX-04 | P0 | Testes E2E das jornadas J1–J3 | Parcial — J1 automatizado em `scripts/e2e-smoke.sh` (compose up, HTTP, logs e down) e passou com Podman/Compose reais; J2/J3 seguem manuais, com evidência real de k3s (node Ready em ~90 s) e da validação manual do M4. |
+| TX-05 | P0 | `clang-format` + `clang-tidy` no CI | Concluído — `scripts/check-format.sh` e `scripts/check-tidy.sh` rodam em `ci.yml` sobre as linhas/fontes alterados e bloqueiam o merge. |
+| TX-06 | P0 | Documentação de usuário (install, quickstart, CLI, troubleshooting) | Concluído — `docs/user/` publicada com `README.md`, `install.md`, `quickstart.md`, `cli.md` e `troubleshooting.md`. |
+| TX-07 | P0 | RPM + systemd + polkit + SELinux | Parcial — RPM com units systemd, polkit e módulo SELinux mínimo (`packaging/selinux/`) compilado no spec; DEB com controle binário próprio. Assinatura GPG e validação GUI/KVM/polkit em máquina limpa seguem em validação (smoke em container cobre instalação e socket). |
+| TX-08 | P0 | Auditoria de segurança (socket, helper, proxy) | Parcial — revisão interna do threat model e checklist com testes; SBOM CycloneDX gerado no release. Auditoria externa e revisão de CVEs do SBOM pendentes. |
+| TX-09 | P1 | Benchmark de performance (startup/mem/idle) | Concluído — `scripts/bench.sh` mede `podstack version`, `podstack ps`, RSS do `podstackd` e primeiro paint offscreen; resultados locais dentro das metas (12 ms no `ps`, 32,1 MB de RSS, 423 ms de GUI), com ressalva de hardware/Debug/offscreen. |
+| TX-10 | P1 | Matriz de compatibilidade (F43/F44, Wayland/X11, GNOME/KDE/niri) | Parcial — medido: Fedora 44, Wayland/niri, rootless, Podman 5.8.9. Pendentes: Fedora 43, X11, GNOME, KDE Plasma e rootful. |
+| TX-11 | P1 | Golden tests de CLI/exit codes | Concluído — `test_cli/goldenExitCodes` cobre comando inexistente (exit 2), opção inválida (exit 2), `help`, `config get` sem chave e `update --check` sem feed; `version --json` é aceito, mas imprime texto (não há contrato JSON para `version`). |
+| TX-12 | P1 | AppStream/metainfo + ícones | Concluído — `appstreamcli validate --no-net` em `ci.yml`, `release.yml` e no smoke de instalação limpa. |
+| TX-13 | P2 | Telemetria opt-in por categoria (crash/uso/perf/erros) | Pós-v1 — telemetria opt-in permanece fora do 0.1.0; produto offline por decisão Q12. |
+| TX-14 | P2 | Acessibilidade (WCAG AA) auditada | Parcial — atalhos de teclado, foco por Tab e `Accessible.name`/`role` nos controles principais; auditoria WCAG formal pendente. |
 
 ---
 

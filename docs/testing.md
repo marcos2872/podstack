@@ -343,7 +343,27 @@ gera `Notify` com “Container falhou”.
 | Logs 100k linhas | busca | ≤ 200 ms |
 | Latência de evento | criação externa → UI | ≤ 1 s |
 
-Benchmarks rodam no CI noturno; regressão > 20% falha o job.
+### 8.1 Benchmark local (2026-11-11)
+
+Medição com `scripts/bench.sh --runs 5 --json` (e `--idle-seconds 60` para o RSS
+de 60 s) em host de desenvolvimento, não no hardware de referência:
+
+| Métrica | Resultado local | Meta | Status |
+|---|---|---|---|
+| `podstack version` (startup CLI) | 10 ms (mediana; 10 ms em todas as amostras) | informativo | — |
+| `podstack ps` (latência RPC) | 12 ms (mediana; 11–12 ms) | ≤ 700 ms (NFR-PERF-002) | OK |
+| RSS do `podstackd` | 32,1 MB (10 s) / 32,2 MB (60 s) | ≤ 180 MB (NFR-PERF-003, GUI + daemon) | OK para o daemon |
+| GUI offscreen (primeiro paint) | 423 ms (mediana; 414–437 ms) | ≤ 1,0 s (NFR-PERF-001) | OK |
+
+**Ambiente:** Intel Core i5-10400F, 32 GB (23 GiB visíveis), Fedora 44, kernel 7.2.15, Wayland/niri,
+Podman 5.8.9, build **Debug**.
+
+**Ressalvas:** o hardware não é o de referência; a GUI foi medida em modo
+offscreen (software) até o primeiro paint, o que não representa um startup cold
+real em Wayland/GPU; o RSS cobre apenas o `podstackd`, enquanto a meta do NFR
+cobre GUI + daemon; o `ps` foi medido no estado atual do host, sem listas
+grandes. Os números servem como linha de base local, não como fechamento
+isolado da TX-09. A automação noturna/regressão de 20% no CI ainda não existe.
 
 ---
 
@@ -366,17 +386,19 @@ Benchmarks rodam no CI noturno; regressão > 20% falha o job.
 
 ## 10. Matriz de compatibilidade
 
-| Dimensão | Valores |
-|---|---|
-| Fedora | 43, 44 |
-| Sessão | Wayland, X11 |
-| Desktop | GNOME, KDE Plasma, niri/Noctalia |
-| Podman | 5.8, 6.x |
-| Modo | rootless, rootful |
-| Arch | x86_64, aarch64 (quando disponível) |
-| KVM | presente, ausente (TCG) |
+| Dimensão | Valores | Medido no 0.1.0 |
+|---|---|---|
+| Fedora | 43, 44 | **44** (kernel 7.2.15); 43 pendente |
+| Sessão | Wayland, X11 | **Wayland**; X11 pendente |
+| Desktop | GNOME, KDE Plasma, niri/Noctalia | **niri/Noctalia**; GNOME e KDE Plasma pendentes |
+| Podman | 5.8, 6.x | **5.8.9**; 6.x pendente |
+| Modo | rootless, rootful | **rootless**; rootful pendente |
+| Arch | x86_64, aarch64 | **x86_64**; aarch64 pendente |
+| KVM | presente, ausente (TCG) | **presente** (evidência manual de machines e k3s); TCG pendente |
 
-CI cobre o subconjunto P0; matriz completa no release candidate.
+O CI cobre o subconjunto P0 (Fedora 44, rootless, sem KVM); a matriz completa
+depende de máquinas de referência para Fedora 43, X11, GNOME, KDE Plasma,
+rootful e aarch64.
 
 ---
 
@@ -429,12 +451,23 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 | Cobertura | relatório `src/` (XML/HTML) bloqueante; gate bloqueante em **80%** | ✅ |
 | Lint | `clang-format` nas linhas alteradas e `clang-tidy` nos fontes alterados (`scripts/check-format.sh`, `scripts/check-tidy.sh`) | ✅ |
 | Artefato | `coverage.xml`, `coverage/`, resumos | — |
-| Futuro | E2E GUI/CLI, segurança, performance, RPM | planejado |
+| Futuro | E2E GUI/CLI, segurança e performance no CI | planejado (o J1 é script opt-in; RPM fica no `packaging.yml`) |
 
 - Container: `fedora:44` com Qt 6.11, CMake/Ninja, libcurl e gcovr.
 - O teste de integração com Podman roda quando há socket disponível; caso contrário, é `QSKIP` (o contrato e o RPC cobrem o caminho sem engine).
 - Cache: ccache e imagens Podman (quando o runner permitir).
 - Flaky tests: quarentena com issue e prazo; não podem ficar > 2 semanas.
+
+### 12.1 Pipelines de release e empacotamento
+
+| Workflow | Gatilho | O que cobre |
+|---|---|---|
+| [`release.yml`](../.github/workflows/release.yml) | push de tag `v*` e `workflow_dispatch` | Confere se a tag corresponde à versão do `CMakeLists.txt`; build `release` + `ctest`; `appstreamcli validate`; RPM (`build-rpm.sh`) e DEB (`build-deb.sh`); assinatura GPG opcional dos RPMs e do `SHA256SUMS`; `SHA256SUMS`; SBOM CycloneDX (`generate-sbom.sh`); manifesto `podstack-update.json` com notas extraídas do `CHANGELOG.md` e assinatura minisign opcional; upload dos artefatos e `gh release create`/`gh release upload`. |
+| [`packaging.yml`](../.github/workflows/packaging.yml) | PR com mudanças em `packaging/**`, `scripts/build-*`, `scripts/clean-install-check.sh`, `CMakeLists.txt` ou `release.yml`; e `workflow_dispatch` | Build do RPM e `scripts/clean-install-check.sh --skip-build` em container Fedora 44: instalação do RPM/helper, binários, units systemd, polkit, metainfo/AppStream, socket 0600, `podstack status` e `podstack doctor`. Não cobre GUI, KVM nem polkit reais. |
+
+As assinaturas usam os secrets `GPG_PRIVATE_KEY`, `GPG_KEY_ID`,
+`PODSTACK_UPDATE_PUBLIC_KEY` e `MINISIGN_PRIVATE_KEY`. Sem eles, a release é
+publicada sem assinatura e o updater fica `unconfigured`; o pipeline não falha.
 
 ---
 
@@ -459,7 +492,7 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 - **M7/T7-05 (2026-11-11):** `system.disk` amostra `/`, `Paths::dataDir()` e o storage do Podman com `statvfs`, deduplicando por device; limiar em `notifications.diskThresholdPercent` (50–99, default 90). `test_core` cobre amostra/erro e limiar; `test_rpc/systemDisk` cobre o shape e a mudança de limiar; `test_cli/systemDf` cobre `system disk [--json]`; `test_notifications/diskLowNotificationWithHysteresis` cobre envio, histerese de 5 pontos e cooldown de 6 h. `ctest --preset dev`: 17/17.
 - **M7/T7-09 (2026-11-11):** `test_gui/uiStateRoundTrip` (geometria, seção e abas, permissões 0600), `uiStateInvalidFallsBack` (JSON inválido/versão 2) e `uiStateRejectsInvalidValues` (seção/aba fora do domínio); `test_terminal/mainWindowRestoresSection` sobe a `MainWindow` com QML real, confere a seção restaurada e que `openSection` persiste a nova seção após o debounce de 500 ms. `ctest --preset dev`: 17/17.
 - **M7/T7-10 (2026-11-11):** `test_terminal/mainWindowShortcuts` carrega `Main.qml` e confere os `Shortcut` (`new`, settings, sidebar, refresh, quit, logs/terminal/lifecycle de container) e que a lista de Containers participa do Tab. `qmllint` sem erros nos QML alterados; `ctest --preset dev`: 17/17.
-- **M7 — fechamento (2026-11-11):** T7-01/02/03/04/05/06/08/09/10/13 concluídas no código; T7-11/T7-12 documentadas como pós-v1 (M8). Pendente externo: instalação real em máquina limpa (T7-07/T7-14), benchmarks (TX-09), auditoria (TX-08) e RPM assinado (TX-07). `ctest --preset dev`: 17/17; gate de cobertura em 80% mantido nos PRs de updates.
+- **M7 — fechamento (2026-11-11):** T7-01/02/03/04/05/06/08/09/10/13 concluídas no código; T7-11/T7-12 documentadas como pós-v1 (M8). Pendente externo: validação GUI/KVM/polkit em máquina limpa (T7-07/T7-14), auditoria externa (TX-08) e RPM assinado (TX-07); benchmarks locais em §8.1. `ctest --preset dev`: 17/17; gate de cobertura em 80% mantido nos PRs de updates.
 - **Fix terminal (2026-11-11):** `test_terminal/terminalViewConfiguration` confere os atalhos `Ctrl+Shift+C/V`, `Ctrl+Insert`/`Shift+Insert` e o menu de contexto customizado, além do keytab `linux`.
 - **M8/T8-02 (2026-11-11):** `test_machines/machineMetaRoundTrip` inclui `serialPorts`; `qemuCommandSerialPorts` confere a ordem `-serial file:console.log` + portas extras; `machineManagerSerialPorts` cobre anexar, conflito entre machines, caminho relativo/inexistente, restart e detach; `test_rpc/machineSerialPorts` e `test_cli/machineCommands` cobrem validação/erros. `qmllint` sem erros em `MachineInspector.qml`/`MachinesPage.qml`.
 - **M8/T8-01 (2026-11-11):** `usbDevicesListing` usa sysfs temporário (hubs/missing filtrados, fabricante/produto e vendor:product, env `PODSTACK_SYSFS_USB`), `qemuCommandUsbDevices` valida `qemu-xhci` + `usb-host`, `machineManagerUsbDevices` cobre attach/conflito/restart/falha/transição, `machineMetaRoundTrip` inclui `usbDevices`; `test_rpc/machineDevicesFlow` e `test_cli/machineDevicesCommands` cobrem o fluxo completo. `ctest --preset coverage`: 17/17 com 80,1% e gate ok.
@@ -472,6 +505,7 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 - **Settings honestos (2026-11-11):** `test_core/settingsSchemaHonesty` confere `hidden` em `telemetry.enabled`/`docker.defaultNetwork`, ausência em `app.theme`/`terminal.fontSize`/`machines.cpus` e as flags de restart (`network.exposeLan=true`, `kubernetes.exposeServices=false`). `test_terminal/terminalSettingsApplied` grava uma config isolada e confere `getTerminalFont().pointSize()==16` e `historySize()==2000` no QTermWidget.
 - **M8/T8-05 (2026-11-11):** `test_terminal/translationCatalog` instala en-US, confere `Main` (“Buscar containers” → “Search containers”) e `TrayController` (“Sair” → “Quit”), volta para pt-BR e reinstala en-US. `lrelease`: 158 traduções finalizadas, 0 pendentes; `app.language` virou enum com reinício obrigatório.
 - **Pré-M5 (2026-11-10):** **80,1%** de linhas (`src/`, 18.561/23.175), medido com o mesmo comando do CI. Os testes novos cobrem `HelperService`/`SetupManager` (jobs, instalação/remoção e erros), `QemuProcessRuntime` com QEMU fake (start/stop/QMP/órfãos), `MachineArchive` (manifesto, escrita e extração), estados/erros de `MachineManager`, `MachineStore`/`MachineMeta`, `CloudInit`, `VirtiofsdProcess`, `SshConfig`, `MachineStats`, `HttpDownloader`, `MachineFiles`, `BuildStore`, `PodmanClient` (catálogo completo), `UnixHttpClient`, `StreamClient`, `ExternalTerminal`, `Backend` e caminhos inválidos de RPC/CLI. O console serial usa `QStringDecoder` incremental e há teste de caractere UTF-8 dividido entre chunks. Testes QML reais foram habilitados (`test_terminal` carrega `Main.qml`, `ContainerDetail.qml` e `MachineDetail.qml`; antes eram `QSKIP`). O CI tem **gate bloqueante em 80%** (`--fail-under-line 80`) e `clang-format`/`clang-tidy` nos arquivos alterados. A meta de 80% foi atingida; os maiores vazios restantes são `MachineManager`, `cli/main.cpp`, `Daemon.cpp`, `Backend.cpp` e `PodmanClient` (caminhos de erro e operações raras).
+- **Fechamento 0.1.0 (2026-11-11):** última medição documentada **80,1%** de linhas (`src/`), com o gate de **80%** no CI. Testes novos do fechamento: `test_cli/goldenExitCodes` (comando inexistente/exit 2, opção inválida, `help`, `config get` sem chave e `update --check` sem feed), testes de dispositivos de machine (USB, serial, áudio), X11 no cloud-init, `test_terminal/translationCatalog`, `test_gui/uiState*` e `test_terminal/mainWindowShortcuts`. O caso `version-json` do golden registra que `version --json` é aceito, mas imprime texto: não existe contrato JSON para `version`.
 - **Meta v1.0:** manter ≥ 80% e buscar ≥ 85% em caminhos críticos; testes QML/terminal dedicados entram no M2.
 - Nenhum merge com teste vermelho.
 - Bug corrigido → teste de regressão obrigatório.
@@ -499,6 +533,8 @@ gcovr -r . --filter 'src/' --txt-metric line --print-summary --fail-under-line 8
 2. GUI mostra grupo, serviços e portas.
 3. `curl http://web.localhost:8080` responde.
 4. Logs por serviço; terminal; stop/down.
+
+Automação: `PODSTACK_E2E=1 scripts/e2e-smoke.sh` cobre o J1 (nginx:alpine em porta loopback, HTTP, logs e down) quando daemon/Podman estão disponíveis; J2/J3 seguem manuais.
 
 ### J2 — Máquina
 

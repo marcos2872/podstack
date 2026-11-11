@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kubernetes · PodStack 0.1.0</title>
+  <meta name="description" content="Cluster k3s em VM dedicada, kubeconfig isolado, contexto, Pods, Services, logs e port-forward.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("podstack-docs-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 8 9 5 9-5"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="2" y="15" width="6" height="6" rx="1"/><rect x="16" y="15" width="6" height="6" rx="1"/><path d="M12 9v3"/><path d="M5 15v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></symbol>
+    <symbol id="i-terminal-2" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6"/><path d="M12 18h8"/></symbol>
+    <symbol id="i-hammer" viewBox="0 0 24 24"><path d="m14 5 5 5-3 3-5-5 3-3Z"/><path d="m3 21 7-7"/><path d="M11 3 3 11l4 4 8-8-4-4Z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.2 9.3 4.5 4.5 0 0 0 7 18Z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3 3.7-3.7Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path class="icon-fill" d="M12 .5C5.73.5.98 5.24.98 11.5c0 4.86 3.15 8.98 7.52 10.44.55.1.75-.24.75-.53 0-.26-.01-1.12-.02-2.03-3.06.67-3.71-1.3-3.71-1.3-.5-1.27-1.22-1.61-1.22-1.61-1-.68.08-.67.08-.67 1.1.08 1.68 1.13 1.68 1.13.98 1.68 2.57 1.2 3.2.92.1-.71.38-1.2.7-1.48-2.44-.28-5.01-1.22-5.01-5.43 0-1.2.43-2.18 1.13-2.95-.11-.28-.49-1.4.11-2.91 0 0 .92-.29 3.02 1.13a10.5 10.5 0 0 1 5.5 0c2.1-1.42 3.02-1.13 3.02-1.13.6 1.51.22 2.63.11 2.91.7.77 1.13 1.75 1.13 2.95 0 4.22-2.58 5.15-5.03 5.42.4.34.75 1.01.75 2.04 0 1.47-.01 2.65-.01 3.01 0 .29.2.64.76.53a11.02 11.02 0 0 0 7.51-10.44C23.02 5.24 18.27.5 12 .5Z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M10.3 4.1 2.7 18a2 2 0 0 0 1.8 3h15a2 2 0 0 0 1.8-3L13.7 4.1a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+  </defs>
+</svg>
+
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="icon-btn nav-toggle" type="button" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Abrir navegação">
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+      </button>
+      <a class="topbar-brand" href="index.html">
+        <img src="assets/podstack-capsule.svg" alt="" width="28" height="28">
+        <span>PodStack</span>
+      </a>
+      <span class="topbar-label">Documentação</span>
+    </div>
+
+    <div class="search" role="search">
+      <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input id="site-search" type="search" role="combobox" aria-label="Buscar na documentação"
+             aria-controls="search-results" aria-expanded="false" aria-autocomplete="list"
+             placeholder="Buscar na documentação…" autocomplete="off" spellcheck="false">
+      <kbd aria-hidden="true">/</kbd>
+      <div class="search-results" id="search-results" role="listbox" aria-label="Resultados da busca" hidden></div>
+    </div>
+
+    <div class="topbar-actions">
+      <a class="icon-btn" href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"></use></svg>
+      </a>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Alternar tema">
+        <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="nav-overlay" data-nav-overlay aria-hidden="true"></div>
+
+  <aside class="sidebar" id="sidebar" aria-label="Navegação da documentação">
+    <a class="sidebar-brand" href="index.html">
+      <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
+      <span>
+        <span class="brand-name">PodStack</span>
+        <span class="brand-sub">Documentação 0.1.0</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="Seções da documentação">
+      <div class="nav-section"><p class="nav-group">Introdução</p><ul><li><a href="index.html"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg><span>Visão geral</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Engine</p><ul><li><a href="containers.html"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg><span>Containers</span></a></li><li><a href="images.html"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg><span>Imagens</span></a></li><li><a href="volumes.html"><svg class="icon" aria-hidden="true"><use href="#i-database"></use></svg><span>Volumes</span></a></li><li><a href="networks.html"><svg class="icon" aria-hidden="true"><use href="#i-network"></use></svg><span>Redes</span></a></li><li><a href="pods.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Pods</span></a></li><li><a href="compose.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal"></use></svg><span>Compose</span></a></li><li><a href="builds.html"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg><span>Builds</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Linux e Kubernetes</p><ul><li><a href="machines.html"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span>Machines</span></a></li><li><a href="kubernetes.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Kubernetes</span></a></li><li><a href="domains.html"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span>Domínios</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Referência</p><ul><li><a href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Configurações</span></a></li><li><a href="cli.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><span>CLI</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
+    </nav>
+    <div class="sidebar-foot">
+      <p>Versão 0.1.0 · GPL-3.0-or-later</p>
+      <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
+    </div>
+  </aside>
+
+  <div class="main">
+    <main class="page" id="conteudo">
+      <nav class="breadcrumb" aria-label="Trilha de navegação">
+        <a href="index.html">Documentação</a>
+        <span class="sep" aria-hidden="true">›</span>
+        <span aria-current="page">Kubernetes</span>
+      </nav>
+
+      <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg> PodStack Docs</div>
+      <h1>Kubernetes</h1>
+<p class="lede">Habilite um cluster k3s local em uma VM dedicada, use um kubeconfig isolado e acompanhe Pods, Services, logs e port-forward sem sair do PodStack.</p>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.0</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<p>O Kubernetes do PodStack roda em uma <strong>VM dedicada com k3s</strong>. O k3s não é instalado
+no host e o PodStack não usa kind no v1. O <code>kubectl</code> precisa estar instalado no host para
+você operar o cluster; o PodStack não instala o cliente.</p>
+<p>O kubeconfig fica isolado em <code>~/.local/share/podstack/kubeconfigs/&lt;cluster&gt;.yaml</code>
+(<code>0600</code>) e o contexto recebe o prefixo <code>podstack-</code>. O PodStack
+<strong>não altera</strong> <code>~/.kube/config</code>. A API é exposta em
+<code>127.0.0.1:&lt;porta&gt;</code>.</p>
+<h2 id="na-interface">Na interface</h2><ol class="steps">
+<li>Abra <strong>Kubernetes</strong> na barra lateral.</li>
+<li>Clique em <strong>Habilitar</strong> (ou <strong>Habilitar Kubernetes</strong>) e acompanhe o job: criação da VM, instalação do k3s e espera do nó Ready.</li>
+<li>Quando o cluster estiver ativo, use as abas <strong>Pods</strong> e <strong>Services</strong>. A página atualiza a cada 2 segundos.</li>
+<li>Selecione um Pod e clique em <strong>Logs</strong> para escolher o container e acompanhar o stream.</li>
+<li>Use <strong>Excluir</strong> para remover um Pod ou Service, com confirmação, e <strong>Port-forward</strong> para encaminhar uma porta local até o Pod.</li>
+<li>Para encerrar, use <strong>Desabilitar</strong> ou <strong>Reset</strong>; ambos removem a VM, o disco e o kubeconfig.</li>
+</ol>
+<p>O botão <strong>Port-forward</strong> abre um diálogo com <strong>Porta local</strong> e
+<strong>Porta no pod</strong>; o indicador mostra <code>ativo: 127.0.0.1:&lt;local&gt; → &lt;remota&gt;</code>.
+O encaminhamento é feito via API do cluster. Para Services, use <code>kubectl port-forward</code>
+diretamente nesta versão.</p>
+<p><strong>Desabilitar</strong> para a VM e remove o cluster; <strong>Reset</strong> é equivalente a
+desabilitar com <code>force=true</code>. Os dados dos workloads são perdidos nos dois casos.</p>
+<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Desabilitar/Reset são destrutivos</p><p>A VM, o disco e o kubeconfig são removidos. Não há um “parar e manter o cluster” separado: <code>kube stop</code> e <code>kube disable</code> fazem a mesma coisa nesta versão.</p></div></div><h2 id="na-cli">Na CLI</h2><div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Comando</th>
+<th scope="col">Flags</th>
+<th scope="col">O que faz</th>
+</tr></thead><tbody>
+<tr>
+<td><code>podstack kube info</code></td>
+<td><code>--cluster NOME</code>, <code>--json</code></td>
+<td>Mostra estado, contexto, API e kubeconfig.</td>
+</tr>
+<tr>
+<td><code>podstack kube env</code></td>
+<td><code>--cluster NOME</code></td>
+<td>Imprime <code>export KUBECONFIG=...</code>.</td>
+</tr>
+<tr>
+<td><code>podstack kube start</code></td>
+<td>—</td>
+<td>Cria a VM e instala o k3s.</td>
+</tr>
+<tr>
+<td><code>podstack kube stop</code></td>
+<td><code>--force</code></td>
+<td>Remove a VM, o disco e o kubeconfig.</td>
+</tr>
+<tr>
+<td><code>podstack kube disable</code></td>
+<td><code>--force</code></td>
+<td>Sinônimo de <code>stop</code> nesta versão.</td>
+</tr>
+<tr>
+<td><code>podstack kube context</code></td>
+<td>—</td>
+<td>Mostra o <code>current-context</code> do kubeconfig.</td>
+</tr>
+<tr>
+<td><code>podstack kube context use &lt;nome&gt;</code></td>
+<td>—</td>
+<td>Troca o contexto explicitamente.</td>
+</tr>
+</tbody></table></div><pre data-lang="bash"><code>podstack kube start
+podstack kube info
+eval &quot;$(podstack kube env)&quot;
+kubectl get nodes
+kubectl get pods -A
+
+podstack kube context
+podstack kube context use podstack-default
+podstack kube stop</code></pre>
+<p>O <code>kube env</code> imprime o <code>export KUBECONFIG=...</code>; use <code>eval</code> para
+aplicar na sessão atual. O arquivo não é copiado para <code>~/.kube/config</code>.</p>
+<h2 id="tls">TLS, SANs e exposição</h2>
+<p>Os recursos da VM do cluster são configuráveis em <strong>Configurações → Kubernetes</strong>:
+<code>kubernetes.cpus</code>, <code>kubernetes.memoryBytes</code>, <code>kubernetes.diskBytes</code>
+e <code>kubernetes.tlsSan</code> (SANs extras do API server). Alterações nesses campos exigem
+reiniciar o PodStack.</p>
+<p><code>kubernetes.exposeServices=true</code> faz o port-forward de Service usar
+<code>0.0.0.0</code> (LAN) em vez de loopback. O firewall do host ainda precisa ser liberado
+separadamente. Não há NodePort/LoadBalancer nativos em 0.1.0.</p>
+<div class="callout limit" role="note"><svg class="icon" aria-hidden="true"><use href="#i-ban"></use></svg><div class="callout-body"><p class="callout-title">TLS SANs</p><p>Se você acessa a API por um nome ou IP diferente, adicione o SAN em <code>kubernetes.tlsSan</code> antes de habilitar/reiniciar o cluster. O kubeconfig aponta para <code>127.0.0.1</code>; use <code>podstack kube env</code> para apontar o <code>kubectl</code> ao arquivo correto.</p></div></div><h2 id="referencia-rapida">Referência rápida</h2><div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Ação</th>
+<th scope="col">Na GUI</th>
+<th scope="col">Na CLI</th>
+</tr></thead><tbody>
+<tr>
+<td>Habilitar</td>
+<td>Habilitar Kubernetes</td>
+<td><code>podstack kube start</code></td>
+</tr>
+<tr>
+<td>Estado / info</td>
+<td>Página Kubernetes</td>
+<td><code>podstack kube info</code></td>
+</tr>
+<tr>
+<td>Usar kubectl</td>
+<td>—</td>
+<td><code>eval "$(podstack kube env)"</code></td>
+</tr>
+<tr>
+<td>Pods / Services</td>
+<td>Abas Pods e Services</td>
+<td>— (use <code>kubectl</code>)</td>
+</tr>
+<tr>
+<td>Logs por container</td>
+<td>Logs → container</td>
+<td>— (use <code>kubectl logs</code>)</td>
+</tr>
+<tr>
+<td>Excluir Pod/Service</td>
+<td>Excluir → confirmar</td>
+<td>— (use <code>kubectl delete</code>)</td>
+</tr>
+<tr>
+<td>Port-forward</td>
+<td>Port-forward → portas</td>
+<td>— (use <code>kubectl port-forward</code>)</td>
+</tr>
+<tr>
+<td>Contexto</td>
+<td>—</td>
+<td><code>kube context</code> e <code>kube context use</code></td>
+</tr>
+<tr>
+<td>Desabilitar / reset</td>
+<td>Desabilitar / Reset</td>
+<td><code>kube stop|disable</code></td>
+</tr>
+</tbody></table></div><h2 id="limitacoes">Limitações</h2>
+<ul>
+  <li>Não há NodePort/LoadBalancer nativos nem <code>k8s.podstack.local</code> (T5-07 parcial).</li>
+  <li>A troca de contexto é explícita; não há troca automática por projeto (T5-08 parcial).</li>
+  <li><code>kube stop</code> e <code>kube disable</code> removem a VM, o disco e o kubeconfig; não há “parar e manter”.</li>
+  <li>O port-forward da GUI é para Pods; para Services, use <code>kubectl port-forward</code>.</li>
+  <li>O <code>kubectl</code> não é instalado pelo PodStack.</li>
+  <li>O cluster depende de KVM para desempenho; sem <code>/dev/kvm</code>, a VM usa TCG e fica lenta.</li>
+</ul>
+
+
+      <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
+
+      <nav class="pager" aria-label="Navegação entre páginas">
+        <a class="prev" href="machines.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Machines</span></a>
+        <a class="next" href="domains.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Domínios</span></a>
+      </nav>
+
+      <footer class="site-footer">
+        <p>PodStack 0.1.0 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <div class="footer-links">
+          <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>
+          <a href="index.html#limitacoes">Limitações</a>
+        </div>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
