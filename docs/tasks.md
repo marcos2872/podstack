@@ -232,6 +232,10 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 ## M8 — Extras (pós-v1)
 
+> **Status (2026-11-11):** concluído no código — USB (T8-01), serial (T8-02), áudio (T8-03),
+> X11 (T8-04), i18n principal (T8-05), RPM/DEB/Flatpak (T8-06), snapshots já na T4-16 (T8-07),
+> CRIU (T8-08) e emulação binfmt/FEX (T8-09). Flatpak é cliente de daemon/helper no host.
+
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
 | T8-01 | P2 | USB list/attach/detach (QEMU usb-host) | T4-03 | ✅ — `machines.usb.list/attach/detach` listam dispositivos USB do host (sysfs, sem hubs), anexam por `bus:address` via `usb-host` + `qemu-xhci`, recusam o mesmo device em duas machines e reiniciam se rodando. CLI `machine usb list/attach/detach` e diálogo **USB** no inspetor/Machines. Evidência: `test_machines/usbDevicesListing`, `qemuCommandUsbDevices`, `machineManagerUsbDevices`, `machineMetaRoundTrip`; `test_rpc/machineDevicesFlow`; `test_cli/machineDevicesCommands`. |
