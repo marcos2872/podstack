@@ -96,12 +96,47 @@ Rectangle {
 
         ListView {
             id: list
+            objectName: "catalogList"
 
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+            activeFocusOnTab: true
+            Accessible.role: Accessible.List
+            Accessible.name: qsTr("Catálogo")
             model: root.items
             ScrollBar.vertical: ScrollBar {}
+
+            Keys.onUpPressed: {
+                if (currentIndex > 0) {
+                    root.currentRow = currentIndex - 1
+                    currentIndex -= 1
+                    if (root.selection) {
+                        root.selection.selectOnly(root.itemId(root.items[root.currentRow]),
+                                                  root.currentRow)
+                    }
+                }
+            }
+            Keys.onDownPressed: {
+                if (currentIndex + 1 < root.items.length) {
+                    root.currentRow = currentIndex + 1
+                    currentIndex += 1
+                    if (root.selection) {
+                        root.selection.selectOnly(root.itemId(root.items[root.currentRow]),
+                                                  root.currentRow)
+                    }
+                }
+            }
+            Keys.onReturnPressed: {
+                if (currentIndex >= 0 && currentIndex < root.items.length) {
+                    root.currentRow = currentIndex
+                    root.activated(currentIndex)
+                }
+            }
+            Keys.onEscapePressed: {
+                root.currentRow = -1
+                currentIndex = -1
+            }
 
             delegate: Item {
                 id: row
@@ -179,6 +214,7 @@ Rectangle {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: function(mouse) {
+                        list.forceActiveFocus()
                         root.currentRow = index
                         if (root.selection) {
                             if (mouse.modifiers & Qt.ControlModifier) {
