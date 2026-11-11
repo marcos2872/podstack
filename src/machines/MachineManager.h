@@ -107,8 +107,7 @@ public:
                                Error *error = nullptr);
     MachineMeta setUsbDevices(const QString &idOrName, const QVector<MachineUsbDevice> &devices,
                               Error *error = nullptr);
-    MachineMeta setAudioEnabled(const QString &idOrName, bool enabled,
-                                Error *error = nullptr);
+    MachineMeta setAudioEnabled(const QString &idOrName, bool enabled, Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
     bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
     /// Renomeia a machine, atualiza o bloco SSH e a máquina default do Config.
