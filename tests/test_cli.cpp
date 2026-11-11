@@ -81,6 +81,7 @@ private:
 
     MockPodmanServer m_mock;
     MockHttpServer m_updateServer;
+    MockPodmanServer m_dockerMock;
     QProcess m_daemon;
     QString m_controlSocket;
     QString m_testDataDir;
@@ -105,6 +106,7 @@ QProcessEnvironment CliTest::environment(const QString &controlSocket) const
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
+    env.insert(QStringLiteral("PODSTACK_DOCKER_SOCKET"), m_dockerMock.socketPath());
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
     env.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
     env.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeFilesSsh);
@@ -233,6 +235,14 @@ void CliTest::initTestCase()
                       + QStringLiteral("/podstack-cli-%1.sock")
                             .arg(QCoreApplication::applicationPid());
     QFile::remove(m_controlSocket);
+
+    m_dockerMock.setResponse(QStringLiteral("/system/df"), 200, R"({
+        "LayersSize": 1000,
+        "Containers": [{"Id":"c1","State":"running","SizeRw":5}],
+        "Images": [{"Id":"i1"}],
+        "Volumes": []
+    })");
+    m_dockerMock.setResponse(QStringLiteral("/networks"), 200, R"([{"Id":"n1"}])");
 
     m_daemon.setProcessEnvironment(environment(m_controlSocket));
     m_daemon.setProcessChannelMode(QProcess::ForwardedChannels);
@@ -1665,6 +1675,22 @@ void CliTest::setupCommand()
         run({QStringLiteral("setup"), QStringLiteral("--remove-docker")}, env);
     QVERIFY(remove.code != 0);
     QVERIFY(remove.err.contains(QStringLiteral("--yes")));
+
+    const CliResult impact = run({QStringLiteral("setup"), QStringLiteral("--docker-impact")}, env);
+    QCOMPARE(impact.code, 0);
+    QVERIFY(impact.out.contains(QStringLiteral("Impacto do Docker")));
+    QVERIFY(impact.out.contains(QStringLiteral("1 containers")));
+
+    const CliResult impactJson =
+        run({QStringLiteral("setup"), QStringLiteral("--docker-impact"), QStringLiteral("--json")},
+            env);
+    QCOMPARE(impactJson.code, 0);
+    QJsonParseError impactError{};
+    const QJsonDocument impactDocument =
+        QJsonDocument::fromJson(impactJson.out.toUtf8(), &impactError);
+    QCOMPARE(impactError.error, QJsonParseError::NoError);
+    QCOMPARE(impactDocument.object().value(QStringLiteral("api")).toInt(), 1);
+    QCOMPARE(impactDocument.object().value(QStringLiteral("available")).toBool(), true);
 }
 
 void CliTest::updateCommand()

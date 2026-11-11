@@ -17,6 +17,7 @@ Item {
     property bool installCaddy: false
 
     readonly property var checks: backend.setupChecks
+    readonly property var dockerImpact: backend.setupDockerImpact
     readonly property bool jobActive: backend.setupJobActive
     readonly property bool podmanReady: podmanCheck.status === "ok"
     readonly property bool dockerPresent: (dockerCheck.detail || "").indexOf("coexistindo") >= 0
@@ -39,6 +40,25 @@ Item {
             }
         }
         return {}
+    }
+
+    function dockerImpactText() {
+        if (!dockerImpact || Object.keys(dockerImpact).length === 0) {
+            return qsTr("Lendo o impacto do Docker…")
+        }
+        if (!dockerImpact.available) {
+            return qsTr("Não foi possível ler o inventário do Docker. A remoção pode apagar "
+                        + "containers, imagens, redes e volumes sem que as contagens sejam "
+                        + "exibidas.")
+        }
+        const containers = dockerImpact.containers || {}
+        return qsTr("Impacto estimado: %1 containers (%2 em execução), %3 imagens, "
+                    + "%4 redes e %5 volumes.")
+            .arg(containers.total || 0)
+            .arg(containers.running || 0)
+            .arg(dockerImpact.images || 0)
+            .arg(dockerImpact.networks || 0)
+            .arg(dockerImpact.volumes || 0)
     }
 
     readonly property var podmanCheck: checkFor("podman")
@@ -1063,6 +1083,7 @@ Item {
     AppDialog {
         id: removeDockerDialog
         title: qsTr("Remover o Docker?")
+        onOpened: backend.setupLoadDockerImpact()
 
         Text {
             Layout.fillWidth: true
@@ -1070,6 +1091,15 @@ Item {
                        + "Não há migração automática. O Podman continuará funcionando.\n\n"
                        + "A remoção exige sua autorização no polkit e não pode ser desfeita.")
             color: Theme.textSecondary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontBody
+            wrapMode: Text.WordWrap
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: setupWindow.dockerImpactText()
+            color: Theme.textPrimary
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontBody
             wrapMode: Text.WordWrap

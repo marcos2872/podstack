@@ -90,8 +90,9 @@ target_link_libraries(test_machines PRIVATE podstack_machines podstack_k8s podst
     LibArchive::LibArchive Qt6::Test)
 add_test(NAME machines COMMAND test_machines)
 
-qt_add_executable(test_setup test_setup.cpp
+qt_add_executable(test_setup test_setup.cpp MockPodmanServer.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/SetupManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/DockerInventory.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/HelperClient.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/CaTrust.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/DnsZone.cpp

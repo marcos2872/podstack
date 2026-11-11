@@ -180,7 +180,7 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 
 | Comando | Flags | Notas |
 |---|---|---|
-| `podstack setup` | `--check`, `--status`, `--validate`, `--apply podman\|qemu\|components\|socket`, `--install-*`, `--remove-docker --yes`, `--caddy` | Setup/onboarding; `--check` é read-only; Docker só é removido com `--remove-docker --yes` |
+| `podstack setup` | `--check`, `--status`, `--validate`, `--apply podman\|qemu\|components\|socket`, `--install-*`, `--docker-impact [--json]`, `--remove-docker --yes`, `--caddy` | Setup/onboarding; `--check` é read-only; `--docker-impact` mostra o que existe no Docker antes da remoção; Docker só é removido com `--remove-docker --yes` |
 
 > O fluxo principal instala/atualiza o Podman e **não remove o Docker**; a GUI usa a mesma API `setup.*`.
 > `--apply` inicia um job no daemon e imprime o `jobId`; o progresso aparece em `setup.status` e nos

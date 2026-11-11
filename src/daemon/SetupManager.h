@@ -43,6 +43,9 @@ public:
     QList<SetupCheck> check(bool deep = false);
     QJsonObject status();
     QJsonObject validate();
+
+    /// Inventário read-only do Docker (contagens e tamanho estimado).
+    QJsonObject dockerImpact() const;
     QJsonObject jobStatus(const QString &jobId) const;
     QJsonObject activeJob() const;
 

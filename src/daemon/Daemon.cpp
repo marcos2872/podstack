@@ -646,6 +646,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("setup.validate")) {
         return setupValidate();
     }
+    if (method == QStringLiteral("setup.dockerImpact")) {
+        return setupDockerImpact();
+    }
     if (method == QStringLiteral("setup.apply")) {
         return setupApply(params, notify, error);
     }
@@ -4575,6 +4578,11 @@ QJsonObject Daemon::setupRemoveDocker(const QJsonObject &params, const Notify &n
                                       Error *error)
 {
     return m_setup.removeDocker(params, notify, error);
+}
+
+QJsonObject Daemon::setupDockerImpact()
+{
+    return m_setup.dockerImpact();
 }
 
 QJsonObject Daemon::setupCancel(const QJsonObject &params)

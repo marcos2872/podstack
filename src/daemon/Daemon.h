@@ -139,6 +139,7 @@ private:
     QJsonObject setupStatus();
     QJsonObject setupCheck(const QJsonObject &params);
     QJsonObject setupValidate();
+    QJsonObject setupDockerImpact();
     QJsonObject setupApply(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject setupRemoveDocker(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject setupCancel(const QJsonObject &params);

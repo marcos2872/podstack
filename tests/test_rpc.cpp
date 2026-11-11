@@ -58,6 +58,7 @@ private slots:
     void multiPlatformBuild();
     void setupFlow();
     void updatesCheck();
+    void setupDockerImpact();
     void settingsFlow();
     void invalidRequests();
 
@@ -66,6 +67,7 @@ private:
     void sendMessage(QLocalSocket &socket, const QJsonObject &message);
 
     MockPodmanServer m_mock;
+    MockPodmanServer m_dockerMock;
     MockHttpServer m_updateServer;
     QProcess m_daemon;
     QString m_controlSocket;
@@ -231,7 +233,15 @@ void RpcTest::initTestCase()
         QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../podstackd"));
 
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    m_dockerMock.setResponse(QStringLiteral("/system/df"), 200, R"({
+        "LayersSize": 7000,
+        "Containers": [{"Id":"c1","State":"running","SizeRw":10}],
+        "Images": [{"Id":"i1"}],
+        "Volumes": [{"Name":"v1","UsageData":{"Size":20}}]
+    })");
+    m_dockerMock.setResponse(QStringLiteral("/networks"), 200, R"([{"Id":"n1"}])");
     environment.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
+    environment.insert(QStringLiteral("PODSTACK_DOCKER_SOCKET"), m_dockerMock.socketPath());
     environment.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
     environment.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
     environment.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
@@ -3277,6 +3287,31 @@ void RpcTest::updatesCheck()
     (void) client.call(QStringLiteral("updates.check"),
                        QJsonObject{{QStringLiteral("force"), QStringLiteral("yes")}}, &error);
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void RpcTest::setupDockerImpact()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject impact = client.call(QStringLiteral("setup.dockerImpact"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(impact.value(QStringLiteral("available")).toBool(), true);
+    QVERIFY(impact.value(QStringLiteral("socket")).toString().endsWith(QStringLiteral("sock")));
+    QCOMPARE(impact.value(QStringLiteral("containers"))
+                 .toObject()
+                 .value(QStringLiteral("total"))
+                 .toInt(),
+             1);
+    QCOMPARE(impact.value(QStringLiteral("containers"))
+                 .toObject()
+                 .value(QStringLiteral("running"))
+                 .toInt(),
+             1);
+    QCOMPARE(impact.value(QStringLiteral("images")).toInt(), 1);
+    QCOMPARE(impact.value(QStringLiteral("networks")).toInt(), 1);
+    QCOMPARE(impact.value(QStringLiteral("volumes")).toInt(), 1);
+    QCOMPARE(impact.value(QStringLiteral("estimatedSizeBytes")).toDouble(), 7030.0);
 }
 
 void RpcTest::settingsFlow()
