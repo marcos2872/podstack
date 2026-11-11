@@ -76,6 +76,7 @@ private slots:
     void mainWindowTerminalDock();
     void mainWindowQml();
     void mainWindowRestoresSection();
+    void mainWindowShortcuts();
 
 private:
     QTemporaryDir m_runtime;
@@ -855,6 +856,39 @@ void TerminalTest::mainWindowRestoresSection()
         3000);
 
     qunsetenv("PODSTACK_UI_STATE");
+}
+
+void TerminalTest::mainWindowShortcuts()
+{
+    PodStack::Backend backend;
+    PodStack::TrayController tray(false);
+    PodStack::NotificationService notifications;
+    PodStack::SingleInstance singleInstance;
+    PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance,
+                                /*startHidden=*/true, /*loadQml=*/true);
+    QTRY_VERIFY_WITH_TIMEOUT(window.qmlLoaded(), 5000);
+
+    auto *quick = qobject_cast<QQuickWidget *>(window.centralWidget());
+    QVERIFY(quick != nullptr);
+    QObject *root = quick->rootObject();
+    QVERIFY(root != nullptr);
+
+    const QStringList shortcutNames{
+        QStringLiteral("shortcutSettings"),
+        QStringLiteral("shortcutSidebar"),
+        QStringLiteral("shortcutRefresh"),
+        QStringLiteral("shortcutQuit"),
+        QStringLiteral("shortcutContainerLogs"),
+        QStringLiteral("shortcutContainerTerminal"),
+        QStringLiteral("shortcutContainerLifecycle"),
+    };
+    for (const QString &name : shortcutNames) {
+        QVERIFY2(root->findChild<QObject *>(name) != nullptr, qPrintable(name));
+    }
+
+    auto *containerList = root->findChild<QObject *>(QStringLiteral("containerList"));
+    QVERIFY(containerList != nullptr);
+    QCOMPARE(containerList->property("activeFocusOnTab").toBool(), true);
 }
 
 void TerminalTest::mainWindowQml()

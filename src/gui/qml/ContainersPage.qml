@@ -57,6 +57,15 @@ Item {
         return visibleItems[index].id
     }
 
+    function currentItem() {
+        for (let i = 0; i < visibleItems.length; ++i) {
+            if (visibleItems[i].id === currentId) {
+                return visibleItems[i]
+            }
+        }
+        return ({})
+    }
+
     function rebuild() {
         const needle = filterText.toLowerCase()
         const next = []
@@ -445,11 +454,34 @@ Item {
 
                     ListView {
                         id: containerList
+                        objectName: "containerList"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.List
+                        Accessible.name: qsTr("Containers")
                         model: containersPage.visibleItems
                         ScrollBar.vertical: ScrollBar {}
+
+                        Keys.onUpPressed: {
+                            if (currentIndex > 0) {
+                                currentIndex -= 1
+                                containersPage.selectOnly(currentIndex)
+                            }
+                        }
+                        Keys.onDownPressed: {
+                            if (currentIndex + 1 < containersPage.visibleItems.length) {
+                                currentIndex += 1
+                                containersPage.selectOnly(currentIndex)
+                            }
+                        }
+                        Keys.onReturnPressed: {
+                            if (containersPage.currentId.length > 0) {
+                                containersPage.openContainer(containersPage.currentId)
+                            }
+                        }
+                        Keys.onEscapePressed: containersPage.clearSelection()
 
                         delegate: Item {
                             id: containerRow
@@ -487,6 +519,7 @@ Item {
                                 id: rowMouse
                                 anchors.fill: parent
                                 onClicked: function(mouse) {
+                                    containerList.forceActiveFocus()
                                     containerList.currentIndex = index
                                     containersPage.currentId = modelData.id
                                     if (mouse.modifiers & Qt.ControlModifier) {

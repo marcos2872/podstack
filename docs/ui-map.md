@@ -504,27 +504,32 @@ qml/
 
 ## 12. Atalhos
 
-| Atalho | Ação |
-|---|---|
-| `Ctrl+N` | novo (contexto da seção) |
-| `Ctrl+Shift+N` | nova janela |
-| `Ctrl+T` | nova aba |
-| `Ctrl+W` | fechar aba |
-| `Ctrl+,` | Settings |
-| `Ctrl+B` | alternar sidebar |
-| `Ctrl+Shift+B` | alternar inspector |
-| `Ctrl+F` | buscar na seção |
-| `Ctrl+Shift+F` | busca global |
-| `F5` | atualizar |
-| `Delete` | remover com confirmação |
-| `Ctrl+Delete` | remover sem confirmação (se permitido) |
-| `Ctrl+Enter` | iniciar/parar selecionado |
-| `Ctrl+Shift+L` | abrir logs |
-| `Ctrl+Shift+T` | abrir terminal |
-| `Esc` | desselecionar/fechar (inclui o overlay de detalhe do container) |
-| `Ctrl+Q` | sair |
+| Atalho | Ação | Status |
+|---|---|---|
+| `Ctrl+N` | novo (contexto da seção) | planejado |
+| `Ctrl+Shift+N` | nova janela | não aplicável (janela única) |
+| `Ctrl+T` | nova aba | não aplicável (abas de terminal abertas por ação) |
+| `Ctrl+W` | fechar aba | planejado |
+| `Ctrl+,` | Settings | ✅ implementado |
+| `Ctrl+B` | alternar sidebar | ✅ implementado |
+| `Ctrl+Shift+B` | alternar inspector | planejado |
+| `Ctrl+F` | buscar na seção | ✅ implementado (Containers) |
+| `Ctrl+Shift+F` | busca global | planejado |
+| `F5` | atualizar | ✅ implementado |
+| `Delete` | remover com confirmação | planejado (exige diálogo consistente) |
+| `Ctrl+Delete` | remover sem confirmação (se permitido) | planejado |
+| `Ctrl+Enter` | iniciar/parar selecionado | ✅ implementado (Containers) |
+| `Ctrl+Shift+L` | abrir logs | ✅ implementado (Containers) |
+| `Ctrl+Shift+T` | abrir terminal | ✅ implementado (Containers) |
+| `Esc` | desselecionar/fechar | ✅ lista do catálogo/Containers; overlays já fecham |
+| `Ctrl+Q` | sair | ✅ implementado |
 
 Atalhos configuráveis (P2); conflitos com o desktop são resolvidos pelo usuário.
+
+### 12.1 Acessibilidade e teclado
+
+- As listas do catálogo (`CatalogList.qml`) e de Containers participam do Tab (`activeFocusOnTab`) e respondem a setas, Enter e Esc; o clique devolve o foco ao `ListView`.
+- Controles principais expõem `Accessible.name`/`Accessible.role` (busca, itens, listas e cabeçalhos); o detalhe/props seguem como pendência da auditoria WCAG (TX-14).
 
 ---
 
