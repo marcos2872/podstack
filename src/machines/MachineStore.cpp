@@ -262,6 +262,15 @@ CREATE TABLE IF NOT EXISTS machine_serial_ports (
   path TEXT NOT NULL,
   PRIMARY KEY (machine_id, path)
 );
+CREATE TABLE IF NOT EXISTS machine_usb_devices (
+  machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  bus INTEGER NOT NULL,
+  address INTEGER NOT NULL,
+  vendor_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  description TEXT,
+  PRIMARY KEY (machine_id, bus, address)
+);
 CREATE INDEX IF NOT EXISTS idx_machines_state ON machines(state);
 )SQL";
 
@@ -404,6 +413,17 @@ ON CONFLICT(id) DO UPDATE SET
     }
     deleteSerialPorts.reset();
 
+    Statement deleteUsbDevices =
+        prepare(m_db, "DELETE FROM machine_usb_devices WHERE machine_id = ?;", &deleteOk);
+    if (!deleteOk) {
+        return abort(QStringLiteral("Falha ao preparar a limpeza dos dispositivos USB."));
+    }
+    bindText(deleteUsbDevices.get(), 1, meta.id);
+    if (sqlite3_step(deleteUsbDevices.get()) != SQLITE_DONE) {
+        return abort(QStringLiteral("Falha ao limpar os dispositivos USB da machine."));
+    }
+    deleteUsbDevices.reset();
+
     const char *portSql = R"SQL(
 INSERT INTO machine_ports (id, machine_id, host_port, guest_port, protocol, expose_lan, label)
 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -460,6 +480,27 @@ INSERT INTO machine_serial_ports (machine_id, path) VALUES (?, ?)
         bindText(statement.get(), 2, path);
         if (sqlite3_step(statement.get()) != SQLITE_DONE) {
             return abort(QStringLiteral("Falha ao gravar a porta serial da machine."));
+        }
+    }
+
+    const char *usbSql = R"SQL(
+INSERT INTO machine_usb_devices (machine_id, bus, address, vendor_id, product_id, description)
+VALUES (?, ?, ?, ?, ?, ?)
+)SQL";
+    for (const MachineUsbDevice &device : meta.usbDevices) {
+        bool usbOk = false;
+        Statement statement = prepare(m_db, usbSql, &usbOk);
+        if (!usbOk) {
+            return abort(QStringLiteral("Falha ao preparar o dispositivo USB da machine."));
+        }
+        bindText(statement.get(), 1, meta.id);
+        sqlite3_bind_int(statement.get(), 2, device.bus);
+        sqlite3_bind_int(statement.get(), 3, device.address);
+        bindText(statement.get(), 4, device.vendorId);
+        bindText(statement.get(), 5, device.productId);
+        bindText(statement.get(), 6, device.description);
+        if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+            return abort(QStringLiteral("Falha ao gravar o dispositivo USB da machine."));
         }
     }
 
@@ -609,6 +650,31 @@ SELECT path FROM machine_serial_ports WHERE machine_id = ? ORDER BY path
     }
     if (rc != SQLITE_DONE) {
         fail(QStringLiteral("Falha ao ler as portas seriais da machine."), error);
+        return false;
+    }
+
+    Statement usbDevices = prepare(m_db,
+                                   R"SQL(
+SELECT bus, address, vendor_id, product_id, description
+FROM machine_usb_devices WHERE machine_id = ? ORDER BY bus, address
+)SQL",
+                                   &ok);
+    if (!ok) {
+        fail(QStringLiteral("Falha ao consultar os dispositivos USB da machine."), error);
+        return false;
+    }
+    bindText(usbDevices.get(), 1, meta.id);
+    while ((rc = sqlite3_step(usbDevices.get())) == SQLITE_ROW) {
+        MachineUsbDevice device;
+        device.bus = sqlite3_column_int(usbDevices.get(), 0);
+        device.address = sqlite3_column_int(usbDevices.get(), 1);
+        device.vendorId = columnText(usbDevices.get(), 2);
+        device.productId = columnText(usbDevices.get(), 3);
+        device.description = columnText(usbDevices.get(), 4);
+        meta.usbDevices.append(device);
+    }
+    if (rc != SQLITE_DONE) {
+        fail(QStringLiteral("Falha ao ler os dispositivos USB da machine."), error);
         return false;
     }
     return true;

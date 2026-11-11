@@ -16,6 +16,7 @@
 #include <QLocalSocket>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QScopeGuard>
 #include <QTest>
 
 namespace {
@@ -53,6 +54,7 @@ private slots:
     void catalog();
     void machineDistros();
     void machineCommands();
+    void machineDevicesCommands();
     void kubeCommands();
     void machineLifecycleCommands();
     void machineCreateForwardAgent();
@@ -107,6 +109,7 @@ QProcessEnvironment CliTest::environment(const QString &controlSocket) const
     env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), controlSocket);
     env.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     env.insert(QStringLiteral("PODSTACK_DOCKER_SOCKET"), m_dockerMock.socketPath());
+    env.insert(QStringLiteral("PODSTACK_SYSFS_USB"), m_testDataDir + QStringLiteral("/sys-usb"));
     env.insert(QStringLiteral("PODSTACK_COMPOSE_PROVIDER"), m_fakeProvider);
     env.insert(QStringLiteral("PODSTACK_PODMAN_CLI"), m_fakePodman);
     env.insert(QStringLiteral("PODSTACK_SSH_BINARY"), m_fakeFilesSsh);
@@ -156,6 +159,23 @@ void CliTest::initTestCase()
                           .arg(QCoreApplication::applicationPid());
     QDir(m_testDataDir).removeRecursively();
     QDir().mkpath(m_testDataDir);
+
+    const QString sysUsb = m_testDataDir + QStringLiteral("/sys-usb/1-4");
+    QVERIFY(QDir().mkpath(sysUsb));
+    const auto writeSys = [](const QString &path, const QByteArray &value) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            return false;
+        }
+        file.write(value);
+        return true;
+    };
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/busnum"), "1\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/devnum"), "4\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/idVendor"), "0781\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/idProduct"), "5567\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/manufacturer"), "SanDisk\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/product"), "Cruzer Blade\n"));
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -629,8 +649,8 @@ void CliTest::machineCommands()
                  env);
     QCOMPARE(result.code, 1);
 
-    result = run({QStringLiteral("machine"), QStringLiteral("info"), QStringLiteral("missing")},
-                 env);
+    result =
+        run({QStringLiteral("machine"), QStringLiteral("info"), QStringLiteral("missing")}, env);
     QCOMPARE(result.code, 1);
     QVERIFY(result.err.contains(QStringLiteral("não encontrada")));
 
@@ -853,6 +873,70 @@ void CliTest::kubeCommands()
     result = run({QStringLiteral("kube"), QStringLiteral("bogus")}, env);
     QCOMPARE(result.code, 2);
     QVERIFY(result.err.contains(QStringLiteral("desconhecido")));
+}
+
+void CliTest::machineDevicesCommands()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("cli-devices");
+    meta.name = QStringLiteral("cli-devices");
+    meta.distro = QStringLiteral("fedora");
+    meta.arch = QStringLiteral("amd64");
+    meta.diskPath = m_testDataDir + QStringLiteral("/cli-devices.qcow2");
+    meta.sshPort = 32224;
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/cli-devices.key");
+    meta.state = QStringLiteral("stopped");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+    const auto removeMachine = qScopeGuard([&store, &meta] { (void) store.remove(meta.id); });
+
+    const QString serialPath = m_testDataDir + QStringLiteral("/cli-tty");
+    QFile serialFile(serialPath);
+    QVERIFY(serialFile.open(QIODevice::WriteOnly));
+    serialFile.write("serial");
+    serialFile.close();
+
+    CliResult result = run({QStringLiteral("machine"), QStringLiteral("serial"),
+                            QStringLiteral("list"), meta.name, QStringLiteral("--json")},
+                           env);
+    QCOMPARE(result.code, 0);
+    result = run({QStringLiteral("machine"), QStringLiteral("serial"), QStringLiteral("attach"),
+                  meta.name, serialPath},
+                 env);
+    QCOMPARE(result.code, 0);
+    result = run({QStringLiteral("machine"), QStringLiteral("serial"), QStringLiteral("detach"),
+                  meta.name, serialPath},
+                 env);
+    QCOMPARE(result.code, 0);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("usb"), QStringLiteral("list"),
+                  meta.name, QStringLiteral("--json")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QVERIFY(document.object().value(QStringLiteral("devices")).toArray().size() >= 1);
+
+    result = run({QStringLiteral("machine"), QStringLiteral("usb"), QStringLiteral("attach"),
+                  meta.name, QStringLiteral("1:4")},
+                 env);
+    QCOMPARE(result.code, 0);
+    result = run({QStringLiteral("machine"), QStringLiteral("usb"), QStringLiteral("detach"),
+                  meta.name, QStringLiteral("1:4")},
+                 env);
+    QCOMPARE(result.code, 0);
+    result = run({QStringLiteral("machine"), QStringLiteral("usb"), QStringLiteral("attach"),
+                  meta.name, QStringLiteral("nope")},
+                 env);
+    QCOMPARE(result.code, 2);
 }
 
 void CliTest::machineLifecycleCommands()

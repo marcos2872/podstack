@@ -23,6 +23,7 @@
 #include "machines/QmpClient.h"
 #include "machines/SerialPorts.h"
 #include "machines/SshConfig.h"
+#include "machines/UsbDevices.h"
 #include "machines/VirtiofsdProcess.h"
 
 #include <QCryptographicHash>
@@ -79,12 +80,14 @@ using PodStack::MachinePort;
 using PodStack::MachineSnapshot;
 using PodStack::MachineStatsCollector;
 using PodStack::MachineStore;
+using PodStack::MachineUsbDevice;
 using PodStack::QemuCommand;
 using PodStack::QemuMount;
 using PodStack::QemuPort;
 using PodStack::QemuProcessRuntime;
 using PodStack::QemuRuntime;
 using PodStack::QemuSpec;
+using PodStack::QemuUsbDevice;
 using PodStack::QmpClient;
 using PodStack::SshConfig;
 using PodStack::SshInfo;
@@ -847,6 +850,7 @@ private slots:
     void machineMetaRoundTrip();
     void serialPortsListing();
     void serialPortsValidation();
+    void usbDevicesListing();
     void machineMetaInvalid();
     void machineMetaFileErrors();
     void machineStoreCrud();
@@ -878,6 +882,7 @@ private slots:
     void qemuCommandMounts();
     void qemuCommandPorts();
     void qemuCommandSerialPorts();
+    void qemuCommandUsbDevices();
     void qemuCommandInvalid();
     void qmpHandshake();
     void qmpQueryStatus();
@@ -953,6 +958,7 @@ private slots:
     void machineManagerPort();
     void machineManagerPorts();
     void machineManagerSerialPorts();
+    void machineManagerUsbDevices();
     void machineManagerSnapshots();
     void qemuRuntimeFallback();
     void qemuRuntimePidFile();
@@ -1190,6 +1196,8 @@ void MachinesTest::machineMetaRoundTrip()
                      QStringLiteral("/mnt/projetos"), false, QStringLiteral("host")},
     };
     meta.serialPorts = {QStringLiteral("/dev/ttyUSB0"), QStringLiteral("/dev/ttyACM0")};
+    meta.usbDevices = {MachineUsbDevice{1, 4, QStringLiteral("0781"), QStringLiteral("5567"),
+                                        QStringLiteral("SanDisk Cruzer Blade")}};
 
     PodStack::Error error;
     QVERIFY2(MachineMetaFile::write(path, meta, &error), qPrintable(error.message));
@@ -1213,6 +1221,7 @@ void MachinesTest::machineMetaRoundTrip()
     QCOMPARE(object.value(QStringLiteral("ports")).toArray().size(), 2);
     QCOMPARE(object.value(QStringLiteral("mounts")).toArray().size(), 1);
     QCOMPARE(object.value(QStringLiteral("serialPorts")).toArray().size(), 2);
+    QCOMPARE(object.value(QStringLiteral("usbDevices")).toArray().size(), 1);
     QVERIFY(!object.contains(QStringLiteral("password")));
 
     const MachineMeta reloaded = MachineMetaFile::read(path, &error);
@@ -1225,6 +1234,8 @@ void MachinesTest::machineMetaRoundTrip()
     QCOMPARE(reloaded.mounts.size(), 1);
     QCOMPARE(reloaded.mounts.at(0).tag, QStringLiteral("host"));
     QCOMPARE(reloaded.serialPorts, meta.serialPorts);
+    QCOMPARE(reloaded.usbDevices.size(), 1);
+    QCOMPARE(reloaded.usbDevices.at(0).description, QStringLiteral("SanDisk Cruzer Blade"));
 }
 
 void MachinesTest::serialPortsListing()
@@ -1317,6 +1328,62 @@ void MachinesTest::serialPortsValidation()
     file.close();
     QVERIFY(PodStack::validateSerialPortPath(path, &error));
     QVERIFY(error.isEmpty());
+}
+
+void MachinesTest::usbDevicesListing()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString root = dir.filePath(QStringLiteral("usb"));
+
+    const auto touch = [](const QString &path, const QByteArray &content) {
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            return false;
+        }
+        file.write(content);
+        return true;
+    };
+
+    QVERIFY(touch(root + QStringLiteral("/1-4/busnum"), "1\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-4/devnum"), "4\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-4/idVendor"), "0781\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-4/idProduct"), "5567\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-4/manufacturer"), "SanDisk\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-4/product"), "Cruzer Blade\n"));
+
+    QVERIFY(touch(root + QStringLiteral("/1-1/busnum"), "1\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-1/devnum"), "1\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-1/bDeviceClass"), "09\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-1/idVendor"), "1d6b\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-1/idProduct"), "0002\n"));
+
+    QVERIFY(touch(root + QStringLiteral("/1-5/busnum"), "1\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-5/devnum"), "5\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-5/idVendor"), "abcd\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-5/idProduct"), "ef01\n"));
+
+    QVERIFY(touch(root + QStringLiteral("/1-6/busnum"), "1\n"));
+    QVERIFY(touch(root + QStringLiteral("/1-6/devnum"), "6\n"));
+
+    const QVector<PodStack::UsbDeviceInfo> devices = PodStack::listUsbDevicesIn(root);
+    QCOMPARE(devices.size(), 2);
+    QCOMPARE(devices.at(0).bus, 1);
+    QCOMPARE(devices.at(0).address, 4);
+    QCOMPARE(devices.at(0).description, QStringLiteral("SanDisk Cruzer Blade"));
+    QCOMPARE(devices.at(1).description, QStringLiteral("ABCD:EF01"));
+
+    PodStack::UsbDeviceInfo found;
+    qputenv("PODSTACK_SYSFS_USB", root.toUtf8());
+    QVERIFY(PodStack::findUsbDevice(1, 4, &found));
+    QCOMPARE(found.vendorId, QStringLiteral("0781"));
+    QString error;
+    QVERIFY(!PodStack::findUsbDevice(9, 9, &found, &error));
+    QVERIFY(!error.isEmpty());
+
+    QCOMPARE(PodStack::listHostUsbDevices().size(), 2);
+    qunsetenv("PODSTACK_SYSFS_USB");
 }
 
 void MachinesTest::machineMetaInvalid()
@@ -2479,6 +2546,20 @@ void MachinesTest::qemuCommandSerialPorts()
     QCOMPARE(serialValues.at(0), QStringLiteral("file:%1").arg(spec.consoleLogPath));
     QCOMPARE(serialValues.at(1), QStringLiteral("/dev/ttyUSB0"));
     QCOMPARE(serialValues.at(2), QStringLiteral("/dev/ttyACM0"));
+}
+
+void MachinesTest::qemuCommandUsbDevices()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.usbDevices = {QemuUsbDevice{1, 4}, QemuUsbDevice{2, 3}};
+
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QCOMPARE(args.count(QStringLiteral("qemu-xhci,id=usbhost")), 1);
+    QCOMPARE(args.count(QStringLiteral("usb-host,hostbus=1,hostaddr=4")), 1);
+    QCOMPARE(args.count(QStringLiteral("usb-host,hostbus=2,hostaddr=3")), 1);
 }
 
 void MachinesTest::qemuCommandInvalid()
@@ -5090,6 +5171,122 @@ void MachinesTest::machineManagerSerialPorts()
     const MachineMeta detached = manager.setSerialPorts(first.id, {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(detached.serialPorts.isEmpty());
+}
+
+void MachinesTest::machineManagerUsbDevices()
+{
+    const QString root = m_root + QStringLiteral("/manager-usb-devices");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString sysRoot = root + QStringLiteral("/sys-usb");
+    const auto touch = [](const QString &path, const QByteArray &content) {
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            return false;
+        }
+        file.write(content);
+        return true;
+    };
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-4/busnum"), "1\n"));
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-4/devnum"), "4\n"));
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-4/idVendor"), "0781\n"));
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-4/idProduct"), "5567\n"));
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-4/manufacturer"), "SanDisk\n"));
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-4/product"), "Cruzer\n"));
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-5/busnum"), "1\n"));
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-5/devnum"), "5\n"));
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-5/idVendor"), "abcd\n"));
+    QVERIFY(touch(sysRoot + QStringLiteral("/1-5/idProduct"), "ef01\n"));
+    qputenv("PODSTACK_SYSFS_USB", sysRoot.toUtf8());
+    const auto restoreEnv = qScopeGuard([] { qunsetenv("PODSTACK_SYSFS_USB"); });
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+
+    const QByteArray payload(2048, 'p');
+    m_server.setResponse(QStringLiteral("/manager-usb-devices.qcow2"), 200, payload);
+    const DistroImage image = testImage(QStringLiteral("/manager-usb-devices.qcow2"), payload);
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *runtimePtr = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    const QString storePath = root + QStringLiteral("/podstack.db");
+    options.storePath = storePath;
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfCodePath = ovmfCode;
+    options.ovmfVarsPath = ovmfVars;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+    options.resolveDistro = [image](const QString &, const QString &, PodStack::Error *error) {
+        if (error) {
+            *error = {};
+        }
+        return image;
+    };
+
+    MachineManager manager(std::move(options));
+    CreateMachineRequest base;
+    base.distro = QStringLiteral("test");
+    base.arch = QStringLiteral("amd64");
+    base.user = QStringLiteral("podstack");
+    base.diskBytes = 1024LL * 1024LL * 1024LL;
+
+    PodStack::Error error;
+    base.name = QStringLiteral("usb-a");
+    const MachineMeta first = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    base.name = QStringLiteral("usb-b");
+    const MachineMeta second = manager.create(base, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const MachineMeta attached =
+        manager.setUsbDevices(first.id, {MachineUsbDevice{1, 4, {}, {}, {}}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(attached.usbDevices.size(), 1);
+    QCOMPARE(attached.usbDevices.at(0).description, QStringLiteral("SanDisk Cruzer"));
+
+    error = {};
+    (void) manager.setUsbDevices(second.id, {MachineUsbDevice{1, 4, {}, {}, {}}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    error = {};
+    (void) manager.setUsbDevices(first.id, {MachineUsbDevice{9, 9, {}, {}, {}}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    const MachineMeta started = manager.start(first.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(started.state, QStringLiteral("running"));
+
+    runtimePtr->failStart = true;
+    error = {};
+    (void) manager.setUsbDevices(first.id, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QVERIFY(error.message.contains(QStringLiteral("não reiniciou")));
+    runtimePtr->failStart = false;
+
+    QVERIFY(manager.stop(first.id, false, &error).state != QStringLiteral("running"));
+
+    PodStack::MachineStore store(storePath);
+    QVERIFY(store.open(&error));
+    QVERIFY(store.updateState(first.id, QStringLiteral("deleting"), QString(), &error));
+    error = {};
+    (void) manager.setUsbDevices(first.id, {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QVERIFY(store.updateState(first.id, QStringLiteral("stopped"), QString(), &error));
+
+    error = {};
+    const MachineMeta detached = manager.setUsbDevices(first.id, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(detached.usbDevices.isEmpty());
 }
 
 void MachinesTest::machineManagerUpdateRemoveErrors()

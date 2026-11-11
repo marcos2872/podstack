@@ -46,6 +46,7 @@ private slots:
     void machineSsh();
     void machinePorts();
     void machineSerialPorts();
+    void machineDevicesFlow();
     void machineSnapshots();
     void machineStats();
     void machineFiles();
@@ -242,6 +243,23 @@ void RpcTest::initTestCase()
         "Volumes": [{"Name":"v1","UsageData":{"Size":20}}]
     })");
     m_dockerMock.setResponse(QStringLiteral("/networks"), 200, R"([{"Id":"n1"}])");
+    const QString sysUsb = m_testDataDir + QStringLiteral("/sys-usb");
+    QVERIFY(QDir().mkpath(sysUsb + QStringLiteral("/1-4")));
+    const auto writeSys = [](const QString &path, const QByteArray &value) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            return false;
+        }
+        file.write(value);
+        return true;
+    };
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/1-4/busnum"), "1\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/1-4/devnum"), "4\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/1-4/idVendor"), "0781\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/1-4/idProduct"), "5567\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/1-4/manufacturer"), "SanDisk\n"));
+    QVERIFY(writeSys(sysUsb + QStringLiteral("/1-4/product"), "Cruzer Blade\n"));
+    environment.insert(QStringLiteral("PODSTACK_SYSFS_USB"), sysUsb);
     environment.insert(QStringLiteral("PODSTACK_PODMAN_SOCKET"), m_mock.socketPath());
     environment.insert(QStringLiteral("PODSTACK_DOCKER_SOCKET"), m_dockerMock.socketPath());
     environment.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), m_controlSocket);
@@ -3391,6 +3409,128 @@ void RpcTest::machineSerialPorts()
                                    {QStringLiteral("path"), QStringLiteral("/dev/null")}},
                        &error);
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+}
+
+void RpcTest::machineDevicesFlow()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QString storePath = m_testDataDir + QStringLiteral("/data/podstack/podstack.db");
+    PodStack::MachineStore store(storePath);
+    QVERIFY(store.open(&error));
+
+    PodStack::MachineMeta machine;
+    machine.id = QStringLiteral("0190f0f0-0000-7000-8000-0000000000aa");
+    machine.name = QStringLiteral("rpc-devices");
+    machine.distro = QStringLiteral("test");
+    machine.arch = QStringLiteral("amd64");
+    machine.cpus = 2;
+    machine.memoryBytes = 1024LL * 1024LL * 1024LL;
+    machine.diskBytes = 1024LL * 1024LL * 1024LL;
+    machine.diskPath = m_testDataDir + QStringLiteral("/rpc-devices.qcow2");
+    machine.sshPort = 32223;
+    machine.sshUser = QStringLiteral("podstack");
+    machine.sshKeyPath = m_testDataDir + QStringLiteral("/rpc-devices.key");
+    machine.state = QStringLiteral("stopped");
+    machine.createdAt = QStringLiteral("2026-11-11T00:00:00.000Z");
+    machine.updatedAt = machine.createdAt;
+    QVERIFY(store.upsert(machine, &error));
+    const auto removeMachine = qScopeGuard([&store, &machine] { (void) store.remove(machine.id); });
+
+    const QString serialPath = m_testDataDir + QStringLiteral("/rpc-serial");
+    QFile serialFile(serialPath);
+    QVERIFY(serialFile.open(QIODevice::WriteOnly));
+    serialFile.write("serial");
+    serialFile.close();
+
+    const QJsonObject serialList =
+        client.call(QStringLiteral("machines.serial.list"),
+                    QJsonObject{{QStringLiteral("id"), machine.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(serialList.value(QStringLiteral("machine"))
+                 .toObject()
+                 .value(QStringLiteral("serialPorts"))
+                 .toArray()
+                 .size(),
+             0);
+
+    const QJsonObject serialAttached = client.call(
+        QStringLiteral("machines.serial.attach"),
+        QJsonObject{{QStringLiteral("id"), machine.id}, {QStringLiteral("path"), serialPath}},
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(serialAttached.value(QStringLiteral("serialPorts")).toArray().size(), 1);
+
+    const QJsonObject serialDetached = client.call(
+        QStringLiteral("machines.serial.detach"),
+        QJsonObject{{QStringLiteral("id"), machine.id}, {QStringLiteral("path"), serialPath}},
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(serialDetached.value(QStringLiteral("serialPorts")).toArray().size(), 0);
+
+    const QJsonObject usbList =
+        client.call(QStringLiteral("machines.usb.list"),
+                    QJsonObject{{QStringLiteral("id"), machine.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(usbList.value(QStringLiteral("devices")).toArray().size() >= 1);
+
+    const QJsonObject usbAttached = client.call(QStringLiteral("machines.usb.attach"),
+                                                QJsonObject{{QStringLiteral("id"), machine.id},
+                                                            {QStringLiteral("bus"), 1},
+                                                            {QStringLiteral("address"), 4}},
+                                                &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(usbAttached.value(QStringLiteral("usbDevices")).toArray().size(), 1);
+
+    const QJsonObject usbDetached = client.call(QStringLiteral("machines.usb.detach"),
+                                                QJsonObject{{QStringLiteral("id"), machine.id},
+                                                            {QStringLiteral("bus"), 1},
+                                                            {QStringLiteral("address"), 4}},
+                                                &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(usbDetached.value(QStringLiteral("usbDevices")).toArray().size(), 0);
+
+    error = {};
+    (void) client.call(QStringLiteral("machines.usb.attach"),
+                       QJsonObject{{QStringLiteral("id"), machine.id},
+                                   {QStringLiteral("bus"), 0},
+                                   {QStringLiteral("address"), 0}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    (void) client.call(QStringLiteral("machines.usb.attach"),
+                       QJsonObject{{QStringLiteral("id"), machine.id},
+                                   {QStringLiteral("bus"), 9},
+                                   {QStringLiteral("address"), 9}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    error = {};
+    (void) client.call(QStringLiteral("machines.usb.detach"),
+                       QJsonObject{{QStringLiteral("id"), machine.id},
+                                   {QStringLiteral("bus"), 1},
+                                   {QStringLiteral("address"), 4}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    (void) client.call(
+        QStringLiteral("machines.serial.detach"),
+        QJsonObject{{QStringLiteral("id"), machine.id}, {QStringLiteral("path"), serialPath}},
+        &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    QVERIFY(store.updateState(machine.id, QStringLiteral("deleting"), QString(), &error));
+    error = {};
+    (void) client.call(QStringLiteral("machines.usb.attach"),
+                       QJsonObject{{QStringLiteral("id"), machine.id},
+                                   {QStringLiteral("bus"), 1},
+                                   {QStringLiteral("address"), 4}},
+                       &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QVERIFY(store.updateState(machine.id, QStringLiteral("stopped"), QString(), &error));
 }
 
 void RpcTest::settingsFlow()

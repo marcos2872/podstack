@@ -41,6 +41,7 @@ Rectangle {
     signal resourcesRequested(string id)
     signal portsRequested(string id)
     signal serialRequested(string id)
+    signal usbRequested(string id)
     signal snapshotsRequested(string id)
     signal closeRequested()
     signal expandRequested(string id, int tab)
@@ -271,6 +272,18 @@ Rectangle {
             return "-"
         }
         return serial.join("\n")
+    }
+
+    function usbText() {
+        const devices =
+            root.machine && root.machine.usbDevices ? root.machine.usbDevices : []
+        const values = []
+        for (let i = 0; i < devices.length; ++i) {
+            const device = devices[i]
+            values.push(String(device.bus) + ":" + String(device.address) + " "
+                        + String(device.description || device.vendorId))
+        }
+        return values.length === 0 ? "-" : values.join("\n")
     }
 
     component MetricCard: Rectangle {
@@ -542,6 +555,18 @@ Rectangle {
             }
 
             ActionButton {
+                text: qsTr("USB")
+                size: "sm"
+                visible: !root.showTerminalTab
+                enabled: root.machineId.length > 0
+                         && root.machineState !== "provisioning"
+                         && root.machineState !== "deleting"
+                         && backend.actionActive === false
+                onClicked: root.usbRequested(root.machineId)
+                Accessible.name: qsTr("Gerenciar dispositivos USB da machine")
+            }
+
+            ActionButton {
                 text: qsTr("Snapshots")
                 size: "sm"
                 // O diálogo vive na MachinesPage; no overlay (detalhe) as demais
@@ -730,6 +755,23 @@ Rectangle {
                     Text {
                         Layout.fillWidth: true
                         text: root.serialText()
+                        color: Theme.textSecondary
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontMicro
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        text: qsTr("USB")
+                        color: Theme.textSecondary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.usbText()
                         color: Theme.textSecondary
                         font.family: Theme.monoFamily
                         font.pixelSize: Theme.fontMicro

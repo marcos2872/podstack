@@ -13,6 +13,7 @@
 #include "machines/DistroRegistry.h"
 #include "machines/MachineFiles.h"
 #include "machines/SerialPorts.h"
+#include "machines/UsbDevices.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -563,6 +564,15 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("machines.serial.detach")) {
         return machineSerialDetach(params, error);
+    }
+    if (method == QStringLiteral("machines.usb.list")) {
+        return machineUsbList(params, error);
+    }
+    if (method == QStringLiteral("machines.usb.attach")) {
+        return machineUsbAttach(params, error);
+    }
+    if (method == QStringLiteral("machines.usb.detach")) {
+        return machineUsbDetach(params, error);
     }
     if (method == QStringLiteral("machines.snapshots.list")) {
         return machineSnapshotsList(params, error);
@@ -1326,6 +1336,117 @@ QJsonObject Daemon::machineSerialDetach(const QJsonObject &params, Error *error)
     QStringList paths = current.serialPorts;
     paths.removeAll(path);
     const MachineMeta machine = m_machines.setSerialPorts(id, paths, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineUsbList(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const MachineMeta machine = m_machines.get(id, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+
+    QJsonArray devices;
+    for (const UsbDeviceInfo &info : listHostUsbDevices()) {
+        devices.append(info.toJson());
+    }
+    QJsonArray attached;
+    for (const MachineUsbDevice &device : machine.usbDevices) {
+        attached.append(device.toJson());
+    }
+    QJsonObject machineJson;
+    machineJson.insert(QStringLiteral("id"), machine.id);
+    machineJson.insert(QStringLiteral("name"), machine.name);
+    machineJson.insert(QStringLiteral("usbDevices"), attached);
+    return QJsonObject{{QStringLiteral("devices"), devices},
+                       {QStringLiteral("machine"), machineJson}};
+}
+
+QJsonObject Daemon::machineUsbAttach(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const int bus = params.value(QStringLiteral("bus")).toInt();
+    const int address = params.value(QStringLiteral("address")).toInt();
+    if (bus <= 0 || address <= 0) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe bus e address do dispositivo USB."),
+                                 QStringLiteral("bus/address"));
+        }
+        return {};
+    }
+
+    const MachineMeta current = m_machines.get(id, error);
+    if (current.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    QVector<MachineUsbDevice> devices = current.usbDevices;
+    bool exists = false;
+    for (const MachineUsbDevice &device : devices) {
+        if (device.bus == bus && device.address == address) {
+            exists = true;
+            break;
+        }
+    }
+    if (!exists) {
+        devices.append(MachineUsbDevice{bus, address, {}, {}, {}});
+    }
+    const MachineMeta machine = m_machines.setUsbDevices(id, devices, error);
+    if (machine.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    return machine.toJson();
+}
+
+QJsonObject Daemon::machineUsbDetach(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const int bus = params.value(QStringLiteral("bus")).toInt();
+    const int address = params.value(QStringLiteral("address")).toInt();
+    if (bus <= 0 || address <= 0) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe bus e address do dispositivo USB."),
+                                 QStringLiteral("bus/address"));
+        }
+        return {};
+    }
+
+    const MachineMeta current = m_machines.get(id, error);
+    if (current.id.isEmpty() || (error && !error->isEmpty())) {
+        return {};
+    }
+    QVector<MachineUsbDevice> devices;
+    bool found = false;
+    for (const MachineUsbDevice &device : current.usbDevices) {
+        if (device.bus == bus && device.address == address) {
+            found = true;
+            continue;
+        }
+        devices.append(device);
+    }
+    if (!found) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("O dispositivo USB não está anexado."),
+                                 QStringLiteral("%1:%2").arg(bus).arg(address));
+        }
+        return {};
+    }
+    const MachineMeta machine = m_machines.setUsbDevices(id, devices, error);
     if (machine.id.isEmpty() || (error && !error->isEmpty())) {
         return {};
     }
