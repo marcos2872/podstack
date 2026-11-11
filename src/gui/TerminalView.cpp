@@ -3,13 +3,17 @@
 
 #include "gui/ExternalTerminal.h"
 
-#include <QFontDatabase>
+#include <QAction>
+#include <QClipboard>
 #include <QFile>
+#include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QMenu>
 #include <QMessageBox>
 #include <QProcessEnvironment>
+#include <QShortcut>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -18,12 +22,9 @@
 
 namespace PodStack {
 
-TerminalView::TerminalView(const QString &title, const QString &program,
-                           const QStringList &args, QWidget *parent)
-    : QWidget(parent)
-    , m_title(title)
-    , m_program(program)
-    , m_arguments(args)
+TerminalView::TerminalView(const QString &title, const QString &program, const QStringList &args,
+                           QWidget *parent)
+    : QWidget(parent), m_title(title), m_program(program), m_arguments(args)
 {
     m_layout = new QVBoxLayout(this);
     m_layout->setContentsMargins(0, 0, 0, 0);
@@ -80,8 +81,8 @@ void TerminalView::configureTerminal(QTermWidget *terminal)
 
     QStringList environment;
     for (const QString &entry : QProcessEnvironment::systemEnvironment().toStringList()) {
-        if (!entry.startsWith(QStringLiteral("TERM="))
-            && !entry.startsWith(QStringLiteral("COLORTERM="))) {
+        if (!entry.startsWith(QStringLiteral("TERM=")) &&
+            !entry.startsWith(QStringLiteral("COLORTERM="))) {
             environment.append(entry);
         }
     }
@@ -92,6 +93,43 @@ void TerminalView::configureTerminal(QTermWidget *terminal)
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     font.setPointSize(11);
     terminal->setTerminalFont(font);
+
+    // O QTermWidget expõe copy/paste como slots, mas não instala atalhos:
+    // sem isso, Ctrl+Shift+C/V e o menu de contexto não funcionam no app.
+    auto *copyShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), terminal);
+    copyShortcut->setObjectName(QStringLiteral("terminalCopyShortcut"));
+    copyShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(copyShortcut, &QShortcut::activated, terminal, &QTermWidget::copyClipboard);
+
+    auto *copyInsert = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Insert")), terminal);
+    copyInsert->setObjectName(QStringLiteral("terminalCopyInsertShortcut"));
+    copyInsert->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(copyInsert, &QShortcut::activated, terminal, &QTermWidget::copyClipboard);
+
+    auto *pasteShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), terminal);
+    pasteShortcut->setObjectName(QStringLiteral("terminalPasteShortcut"));
+    pasteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(pasteShortcut, &QShortcut::activated, terminal, &QTermWidget::pasteClipboard);
+
+    auto *pasteInsert = new QShortcut(QKeySequence(QStringLiteral("Shift+Insert")), terminal);
+    pasteInsert->setObjectName(QStringLiteral("terminalPasteInsertShortcut"));
+    pasteInsert->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(pasteInsert, &QShortcut::activated, terminal, &QTermWidget::pasteClipboard);
+
+    terminal->setConfirmMultilinePaste(false);
+    terminal->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(terminal, &QWidget::customContextMenuRequested, terminal,
+            [terminal](const QPoint &position) {
+                QMenu menu(terminal);
+                QAction *copyAction = menu.addAction(QObject::tr("Copiar"));
+                QAction *pasteAction = menu.addAction(QObject::tr("Colar"));
+                QAction *chosen = menu.exec(terminal->mapToGlobal(position));
+                if (chosen == copyAction) {
+                    terminal->copyClipboard();
+                } else if (chosen == pasteAction) {
+                    terminal->pasteClipboard();
+                }
+            });
 }
 
 void TerminalView::startShell()
