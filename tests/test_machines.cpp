@@ -2095,8 +2095,13 @@ void MachinesTest::seedYamlDefaults()
     QVERIFY(yaml.contains(QStringLiteral("packages:\n  - xauth\n")));
     QVERIFY(yaml.contains(QStringLiteral("10-podstack-x11.conf\n")));
     QVERIFY(yaml.contains(QStringLiteral("      X11Forwarding yes\n")));
-    QVERIFY(yaml.contains(QStringLiteral("apt-get install -y x11-apps")));
-    QVERIFY(yaml.contains(QStringLiteral("dnf install -y xorg-x11-apps")));
+    QVERIFY(
+        yaml.contains(QStringLiteral("apt-get install -y xauth x11-apps pulseaudio alsa-utils")));
+    QVERIFY(yaml.contains(QStringLiteral("dnf install -y xauth xorg-x11-apps")));
+    QVERIFY(yaml.contains(QStringLiteral("linux-image-$arch")));
+    QVERIFY(yaml.contains(QStringLiteral("pulseaudio --start")));
+    QVERIFY(yaml.contains(QStringLiteral("/usr/local/sbin/podstack-guest-setup")));
+    QVERIFY(yaml.contains(QStringLiteral("need_reboot=1")));
     QVERIFY(!yaml.contains(QStringLiteral("    passwd:")));
 
     QCOMPARE(QString::fromUtf8(networkConfig),

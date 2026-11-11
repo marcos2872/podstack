@@ -149,6 +149,57 @@ QString metaDataFor(const CloudInitOptions &options)
         .arg(yamlQuote(options.machineId), yamlQuote(options.hostname));
 }
 
+QString guestSetupScript()
+{
+    return QStringLiteral(
+        "#!/bin/sh\n"
+        "set -u\n"
+        ". /etc/os-release 2>/dev/null || true\n"
+        "user=\"${1:-root}\"\n"
+        "ssh_service=ssh\n"
+        "need_reboot=0\n"
+        "if command -v apt-get >/dev/null 2>&1; then\n"
+        "  export DEBIAN_FRONTEND=noninteractive\n"
+        "  apt-get install -y xauth x11-apps pulseaudio alsa-utils || true\n"
+        "  if [ \"${ID:-}\" = \"debian\" ]; then\n"
+        "    arch=$(dpkg --print-architecture 2>/dev/null || echo amd64)\n"
+        "    apt-get install -y \"linux-image-$arch\" || true\n"
+        "    cloud_kernels=$(dpkg-query -W -f='${Package}\\n' 'linux-image-*cloud*' "
+        "2>/dev/null || true)\n"
+        "    if [ -n \"$cloud_kernels\" ]; then apt-get purge -y $cloud_kernels || true; fi\n"
+        "    update-grub || true\n"
+        "    need_reboot=1\n"
+        "  else\n"
+        "    apt-get install -y \"linux-modules-extra-$(uname -r)\" || true\n"
+        "    modprobe snd-hda-intel 2>/dev/null || true\n"
+        "  fi\n"
+        "  if command -v pulseaudio >/dev/null 2>&1; then\n"
+        "    uid=$(id -u \"$user\" 2>/dev/null || echo 0)\n"
+        "    runuser -u \"$user\" -- env XDG_RUNTIME_DIR=\"/run/user/$uid\" pulseaudio "
+        "--start --exit-idle-time=-1 2>/dev/null || true\n"
+        "  fi\n"
+        "elif command -v dnf >/dev/null 2>&1; then\n"
+        "  dnf install -y xauth xorg-x11-apps \"kernel-modules-extra-$(uname -r)\" "
+        "pipewire pipewire-pulseaudio wireplumber alsa-utils || true\n"
+        "  modprobe snd-hda-intel 2>/dev/null || true\n"
+        "  uid=$(id -u \"$user\" 2>/dev/null || echo 0)\n"
+        "  loginctl enable-linger \"$user\" 2>/dev/null || true\n"
+        "  runuser -u \"$user\" -- env XDG_RUNTIME_DIR=\"/run/user/$uid\" systemctl "
+        "--user enable --now pipewire.socket pipewire-pulse.socket wireplumber "
+        "2>/dev/null || true\n"
+        "  ssh_service=sshd\n"
+        "fi\n"
+        "mkdir -p /etc/ssh/sshd_config.d\n"
+        "printf 'X11Forwarding yes\\n' > /etc/ssh/sshd_config.d/10-podstack-x11.conf\n"
+        "if command -v sshd >/dev/null 2>&1 && ! sshd -T 2>/dev/null | "
+        "grep -qi '^x11forwarding yes'; then\n"
+        "  sed -i 's/^#\\?X11Forwarding.*/X11Forwarding yes/' /etc/ssh/sshd_config || true\n"
+        "fi\n"
+        "systemctl restart \"$ssh_service\" 2>/dev/null || "
+        "systemctl restart sshd 2>/dev/null || true\n"
+        "if [ \"$need_reboot\" = \"1\" ]; then reboot; fi\n");
+}
+
 QString userDataFor(const CloudInitOptions &options, const QString &hash)
 {
     if (!options.userData.isEmpty()) {
@@ -192,26 +243,16 @@ QString userDataFor(const CloudInitOptions &options, const QString &hash)
                            "    permissions: '0644'\n"
                            "    content: |\n"
                            "      X11Forwarding yes\n"
-                           "runcmd:\n"
-                           "  - |\n"
-                           "    if command -v apt-get >/dev/null 2>&1; then\n"
-                           "      DEBIAN_FRONTEND=noninteractive apt-get install -y x11-apps "
-                           "|| true\n"
-                           "      ssh_service=ssh\n"
-                           "    elif command -v dnf >/dev/null 2>&1; then\n"
-                           "      dnf install -y xorg-x11-apps || true\n"
-                           "      ssh_service=sshd\n"
-                           "    else\n"
-                           "      ssh_service=ssh\n"
-                           "    fi\n"
-                           "    if command -v sshd >/dev/null 2>&1 \\\n"
-                           "       && ! sshd -T 2>/dev/null | grep -qi '^x11forwarding yes'; "
-                           "then\n"
-                           "      sed -i 's/^#\\?X11Forwarding.*/X11Forwarding yes/' "
-                           "/etc/ssh/sshd_config || true\n"
-                           "    fi\n"
-                           "    systemctl restart \"$ssh_service\" 2>/dev/null \\\n"
-                           "      || systemctl restart sshd 2>/dev/null || true\n");
+                           "  - path: /usr/local/sbin/podstack-guest-setup\n"
+                           "    permissions: '0755'\n"
+                           "    content: |\n");
+    const QStringList script = guestSetupScript().split(QLatin1Char('\n'));
+    for (const QString &line : script) {
+        data += QStringLiteral("      ") + line + QLatin1Char('\n');
+    }
+    data += QStringLiteral("runcmd:\n"
+                           "  - /usr/local/sbin/podstack-guest-setup %1\n")
+                .arg(yamlQuote(user));
     return data;
 }
 

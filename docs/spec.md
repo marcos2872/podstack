@@ -443,8 +443,10 @@ Estados: `provisioning → running → stopping → stopped → starting → run
   o host precisa de `DISPLAY`/`XAUTHORITY` e o guest de `xauth`/cliente X11 (T8-04). Wayland
   nativo depende do compositor/cliente do guest e não é encaminhado pelo SSH.
 - Novas VMs recebem via cloud-init `xauth`, `x11-apps` (Debian/Ubuntu) ou `xorg-x11-apps`
-  (Fedora) e o drop-in `/etc/ssh/sshd_config.d/10-podstack-x11.conf` com `X11Forwarding yes`;
-  o sshd é reiniciado no final. VMs criadas antes disso precisam do passo manual.
+  (Fedora), o drop-in `/etc/ssh/sshd_config.d/10-podstack-x11.conf` com `X11Forwarding yes`
+  e o stack de áudio (PulseAudio no Debian/Ubuntu; PipeWire no Fedora). Em Debian o kernel
+  cloud sem módulos de som é substituído pelo genérico e o guest reinicia no primeiro boot;
+  em Ubuntu instala-se `linux-modules-extra`. VMs antigas precisam do passo manual.
 
 - Chave ed25519 por máquina em `~/.local/share/podstack/machines/<id>/id_ed25519` (0600),
   gerada por `ssh-keygen` na criação; a pública (`.pub`, 0644) vai para o seed cloud-init.
