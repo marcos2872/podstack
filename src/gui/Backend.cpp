@@ -194,10 +194,15 @@ Backend::Backend(QObject *parent)
             &Backend::onSetupFinished);
     connect(&m_updateWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onUpdateFinished);
+    connect(&m_diskWatcher, &QFutureWatcher<QJsonObject>::finished, this, &Backend::onDiskFinished);
     m_updateTimer.setInterval(6 * 60 * 60 * 1000);
     connect(&m_updateTimer, &QTimer::timeout, this, [this] { checkForUpdates(false); });
     m_updateTimer.start();
     QTimer::singleShot(30000, this, [this] { checkForUpdates(false); });
+    m_diskTimer.setInterval(5 * 60 * 1000);
+    connect(&m_diskTimer, &QTimer::timeout, this, &Backend::checkDiskHealth);
+    m_diskTimer.start();
+    QTimer::singleShot(15000, this, &Backend::checkDiskHealth);
     connect(&m_settingsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onSettingsFinished);
     connect(&m_settingsActionWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -2520,6 +2525,48 @@ void Backend::setupLoadDockerImpact()
     m_setupDockerImpact.clear();
     emit setupChanged();
     runSetupRequest(QStringLiteral("setup.dockerImpact"), {});
+}
+
+void Backend::checkDiskHealth()
+{
+    if (m_diskCheckRunning) {
+        return;
+    }
+    m_diskCheckRunning = true;
+    m_diskWatcher.setFuture(QtConcurrent::run([] {
+        RpcClient client;
+        Error error;
+        QJsonObject result = client.call(QStringLiteral("system.disk"), {}, &error);
+        if (!error.isEmpty()) {
+            result.insert(QStringLiteral("__error"), error.message);
+        }
+        return result;
+    }));
+}
+
+void Backend::onDiskFinished()
+{
+    m_diskCheckRunning = false;
+    const QJsonObject result = m_diskWatcher.result();
+    if (result.contains(QStringLiteral("__error"))) {
+        return;
+    }
+    m_diskHealth = result.toVariantMap();
+    emit diskHealthChanged();
+
+    if (result.value(QStringLiteral("low")).toBool()) {
+        const int threshold = result.value(QStringLiteral("thresholdPercent")).toInt();
+        const QJsonArray filesystems = result.value(QStringLiteral("filesystems")).toArray();
+        for (const QJsonValue &value : filesystems) {
+            const QJsonObject filesystem = value.toObject();
+            if (filesystem.value(QStringLiteral("usedPercent")).toDouble() >= threshold) {
+                QVariantMap sample = filesystem.toVariantMap();
+                sample.insert(QStringLiteral("thresholdPercent"), threshold);
+                emit diskLow(sample);
+                break;
+            }
+        }
+    }
 }
 
 void Backend::setupRemoveDocker()

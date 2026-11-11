@@ -1552,6 +1552,17 @@ void CliTest::systemDf()
                   QStringLiteral("--unknown")},
                  env);
     QCOMPARE(result.code, 2);
+
+    result = run({QStringLiteral("system"), QStringLiteral("disk"), QStringLiteral("--json")}, env);
+    QCOMPARE(result.code, 0);
+    const QJsonDocument diskDocument = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QVERIFY(diskDocument.object().value(QStringLiteral("thresholdPercent")).toInt() > 0);
+    QVERIFY(diskDocument.object().value(QStringLiteral("filesystems")).toArray().size() >= 1);
+
+    result = run({QStringLiteral("system"), QStringLiteral("disk")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("Disco baixo")));
 }
 
 void CliTest::composeAndBuild()
@@ -1768,7 +1779,7 @@ void CliTest::configCommands()
     QJsonParseError parseError{};
     QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().size(), 85);
+    QCOMPARE(document.object().size(), 86);
     QCOMPARE(document.object().value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
 
@@ -1867,11 +1878,10 @@ void CliTest::configCommands()
     QCOMPARE(result.code, 0);
     document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 85);
+    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 86);
 
-    result = run({QStringLiteral("config"), QStringLiteral("reset"),
-                  QStringLiteral("app.theme")},
-                 env);
+    result =
+        run({QStringLiteral("config"), QStringLiteral("reset"), QStringLiteral("app.theme")}, env);
     QCOMPARE(result.code, 2);
     QVERIFY(result.err.contains(QStringLiteral("--yes")));
 

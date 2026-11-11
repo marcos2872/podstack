@@ -133,6 +133,7 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantMap setupSummary READ setupSummary NOTIFY setupChanged)
     Q_PROPERTY(QVariantMap setupDockerImpact READ setupDockerImpact NOTIFY setupChanged)
     Q_PROPERTY(QVariantMap updateStatus READ updateStatus NOTIFY updateStatusChanged)
+    Q_PROPERTY(QVariantMap diskHealth READ diskHealth NOTIFY diskHealthChanged)
     Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
     Q_PROPERTY(QString setupJobId READ setupJobId NOTIFY setupJobChanged)
     Q_PROPERTY(bool setupJobActive READ setupJobActive NOTIFY setupJobChanged)
@@ -251,6 +252,7 @@ public:
     QVariantMap setupSummary() const { return m_setupSummary; }
     QVariantMap setupDockerImpact() const { return m_setupDockerImpact; }
     QVariantMap updateStatus() const { return m_updateStatus; }
+    QVariantMap diskHealth() const { return m_diskHealth; }
     QString setupDockerPolicy() const { return m_setupDockerPolicy; }
     QString setupJobId() const { return m_setupJobId; }
     bool setupJobActive() const { return m_setupJobActive; }
@@ -411,6 +413,7 @@ public:
     Q_INVOKABLE void setupLoadDockerImpact();
     Q_INVOKABLE void setupRemoveDocker();
     Q_INVOKABLE void checkForUpdates(bool interactive = false);
+    Q_INVOKABLE void checkDiskHealth();
     Q_INVOKABLE void setupCancel();
     Q_INVOKABLE void setupComplete();
     Q_INVOKABLE void setupSkip();
@@ -457,6 +460,8 @@ signals:
     void updateStatusChanged();
     void updateAvailable(const QVariantMap &release);
     void updateCheckFailed(const QString &reason);
+    void diskHealthChanged();
+    void diskLow(const QVariantMap &sample);
     void containerEvent(const QVariantMap &event);
     void terminalRequested(const QString &title, const QString &program,
                            const QStringList &args);
@@ -476,6 +481,7 @@ private:
     void onCatalogFinished();
     void onSetupFinished();
     void onUpdateFinished();
+    void onDiskFinished();
     void onSettingsFinished();
     void onSettingsActionFinished();
     void setSettingInternal(const QString &key, const QVariant &value,
@@ -522,6 +528,7 @@ private:
     QFutureWatcher<QJsonObject> m_catalogWatcher;
     QFutureWatcher<QJsonObject> m_setupWatcher;
     QFutureWatcher<QJsonObject> m_updateWatcher;
+    QFutureWatcher<QJsonObject> m_diskWatcher;
     QFutureWatcher<QJsonObject> m_machinesWatcher;
     QFutureWatcher<QJsonObject> m_machineDistrosWatcher;
     QFutureWatcher<QJsonObject> m_machineInfoWatcher;
@@ -567,6 +574,7 @@ private:
     QTimer m_refreshTimer;
     QTimer m_eventsRetryTimer;
     QTimer m_updateTimer;
+    QTimer m_diskTimer;
     int m_eventsRetryDelayMs = 1000;
     QList<PendingAction> m_actionQueue;
     bool m_actionActive = false;
@@ -682,6 +690,8 @@ private:
     QVariantMap m_updateStatus;
     bool m_updateCheckRunning = false;
     bool m_updateInteractive = false;
+    QVariantMap m_diskHealth;
+    bool m_diskCheckRunning = false;
     QString m_setupDockerPolicy = QStringLiteral("keep");
     QString m_setupJobId;
     bool m_setupJobActive = false;

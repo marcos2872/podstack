@@ -59,6 +59,7 @@ private slots:
     void setupFlow();
     void updatesCheck();
     void setupDockerImpact();
+    void systemDisk();
     void settingsFlow();
     void invalidRequests();
 
@@ -3314,6 +3315,48 @@ void RpcTest::setupDockerImpact()
     QCOMPARE(impact.value(QStringLiteral("estimatedSizeBytes")).toDouble(), 7030.0);
 }
 
+void RpcTest::systemDisk()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const QJsonObject disk = client.call(QStringLiteral("system.disk"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(disk.value(QStringLiteral("thresholdPercent")).toInt(), 90);
+    QVERIFY(disk.value(QStringLiteral("low")).isBool());
+    QVERIFY(disk.value(QStringLiteral("filesystems")).isArray());
+    QVERIFY(disk.value(QStringLiteral("filesystems")).toArray().size() >= 1);
+    QVERIFY(disk.value(QStringLiteral("errors")).isArray());
+    const QJsonObject root = disk.value(QStringLiteral("filesystems")).toArray().first().toObject();
+    QVERIFY(root.value(QStringLiteral("totalBytes")).toDouble() > 0);
+    QVERIFY(root.value(QStringLiteral("usedPercent")).toDouble() >= 0.0);
+    QVERIFY(root.value(QStringLiteral("usedPercent")).toDouble() <= 100.0);
+
+    (void) client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("notifications.diskThresholdPercent")},
+                    {QStringLiteral("value"), 50}},
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QJsonObject changed = client.call(QStringLiteral("system.disk"), {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(changed.value(QStringLiteral("thresholdPercent")).toInt(), 50);
+
+    (void) client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("notifications.diskThresholdPercent")},
+                    {QStringLiteral("value"), 200}},
+        &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+    error = {};
+    (void) client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), QStringLiteral("notifications.diskThresholdPercent")},
+                    {QStringLiteral("value"), 90}},
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+}
+
 void RpcTest::settingsFlow()
 {
     PodStack::RpcClient client(m_controlSocket);
@@ -3322,7 +3365,7 @@ void RpcTest::settingsFlow()
     const QJsonObject schema = client.call(QStringLiteral("settings.schema"), {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     const QJsonArray definitions = schema.value(QStringLiteral("schema")).toArray();
-    QCOMPARE(definitions.size(), 85);
+    QCOMPARE(definitions.size(), 86);
     bool engineRestart = false;
     bool proxySecret = false;
     for (const QJsonValue &value : definitions) {
@@ -3342,11 +3385,10 @@ void RpcTest::settingsFlow()
     const QJsonObject all = client.call(QStringLiteral("settings.get"), {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     const QJsonObject defaults = all.value(QStringLiteral("values")).toObject();
-    QCOMPARE(defaults.size(), 85);
+    QCOMPARE(defaults.size(), 86);
     QCOMPARE(defaults.value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
-    QCOMPARE(defaults.value(QStringLiteral("app.theme")).toString(),
-             QStringLiteral("system"));
+    QCOMPARE(defaults.value(QStringLiteral("app.theme")).toString(), QStringLiteral("system"));
     QCOMPARE(defaults.value(QStringLiteral("network.httpsPort")).toInt(), 8443);
 
     const QJsonObject one =

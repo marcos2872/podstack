@@ -104,6 +104,7 @@ interface Subscription { subscriptionId: string }
 
 | Método | Params | Result |
 |---|---|---|
+| `system.disk` | `{}` | `{checkedAt, thresholdPercent, low, filesystems:[{path, kind, totalBytes, freeBytes, availableBytes, usedPercent}], errors:[]}` |
 | `system.hello` | `{client, version, api}` | `{apiVersion, daemonVersion, podman:{version,api,socket,rootless}}` |
 | `system.status` | `{}` | `{state, engine, mode, version, uptimeSeconds, counts, warnings[]}` |
 | `system.doctor` | `{deep?:bool}` | `{checks:[{id,status,detail,remediation}]}` |
@@ -685,7 +686,7 @@ logado.
 
 | Método | Params | Result |
 |---|---|---|
-| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 85 chaves; com `key`, um único item |
+| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 86 chaves; com `key`, um único item |
 | `settings.set` | `{key, value}` | `{values, key, restartRequired}` — `value` é validado antes de salvar |
 | `settings.reset` | `{key?}` | `{values, restartRequired}` — sem `key`, restaura todos |
 | `settings.schema` | `{}` | `{schema:[{key,type,default,category,description,restartRequired,secret,nullable,enum?,min?,max?}]}` |

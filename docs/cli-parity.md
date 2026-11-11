@@ -95,6 +95,7 @@
 | `report` | `report` | `--include-logs`, `--json` | ✅ T7-08 — arquivo 0600 em `state/reports` com `path/bytes/sha256`; redaction de segredos; revisão local |
 | `top` | `top` | `--once`, `--interval S`, `--json`, `--plain` | ✅ T7-04 — `top --once` espera duas amostras (taxas reais); contínuo até Ctrl+C |
 | — | `system df` | `--detailed`, `--json` | ✅ T2-18 — resumo por seção; `--detailed` lista imagens/containers/volumes e o total recuperável estimado |
+| — | `system disk` | `--json` | ✅ T7-05 — espaço de `/`, do estado do PodStack e do storage do Podman; `low` conforme `notifications.diskThresholdPercent` |
 | `completion` | `completion` | `--shell` | bash/zsh/fish |
 
 ### 2.3 Docker/Compose/Builds
@@ -197,7 +198,7 @@ Comandos próprios para imagens, volumes, redes e pods (o `orb` delega ao Docker
 | `config remove K V` | `config remove K V` | — | ✅ T7-01 |
 | `config reset` | `config reset [K]` | `--all`, `--yes` | ✅ T7-01; sem `--yes` exige TTY; reset total preserva `setup.*` |
 | `config docker` | `config engine` | — | não implementado no v1 (edite `docker.daemonJsonPath` via `config set`) |
-| — | `config schema` | `--json` | ✅ T7-01; 85 chaves com tipo/default/enum/faixa/restart |
+| — | `config schema` | `--json` | ✅ T7-01; 86 chaves com tipo/default/enum/faixa/restart |
 | `login` / `logout` | `login` / `logout` | `--domain`, `--force` | Opcional (P2) |
 
 ### 2.5 Kubernetes
