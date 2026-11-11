@@ -29,7 +29,7 @@ struct SettingDef {
 
 namespace Settings {
 
-/// Definições na ordem documentada em docs/settings.md (82 chaves).
+/// Definições na ordem documentada em docs/settings.md (83 chaves).
 const QVector<SettingDef> &definitions();
 
 const SettingDef *find(const QString &key);

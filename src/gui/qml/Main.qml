@@ -27,7 +27,8 @@ Rectangle {
         refreshCurrent()
     }
 
-    function applyTheme(theme) {
+    function applyAppearance() {
+        const theme = backend.settingsValues["app.theme"] || "system"
         if (theme === "light") {
             Theme.dark = false
         } else if (theme === "dark") {
@@ -35,6 +36,8 @@ Rectangle {
         } else {
             Theme.dark = Qt.styleHints.colorScheme !== Qt.ColorScheme.Light
         }
+        const scale = Number(backend.settingsValues["app.fontScale"] || 100)
+        Theme.fontScale = (isFinite(scale) && scale >= 50 && scale <= 200) ? scale / 100 : 1.0
     }
 
     function reveal() {
@@ -42,7 +45,7 @@ Rectangle {
     }
 
     Component.onCompleted: {
-        applyTheme(backend.settingsValues["app.theme"] || "system")
+        applyAppearance()
         backend.refreshSettings()
         backend.setupRefresh()
     }
@@ -57,9 +60,18 @@ Rectangle {
         }
 
         function onSettingsValuesChanged() {
-            applyTheme(backend.settingsValues["app.theme"] || "system")
+            applyAppearance()
         }
 
+    }
+
+    Connections {
+        target: Qt.styleHints
+        function onColorSchemeChanged() {
+            if ((backend.settingsValues["app.theme"] || "system") === "system") {
+                applyAppearance()
+            }
+        }
     }
 
     SetupWindow {

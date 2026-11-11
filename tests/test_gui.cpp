@@ -1435,6 +1435,12 @@ void GuiTest::backendTheme()
     QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
              QStringLiteral("system"));
     QTRY_VERIFY(actionSpy.count() >= 2);
+
+    backend.setSetting(QStringLiteral("app.fontScale"), 120);
+    QTRY_COMPARE(backend.settingsValues().value(QStringLiteral("app.fontScale")).toInt(), 120);
+    backend.setSetting(QStringLiteral("app.fontScale"), 200);
+    QTRY_VERIFY(!backend.settingsError().isEmpty());
+    QCOMPARE(backend.settingsValues().value(QStringLiteral("app.fontScale")).toInt(), 120);
 }
 
 void GuiTest::backendSettings()
@@ -1445,7 +1451,7 @@ void GuiTest::backendSettings()
     QSignalSpy finishedSpy(&backend, &PodStack::Backend::settingFinished);
 
     backend.refreshSettings();
-    QTRY_COMPARE(backend.settingsSchema().size(), 82);
+    QTRY_COMPARE(backend.settingsSchema().size(), 83);
     QVERIFY(schemaSpy.count() > 0);
     QVERIFY(backend.settingsValues().contains(QStringLiteral("engine.mode")));
     QVERIFY(valuesSpy.count() > 0);

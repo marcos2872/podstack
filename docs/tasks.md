@@ -195,15 +195,15 @@ rootless; o M6 está concluído no código.
 
 ## M7 — Desktop, settings, updates
 
-> **Status (2026-11-08):** tray implementado (`TrayController`/SNI, fechar-para-bandeja, Abrir,
+> **Status (2026-11-10):** T7-02 (tema/escala) implementado. tray implementado (`TrayController`/SNI, fechar-para-bandeja, Abrir,
 > Containers por projeto Compose, Activity Monitor, Configurações, Sair, instância única e
 > autostart). Activity Monitor e notificações de falha/OOM/unhealthy entregues; submenus de
 > Machines/Kubernetes e “Verificar atualizações” seguem bloqueados por M4/M5 e T7-06.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T7-01 | P0 | Settings GUI + CLI (schema, validação, sync) | T0-09 | Chaves equivalentes — ✅ implementado: schema central de 82 chaves (`src/core/Settings.cpp`), `settings.get/set/reset/schema` no daemon, CLI `podstack config` e GUI modal por categoria com validação; `test_core`/`test_rpc`/`test_cli`/`test_gui` verdes |
-| T7-02 | P0 | Tema claro/escuro + escala de fonte | T0-11 | Troca em runtime |
+| T7-01 | P0 | Settings GUI + CLI (schema, validação, sync) | T0-09 | Chaves equivalentes — ✅ implementado: schema central de 83 chaves (`src/core/Settings.cpp`), `settings.get/set/reset/schema` no daemon, CLI `podstack config` e GUI modal por categoria com validação; `test_core`/`test_rpc`/`test_cli`/`test_gui` verdes |
+| T7-02 | P0 | Tema claro/escuro + escala de fonte | T0-11 | ✅ — `app.theme` (`system`/`dark`/`light`) é reaplicado em runtime e reage ao `colorScheme` do sistema; `app.fontScale` (80–150, default 100) multiplica os tokens de tipografia do `Theme.qml`. Schema passou a 83 chaves. Evidência: `test_core/configSchemaCoversDocumentedKeys` (83), `test_gui/backendTheme` (120 aplicado, 200 rejeitado) e `test_terminal/mainWindowQml` (UI carrega). |
 | T7-03 | P1 | Bandeja SNI + menu de contexto | T0-11 | Noctalia/KDE — implementado (Abrir, Containers por projeto, Activity Monitor, Settings, Sair; fechar esconde; instância única); submenus Machines/K8s dependem de M4/M5 |
 | T7-04 | P1 | Activity Monitor (gráficos + `podstack top`) | T1-07 | Dados corretos — implementado (`system.stats.subscribe` + `ActivityMonitorWindow` + `podstack top [--once|--interval|--json|--plain]`); `test_cli::topCommand` |
 | T7-05 | P1 | Notificações (OOM, falha, update, disco) | T3-07 | Respeita DND — implementado para OOM/falha/unhealthy (D-Bus, cooldown); update/disco pendentes |

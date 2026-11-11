@@ -192,7 +192,7 @@ const QVector<SettingDef> &definitions()
 {
     static const QVector<SettingDef> defs = [] {
         QVector<SettingDef> list;
-        list.reserve(82);
+        list.reserve(83);
 
         // Geral
         list.append(makeBool(QStringLiteral("app.startAtLogin"), false,
@@ -213,6 +213,8 @@ const QVector<SettingDef> &definitions()
                              {QStringLiteral("system"), QStringLiteral("dark"),
                               QStringLiteral("light")},
                              QStringLiteral("Geral"), QStringLiteral("Tema da UI.")));
+        list.append(makeInt(QStringLiteral("app.fontScale"), 100, 80, 150, QStringLiteral("Geral"),
+                            QStringLiteral("Escala da fonte da interface (%).")));
         list.append(makeString(QStringLiteral("app.language"), QStringLiteral("pt-BR"),
                                QStringLiteral("Geral"),
                                QStringLiteral("Idioma da interface (pt-BR ou en-US).")));
