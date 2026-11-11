@@ -38,6 +38,18 @@ struct MachineSnapshot {
     QJsonObject toJson() const;
 };
 
+/// Porta serial do host anexada a uma machine.
+struct MachineUsbDevice {
+    int bus = 0;
+    int address = 0;
+    QString vendorId;
+    QString productId;
+    QString description;
+
+    QJsonObject toJson() const;
+    static MachineUsbDevice fromJson(const QJsonObject &object);
+};
+
 /// Metadados persistidos de uma machine. Timestamps em RFC 3339 UTC com milissegundos.
 struct MachineMeta {
     QString id;
@@ -64,6 +76,7 @@ struct MachineMeta {
     QVector<MachinePort> ports;
     QVector<MachineMount> mounts;
     QStringList serialPorts;
+    QVector<MachineUsbDevice> usbDevices;
     QJsonObject toJson() const;
     static MachineMeta fromJson(const QJsonObject &object);
 };

@@ -234,7 +234,7 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T8-01 | P2 | USB list/attach/detach (QEMU usb-host) | T4-03 | Device no guest |
+| T8-01 | P2 | USB list/attach/detach (QEMU usb-host) | T4-03 | ✅ — `machines.usb.list/attach/detach` listam dispositivos USB do host (sysfs, sem hubs), anexam por `bus:address` via `usb-host` + `qemu-xhci`, recusam o mesmo device em duas machines e reiniciam se rodando. CLI `machine usb list/attach/detach` e diálogo **USB** no inspetor/Machines. Evidência: `test_machines/usbDevicesListing`, `qemuCommandUsbDevices`, `machineManagerUsbDevices`, `machineMetaRoundTrip`; `test_rpc/machineDevicesFlow`; `test_cli/machineDevicesCommands`. |
 | T8-02 | P2 | Serial ports | T4-03 | ✅ — `machines.serial.list/attach/detach` listam `ttyUSB*`/`ttyACM*` e UARTs reais (`ttyS*` com `type>0`, sem os placeholders `serial8250`), com descrição do dispositivo (fabricante/produto USB ou tipo da UART); validam caminho legível, recusam a mesma porta em duas machines e reiniciam se estiver rodando. `serialPorts` vai para o `meta.json`/SQLite e vira `-serial <path>` no QEMU. CLI `machine serial list/attach/detach` e diálogo **Serial** no inspetor/Machines. Evidência: `test_machines/qemuCommandSerialPorts`, `machineManagerSerialPorts`, `machineMetaRoundTrip`; `test_rpc/machineSerialPorts`; `test_cli/machineCommands`. |
 | T8-03 | P2 | Áudio (virtio-snd/PipeWire) | T4-03 | Playback/recording |
 | T8-04 | P2 | X11/Wayland forwarding | T4-03 | App gráfico no host |

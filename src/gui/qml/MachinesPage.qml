@@ -17,6 +17,8 @@ ColumnLayout {
     property var portsDraft: []
     property string pendingSerialId: ""
     property bool serialActionPending: false
+    property string pendingUsbId: ""
+    property bool usbActionPending: false
     property bool resourcesActionPending: false
     property int resourcesOriginalCpus: 0
     property int resourcesOriginalMemoryGiB: 0
@@ -170,6 +172,33 @@ ColumnLayout {
         serialActionPending = true
         serialError.text = ""
         backend.attachMachineSerialPort(pendingSerialId, path)
+    }
+
+    function openUsbDialog(id) {
+        pendingUsbId = id
+        usbActionPending = false
+        usbError.text = ""
+        backend.refreshMachineUsbDevices(id)
+        backend.loadMachineInfo(id)
+        usbDialog.open()
+    }
+
+    function attachUsbDevice(bus, address) {
+        if (pendingUsbId.length === 0 || usbActionPending) {
+            return
+        }
+        usbActionPending = true
+        usbError.text = ""
+        backend.attachMachineUsbDevice(pendingUsbId, bus, address)
+    }
+
+    function detachUsbDevice(bus, address) {
+        if (pendingUsbId.length === 0 || usbActionPending) {
+            return
+        }
+        usbActionPending = true
+        usbError.text = ""
+        backend.detachMachineUsbDevice(pendingUsbId, bus, address)
     }
 
     function detachSerialPort(path) {
@@ -521,6 +550,9 @@ ColumnLayout {
             onSerialRequested: function(id) {
                 machinesPage.openSerialDialog(id)
             }
+            onUsbRequested: function(id) {
+                machinesPage.openUsbDialog(id)
+            }
             onSnapshotsRequested: function(id) {
                 machinesPage.pendingSnapshotsId = id
                 machinesPage.snapshotActionPending = false
@@ -594,6 +626,20 @@ ColumnLayout {
                     }
                 } else {
                     snapshotsError.text = message.length > 0 ? message : backend.lastError
+                }
+                return
+            }
+            if (machinesPage.usbActionPending) {
+                machinesPage.usbActionPending = false
+                if (ok) {
+                    usbError.text = ""
+                    backend.refreshMachineUsbDevices(machinesPage.pendingUsbId)
+                    backend.loadMachineInfo(machinesPage.pendingUsbId)
+                } else {
+                    usbError.text = message.length > 0 ? message : backend.lastError
+                }
+                if (!usbDialog.opened) {
+                    machinesPage.pendingUsbId = ""
                 }
                 return
             }
@@ -1296,6 +1342,150 @@ ColumnLayout {
                          && backend.machineCreateStage !== "done"
                 onClicked: backend.cloneMachine(machinesPage.pendingCloneId,
                                                 cloneName.text.trim())
+            }
+        }
+    }
+
+    AppDialog {
+        id: usbDialog
+        title: qsTr("Dispositivos USB")
+        modal: true
+        width: 560
+        anchors.centerIn: parent
+        closePolicy: machinesPage.usbActionPending ? Popup.NoAutoClose
+                                                   : Popup.CloseOnEscape
+                                                     | Popup.CloseOnPressOutside
+        onClosed: {
+            machinesPage.pendingUsbId = ""
+            machinesPage.usbActionPending = false
+            usbError.text = ""
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 9
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Anexe dispositivos USB do host (ex.: pendrive) à máquina. "
+                           + "A máquina reinicia ao anexar ou desanexar se estiver rodando.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                text: qsTr("Anexados")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: (backend.machineInfo.usbDevices || []).length === 0
+                text: qsTr("Nenhum dispositivo USB anexado.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+
+            ListView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(160, Math.max(1,
+                    (backend.machineInfo.usbDevices || []).length) * 36)
+                clip: true
+                model: backend.machineInfo.usbDevices || []
+                delegate: RowLayout {
+                    required property var modelData
+                    width: ListView.view.width
+                    height: 36
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        text: String(modelData.bus) + ":" + String(modelData.address)
+                              + "  " + String(modelData.description || modelData.vendorId)
+                        color: Theme.textPrimary
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontMeta
+                        elide: Text.ElideMiddle
+                    }
+                    ActionButton {
+                        text: qsTr("Desanexar")
+                        size: "sm"
+                        variant: "danger"
+                        enabled: !machinesPage.usbActionPending
+                        onClicked: machinesPage.detachUsbDevice(Number(modelData.bus),
+                                                                Number(modelData.address))
+                    }
+                }
+            }
+
+            Text {
+                text: qsTr("Disponíveis no host")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: backend.machineUsbDevices.length === 0
+                text: qsTr("Nenhum dispositivo USB disponível no host.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+
+            ListView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(220, Math.max(1,
+                    backend.machineUsbDevices.length) * 36)
+                clip: true
+                model: backend.machineUsbDevices
+                delegate: RowLayout {
+                    required property var modelData
+                    width: ListView.view.width
+                    height: 36
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        text: String(modelData.bus) + ":" + String(modelData.address)
+                              + "  " + String(modelData.description || modelData.vendorId)
+                        color: Theme.textPrimary
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontMeta
+                        elide: Text.ElideMiddle
+                    }
+                    ActionButton {
+                        text: qsTr("Anexar")
+                        size: "sm"
+                        enabled: !machinesPage.usbActionPending
+                        onClicked: machinesPage.attachUsbDevice(Number(modelData.bus),
+                                                                Number(modelData.address))
+                    }
+                }
+            }
+
+            Text {
+                id: usbError
+                Layout.fillWidth: true
+                visible: text.length > 0
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                ActionButton {
+                    text: qsTr("Fechar")
+                    onClicked: usbDialog.close()
+                }
             }
         }
     }

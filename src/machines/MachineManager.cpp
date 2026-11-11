@@ -10,6 +10,7 @@
 #include "machines/CloudInit.h"
 #include "machines/MachineArchive.h"
 #include "machines/SerialPorts.h"
+#include "machines/UsbDevices.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -1825,6 +1826,9 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
     spec.kvm = kvmAvailable();
     spec.isolateNetwork = meta.isolateNetwork;
     spec.serialPorts = meta.serialPorts;
+    for (const MachineUsbDevice &device : meta.usbDevices) {
+        spec.usbDevices.append(QemuUsbDevice{device.bus, device.address});
+    }
 
     const QString directory = machineDirFor(meta.id);
     if (directory.isEmpty()) {
@@ -2677,6 +2681,139 @@ MachineMeta MachineManager::setSerialPorts(const QString &idOrName, const QStrin
             *error = Error::make(
                 QStringLiteral("PODSTACK_CONFLICT"),
                 QStringLiteral("As portas seriais foram salvas, mas a machine não reiniciou."),
+                errorText(restartError),
+                QStringLiteral("Inicie a machine manualmente; os metadados já foram salvos."));
+        }
+    }
+    return result;
+}
+
+MachineMeta MachineManager::setUsbDevices(const QString &idOrName,
+                                          const QVector<MachineUsbDevice> &devices, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    MachineMeta meta = load(idOrName, error);
+    if (meta.id.isEmpty()) {
+        return {};
+    }
+    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("deleting") ||
+        meta.state == QStringLiteral("deleted")) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em transição; tente novamente."),
+                                 meta.id));
+        return meta;
+    }
+
+    QVector<MachineUsbDevice> normalized;
+    for (const MachineUsbDevice &input : devices) {
+        UsbDeviceInfo hostDevice;
+        QString deviceError;
+        if (input.bus <= 0 || input.address <= 0 ||
+            !findUsbDevice(input.bus, input.address, &hostDevice, &deviceError)) {
+            fails(error,
+                  invalidParams(QStringLiteral("Dispositivo USB inválido ou desconectado."),
+                                QStringLiteral("%1:%2").arg(input.bus).arg(input.address),
+                                QStringLiteral("Reconecte o dispositivo e atualize a lista.")));
+            return meta;
+        }
+        bool duplicate = false;
+        for (const MachineUsbDevice &existing : normalized) {
+            if (existing.bus == hostDevice.bus && existing.address == hostDevice.address) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            MachineUsbDevice device;
+            device.bus = hostDevice.bus;
+            device.address = hostDevice.address;
+            device.vendorId = hostDevice.vendorId;
+            device.productId = hostDevice.productId;
+            device.description = hostDevice.description;
+            normalized.append(device);
+        }
+    }
+
+    std::shared_ptr<std::recursive_mutex> lockHolder;
+    std::unique_lock<std::recursive_mutex> machineGuard;
+    if (!tryLockMachine(meta.id, &lockHolder, &machineGuard)) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em outra operação."), meta.id,
+                                 QStringLiteral("Aguarde a operação atual terminar.")));
+        return meta;
+    }
+
+    Error existingError;
+    const QVector<MachineMeta> existing = existingMachines(&existingError);
+    if (!existingError.isEmpty()) {
+        if (error) {
+            *error = existingError;
+        }
+        return meta;
+    }
+    for (const MachineMeta &candidate : existing) {
+        if (candidate.id == meta.id) {
+            continue;
+        }
+        for (const MachineUsbDevice &device : normalized) {
+            for (const MachineUsbDevice &attached : candidate.usbDevices) {
+                if (attached.bus == device.bus && attached.address == device.address) {
+                    fails(error,
+                          Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                      QStringLiteral("O dispositivo USB já está anexado a outra "
+                                                     "machine."),
+                                      device.description,
+                                      QStringLiteral("Desanexe o dispositivo da machine %1 "
+                                                     "primeiro.")
+                                          .arg(candidate.name)));
+                    return meta;
+                }
+            }
+        }
+    }
+
+    const QemuSpec spec = specFor(meta, false, nullptr);
+    const bool wasRunning =
+        meta.state == QStringLiteral("running") || meta.state == QStringLiteral("starting") ||
+        meta.state == QStringLiteral("stopping") || m_runtime->isRunning(spec, nullptr);
+
+    if (wasRunning) {
+        Error stopError;
+        meta = stop(meta.id, false, &stopError);
+        if (!stopError.isEmpty()) {
+            if (error) {
+                *error = stopError;
+            }
+            return meta;
+        }
+    }
+
+    const QString machineId = meta.id;
+    const QVector<MachineUsbDevice> previous = meta.usbDevices;
+    meta.usbDevices = normalized;
+    Error persistError;
+    if (!persist(meta, &persistError)) {
+        meta.usbDevices = previous;
+        if (error) {
+            *error = persistError;
+        }
+        return meta;
+    }
+
+    MachineMeta result = meta;
+    if (wasRunning) {
+        Error restartError;
+        const MachineMeta restarted = start(machineId, &restartError);
+        if (!restarted.id.isEmpty()) {
+            result = restarted;
+        }
+        if (!restartError.isEmpty() && error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_CONFLICT"),
+                QStringLiteral("Os dispositivos USB foram salvos, mas a machine não reiniciou."),
                 errorText(restartError),
                 QStringLiteral("Inicie a machine manualmente; os metadados já foram salvos."));
         }

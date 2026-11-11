@@ -121,6 +121,8 @@ Não persistido. Cache em memória reconstruído por eventos.
 `machine_ports`: `id`, `machineId`, `hostPort`, `guestPort`, `protocol`, `exposeLan`, `label`.
 `machine_mounts`: `id`, `machineId`, `source`, `target`, `readOnly`, `tag` (virtiofs).
 `machine_serial_ports`: `machineId`, `path` (porta serial do host anexada; PK composta).
+`machine_usb_devices`: `machineId`, `bus`, `address`, `vendorId`, `productId`, `description`
+(PK composta por `machineId`, `bus`, `address`).
 
 ### 2.8 Snapshot (efêmero, derivado do qcow2)
 
@@ -265,6 +267,16 @@ CREATE TABLE machine_serial_ports (
   machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
   path TEXT NOT NULL,
   PRIMARY KEY (machine_id, path)
+);
+
+CREATE TABLE machine_usb_devices (
+  machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  bus INTEGER NOT NULL,
+  address INTEGER NOT NULL,
+  vendor_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  description TEXT,
+  PRIMARY KEY (machine_id, bus, address)
 );
 
 CREATE TABLE builds (
@@ -460,7 +472,11 @@ CREATE INDEX idx_domains_hostname ON domains(hostname);
     { "id": "0193f2c6-...", "source": "/home/marcos/Projetos", "target": "/mnt/projetos",
       "readOnly": false, "tag": "host" }
   ],
-  "serialPorts": ["/dev/ttyUSB0"]
+  "serialPorts": ["/dev/ttyUSB0"],
+  "usbDevices": [
+    { "bus": 1, "address": 4, "vendorId": "0781", "productId": "5567",
+      "description": "SanDisk Cruzer Blade" }
+  ]
 }
 ```
 

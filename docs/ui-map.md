@@ -288,6 +288,8 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   (gerenciada pelo daemon) e o diálogo fecha só no sucesso. **Serial** abre o diálogo
   “Portas seriais” (`machines.serial.list/attach/detach`): anexadas com **Desanexar** e
   portas do host (`ttyUSB`/`ttyACM`) com **Anexar**; aviso de restart e erro inline.
+  **USB** abre o diálogo “Dispositivos USB” (`machines.usb.list/attach/detach`): anexados
+  com **Desanexar** e dispositivos do host (`bus:address`) com **Anexar**.
   **Snapshots** abre o diálogo
   “Snapshots do disco” (`machines.snapshots.list/create/restore/remove`): lista nome/data/
   tamanho, campo de nome + **Criar**, e **Restaurar**/**Remover** por item com confirmação
@@ -317,6 +319,7 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 | Editar recursos | CPUs, memória (GiB), disco (GiB) | 1..256 CPUs; memória/disco ≥ 1 GiB; disco só cresce |
 | Portas da machine | lista de portas (host/guest/protocolo/bind/rótulo), host, guest, protocolo, LAN, rótulo | 1..65535; hostPort único por protocolo; SSH preservada; aviso para LAN |
 | Portas seriais | portas do host (`ttyUSB`/`ttyACM`/`ttyS`), anexadas por machine | caminho absoluto e legível; uma machine por porta; restart ao anexar/desanexar |
+| Dispositivos USB | dispositivos USB do host (`bus:address`), anexados por machine | device presente no sysfs; um device por machine; restart ao anexar/desanexar |
 | Snapshots do disco | lista nome/data/tamanho + Criar; Restaurar/Remover por item | nome `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` e único; restauração/remoção pedem confirmação inline; restaurar substitui o disco atual |
 | Confirmar remoção | lista + impacto | requer confirmação ou `force` |
 | Reset Docker/K8s | escopo + aviso | digitar nome/`--yes` |

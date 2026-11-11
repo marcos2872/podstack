@@ -215,6 +215,8 @@ Backend::Backend(QObject *parent)
             &Backend::onMachineInfoFinished);
     connect(&m_machineSerialWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineSerialFinished);
+    connect(&m_machineUsbWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineUsbFinished);
     connect(&m_machineLogsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineLogsFinished);
     connect(&m_machineFilesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -3252,6 +3254,59 @@ void Backend::detachMachineSerialPort(const QString &id, const QString &path)
     }
     runAction(QStringLiteral("machines.serial.detach"),
               QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("path"), path}}, 180000);
+}
+
+void Backend::refreshMachineUsbDevices(const QString &id)
+{
+    if (id.isEmpty() || m_machineUsbWatcher.isRunning()) {
+        return;
+    }
+    m_machineUsbWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(QStringLiteral("machines.usb.list"),
+                                               QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("__error"), error.message}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineUsbFinished()
+{
+    const QJsonObject result = m_machineUsbWatcher.result();
+    if (result.contains(QStringLiteral("__error"))) {
+        m_lastError = result.value(QStringLiteral("__error")).toString();
+        emit lastErrorChanged();
+        return;
+    }
+    m_machineUsbDevices = result.value(QStringLiteral("devices")).toArray().toVariantList();
+    emit machineUsbDevicesChanged();
+}
+
+void Backend::attachMachineUsbDevice(const QString &id, int bus, int address)
+{
+    if (id.isEmpty() || bus <= 0 || address <= 0) {
+        return;
+    }
+    runAction(QStringLiteral("machines.usb.attach"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("bus"), bus},
+                          {QStringLiteral("address"), address}},
+              180000);
+}
+
+void Backend::detachMachineUsbDevice(const QString &id, int bus, int address)
+{
+    if (id.isEmpty() || bus <= 0 || address <= 0) {
+        return;
+    }
+    runAction(QStringLiteral("machines.usb.detach"),
+              QJsonObject{{QStringLiteral("id"), id},
+                          {QStringLiteral("bus"), bus},
+                          {QStringLiteral("address"), address}},
+              180000);
 }
 
 void Backend::loadMachineInfo(const QString &id)

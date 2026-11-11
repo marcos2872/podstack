@@ -105,6 +105,8 @@ public:
                          Error *error = nullptr);
     MachineMeta setSerialPorts(const QString &idOrName, const QStringList &paths,
                                Error *error = nullptr);
+    MachineMeta setUsbDevices(const QString &idOrName, const QVector<MachineUsbDevice> &devices,
+                              Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
     bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
     /// Renomeia a machine, atualiza o bloco SSH e a máquina default do Config.

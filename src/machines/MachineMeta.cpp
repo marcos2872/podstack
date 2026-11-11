@@ -96,6 +96,28 @@ bool ensureParentDirectory(const QString &parent, Error *error)
 
 } // namespace
 
+QJsonObject MachineUsbDevice::toJson() const
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("bus"), bus);
+    object.insert(QStringLiteral("address"), address);
+    object.insert(QStringLiteral("vendorId"), vendorId);
+    object.insert(QStringLiteral("productId"), productId);
+    object.insert(QStringLiteral("description"), description);
+    return object;
+}
+
+MachineUsbDevice MachineUsbDevice::fromJson(const QJsonObject &object)
+{
+    MachineUsbDevice device;
+    device.bus = object.value(QStringLiteral("bus")).toInt();
+    device.address = object.value(QStringLiteral("address")).toInt();
+    device.vendorId = object.value(QStringLiteral("vendorId")).toString();
+    device.productId = object.value(QStringLiteral("productId")).toString();
+    device.description = object.value(QStringLiteral("description")).toString();
+    return device;
+}
+
 QJsonObject MachineSnapshot::toJson() const
 {
     QJsonObject object;
@@ -148,6 +170,12 @@ QJsonObject MachineMeta::toJson() const
         serialArray.append(serialPort);
     }
     object.insert(QStringLiteral("serialPorts"), serialArray);
+
+    QJsonArray usbArray;
+    for (const MachineUsbDevice &device : usbDevices) {
+        usbArray.append(device.toJson());
+    }
+    object.insert(QStringLiteral("usbDevices"), usbArray);
     return object;
 }
 
@@ -194,6 +222,13 @@ MachineMeta MachineMeta::fromJson(const QJsonObject &object)
     for (const QJsonValue &value : serialArray) {
         if (value.isString() && !value.toString().isEmpty()) {
             meta.serialPorts.append(value.toString());
+        }
+    }
+
+    const QJsonArray usbArray = object.value(QStringLiteral("usbDevices")).toArray();
+    for (const QJsonValue &value : usbArray) {
+        if (value.isObject()) {
+            meta.usbDevices.append(MachineUsbDevice::fromJson(value.toObject()));
         }
     }
     return meta;

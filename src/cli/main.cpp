@@ -1559,6 +1559,12 @@ void printMachineUsage(QTextStream &stream)
            << "                          Anexa uma porta serial (reinicia se rodando)\n"
            << "  serial detach <id|nome> <porta> [--json]\n"
            << "                          Desanexa uma porta serial\n"
+           << "  usb list <id|nome> [--json]\n"
+           << "                          Lista dispositivos USB do host e os anexados\n"
+           << "  usb attach <id|nome> BUS:ADDR [--json]\n"
+           << "                          Anexa um dispositivo USB (reinicia se rodando)\n"
+           << "  usb detach <id|nome> BUS:ADDR [--json]\n"
+           << "                          Desanexa um dispositivo USB\n"
            << "  snapshot ls <id|nome> [--json]\n"
            << "                          Lista os snapshots internos do disco\n"
            << "  snapshot create <id|nome> <nome> [--json]\n"
@@ -2989,6 +2995,122 @@ int machineSerialCommand(const QStringList &args)
     return kExitOk;
 }
 
+int machineUsbCommand(const QStringList &args)
+{
+    if (args.isEmpty() || args.first() == QStringLiteral("--help") ||
+        args.first() == QStringLiteral("-h") || args.first() == QStringLiteral("help")) {
+        printMachineUsage(args.isEmpty() ? err() : out());
+        return args.isEmpty() ? kExitUsage : kExitOk;
+    }
+    const QString &action = args.first();
+    if (action != QStringLiteral("list") && action != QStringLiteral("ls") &&
+        action != QStringLiteral("attach") && action != QStringLiteral("detach")) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    QString id;
+    QString device;
+    bool json = false;
+    for (int i = 1; i < args.size(); ++i) {
+        const QString &arg = args.at(i);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (!arg.startsWith(QLatin1Char('-')) && id.isEmpty()) {
+            id = arg;
+        } else if (!arg.startsWith(QLatin1Char('-')) && device.isEmpty()) {
+            device = arg;
+        } else {
+            err() << "opção desconhecida: " << arg << '\n';
+            return kExitUsage;
+        }
+    }
+    if (id.isEmpty() ||
+        (action != QStringLiteral("list") && action != QStringLiteral("ls") && device.isEmpty())) {
+        printMachineUsage(err());
+        return kExitUsage;
+    }
+
+    PodStack::RpcClient client;
+    PodStack::Error error;
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), id);
+
+    if (action == QStringLiteral("list") || action == QStringLiteral("ls")) {
+        const QJsonObject result = client.call(QStringLiteral("machines.usb.list"), params, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        if (json) {
+            out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+            out().flush();
+            return kExitOk;
+        }
+        QSet<QString> attached;
+        for (const QJsonValue &value : result.value(QStringLiteral("machine"))
+                                           .toObject()
+                                           .value(QStringLiteral("usbDevices"))
+                                           .toArray()) {
+            const QJsonObject deviceJson = value.toObject();
+            attached.insert(QStringLiteral("%1:%2")
+                                .arg(deviceJson.value(QStringLiteral("bus")).toInt())
+                                .arg(deviceJson.value(QStringLiteral("address")).toInt()));
+        }
+        out() << QStringLiteral("%1  %2  %3  %4\n")
+                     .arg(QStringLiteral("BUS:ADDR").leftJustified(10),
+                          QStringLiteral("VID:PID").leftJustified(11),
+                          QStringLiteral("DESCRIÇÃO").leftJustified(32), QStringLiteral("ANEXADO"));
+        for (const QJsonValue &value : result.value(QStringLiteral("devices")).toArray()) {
+            const QJsonObject deviceJson = value.toObject();
+            const QString key = QStringLiteral("%1:%2")
+                                    .arg(deviceJson.value(QStringLiteral("bus")).toInt())
+                                    .arg(deviceJson.value(QStringLiteral("address")).toInt());
+            out() << QStringLiteral("%1  %2  %3  %4\n")
+                         .arg(key.leftJustified(10),
+                              (deviceJson.value(QStringLiteral("vendorId")).toString() +
+                               QLatin1Char(':') +
+                               deviceJson.value(QStringLiteral("productId")).toString())
+                                  .leftJustified(11),
+                              deviceJson.value(QStringLiteral("description"))
+                                  .toString()
+                                  .leftJustified(32),
+                              attached.contains(key) ? QStringLiteral("sim")
+                                                     : QStringLiteral("não"));
+        }
+        out().flush();
+        return kExitOk;
+    }
+
+    const QStringList parts = device.split(QLatin1Char(':'));
+    bool busOk = false;
+    bool addressOk = false;
+    const int bus = parts.size() == 2 ? parts.at(0).toInt(&busOk) : 0;
+    const int address = parts.size() == 2 ? parts.at(1).toInt(&addressOk) : 0;
+    if (!busOk || !addressOk || bus <= 0 || address <= 0) {
+        err() << "Informe o dispositivo como BUS:ADDR (ex.: 1:4).\n";
+        return kExitUsage;
+    }
+    params.insert(QStringLiteral("bus"), bus);
+    params.insert(QStringLiteral("address"), address);
+    const QString method = action == QStringLiteral("attach")
+                               ? QStringLiteral("machines.usb.attach")
+                               : QStringLiteral("machines.usb.detach");
+    const QJsonObject result = client.call(method, params, &error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+    if (json) {
+        out() << QJsonDocument(result).toJson(QJsonDocument::Indented);
+        out().flush();
+        return kExitOk;
+    }
+    out() << (action == QStringLiteral("attach") ? "Dispositivo USB anexado: "
+                                                 : "Dispositivo USB desanexado: ")
+          << device << '\n';
+    out().flush();
+    return kExitOk;
+}
+
 int machineSnapshotListCommand(const QStringList &args)
 {
     QString id;
@@ -4138,6 +4260,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("serial")) {
         return machineSerialCommand(args.mid(1));
+    }
+    if (subcommand == QStringLiteral("usb")) {
+        return machineUsbCommand(args.mid(1));
     }
     if (subcommand == QStringLiteral("snapshot") || subcommand == QStringLiteral("snapshots")) {
         return machineSnapshotCommand(args.mid(1));
