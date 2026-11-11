@@ -15,8 +15,11 @@ tarball="$topdir/SOURCES/podstack-$version.tar.gz"
 tar --exclude-vcs --exclude=build --exclude=.git --exclude=coverage \
     --transform "s,^,podstack-$version/," -czf "$tarball" .
 
-rpmbuild -bb packaging/rpm/podstack.spec \
-    --define "_topdir $topdir" \
-    --define "_sourcedir $topdir/SOURCES"
+rpm_defines=(--define "_topdir $topdir" --define "_sourcedir $topdir/SOURCES")
+if [ -n "${PODSTACK_UPDATE_PUBLIC_KEY:-}" ]; then
+    rpm_defines+=(--define "podstack_update_public_key $PODSTACK_UPDATE_PUBLIC_KEY")
+fi
+
+rpmbuild -bb packaging/rpm/podstack.spec "${rpm_defines[@]}"
 
 echo "RPM em $topdir/RPMS/"

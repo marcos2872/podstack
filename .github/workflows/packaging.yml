@@ -1,0 +1,49 @@
+name: Packaging
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "scripts/build-*"
+      - "scripts/clean-install-check.sh"
+      - "CMakeLists.txt"
+      - ".github/workflows/release.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaging-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rpm-clean-install:
+    name: RPM e instalação limpa
+    runs-on: ubuntu-latest
+    # O script cria o próprio container Fedora via podman; o job precisa de
+    # privilégios para o podman aninhado.
+    container:
+      image: fedora:44
+      options: --privileged --cgroupns=host
+
+    steps:
+      - name: Instalar git (necessário para o checkout)
+        run: dnf install -y git
+
+      - uses: actions/checkout@v4
+
+      - name: Dependências
+        run: |
+          dnf install -y cmake ninja-build gcc-c++ \
+            openssl-devel \
+            qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
+            qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
+            libxcrypt-devel openssh-clients \
+            rpm-build podman appstream make selinux-policy-devel policycoreutils
+
+      - name: Empacotar RPM
+        run: scripts/build-rpm.sh
+
+      - name: Instalação limpa (smoke)
+        run: scripts/clean-install-check.sh --skip-build

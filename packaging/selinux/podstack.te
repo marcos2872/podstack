@@ -1,0 +1,129 @@
+policy_module(podstack, 0.1.0)
+
+########################################
+#
+# Módulo SELinux mínimo do PodStack (Fedora/refpolicy).
+#
+# Cobre apenas o helper privilegiado (podstack-helper.service, D-Bus
+# dev.podstack.Helper1). O daemon do usuário, os containers, o Caddy e o
+# systemd-socket-proxyd NÃO têm domínio dedicado neste módulo: rodam sob a
+# política padrão do sistema (unconfined/init/container).
+#
+# Também não cobre o fluxo completo de dnf/rpm_t/rpm_script_t nem a
+# comunicação D-Bus com o firewalld; ambos exigiriam regras adicionais.
+#
+# Este módulo NÃO foi validado em SELinux enforcing no 0.1.0. Use como base
+# e valide com `ausearch -m avc -ts recent` antes de promover a enforcing.
+#
+# Observação: a interface `admin_domain()` citada em alguns rascunhos não
+# existe em refpolicy nem em selinux-policy Fedora; por isso as permissões
+# abaixo são explícitas e mínimas.
+#
+########################################
+
+########################################
+#
+# Declarations
+#
+
+## <desc>
+## <p>
+## Domain for the PodStack privileged helper (podstack-helper).
+## </p>
+## </desc>
+#
+type podstack_helper_t;
+type podstack_helper_exec_t;
+init_daemon_domain(podstack_helper_t, podstack_helper_exec_t)
+
+## <desc>
+## <p>
+## Runtime files (pid/socket/fifo) created by the PodStack helper in
+## /run/podstack.
+## </p>
+## </desc>
+#
+type podstack_var_run_t;
+files_pid_file(podstack_var_run_t)
+
+########################################
+#
+# Local policy
+#
+
+# Serviço D-Bus de sistema. dbus_system_domain() já inclui
+# init_daemon_domain() e as permissões básicas do barramento.
+dbus_system_domain(podstack_helper_t, podstack_helper_exec_t)
+
+logging_send_syslog_msg(podstack_helper_t)
+
+# Autorização dos métodos D-Bus via polkit.
+policykit_dbus_chat(podstack_helper_t)
+
+# systemctl: reload do systemd-resolved, daemon-reload e enable/disable das
+# units systemd-socket-proxyd. As portas 80/443 pertencem ao
+# systemd-socket-proxyd/Caddy, não ao helper; por isso não há corenet_port().
+# systemd_chat_resolved() substitui systemd_dbus_chat_resolved(), deprecated
+# no Fedora 44.
+systemd_exec_systemctl(podstack_helper_t)
+init_dbus_chat(podstack_helper_t)
+systemd_chat_resolved(podstack_helper_t)
+
+# A classe service é checada no domínio chamador pelo systemd. O helper
+# inicia/para as units socket que ele mesmo grava e recarrega o resolved.
+gen_require(`
+	type systemd_unit_file_t;
+	type systemd_resolved_unit_file_t;
+	class service { start stop reload };
+')
+allow podstack_helper_t systemd_unit_file_t:service { start stop };
+allow podstack_helper_t systemd_resolved_unit_file_t:service reload;
+
+# update-ca-trust/update-ca-certificates são scripts bin_t e executam as
+# ferramentas auxiliares no próprio domínio do helper.
+corecmd_exec_bin(podstack_helper_t)
+corecmd_exec_shell(podstack_helper_t)
+
+# Leitura básica de /etc e /usr (configurações e binários auxiliares).
+files_read_etc_files(podstack_helper_t)
+files_read_usr_files(podstack_helper_t)
+
+# Leitura de um certificado fornecido pelo chamador (o código do helper
+# valida que o arquivo pertence ao uid chamador antes de confiar na CA).
+allow podstack_helper_t self:capability { dac_override dac_read_search };
+userdom_read_user_home_content_files(podstack_helper_t)
+optional_policy(`
+	gnome_read_home_config(podstack_helper_t)
+	gnome_read_generic_data_home_dirs(podstack_helper_t)
+	gnome_read_generic_data_home_files(podstack_helper_t)
+')
+
+# Drop-ins do systemd-resolved em /etc/systemd/resolved.conf.d
+# (systemd_conf_t no Fedora). O diretório pode não existir; o helper o cria
+# com mkpath, então o filetrans garante o rótulo correto.
+gen_require(`
+	type etc_t;
+	type systemd_conf_t;
+')
+filetrans_pattern(podstack_helper_t, etc_t, systemd_conf_t, dir, "resolved.conf.d")
+systemd_manage_conf_files(podstack_helper_t)
+manage_dirs_pattern(podstack_helper_t, systemd_conf_t, systemd_conf_t)
+
+# Units systemd-socket-proxyd gravadas em /etc/systemd/system
+# (systemd_unit_file_t). Inclui os symlinks criados por systemctl enable.
+manage_dirs_pattern(podstack_helper_t, systemd_unit_file_t, systemd_unit_file_t)
+manage_files_pattern(podstack_helper_t, systemd_unit_file_t, systemd_unit_file_t)
+manage_lnk_files_pattern(podstack_helper_t, systemd_unit_file_t, systemd_unit_file_t)
+
+# Âncoras de CA em /etc/pki/ca-trust/source/anchors (cert_t no Fedora).
+# Inclui os bundles extraídos que update-ca-trust regrava.
+miscfiles_manage_generic_cert_dirs(podstack_helper_t)
+miscfiles_manage_generic_cert_files(podstack_helper_t)
+
+# Estado de runtime do helper em /run/podstack.
+files_search_pids(podstack_helper_t)
+files_pid_filetrans(podstack_helper_t, podstack_var_run_t, dir, "podstack")
+manage_dirs_pattern(podstack_helper_t, podstack_var_run_t, podstack_var_run_t)
+manage_files_pattern(podstack_helper_t, podstack_var_run_t, podstack_var_run_t)
+manage_sock_files_pattern(podstack_helper_t, podstack_var_run_t, podstack_var_run_t)
+manage_fifo_files_pattern(podstack_helper_t, podstack_var_run_t, podstack_var_run_t)

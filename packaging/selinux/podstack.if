@@ -1,0 +1,21 @@
+## <summary>Policy for the PodStack privileged helper.</summary>
+
+########################################
+## <summary>
+##	Execute the PodStack privileged helper in the podstack_helper_t domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed to transition.
+##	</summary>
+## </param>
+#
+interface(`podstack_domtrans_helper',`
+	gen_require(`
+		type podstack_helper_t;
+		type podstack_helper_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, podstack_helper_exec_t, podstack_helper_t)
+')

@@ -33,6 +33,10 @@ endif()
 
 qt_standard_project_setup(REQUIRES 6.10)
 
+# Chave pública Ed25519 embutida no updater. Vazia mantém o default null em
+# Settings.cpp e permite configurar updates.publicKey em runtime.
+set(PODSTACK_UPDATE_PUBLIC_KEY "" CACHE STRING "Chave publica Ed25519 embutida no updater")
+
 # ---------------------------------------------------------------------------
 # Core: errors, paths, config, logging, JSON-RPC client
 # ---------------------------------------------------------------------------
@@ -54,7 +58,10 @@ add_library(podstack_core STATIC
 )
 target_include_directories(podstack_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_core PUBLIC Qt6::Core Qt6::Network OpenSSL::Crypto)
-target_compile_definitions(podstack_core PUBLIC PODSTACK_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(podstack_core PUBLIC
+    PODSTACK_VERSION="${PROJECT_VERSION}"
+    PODSTACK_UPDATE_PUBLIC_KEY="${PODSTACK_UPDATE_PUBLIC_KEY}"
+)
 
 # ---------------------------------------------------------------------------
 # Podman: libcurl over the Unix socket + typed client

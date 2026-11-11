@@ -20,6 +20,9 @@ BuildRequires:  libcurl-devel
 BuildRequires:  libxcrypt-devel
 BuildRequires:  sqlite-devel
 BuildRequires:  openssl-devel
+# Módulo SELinux (Fedora/refpolicy). Sem ele o %build falha de propósito:
+# o carregamento no %post é tolerante, a compilação não.
+BuildRequires:  selinux-policy-devel
 
 Requires:       podman >= 5.8
 Requires:       systemd >= 257
@@ -39,6 +42,8 @@ Summary:        Privileged allowlisted helper for PodStack setup
 Requires:       systemd
 Requires:       polkit
 Requires:       podstack = %{version}-%{release}
+Requires(post):  policycoreutils
+Requires(postun): policycoreutils
 
 %description helper
 System service and polkit policy used by PodStack to install/remove
@@ -49,19 +54,32 @@ trust the local CA. No shell or arbitrary command execution is exposed.
 %autosetup -n %{name}-%{version}
 
 %build
-%cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+%cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DPODSTACK_UPDATE_PUBLIC_KEY='%{?podstack_update_public_key}'
 %cmake_build
+# Compilação do módulo SELinux é obrigatória (falha quebra o build).
+make -f /usr/share/selinux/devel/Makefile -C packaging/selinux podstack.pp
 
 %install
 %cmake_install
+install -D -m 0644 packaging/selinux/podstack.pp \
+    %{buildroot}%{_datadir}/selinux/packages/podstack.pp
 
 %post
 # O socket do usuário sobe sob demanda na primeira conexão da GUI/CLI.
 systemctl --global enable podstack.socket >/dev/null 2>&1 || :
 
+%post helper
+# Tolerante a sistemas sem SELinux/semodule: o módulo é opcional em runtime.
+semodule -i %{_datadir}/selinux/packages/podstack.pp >/dev/null 2>&1 || :
+# Aplica os contextos do .fc ao binário já instalado (sem restorecon o tipo
+# podstack_helper_exec_t não entra em vigor e a transição de domínio não ocorre).
+restorecon -R /usr/libexec/podstack/podstack-helper /run/podstack >/dev/null 2>&1 || :
+
 %preun helper
 if [ "$1" -eq 0 ]; then
     systemctl stop podstack-helper.service >/dev/null 2>&1 || :
+    semodule -r podstack >/dev/null 2>&1 || :
 fi
 
 %files
@@ -88,6 +106,7 @@ fi
 %{_unitdir}/podstack-helper.service
 %{_datadir}/polkit-1/actions/dev.podstack.helper.policy
 %{_datadir}/dbus-1/system.d/dev.podstack.Helper1.conf
+%{_datadir}/selinux/packages/podstack.pp
 
 %changelog
 * Wed Nov 11 2026 PodStack contributors <dev@podstack.dev> - 0.1.0-1
