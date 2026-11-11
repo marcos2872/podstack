@@ -283,7 +283,7 @@ const QVector<SettingDef> &definitions()
                              QStringLiteral("Habilita IPv6 nos containers."), true));
         list.append(makeBool(QStringLiteral("network.exposeLan"), false,
                              QStringLiteral("Rede"),
-                             QStringLiteral("Expõe portas e domínios na LAN.")));
+                             QStringLiteral("Expõe portas e domínios na LAN."), true));
         list.append(makeEnum(QStringLiteral("network.domainsMode"),
                              QStringLiteral("localhost"),
                              {QStringLiteral("localhost"),
@@ -352,7 +352,7 @@ const QVector<SettingDef> &definitions()
                              QStringLiteral("Cluster local habilitado."), true));
         list.append(makeBool(QStringLiteral("kubernetes.exposeServices"), false,
                              QStringLiteral("Kubernetes"),
-                             QStringLiteral("Expõe Services na LAN."), true));
+                             QStringLiteral("Expõe Services na LAN.")));
         list.append(makeBool(QStringLiteral("kubernetes.kubeconfigUseDomain"), true,
                              QStringLiteral("Kubernetes"),
                              QStringLiteral("Usa domínio no kubeconfig."), true));
@@ -493,6 +493,56 @@ const QVector<SettingDef> &definitions()
                                   QStringLiteral("Setup"),
                                   QStringLiteral("Última validação do ambiente.")));
 
+        // Chaves que ainda não têm efeito no app. Continuam no schema/CLI, mas o
+        // diálogo de Configurações as esconde para não prometer o que não faz.
+        static const QStringList kHiddenKeys = {
+            QStringLiteral("app.waitForContainerStop"),
+            QStringLiteral("app.confirmDestructive"),
+            QStringLiteral("engine.socketPath"),
+            QStringLiteral("engine.autoStart"),
+            QStringLiteral("engine.restartOnConfigChange"),
+            QStringLiteral("docker.exposePortsToLan"),
+            QStringLiteral("docker.enableContainerdImageStore"),
+            QStringLiteral("docker.daemonJsonPath"),
+            QStringLiteral("docker.defaultNetwork"),
+            QStringLiteral("network.subnet4"),
+            QStringLiteral("network.ipv6"),
+            QStringLiteral("network.domainsMode"),
+            QStringLiteral("machines.forwardPorts"),
+            QStringLiteral("machines.exposePortsToLan"),
+            QStringLiteral("machines.sshPortStart"),
+            QStringLiteral("machines.autoSuspend"),
+            QStringLiteral("ssh.exposePort"),
+            QStringLiteral("ssh.forwardAgent"),
+            QStringLiteral("ssh.manageConfig"),
+            QStringLiteral("ssh.configPath"),
+            QStringLiteral("ssh.keyType"),
+            QStringLiteral("kubernetes.enabled"),
+            QStringLiteral("kubernetes.kubeconfigUseDomain"),
+            QStringLiteral("terminal.fontBold"),
+            QStringLiteral("logs.searchMode"),
+            QStringLiteral("updates.lastCheck"),
+            QStringLiteral("telemetry.enabled"),
+            QStringLiteral("telemetry.crashReports"),
+            QStringLiteral("telemetry.usage"),
+            QStringLiteral("telemetry.performance"),
+            QStringLiteral("telemetry.errors"),
+            QStringLiteral("advanced.helper.enabled"),
+            QStringLiteral("advanced.dns.install"),
+            QStringLiteral("advanced.ca.install"),
+            QStringLiteral("advanced.logLevel"),
+            QStringLiteral("advanced.jobRetentionDays"),
+            QStringLiteral("advanced.buildLogRetentionDays"),
+            QStringLiteral("advanced.cloudImageCacheBytes"),
+            QStringLiteral("setup.components"),
+            QStringLiteral("setup.lastValidation"),
+        };
+        for (SettingDef &definition : list) {
+            if (kHiddenKeys.contains(definition.key)) {
+                definition.hidden = true;
+            }
+        }
+
         return list;
     }();
     return defs;
@@ -539,6 +589,7 @@ QJsonObject schemaJson()
         item.insert(QStringLiteral("description"), definition.description);
         item.insert(QStringLiteral("restartRequired"), definition.restartRequired);
         item.insert(QStringLiteral("secret"), definition.secret);
+        item.insert(QStringLiteral("hidden"), definition.hidden);
         if (!definition.enumValues.isEmpty()) {
             QJsonArray choices;
             for (const QString &choice : definition.enumValues) {

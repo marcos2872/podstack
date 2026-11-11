@@ -19,6 +19,13 @@ ColumnLayout {
     readonly property var sourceLines: logsView.lines !== null ? logsView.lines
                                                               : backend.logLines
 
+    readonly property var settingsValues: backend.settingsValues
+    readonly property int logFontSize: {
+        const size = Number(settingsValues["logs.fontSize"] || 12)
+        return isFinite(size) && size >= 8 && size <= 32 ? size : 12
+    }
+    readonly property bool prettyJson: settingsValues["logs.prettyJson"] !== false
+
     FormField {
         id: search
         Layout.fillWidth: true
@@ -42,7 +49,7 @@ ColumnLayout {
         FormCheck {
             id: wrapLines
             text: qsTr("Wrap")
-            checked: true
+            checked: logsView.settingsValues["logs.wrapLines"] === true
             onCheckedChanged: logsView.rebuild()
         }
 
@@ -112,7 +119,7 @@ ColumnLayout {
                 selectionColor: Theme.indigo500
                 selectedTextColor: Theme.textPrimary
                 font.family: Theme.monoFamily
-                font.pixelSize: Theme.fontMeta
+                font.pixelSize: logsView.logFontSize
                 wrapMode: wrapLines.checked ? TextEdit.WrapAnywhere : TextEdit.NoWrap
                 width: wrapLines.checked
                        ? logScroll.availableWidth
@@ -137,11 +144,24 @@ ColumnLayout {
     }
 
     function formattedLine(line) {
-        if (timestamps.checked) {
-            return line
+        let text = line
+        if (!timestamps.checked) {
+            const space = line.indexOf(" ")
+            text = space > 0 ? line.substring(space + 1) : line
         }
-        const space = line.indexOf(" ")
-        return space > 0 ? line.substring(space + 1) : line
+        if (logsView.prettyJson) {
+            const trimmed = text.trim()
+            const looksJson = (trimmed.startsWith("{") && trimmed.endsWith("}"))
+                              || (trimmed.startsWith("[") && trimmed.endsWith("]"))
+            if (looksJson) {
+                try {
+                    return JSON.stringify(JSON.parse(trimmed), null, 2)
+                } catch (error) {
+                    return text
+                }
+            }
+        }
+        return text
     }
 
     function rebuild() {

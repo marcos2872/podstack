@@ -311,8 +311,8 @@ Backend::Backend(QObject *parent)
 
     connect(&m_stream, &StreamClient::logLine, this, [this](const QString &line) {
         m_logLines.append(line);
-        if (m_logLines.size() > 5000) {
-            m_logLines = m_logLines.mid(1000);
+        if (m_logLines.size() > m_logBufferLines) {
+            m_logLines = m_logLines.mid(qMax(1, m_logBufferLines / 5));
         }
         if (!m_logsPending) {
             m_logsPending = true;
@@ -403,8 +403,8 @@ Backend::Backend(QObject *parent)
 
     connect(&m_detailLogsStream, &StreamClient::logLine, this, [this](const QString &line) {
         m_containerDetailLogLines.append(line);
-        if (m_containerDetailLogLines.size() > 5000) {
-            m_containerDetailLogLines = m_containerDetailLogLines.mid(1000);
+        if (m_containerDetailLogLines.size() > m_logBufferLines) {
+            m_containerDetailLogLines = m_containerDetailLogLines.mid(qMax(1, m_logBufferLines / 5));
         }
         if (!m_detailLogsPending) {
             m_detailLogsPending = true;
@@ -549,8 +549,8 @@ Backend::Backend(QObject *parent)
     connect(&m_composeStream, &StreamClient::composeLog, this,
             [this](const QString &service, const QString &line) {
                 m_composeLogLines.append(service + QStringLiteral(" | ") + line);
-                if (m_composeLogLines.size() > 5000) {
-                    m_composeLogLines = m_composeLogLines.mid(1000);
+                if (m_composeLogLines.size() > m_logBufferLines) {
+                    m_composeLogLines = m_composeLogLines.mid(qMax(1, m_logBufferLines / 5));
                 }
                 emit composeLogsChanged();
             });
@@ -574,8 +574,8 @@ Backend::Backend(QObject *parent)
                 const QString line = event.value(QStringLiteral("line")).toString();
                 if (!line.isEmpty()) {
                     m_buildLog.append(line);
-                    if (m_buildLog.size() > 5000) {
-                        m_buildLog = m_buildLog.mid(1000);
+                    if (m_buildLog.size() > m_logBufferLines) {
+                        m_buildLog = m_buildLog.mid(qMax(1, m_logBufferLines / 5));
                     }
                     m_buildStatus = line;
                     emit buildLogChanged();
@@ -708,8 +708,8 @@ Backend::Backend(QObject *parent)
     });
     connect(&m_k8sLogsStream, &StreamClient::k8sLogLine, this, [this](const QString &line) {
         m_k8sLogLines.append(line);
-        if (m_k8sLogLines.size() > 5000) {
-            m_k8sLogLines = m_k8sLogLines.mid(1000);
+        if (m_k8sLogLines.size() > m_logBufferLines) {
+            m_k8sLogLines = m_k8sLogLines.mid(qMax(1, m_logBufferLines / 5));
         }
         emit k8sLogsChanged();
     });
@@ -2080,13 +2080,11 @@ void Backend::onSettingsFinished()
         }
         emit settingsErrorChanged();
     } else {
-        m_settingsValues = result.value(QStringLiteral("values")).toObject().toVariantMap();
         m_settingsSchema = result.value(QStringLiteral("schema")).toArray().toVariantList();
         const bool hadError = !m_settingsError.isEmpty();
         m_settingsError.clear();
         emit settingsSchemaChanged();
-        emit settingsValuesChanged();
-        emit settingsChanged();
+        applySettingsValues(result.value(QStringLiteral("values")).toObject().toVariantMap());
         if (hadError) {
             emit settingsErrorChanged();
         }
@@ -2104,6 +2102,17 @@ void Backend::setSettingsError(const QString &error)
     m_lastError = error;
     emit settingsErrorChanged();
     emit lastErrorChanged();
+}
+
+void Backend::applySettingsValues(const QVariantMap &values)
+{
+    m_settingsValues = values;
+    const int bufferLines = m_settingsValues.value(QStringLiteral("logs.bufferLines")).toInt();
+    if (bufferLines >= 100 && bufferLines <= 1000000) {
+        m_logBufferLines = bufferLines;
+    }
+    emit settingsValuesChanged();
+    emit settingsChanged();
 }
 
 void Backend::setSetting(const QString &key, const QVariant &value)
@@ -2192,10 +2201,7 @@ void Backend::onSettingsActionFinished()
         }
     } else {
         if (result.contains(QStringLiteral("values"))) {
-            m_settingsValues =
-                result.value(QStringLiteral("values")).toObject().toVariantMap();
-            emit settingsValuesChanged();
-            emit settingsChanged();
+            applySettingsValues(result.value(QStringLiteral("values")).toObject().toVariantMap());
         }
 
         // O daemon devolve restartRequired quando o valor mudou e a definição

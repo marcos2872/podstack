@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "gui/TerminalView.h"
 
+#include "core/Config.h"
 #include "gui/ExternalTerminal.h"
 
 #include <QAction>
@@ -90,9 +91,22 @@ void TerminalView::configureTerminal(QTermWidget *terminal)
     environment.append(QStringLiteral("COLORTERM=truecolor"));
     terminal->setEnvironment(environment);
 
-    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    font.setPointSize(11);
+    const PodStack::Config config = PodStack::Config::load();
+    const QString family = config.get(QStringLiteral("terminal.fontFamily")).toString();
+    QFont font = (family.isEmpty() || family == QStringLiteral("monospace"))
+                     ? QFontDatabase::systemFont(QFontDatabase::FixedFont)
+                     : QFont(family);
+    int fontSize = config.get(QStringLiteral("terminal.fontSize")).toInt();
+    if (fontSize < 8 || fontSize > 32) {
+        fontSize = 12;
+    }
+    font.setPointSize(fontSize);
     terminal->setTerminalFont(font);
+    int scrollback = config.get(QStringLiteral("terminal.scrollback")).toInt();
+    if (scrollback < 1000 || scrollback > 100000) {
+        scrollback = 10000;
+    }
+    terminal->setHistorySize(scrollback);
 
     // O QTermWidget expõe copy/paste como slots, mas não instala atalhos:
     // sem isso, Ctrl+Shift+C/V e o menu de contexto não funcionam no app.

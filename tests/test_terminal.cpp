@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "core/Config.h"
 #include "gui/Backend.h"
 #include "gui/ContainerDetailDialog.h"
 #include "gui/ExternalTerminal.h"
@@ -65,6 +66,7 @@ private slots:
     void cleanupTestCase();
     void constructsWindow();
     void terminalViewConfiguration();
+    void terminalSettingsApplied();
     void terminalViewRestartsOnExit();
     void externalTerminalCommands();
     void externalTerminalDetection();
@@ -94,11 +96,16 @@ void TerminalTest::initTestCase()
     // o timeout de 30 s se houvesse um socket aceitando a conexão).
     QVERIFY(m_runtime.isValid());
     qputenv("PODSTACK_CONTROL_SOCKET", m_runtime.filePath(QStringLiteral("control.sock")).toUtf8());
+    // Config isolada: os testes não dependem do config.json do usuário.
+    const QString configDir = m_runtime.filePath(QStringLiteral("config"));
+    QVERIFY(QDir().mkpath(configDir));
+    qputenv("XDG_CONFIG_HOME", configDir.toUtf8());
 }
 
 void TerminalTest::cleanupTestCase()
 {
     qunsetenv("PODSTACK_CONTROL_SOCKET");
+    qunsetenv("XDG_CONFIG_HOME");
 }
 
 void TerminalTest::constructsWindow()
@@ -154,6 +161,23 @@ void TerminalTest::terminalViewConfiguration()
     auto *external = view.findChild<QToolButton *>(QStringLiteral("terminalExternalButton"));
     QVERIFY(external != nullptr);
     QVERIFY(!external->text().isEmpty());
+}
+
+void TerminalTest::terminalSettingsApplied()
+{
+    PodStack::Config config = PodStack::Config::load();
+    config.set(QStringLiteral("terminal.fontSize"), 16);
+    config.set(QStringLiteral("terminal.scrollback"), 2000);
+    config.set(QStringLiteral("terminal.fontFamily"), QStringLiteral("monospace"));
+    QString error;
+    QVERIFY2(config.save(&error), qPrintable(error));
+
+    PodStack::TerminalView view(QStringLiteral("abc123"), QStringLiteral("/bin/sh"),
+                                {QStringLiteral("-c"), QStringLiteral("true")});
+    auto *terminal = view.findChild<QTermWidget *>();
+    QVERIFY(terminal != nullptr);
+    QCOMPARE(terminal->getTerminalFont().pointSize(), 16);
+    QCOMPARE(terminal->historySize(), 2000);
 }
 
 void TerminalTest::terminalViewRestartsOnExit()

@@ -25,6 +25,9 @@ struct SettingDef {
     QString category;
     QString description;
     bool secret = false;
+    /// Chave sem efeito no app (ainda): continua no schema/CLI, mas o diálogo
+    /// de Configurações não a exibe.
+    bool hidden = false;
 };
 
 namespace Settings {
