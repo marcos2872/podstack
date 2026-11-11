@@ -1,5 +1,6 @@
 #include "core/Config.h"
 #include "core/DiskSpace.h"
+#include "core/Emulation.h"
 #include "core/Error.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
@@ -65,6 +66,7 @@ private slots:
     void diskSpaceSamplesRoot();
     void diskSpaceRejectsMissingPath();
     void diskSpaceThreshold();
+    void emulationDetectsBinfmt();
     void redactionHidesSecrets();
     void proxyEnvironment();
     void setupActionsMapPodmanStatus();
@@ -648,6 +650,32 @@ void CoreTest::diskSpaceThreshold()
     QVERIFY(PodStack::isDiskLow({low, high}, 90));
     QVERIFY(PodStack::isDiskLow({high}, 85));
     QVERIFY(!PodStack::isDiskLow({}, 90));
+}
+
+void CoreTest::emulationDetectsBinfmt()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const auto write = [&dir](const QString &name, const QByteArray &content) {
+        QFile file(dir.filePath(name));
+        if (!file.open(QIODevice::WriteOnly)) {
+            return false;
+        }
+        file.write(content);
+        return true;
+    };
+    QVERIFY(write(QStringLiteral("qemu-aarch64"),
+                  "enabled\ninterpreter /usr/bin/qemu-aarch64\nflags: F\n"));
+    QVERIFY(write(QStringLiteral("FEX-x86_64"),
+                  "enabled\ninterpreter /usr/bin/FEX-x86_64\nflags: F\n"));
+    QVERIFY(write(QStringLiteral("disabled"), "disabled\ninterpreter /usr/bin/none\nflags: F\n"));
+    QVERIFY(write(QStringLiteral("status"), "enabled\n"));
+
+    const QVector<PodStack::BinfmtHandler> handlers = PodStack::detectBinfmtHandlers(dir.path());
+    QCOMPARE(handlers.size(), 2);
+    QCOMPARE(handlers.at(0).name, QStringLiteral("FEX-x86_64"));
+    QCOMPARE(handlers.at(1).name, QStringLiteral("qemu-aarch64"));
+    QVERIFY(!PodStack::hostArchitecture().isEmpty());
 }
 
 void CoreTest::proxyEnvironment()

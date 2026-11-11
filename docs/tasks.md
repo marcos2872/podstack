@@ -242,7 +242,7 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 | T8-06 | P2 | Avaliar Flatpak sob demanda (não no v1) | T7-01 | Documentado |
 | T8-07 | P2 | Snapshots de máquina | T4-03 | ✅ já entregue na T4-16 (`machines.snapshots.list/create/restore/remove`, CLI/GUI e testes) |
 | T8-08 | P2 | Checkpoint/restore containers | T1-02 | CRIU |
-| T8-09 | P2 | Multi-arch/emulação | T2-02 | binfmt/FEX |
+| T8-09 | P2 | Multi-arch/emulação | T2-02 | ✅ — pull com `platform` já disponível no CLI/GUI e builds multi-plataforma via manifest list; novo `system.emulation` (CLI `system emulation [--json]`) reporta arquitetura do host e handlers `qemu-*`/`FEX-*` habilitados em `/proc/sys/fs/binfmt_misc`. FEX não é instalado automaticamente. |
 
 ---
 

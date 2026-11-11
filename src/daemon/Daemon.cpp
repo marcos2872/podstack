@@ -3,6 +3,7 @@
 #include "core/Config.h"
 #include "core/DiskSpace.h"
 #include "core/DiskUsage.h"
+#include "core/Emulation.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
 #include "core/Proxy.h"
@@ -359,6 +360,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     }
     if (method == QStringLiteral("system.disk")) {
         return systemDisk();
+    }
+    if (method == QStringLiteral("system.emulation")) {
+        return systemEmulation();
     }
     if (method == QStringLiteral("settings.get")) {
         return settingsGet(params, error);
@@ -2404,6 +2408,29 @@ QJsonObject Daemon::systemDisk()
     result.insert(QStringLiteral("low"), isDiskLow(samples, threshold));
     result.insert(QStringLiteral("filesystems"), filesystems);
     result.insert(QStringLiteral("errors"), errors);
+    return result;
+}
+
+QJsonObject Daemon::systemEmulation()
+{
+    QJsonArray handlers;
+    bool foreign = false;
+    for (const BinfmtHandler &handler : detectBinfmtHandlers()) {
+        QJsonObject item;
+        item.insert(QStringLiteral("name"), handler.name);
+        item.insert(QStringLiteral("interpreter"), handler.interpreter);
+        item.insert(QStringLiteral("enabled"), handler.enabled);
+        handlers.append(item);
+        if (handler.name.startsWith(QStringLiteral("qemu-")) ||
+            handler.name.startsWith(QStringLiteral("FEX-"))) {
+            foreign = true;
+        }
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("hostArch"), hostArchitecture());
+    result.insert(QStringLiteral("handlers"), handlers);
+    result.insert(QStringLiteral("foreignEmulation"), foreign);
     return result;
 }
 
