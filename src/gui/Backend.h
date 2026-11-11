@@ -91,6 +91,8 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList machines READ machines NOTIFY machinesChanged)
     Q_PROPERTY(QVariantList machineDistros READ machineDistros NOTIFY machineDistrosChanged)
     Q_PROPERTY(QVariantMap machineInfo READ machineInfo NOTIFY machineInfoChanged)
+    Q_PROPERTY(
+        QVariantList machineSerialPorts READ machineSerialPorts NOTIFY machineSerialPortsChanged)
     Q_PROPERTY(QStringList machineLogLines READ machineLogLines NOTIFY machineLogsChanged)
     Q_PROPERTY(QString machineLogsCapturedAt READ machineLogsCapturedAt
                NOTIFY machineLogsChanged)
@@ -219,6 +221,7 @@ public:
     QVariantList machines() const { return m_machines; }
     QVariantList machineDistros() const { return m_machineDistros; }
     QVariantMap machineInfo() const { return m_machineInfo; }
+    QVariantList machineSerialPorts() const { return m_machineSerialPorts; }
     QStringList machineLogLines() const { return m_machineLogLines; }
     QString machineLogsCapturedAt() const { return m_machineLogsCapturedAt; }
     QVariantMap machineStats() const { return m_machineStats; }
@@ -330,6 +333,9 @@ public:
     Q_INVOKABLE void refreshMachines();
     Q_INVOKABLE void refreshMachineDistros();
     Q_INVOKABLE void loadMachineInfo(const QString &id);
+    Q_INVOKABLE void refreshMachineSerialPorts(const QString &id);
+    Q_INVOKABLE void attachMachineSerialPort(const QString &id, const QString &path);
+    Q_INVOKABLE void detachMachineSerialPort(const QString &id, const QString &path);
     Q_INVOKABLE void loadMachineLogs(const QString &id, int tail = 200);
     Q_INVOKABLE void startMachineStats(const QString &id);
     Q_INVOKABLE void stopMachineStats();
@@ -450,6 +456,7 @@ signals:
     void machinesChanged();
     void machineDistrosChanged();
     void machineInfoChanged();
+    void machineSerialPortsChanged();
     void machineLogsChanged();
     void machineStatsChanged();
     void machineConsoleChanged();
@@ -493,6 +500,7 @@ private:
     void onMachinesFinished();
     void onMachineDistrosFinished();
     void onMachineInfoFinished();
+    void onMachineSerialFinished();
     void onMachineLogsFinished();
     void onMachineFilesFinished();
     void onMachineSnapshotsFinished();
@@ -532,6 +540,7 @@ private:
     QFutureWatcher<QJsonObject> m_machinesWatcher;
     QFutureWatcher<QJsonObject> m_machineDistrosWatcher;
     QFutureWatcher<QJsonObject> m_machineInfoWatcher;
+    QFutureWatcher<QJsonObject> m_machineSerialWatcher;
     QFutureWatcher<QJsonObject> m_machineLogsWatcher;
     QFutureWatcher<QJsonObject> m_machineFilesWatcher;
     QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
@@ -645,6 +654,7 @@ private:
     QVariantList m_machines;
     QVariantList m_machineDistros;
     QVariantMap m_machineInfo;
+    QVariantList m_machineSerialPorts;
     QStringList m_machineLogLines;
     QString m_machineLogsCapturedAt;
     QVariantMap m_machineStats;

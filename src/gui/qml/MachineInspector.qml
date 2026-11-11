@@ -40,6 +40,7 @@ Rectangle {
     signal cloneRequested(string id)
     signal resourcesRequested(string id)
     signal portsRequested(string id)
+    signal serialRequested(string id)
     signal snapshotsRequested(string id)
     signal closeRequested()
     signal expandRequested(string id, int tab)
@@ -262,6 +263,14 @@ Rectangle {
                         + (mount.readOnly ? qsTr(" (somente leitura)") : ""))
         }
         return values.join("\n")
+    }
+
+    function serialText() {
+        const serial = root.machine && root.machine.serialPorts ? root.machine.serialPorts : []
+        if (serial.length === 0) {
+            return "-"
+        }
+        return serial.join("\n")
     }
 
     component MetricCard: Rectangle {
@@ -521,6 +530,18 @@ Rectangle {
             }
 
             ActionButton {
+                text: qsTr("Serial")
+                size: "sm"
+                visible: !root.showTerminalTab
+                enabled: root.machineId.length > 0
+                         && root.machineState !== "provisioning"
+                         && root.machineState !== "deleting"
+                         && backend.actionActive === false
+                onClicked: root.serialRequested(root.machineId)
+                Accessible.name: qsTr("Gerenciar portas seriais da machine")
+            }
+
+            ActionButton {
                 text: qsTr("Snapshots")
                 size: "sm"
                 // O diálogo vive na MachinesPage; no overlay (detalhe) as demais
@@ -692,6 +713,23 @@ Rectangle {
                     Text {
                         Layout.fillWidth: true
                         text: root.portsText()
+                        color: Theme.textSecondary
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontMicro
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        text: qsTr("Serial")
+                        color: Theme.textSecondary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.serialText()
                         color: Theme.textSecondary
                         font.family: Theme.monoFamily
                         font.pixelSize: Theme.fontMicro

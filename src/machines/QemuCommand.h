@@ -44,6 +44,7 @@ struct QemuSpec {
     QString ovmfVarsPath;
     QVector<QemuMount> mounts;
     QVector<QemuPort> ports;
+    QStringList serialPorts;
 };
 
 class QemuCommand {

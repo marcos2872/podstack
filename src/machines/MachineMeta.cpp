@@ -142,6 +142,12 @@ QJsonObject MachineMeta::toJson() const
         mountArray.append(mountToJson(mount));
     }
     object.insert(QStringLiteral("mounts"), mountArray);
+
+    QJsonArray serialArray;
+    for (const QString &serialPort : serialPorts) {
+        serialArray.append(serialPort);
+    }
+    object.insert(QStringLiteral("serialPorts"), serialArray);
     return object;
 }
 
@@ -181,6 +187,13 @@ MachineMeta MachineMeta::fromJson(const QJsonObject &object)
     for (const QJsonValue &value : mountArray) {
         if (value.isObject()) {
             meta.mounts.append(mountFromJson(value.toObject()));
+        }
+    }
+
+    const QJsonArray serialArray = object.value(QStringLiteral("serialPorts")).toArray();
+    for (const QJsonValue &value : serialArray) {
+        if (value.isString() && !value.toString().isEmpty()) {
+            meta.serialPorts.append(value.toString());
         }
     }
     return meta;

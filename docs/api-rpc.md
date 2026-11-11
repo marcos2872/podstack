@@ -465,6 +465,13 @@ e não pode ser symlink; a leitura usa no máximo os últimos 512 KiB e devolve 
 `tail` linhas (`tail` default 200, limitado a 1..2000). Se a machine ainda não bootou e o
 arquivo não existe, a resposta é `{lines:[]}`.
 
+**Portas seriais (T8-02).** `machines.serial.list {id}` devolve as portas do host
+(`/dev/ttyUSB*`, `/dev/ttyACM*` e UARTs reais `ttyS*` com `type>0`) e as anexadas à machine.
+Cada porta traz `kind`, `description` (fabricante/produto USB ou tipo da UART) e `readable`.
+`attach`/`detach` validam caminho absoluto e legível, recusam a mesma porta em outra machine
+e reiniciam a machine se ela estiver rodando; a porta entra como `-serial <path>` adicional
+no QEMU (a primeira continua sendo o `console.log`).
+
 **Console serial (T4-15).** `machines.console.read {id, tailBytes?}` lê o mesmo
 `machines/<id>/console.log` com a mesma validação do `machines.logs` (regular, sem symlink,
 confinado ao diretório, path não exposto) e devolve `{id, data}`. `tailBytes` default **64

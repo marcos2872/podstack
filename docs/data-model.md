@@ -120,6 +120,7 @@ Não persistido. Cache em memória reconstruído por eventos.
 
 `machine_ports`: `id`, `machineId`, `hostPort`, `guestPort`, `protocol`, `exposeLan`, `label`.
 `machine_mounts`: `id`, `machineId`, `source`, `target`, `readOnly`, `tag` (virtiofs).
+`machine_serial_ports`: `machineId`, `path` (porta serial do host anexada; PK composta).
 
 ### 2.8 Snapshot (efêmero, derivado do qcow2)
 
@@ -258,6 +259,12 @@ CREATE TABLE machine_mounts (
   target TEXT NOT NULL,
   read_only INTEGER NOT NULL DEFAULT 0,
   tag TEXT NOT NULL
+);
+
+CREATE TABLE machine_serial_ports (
+  machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  PRIMARY KEY (machine_id, path)
 );
 
 CREATE TABLE builds (
@@ -452,7 +459,8 @@ CREATE INDEX idx_domains_hostname ON domains(hostname);
   "mounts": [
     { "id": "0193f2c6-...", "source": "/home/marcos/Projetos", "target": "/mnt/projetos",
       "readOnly": false, "tag": "host" }
-  ]
+  ],
+  "serialPorts": ["/dev/ttyUSB0"]
 }
 ```
 

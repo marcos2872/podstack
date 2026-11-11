@@ -213,6 +213,8 @@ Backend::Backend(QObject *parent)
             &Backend::onMachineDistrosFinished);
     connect(&m_machineInfoWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineInfoFinished);
+    connect(&m_machineSerialWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onMachineSerialFinished);
     connect(&m_machineLogsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineLogsFinished);
     connect(&m_machineFilesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -3203,6 +3205,53 @@ void Backend::onMachineDistrosFinished()
     m_machineDistros = items;
     m_machineDistrosLoaded = true;
     emit machineDistrosChanged();
+}
+
+void Backend::refreshMachineSerialPorts(const QString &id)
+{
+    if (id.isEmpty() || m_machineSerialWatcher.isRunning()) {
+        return;
+    }
+    m_machineSerialWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(QStringLiteral("machines.serial.list"),
+                                               QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("__error"), error.message}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onMachineSerialFinished()
+{
+    const QJsonObject result = m_machineSerialWatcher.result();
+    if (result.contains(QStringLiteral("__error"))) {
+        m_lastError = result.value(QStringLiteral("__error")).toString();
+        emit lastErrorChanged();
+        return;
+    }
+    m_machineSerialPorts = result.value(QStringLiteral("ports")).toArray().toVariantList();
+    emit machineSerialPortsChanged();
+}
+
+void Backend::attachMachineSerialPort(const QString &id, const QString &path)
+{
+    if (id.isEmpty() || path.isEmpty()) {
+        return;
+    }
+    runAction(QStringLiteral("machines.serial.attach"),
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("path"), path}}, 180000);
+}
+
+void Backend::detachMachineSerialPort(const QString &id, const QString &path)
+{
+    if (id.isEmpty() || path.isEmpty()) {
+        return;
+    }
+    runAction(QStringLiteral("machines.serial.detach"),
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("path"), path}}, 180000);
 }
 
 void Backend::loadMachineInfo(const QString &id)

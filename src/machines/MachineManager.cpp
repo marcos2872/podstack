@@ -9,6 +9,7 @@
 #include "core/Proxy.h"
 #include "machines/CloudInit.h"
 #include "machines/MachineArchive.h"
+#include "machines/SerialPorts.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -41,12 +42,14 @@ constexpr int kQemuImgTimeoutMs = 60000;
 constexpr int kSshKeygenStartTimeoutMs = 5000;
 constexpr int kSshKeygenTimeoutMs = 30000;
 constexpr int kMaxProcessOutput = 4096;
-constexpr qint64 kMaxPublicKeyBytes = 64 * 1024;
+constexpr qint64 kMaxPublicKeyBytes = 64LL * 1024;
 
+// NOLINTBEGIN(bugprone-throwing-static-initialization)
 const QString kOvmfCodeAmd64 = QStringLiteral("/usr/share/edk2/ovmf/OVMF_CODE.fd");
 const QString kOvmfVarsAmd64 = QStringLiteral("/usr/share/edk2/ovmf/OVMF_VARS.fd");
 const QString kAavmfCodeArm64 = QStringLiteral("/usr/share/AAVMF/AAVMF_CODE.fd");
 const QString kAavmfVarsArm64 = QStringLiteral("/usr/share/AAVMF/AAVMF_VARS.fd");
+// NOLINTEND(bugprone-throwing-static-initialization)
 
 Error invalidParams(const QString &message, const QString &detail = {},
                     const QString &remediation = {})
@@ -197,8 +200,8 @@ bool processReferencesPath(qint64 pid, const QString &root)
     if (!cmdline.open(QIODevice::ReadOnly)) {
         return false;
     }
-    const QByteArray payload = cmdline.read(1024 * 1024 + 1);
-    if (payload.isEmpty() || payload.size() > 1024 * 1024) {
+    const QByteArray payload = cmdline.read(1024LL * 1024 + 1);
+    if (payload.isEmpty() || payload.size() > 1024LL * 1024) {
         return false;
     }
 
@@ -568,9 +571,7 @@ bool MachineManager::normalizePorts(const QString &machineId, const QVector<Mach
                                          + QString::number(port.hostPort));
                 }
             }
-            if (!current && !port.id.isEmpty()) {
-                usedIds.insert(port.id);
-            } else if (current && isSshPort(port) && !port.id.isEmpty()) {
+            if (!port.id.isEmpty() && (!current || isSshPort(port))) {
                 usedIds.insert(port.id);
             }
         }
@@ -1823,6 +1824,7 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
     spec.sshPort = static_cast<quint16>(meta.sshPort);
     spec.kvm = kvmAvailable();
     spec.isolateNetwork = meta.isolateNetwork;
+    spec.serialPorts = meta.serialPorts;
 
     const QString directory = machineDirFor(meta.id);
     if (directory.isEmpty()) {
@@ -2567,6 +2569,117 @@ MachineMeta MachineManager::update(const QString &idOrName,
 
     if (!updateError.isEmpty() && error) {
         *error = updateError;
+    }
+    return result;
+}
+
+MachineMeta MachineManager::setSerialPorts(const QString &idOrName, const QStringList &paths,
+                                           Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+
+    MachineMeta meta = load(idOrName, error);
+    if (meta.id.isEmpty()) {
+        return {};
+    }
+    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("deleting") ||
+        meta.state == QStringLiteral("deleted")) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em transição; tente novamente."),
+                                 meta.id));
+        return meta;
+    }
+
+    QStringList normalized;
+    for (const QString &path : paths) {
+        QString pathError;
+        if (!validateSerialPortPath(path, &pathError)) {
+            fails(error, invalidParams(pathError, path));
+            return meta;
+        }
+        if (!normalized.contains(path)) {
+            normalized.append(path);
+        }
+    }
+
+    std::shared_ptr<std::recursive_mutex> lockHolder;
+    std::unique_lock<std::recursive_mutex> machineGuard;
+    if (!tryLockMachine(meta.id, &lockHolder, &machineGuard)) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em outra operação."), meta.id,
+                                 QStringLiteral("Aguarde a operação atual terminar.")));
+        return meta;
+    }
+
+    Error existingError;
+    const QVector<MachineMeta> existing = existingMachines(&existingError);
+    if (!existingError.isEmpty()) {
+        if (error) {
+            *error = existingError;
+        }
+        return meta;
+    }
+    for (const MachineMeta &candidate : existing) {
+        if (candidate.id == meta.id) {
+            continue;
+        }
+        for (const QString &path : normalized) {
+            if (candidate.serialPorts.contains(path)) {
+                fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                         QStringLiteral("A porta serial já está anexada a outra "
+                                                        "machine."),
+                                         path,
+                                         QStringLiteral("Desanexe a porta da machine %1 primeiro.")
+                                             .arg(candidate.name)));
+                return meta;
+            }
+        }
+    }
+
+    const QemuSpec spec = specFor(meta, false, nullptr);
+    const bool wasRunning =
+        meta.state == QStringLiteral("running") || meta.state == QStringLiteral("starting") ||
+        meta.state == QStringLiteral("stopping") || m_runtime->isRunning(spec, nullptr);
+
+    if (wasRunning) {
+        Error stopError;
+        meta = stop(meta.id, false, &stopError);
+        if (!stopError.isEmpty()) {
+            if (error) {
+                *error = stopError;
+            }
+            return meta;
+        }
+    }
+
+    const QString machineId = meta.id;
+    const QStringList previous = meta.serialPorts;
+    meta.serialPorts = normalized;
+    Error persistError;
+    if (!persist(meta, &persistError)) {
+        meta.serialPorts = previous;
+        if (error) {
+            *error = persistError;
+        }
+        return meta;
+    }
+
+    MachineMeta result = meta;
+    if (wasRunning) {
+        Error restartError;
+        const MachineMeta restarted = start(machineId, &restartError);
+        if (!restarted.id.isEmpty()) {
+            result = restarted;
+        }
+        if (!restartError.isEmpty() && error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_CONFLICT"),
+                QStringLiteral("As portas seriais foram salvas, mas a machine não reiniciou."),
+                errorText(restartError),
+                QStringLiteral("Inicie a machine manualmente; os metadados já foram salvos."));
+        }
     }
     return result;
 }

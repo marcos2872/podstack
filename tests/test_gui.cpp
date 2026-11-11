@@ -750,6 +750,17 @@ void GuiTest::backendMachines()
     QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
     QCOMPARE(actionSpy.last().at(0).toBool(), false);
 
+    errorsBefore = errorSpy.count();
+    backend.refreshMachineSerialPorts(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
+
+    backend.attachMachineSerialPort(QStringLiteral("missing-machine"), QStringLiteral("/dev/null"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.detachMachineSerialPort(QStringLiteral("missing-machine"), QStringLiteral("/dev/null"));
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 3, 5000);
+    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+
     backend.openMachineSsh(QString());
     QCOMPARE(backend.lastError(), QStringLiteral("Machine inválida."));
     backend.openMachineSsh(QStringLiteral("missing-machine"));

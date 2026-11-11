@@ -228,6 +228,9 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
     args << QStringLiteral("-monitor") << QStringLiteral("none");
     args << QStringLiteral("-display") << QStringLiteral("none");
     args << QStringLiteral("-serial") << QStringLiteral("file:%1").arg(spec.consoleLogPath);
+    for (const QString &serialPort : spec.serialPorts) {
+        args << QStringLiteral("-serial") << serialPort;
+    }
     args << QStringLiteral("-daemonize");
     args << QStringLiteral("-pidfile") << spec.pidFile;
 

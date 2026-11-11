@@ -235,12 +235,12 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
 | T8-01 | P2 | USB list/attach/detach (QEMU usb-host) | T4-03 | Device no guest |
-| T8-02 | P2 | Serial ports | T4-03 | Console serial |
+| T8-02 | P2 | Serial ports | T4-03 | ✅ — `machines.serial.list/attach/detach` listam `ttyUSB*`/`ttyACM*` e UARTs reais (`ttyS*` com `type>0`, sem os placeholders `serial8250`), com descrição do dispositivo (fabricante/produto USB ou tipo da UART); validam caminho legível, recusam a mesma porta em duas machines e reiniciam se estiver rodando. `serialPorts` vai para o `meta.json`/SQLite e vira `-serial <path>` no QEMU. CLI `machine serial list/attach/detach` e diálogo **Serial** no inspetor/Machines. Evidência: `test_machines/qemuCommandSerialPorts`, `machineManagerSerialPorts`, `machineMetaRoundTrip`; `test_rpc/machineSerialPorts`; `test_cli/machineCommands`. |
 | T8-03 | P2 | Áudio (virtio-snd/PipeWire) | T4-03 | Playback/recording |
 | T8-04 | P2 | X11/Wayland forwarding | T4-03 | App gráfico no host |
 | T8-05 | P2 | i18n completa + pt-BR/en-US | T0-11 | Strings externalizadas |
 | T8-06 | P2 | Avaliar Flatpak sob demanda (não no v1) | T7-01 | Documentado |
-| T8-07 | P2 | Snapshots de máquina | T4-03 | Criar/restaurar |
+| T8-07 | P2 | Snapshots de máquina | T4-03 | ✅ já entregue na T4-16 (`machines.snapshots.list/create/restore/remove`, CLI/GUI e testes) |
 | T8-08 | P2 | Checkpoint/restore containers | T1-02 | CRIU |
 | T8-09 | P2 | Multi-arch/emulação | T2-02 | binfmt/FEX |
 
