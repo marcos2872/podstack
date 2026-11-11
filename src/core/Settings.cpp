@@ -213,8 +213,7 @@ const QVector<SettingDef> &definitions()
                              {QStringLiteral("system"), QStringLiteral("dark"),
                               QStringLiteral("light")},
                              QStringLiteral("Geral"), QStringLiteral("Tema da UI.")));
-        list.append(makeInt(QStringLiteral("app.fontScale"), 100, 80, 150,
-                            QStringLiteral("Geral"),
+        list.append(makeInt(QStringLiteral("app.fontScale"), 100, 80, 150, QStringLiteral("Geral"),
                             QStringLiteral("Escala da fonte da interface (%).")));
         list.append(makeString(QStringLiteral("app.language"), QStringLiteral("pt-BR"),
                                QStringLiteral("Geral"),
