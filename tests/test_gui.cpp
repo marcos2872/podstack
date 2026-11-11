@@ -1477,6 +1477,7 @@ void GuiTest::backendSettings()
     QSignalSpy schemaSpy(&backend, &PodStack::Backend::settingsSchemaChanged);
     QSignalSpy valuesSpy(&backend, &PodStack::Backend::settingsValuesChanged);
     QSignalSpy finishedSpy(&backend, &PodStack::Backend::settingFinished);
+    QSignalSpy restartSpy(&backend, &PodStack::Backend::pendingRestartKeysChanged);
 
     backend.refreshSettings();
     QTRY_COMPARE(backend.settingsSchema().size(), 86);
@@ -1497,6 +1498,8 @@ void GuiTest::backendSettings()
         }
     }
     QVERIFY(themeSaved);
+    // app.theme não exige reinício: não deve entrar na lista de pendências.
+    QVERIFY(!backend.pendingRestartKeys().contains(QStringLiteral("app.theme")));
 
     backend.setSetting(QStringLiteral("terminal.fontSize"), 99);
     QTRY_VERIFY(!backend.settingsError().isEmpty());
@@ -1511,6 +1514,10 @@ void GuiTest::backendSettings()
                      .toString(),
                  QStringLiteral("rootful"));
     QTRY_VERIFY(backend.settingsError().isEmpty());
+    // O daemon devolve restartRequired=true para engine.mode; o Backend precisa
+    // expor isso para o diálogo avisar o usuário.
+    QTRY_VERIFY(backend.pendingRestartKeys().contains(QStringLiteral("engine.mode")));
+    QVERIFY(restartSpy.count() > 0);
 
     backend.resetSetting(QStringLiteral("app.theme"));
     QTRY_COMPARE(backend.settingsValues()

@@ -68,6 +68,11 @@ Rectangle {
 
         function onSettingsValuesChanged() {
             applyAppearance()
+            // Salvar/restaurar atualiza os valores no daemon; sem reconstruir as
+            // linhas o campo continuaria exibindo o snapshot antigo.
+            if (settingsDialog.opened) {
+                settingsDialog.rebuildSettingsRows()
+            }
         }
 
     }
@@ -906,6 +911,29 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
                 color: Theme.border
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                visible: backend.pendingRestartKeys.length > 0
+                implicitHeight: restartNotice.implicitHeight + 12
+                radius: Theme.radiusSm
+                color: Theme.warningSoft
+                border.width: 1
+                border.color: Theme.warning
+
+                Text {
+                    id: restartNotice
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    text: qsTr("Reinicie o PodStack para aplicar: %1")
+                              .arg(backend.pendingRestartKeys.join(", "))
+                    color: Theme.warning
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    wrapMode: Text.WordWrap
+                    verticalAlignment: Text.AlignVCenter
+                }
             }
 
             ScrollView {

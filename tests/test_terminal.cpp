@@ -21,11 +21,13 @@
 #include <QLabel>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickWidget>
+#include <QQuickWindow>
 #include <QRectF>
 #include <QScopedPointer>
 #include <QShortcut>
@@ -80,6 +82,7 @@ private slots:
     void mainWindowRestoresSection();
     void mainWindowShortcuts();
     void translationCatalog();
+    void appSelectKeepsSelectionWhenOpened();
 
 private:
     QTemporaryDir m_runtime;
@@ -908,6 +911,50 @@ void TerminalTest::translationCatalog()
     QVERIFY(!PodStack::installTranslation(nullptr, QStringLiteral("en-US")));
 
     QVERIFY(PodStack::installTranslation(qApp, QStringLiteral("en-US")));
+}
+
+void TerminalTest::appSelectKeepsSelectionWhenOpened()
+{
+    QQmlApplicationEngine engine;
+    const QByteArray qml = R"(
+import QtQuick
+import QtQuick.Window
+import PodStack
+
+Window {
+    width: 320
+    height: 240
+    visible: true
+
+    AppSelect {
+        objectName: "select"
+        width: 200
+        model: ["system", "dark", "light"]
+        currentIndex: 1
+        function openPopup() { popup.open() }
+        function closePopup() { popup.close() }
+    }
+}
+)";
+    engine.loadData(qml);
+    QVERIFY2(!engine.rootObjects().isEmpty(), "AppSelect não carregou.");
+    auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+    QVERIFY(window != nullptr);
+    auto *select = window->findChild<QObject *>(QStringLiteral("select"));
+    QVERIFY(select != nullptr);
+
+    QCOMPARE(select->property("count").toInt(), 3);
+    QCOMPARE(select->property("currentIndex").toInt(), 1);
+    QCOMPARE(select->property("displayText").toString(), QStringLiteral("dark"));
+
+    // Regressão: o delegate do popup no ListView zerava currentIndex ao abrir.
+    QVERIFY(QMetaObject::invokeMethod(select, "openPopup"));
+    QTRY_COMPARE(select->property("currentIndex").toInt(), 1);
+    QCOMPARE(select->property("displayText").toString(), QStringLiteral("dark"));
+    QCOMPARE(select->property("currentText").toString(), QStringLiteral("dark"));
+
+    QVERIFY(QMetaObject::invokeMethod(select, "closePopup"));
+    QTRY_COMPARE(select->property("displayText").toString(), QStringLiteral("dark"));
 }
 
 void TerminalTest::mainWindowQml()

@@ -1,9 +1,14 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import PodStack
 
 // Select padrão do redesign (ComboBox com background e popup do tema).
+//
+// O delegate fica no ComboBox, não no ListView do popup: quando o popup declara
+// o próprio delegate e usa `control.delegateModel` como model, o ComboBox perde
+// a resolução do item atual e zera `currentIndex` ao abrir (o texto selecionado
+// sumia). O delegate precisa ler `model[control.textRole]` — para arrays de
+// strings com textRole vazio isso resolve para o próprio item.
 ComboBox {
     id: control
 
@@ -40,6 +45,33 @@ ComboBox {
         border.color: control.activeFocus ? Theme.indigo500 : Theme.border
     }
 
+    delegate: ItemDelegate {
+        id: item
+        required property var model
+        required property int index
+
+        width: control.width
+        height: 32
+        text: model[control.textRole]
+        highlighted: control.highlightedIndex === index
+
+        background: Rectangle {
+            radius: Theme.radiusXs
+            color: item.highlighted ? Theme.accentSoft
+                                    : item.hovered ? Theme.bgHover : "transparent"
+        }
+
+        contentItem: Text {
+            text: item.text
+            color: Theme.textPrimary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontBody
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: 8
+            elide: Text.ElideRight
+        }
+    }
+
     popup: Popup {
         y: control.height + 4
         width: control.width
@@ -59,27 +91,6 @@ ComboBox {
             model: control.popup.visible ? control.delegateModel : null
             currentIndex: control.highlightedIndex
             boundsBehavior: Flickable.StopAtBounds
-
-            delegate: ItemDelegate {
-                width: control.width - 8
-                height: 32
-                highlighted: control.highlightedIndex === index
-
-                background: Rectangle {
-                    radius: Theme.radiusXs
-                    color: parent.highlighted ? Theme.accentSoft
-                                              : parent.hovered ? Theme.bgHover : "transparent"
-                }
-
-                contentItem: Text {
-                    text: modelData
-                    color: Theme.textPrimary
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontBody
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: 8
-                }
-            }
         }
     }
 }

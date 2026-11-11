@@ -239,8 +239,11 @@ o conteúdo não é mesclado.
 - Erros retornam `{code, message, detail, remediation}` no RPC (`detail` = chave; o valor não é
   ecoado para não vazar segredos). A CLI mostra mensagem, detalhe e ação.
 - Valor inválido **não é salvo**.
-- Alterações que exigem restart retornam `restartRequired: true` e são aplicadas no próximo start
-  (ou com botão "Aplicar e reiniciar", ainda não implementado).
+- Alterações que exigem restart retornam `restartRequired: true` e são aplicadas no próximo start.
+  O diálogo de Configurações acumula essas chaves em `pendingRestartKeys` e exibe o aviso
+  "Reinicie o PodStack para aplicar: <chaves>" até o app ser reiniciado.
+- Depois de salvar ou de **Restaurar**, o diálogo reconstrói as linhas a partir de
+  `settingsValuesChanged`, então o campo mostra o valor efetivo do daemon (não o snapshot antigo).
 
 ---
 
