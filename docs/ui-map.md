@@ -506,13 +506,13 @@ qml/
 
 | Atalho | Ação | Status |
 |---|---|---|
-| `Ctrl+N` | novo (contexto da seção) | planejado |
+| `Ctrl+N` | novo (contexto da seção) | ✅ implementado (novo container) |
 | `Ctrl+Shift+N` | nova janela | não aplicável (janela única) |
 | `Ctrl+T` | nova aba | não aplicável (abas de terminal abertas por ação) |
-| `Ctrl+W` | fechar aba | planejado |
+| `Ctrl+W` | fechar aba | não aplicável (conflita com o shell nos terminais) |
 | `Ctrl+,` | Settings | ✅ implementado |
 | `Ctrl+B` | alternar sidebar | ✅ implementado |
-| `Ctrl+Shift+B` | alternar inspector | planejado |
+| `Ctrl+Shift+B` | alternar inspector | não aplicável (inspector é por página) |
 | `Ctrl+F` | buscar na seção | ✅ implementado (Containers) |
 | `Ctrl+Shift+F` | busca global | planejado |
 | `F5` | atualizar | ✅ implementado |

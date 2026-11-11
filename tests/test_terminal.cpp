@@ -874,6 +874,7 @@ void TerminalTest::mainWindowShortcuts()
     QVERIFY(root != nullptr);
 
     const QStringList shortcutNames{
+        QStringLiteral("shortcutNew"),
         QStringLiteral("shortcutSettings"),
         QStringLiteral("shortcutSidebar"),
         QStringLiteral("shortcutRefresh"),

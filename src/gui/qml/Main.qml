@@ -753,6 +753,13 @@ Rectangle {
     }
 
     Shortcut {
+        objectName: "shortcutNew"
+        sequence: StandardKey.New
+        enabled: !setupWindow.visible && window.section === "containers"
+        onActivated: containersPage.openCreate()
+    }
+
+    Shortcut {
         objectName: "shortcutSettings"
         sequence: StandardKey.Preferences
         enabled: !setupWindow.visible
