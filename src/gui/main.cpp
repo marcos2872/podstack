@@ -136,9 +136,9 @@ int main(int argc, char *argv[])
     // A dock usa o ícone do desktop entry via app_id; em dev (sem o pacote
     // instalado) o fallback é o ícone do app embutido no recurso do QML, não
     // o ícone da bandeja (que carrega o ponto de status).
-    QIcon appIcon = QIcon::fromTheme(
-        QStringLiteral("dev.podstack.PodStack"),
-        QIcon(QStringLiteral(":/qt/qml/PodStack/assets/podstack-icon.svg")));
+    QIcon appIcon =
+        QIcon::fromTheme(QStringLiteral("dev.podstack.PodStack"),
+                         QIcon(QStringLiteral(":/qt/qml/PodStack/assets/podstack-icon.svg")));
     if (appIcon.isNull()) {
         appIcon = tray.icon();
     }

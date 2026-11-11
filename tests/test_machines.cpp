@@ -2111,8 +2111,7 @@ void MachinesTest::seedYamlDefaults()
     QVERIFY(yaml.contains(QStringLiteral(".ssh/environment")));
     QVERIFY(yaml.contains(QStringLiteral("GRUB_DEFAULT")));
     QVERIFY(!yaml.contains(QStringLiteral("apt-get purge -y $cloud_kernels")));
-    QVERIFY(yaml.contains(
-        QStringLiteral("dnf install -y kernel-modules kernel-modules-extra")));
+    QVERIFY(yaml.contains(QStringLiteral("dnf install -y kernel-modules kernel-modules-extra")));
     QVERIFY(!yaml.contains(QStringLiteral("kernel-modules-extra-$(uname -r)")));
     QVERIFY(yaml.contains(QStringLiteral("pulseaudio --start")));
     QVERIFY(yaml.contains(QStringLiteral("/usr/local/sbin/podstack-guest-setup")));
@@ -9055,9 +9054,9 @@ void MachinesTest::sshConfigPreserves()
     QVERIFY(content.contains(QStringLiteral("  User alice")));
     QVERIFY(content.contains(QStringLiteral("  IdentityFile ") + meta.sshKeyPath));
     QVERIFY(content.contains(QStringLiteral("  IdentitiesOnly yes")));
-    QVERIFY(content.contains(QStringLiteral("  UserKnownHostsFile ")
-                             + QFileInfo(meta.sshKeyPath).absolutePath()
-                             + QStringLiteral("/known_hosts")));
+    QVERIFY(content.contains(QStringLiteral("  UserKnownHostsFile ") +
+                             QFileInfo(meta.sshKeyPath).absolutePath() +
+                             QStringLiteral("/known_hosts")));
     QVERIFY(!content.contains(QStringLiteral("ForwardAgent yes")));
     QVERIFY(content.contains(QStringLiteral("# <<< podstack: ssh-demo")));
     QVERIFY(ownerOnly(QFileInfo(configPath).permissions(), false));
@@ -9447,9 +9446,8 @@ void MachinesTest::machineStats()
     QVERIFY(argsText.contains(QStringLiteral("-p 32222")));
     QVERIFY(argsText.contains(QStringLiteral("IdentitiesOnly=yes")));
     QVERIFY(argsText.contains(QStringLiteral("StrictHostKeyChecking=accept-new")));
-    QVERIFY(argsText.contains(QStringLiteral("UserKnownHostsFile=")
-                              + QFileInfo(keyPath).absolutePath()
-                              + QStringLiteral("/known_hosts")));
+    QVERIFY(argsText.contains(QStringLiteral("UserKnownHostsFile=") +
+                              QFileInfo(keyPath).absolutePath() + QStringLiteral("/known_hosts")));
     QVERIFY(argsText.contains(QStringLiteral("BatchMode=yes")));
     QVERIFY(argsText.contains(QStringLiteral("ConnectTimeout=3")));
     QVERIFY(argsText.contains(QStringLiteral("podstack@127.0.0.1")));
@@ -9716,9 +9714,9 @@ void MachinesTest::machineFiles()
     QVERIFY(sshArguments.contains(QStringLiteral("32222")));
     QVERIFY(sshArguments.contains(QStringLiteral("IdentitiesOnly=yes")));
     QVERIFY(sshArguments.contains(QStringLiteral("StrictHostKeyChecking=accept-new")));
-    QVERIFY(sshArguments.contains(QStringLiteral("UserKnownHostsFile=")
-                                  + QFileInfo(keyPath).absolutePath()
-                                  + QStringLiteral("/known_hosts")));
+    QVERIFY(sshArguments.contains(QStringLiteral("UserKnownHostsFile=") +
+                                  QFileInfo(keyPath).absolutePath() +
+                                  QStringLiteral("/known_hosts")));
     QVERIFY(sshArguments.contains(QStringLiteral("BatchMode=yes")));
     QVERIFY(sshArguments.contains(QStringLiteral("ConnectTimeout=5")));
     QVERIFY(sshArguments.contains(QStringLiteral("podstack@127.0.0.1")));
@@ -9772,9 +9770,9 @@ void MachinesTest::machineFiles()
     QVERIFY(downloadArguments.contains(QStringLiteral("-P")));
     QVERIFY(downloadArguments.contains(QStringLiteral("32222")));
     QVERIFY(downloadArguments.contains(QStringLiteral("IdentitiesOnly=yes")));
-    QVERIFY(downloadArguments.contains(QStringLiteral("UserKnownHostsFile=")
-                                       + QFileInfo(keyPath).absolutePath()
-                                       + QStringLiteral("/known_hosts")));
+    QVERIFY(downloadArguments.contains(QStringLiteral("UserKnownHostsFile=") +
+                                       QFileInfo(keyPath).absolutePath() +
+                                       QStringLiteral("/known_hosts")));
     QVERIFY(downloadArguments.contains(QStringLiteral("ConnectTimeout=5")));
     QVERIFY(downloadArguments.contains(
         QStringLiteral("podstack@127.0.0.1:/home/podstack/report.txt")));

@@ -1039,16 +1039,14 @@ void TerminalTest::mainWindowQml()
     bool hasUpdatesCategory = false;
     const QVariantList categories = settings->property("categories").toList();
     for (const QVariant &entry : categories) {
-        if (entry.toMap().value(QStringLiteral("value")).toString()
-            == QStringLiteral("Updates")) {
+        if (entry.toMap().value(QStringLiteral("value")).toString() == QStringLiteral("Updates")) {
             hasUpdatesCategory = true;
         }
     }
     QVERIFY(!hasUpdatesCategory);
     QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("updateCheckRow")) != nullptr);
     QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("updateAutoCheckBox")) != nullptr);
-    QVERIFY(
-        rootObject->findChild<QObject *>(QStringLiteral("updateCheckNowButton")) != nullptr);
+    QVERIFY(rootObject->findChild<QObject *>(QStringLiteral("updateCheckNowButton")) != nullptr);
     QVERIFY(QMetaObject::invokeMethod(settings, "open"));
     // Sem daemon no teste, o schema fica vazio; o importante é o dialog abrir
     // sem ReferenceError e o array de linhas existir.

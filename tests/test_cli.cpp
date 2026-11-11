@@ -1242,8 +1242,8 @@ void CliTest::machineSsh()
     const QStringList args =
         QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     log.close();
-    const QString knownHosts = QFileInfo(meta.sshKeyPath).absolutePath()
-                               + QStringLiteral("/known_hosts");
+    const QString knownHosts =
+        QFileInfo(meta.sshKeyPath).absolutePath() + QStringLiteral("/known_hosts");
     QCOMPARE(args.size(), 13);
     QCOMPARE(args.value(0), QStringLiteral("-i"));
     QCOMPARE(args.value(1), meta.sshKeyPath);
@@ -1969,8 +1969,8 @@ void CliTest::goldenExitCodes()
                  env)
                  .code,
              0);
-    QCOMPARE(run({QStringLiteral("config"), QStringLiteral("set"),
-                  QStringLiteral("updates.mode"), QStringLiteral("check")},
+    QCOMPARE(run({QStringLiteral("config"), QStringLiteral("set"), QStringLiteral("updates.mode"),
+                  QStringLiteral("check")},
                  env)
                  .code,
              0);
@@ -2022,9 +2022,8 @@ void CliTest::goldenExitCodes()
 
     for (const GoldenCase &testCase : cases) {
         const CliResult result = run(testCase.args, env);
-        const QString label = QStringLiteral("%1 (%2)")
-                                  .arg(QString::fromLatin1(testCase.name),
-                                       testCase.args.join(QLatin1Char(' ')));
+        const QString label = QStringLiteral("%1 (%2)").arg(QString::fromLatin1(testCase.name),
+                                                            testCase.args.join(QLatin1Char(' ')));
         QVERIFY2(result.code == testCase.expectedCode,
                  qPrintable(QStringLiteral("%1 -> exit %2, esperado %3 (stderr: %4)")
                                 .arg(label)

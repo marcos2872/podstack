@@ -292,10 +292,10 @@ QStringList MachineDetailDialog::sshArguments() const
     if (forwardAgent) {
         arguments << QStringLiteral("-A");
     }
-    arguments << QStringLiteral("-i") << keyPath << QStringLiteral("-p")
-              << QString::number(port) << QStringLiteral("-o")
-              << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
-              << QStringLiteral("StrictHostKeyChecking=accept-new") << QStringLiteral("-o")
+    arguments << QStringLiteral("-i") << keyPath << QStringLiteral("-p") << QString::number(port)
+              << QStringLiteral("-o") << QStringLiteral("IdentitiesOnly=yes")
+              << QStringLiteral("-o") << QStringLiteral("StrictHostKeyChecking=accept-new")
+              << QStringLiteral("-o")
               << QStringLiteral("UserKnownHostsFile=%1/known_hosts")
                      .arg(QFileInfo(keyPath).absolutePath())
               << QStringLiteral("%1@127.0.0.1").arg(user);

@@ -4,6 +4,7 @@
 
 #include "daemon/StatsCollector.h"
 
+#include <QByteArrayView>
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QFileInfo>
@@ -17,19 +18,18 @@ namespace PodStack {
 namespace {
 
 constexpr int kSshTotalTimeoutMs = 6000;
-constexpr qint64 kMaxOutputBytes = 2 * 1024 * 1024;
+constexpr qint64 kMaxOutputBytes = 2LL * 1024 * 1024;
 constexpr int kMaxErrorDetail = 4096;
 
-const QString kRemoteCommand =
-    QStringLiteral("cat /proc/stat; echo __PODSTACK_MEM__; cat /proc/meminfo; "
-                   "echo __PODSTACK_NET__; cat /proc/net/dev; "
-                   "echo __PODSTACK_DISK__; cat /proc/diskstats; "
-                   "echo __PODSTACK_DF__; df -B1 -P /");
+constexpr char kRemoteCommand[] = "cat /proc/stat; echo __PODSTACK_MEM__; cat /proc/meminfo; "
+                                  "echo __PODSTACK_NET__; cat /proc/net/dev; "
+                                  "echo __PODSTACK_DISK__; cat /proc/diskstats; "
+                                  "echo __PODSTACK_DF__; df -B1 -P /";
 
-const QByteArray kMemMarker = QByteArrayLiteral("__PODSTACK_MEM__");
-const QByteArray kNetMarker = QByteArrayLiteral("__PODSTACK_NET__");
-const QByteArray kDiskMarker = QByteArrayLiteral("__PODSTACK_DISK__");
-const QByteArray kDfMarker = QByteArrayLiteral("__PODSTACK_DF__");
+constexpr char kMemMarker[] = "__PODSTACK_MEM__";
+constexpr char kNetMarker[] = "__PODSTACK_NET__";
+constexpr char kDiskMarker[] = "__PODSTACK_DISK__";
+constexpr char kDfMarker[] = "__PODSTACK_DF__";
 
 bool fails(Error *error, const Error &value)
 {
@@ -175,14 +175,13 @@ QJsonObject MachineStatsCollector::sample(const MachineMeta &machine, const SshI
         QStringLiteral("-o"),
         QStringLiteral("StrictHostKeyChecking=accept-new"),
         QStringLiteral("-o"),
-        QStringLiteral("UserKnownHostsFile=%1/known_hosts")
-            .arg(QFileInfo(identity).absolutePath()),
+        QStringLiteral("UserKnownHostsFile=%1/known_hosts").arg(QFileInfo(identity).absolutePath()),
         QStringLiteral("-o"),
         QStringLiteral("BatchMode=yes"),
         QStringLiteral("-o"),
         QStringLiteral("ConnectTimeout=3"),
         QStringLiteral("%1@%2").arg(ssh.user, ssh.host),
-        kRemoteCommand,
+        QString::fromLatin1(kRemoteCommand),
     };
 
     QProcess process;
@@ -234,13 +233,17 @@ QJsonObject MachineStatsCollector::sample(const MachineMeta &machine, const SshI
         return {};
     }
 
-    const int memPosition = output.indexOf(kMemMarker);
+    const QByteArrayView memMarker(kMemMarker);
+    const QByteArrayView netMarker(kNetMarker);
+    const QByteArrayView diskMarker(kDiskMarker);
+    const QByteArrayView dfMarker(kDfMarker);
+    const int memPosition = output.indexOf(memMarker);
     const int netPosition =
-        memPosition >= 0 ? output.indexOf(kNetMarker, memPosition + kMemMarker.size()) : -1;
+        memPosition >= 0 ? output.indexOf(netMarker, memPosition + memMarker.size()) : -1;
     const int diskPosition =
-        netPosition >= 0 ? output.indexOf(kDiskMarker, netPosition + kNetMarker.size()) : -1;
+        netPosition >= 0 ? output.indexOf(diskMarker, netPosition + netMarker.size()) : -1;
     const int dfPosition =
-        diskPosition >= 0 ? output.indexOf(kDfMarker, diskPosition + kDiskMarker.size()) : -1;
+        diskPosition >= 0 ? output.indexOf(dfMarker, diskPosition + diskMarker.size()) : -1;
     if (memPosition < 0 || netPosition < 0 || diskPosition < 0 || dfPosition < 0) {
         fails(error,
               Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
@@ -252,15 +255,12 @@ QJsonObject MachineStatsCollector::sample(const MachineMeta &machine, const SshI
 
     const QByteArray cpuData = output.left(memPosition);
     const QByteArray memData =
-        output.mid(memPosition + kMemMarker.size(),
-                   netPosition - (memPosition + kMemMarker.size()));
+        output.mid(memPosition + memMarker.size(), netPosition - (memPosition + memMarker.size()));
     const QByteArray netData =
-        output.mid(netPosition + kNetMarker.size(),
-                   diskPosition - (netPosition + kNetMarker.size()));
-    const QByteArray diskData =
-        output.mid(diskPosition + kDiskMarker.size(),
-                   dfPosition - (diskPosition + kDiskMarker.size()));
-    const QByteArray dfData = output.mid(dfPosition + kDfMarker.size());
+        output.mid(netPosition + netMarker.size(), diskPosition - (netPosition + netMarker.size()));
+    const QByteArray diskData = output.mid(diskPosition + diskMarker.size(),
+                                           dfPosition - (diskPosition + diskMarker.size()));
+    const QByteArray dfData = output.mid(dfPosition + dfMarker.size());
 
     quint64 cpuTotal = 0;
     quint64 cpuIdle = 0;

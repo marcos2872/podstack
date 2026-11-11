@@ -222,7 +222,7 @@ bool writeContent(const QString &path, const QString &content, Error *error)
 
 } // namespace
 
-SshConfig::SshConfig(QString path)
+SshConfig::SshConfig(const QString &path)
 {
     m_path = path.trimmed();
     if (m_path.isEmpty()) {

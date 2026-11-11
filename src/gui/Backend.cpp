@@ -2115,8 +2115,7 @@ void Backend::applySettingsValues(const QVariantMap &values)
     m_settingsValues = values;
     m_updatesEnabled =
         m_settingsValues.value(QStringLiteral("updates.mode"), QStringLiteral("check"))
-            .toString()
-        != QStringLiteral("off");
+            .toString() != QStringLiteral("off");
     const int bufferLines = m_settingsValues.value(QStringLiteral("logs.bufferLines")).toInt();
     if (bufferLines >= 100 && bufferLines <= 1000000) {
         m_logBufferLines = bufferLines;

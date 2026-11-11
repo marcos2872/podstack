@@ -443,10 +443,8 @@ const QVector<SettingDef> &definitions()
             QStringLiteral("Chave pública Ed25519 (base64/minisign) usada para validar o feed; "
                            "null usa a chave embutida.")));
         list.append(makeBool(QStringLiteral("diagnostics.includeLogs"), true,
-                             QStringLiteral("Avançado"),
-                             QStringLiteral("Inclui logs no report.")));
-        list.append(makeBool(QStringLiteral("diagnostics.redact"), true,
-                             QStringLiteral("Avançado"),
+                             QStringLiteral("Avançado"), QStringLiteral("Inclui logs no report.")));
+        list.append(makeBool(QStringLiteral("diagnostics.redact"), true, QStringLiteral("Avançado"),
                              QStringLiteral("Redige segredos no report.")));
         list.append(makeBool(QStringLiteral("telemetry.enabled"), false,
                              QStringLiteral("Updates"),

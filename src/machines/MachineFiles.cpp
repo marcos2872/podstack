@@ -16,7 +16,7 @@ namespace {
 
 constexpr int kListTimeoutMs = 15000;
 constexpr int kTransferTimeoutMs = 600000;
-constexpr qint64 kMaxListBytes = 2 * 1024 * 1024;
+constexpr qint64 kMaxListBytes = 2LL * 1024 * 1024;
 constexpr int kMaxErrorDetail = 4096;
 
 const QRegularExpression &listingPattern()
