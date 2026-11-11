@@ -99,10 +99,9 @@ void CoreTest::cleanupTestCase()
 
 void CoreTest::errorSerializes()
 {
-    const PodStack::Error error =
-        PodStack::Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                              QStringLiteral("Nome em uso."), QStringLiteral("detail"),
-                              QStringLiteral("Escolha outro nome."), false);
+    const PodStack::Error error = PodStack::Error::make(
+        QStringLiteral("PODSTACK_CONFLICT"), QStringLiteral("Nome em uso."),
+        QStringLiteral("detail"), QStringLiteral("Escolha outro nome."), false);
     const QJsonObject json = error.toJson();
     QCOMPARE(json.value(QStringLiteral("code")).toString(), QStringLiteral("PODSTACK_CONFLICT"));
     QCOMPARE(json.value(QStringLiteral("message")).toString(), QStringLiteral("Nome em uso."));
@@ -265,8 +264,7 @@ void CoreTest::configSchemaCoversDocumentedKeys()
     const PodStack::SettingDef *proxy = PodStack::Settings::find(QStringLiteral("network.proxy"));
     QVERIFY(proxy != nullptr);
     QVERIFY(proxy->secret);
-    const PodStack::SettingDef *engine =
-        PodStack::Settings::find(QStringLiteral("engine.mode"));
+    const PodStack::SettingDef *engine = PodStack::Settings::find(QStringLiteral("engine.mode"));
     QVERIFY(engine != nullptr);
     QVERIFY(engine->restartRequired);
 }
@@ -275,20 +273,24 @@ void CoreTest::configValidation()
 {
     PodStack::Error error;
 
-    QVERIFY(!PodStack::Config::validate(QStringLiteral("does.not.exist"),
-                                        QStringLiteral("x"), &error));
+    QVERIFY(
+        !PodStack::Config::validate(QStringLiteral("does.not.exist"), QStringLiteral("x"), &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
     QCOMPARE(error.detail, QStringLiteral("does.not.exist"));
 
-    QVERIFY(PodStack::Config::validate(QStringLiteral("app.theme"),
-                                       QStringLiteral("dark"), &error));
+    QVERIFY(
+        PodStack::Config::validate(QStringLiteral("app.theme"), QStringLiteral("dark"), &error));
     QVERIFY(error.isEmpty());
-    QVERIFY(!PodStack::Config::validate(QStringLiteral("app.theme"),
-                                        QStringLiteral("neon"), &error));
+    QVERIFY(
+        !PodStack::Config::validate(QStringLiteral("app.theme"), QStringLiteral("neon"), &error));
+    QVERIFY(PodStack::Config::validate(QStringLiteral("app.language"), QStringLiteral("en-US"),
+                                       &error));
+    QVERIFY(!PodStack::Config::validate(QStringLiteral("app.language"), QStringLiteral("fr-FR"),
+                                        &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
 
-    QVERIFY(!PodStack::Config::validate(QStringLiteral("terminal.fontSize"),
-                                        QStringLiteral("12"), &error));
+    QVERIFY(!PodStack::Config::validate(QStringLiteral("terminal.fontSize"), QStringLiteral("12"),
+                                        &error));
     QVERIFY(!PodStack::Config::validate(QStringLiteral("terminal.fontSize"), 7, &error));
     QVERIFY(!PodStack::Config::validate(QStringLiteral("terminal.fontSize"), 33, &error));
     QVERIFY(!PodStack::Config::validate(QStringLiteral("terminal.fontSize"), 12.5, &error));
@@ -301,8 +303,8 @@ void CoreTest::configValidation()
 
     QVERIFY(!PodStack::Config::validate(QStringLiteral("network.proxy"),
                                         QStringLiteral("ftp://127.0.0.1:21"), &error));
-    QVERIFY(PodStack::Config::validate(QStringLiteral("network.proxy"),
-                                       QStringLiteral("auto"), &error));
+    QVERIFY(PodStack::Config::validate(QStringLiteral("network.proxy"), QStringLiteral("auto"),
+                                       &error));
     QVERIFY(PodStack::Config::validate(QStringLiteral("network.proxy"),
                                        QStringLiteral("socks5://127.0.0.1:1080"), &error));
 
@@ -311,37 +313,33 @@ void CoreTest::configValidation()
     QVERIFY(PodStack::Config::validate(QStringLiteral("network.subnet4"),
                                        QStringLiteral("192.168.50.0/24"), &error));
 
-    QVERIFY(!PodStack::Config::validate(
-        QStringLiteral("network.proxyExclude"),
-        QJsonArray{QStringLiteral("bad host")}, &error));
-    QVERIFY(PodStack::Config::validate(
-        QStringLiteral("network.proxyExclude"),
-        QJsonArray{QStringLiteral("localhost"), QStringLiteral(".internal"),
-                   QStringLiteral("10.0.0.0/8")},
-        &error));
+    QVERIFY(!PodStack::Config::validate(QStringLiteral("network.proxyExclude"),
+                                        QJsonArray{QStringLiteral("bad host")}, &error));
+    QVERIFY(PodStack::Config::validate(QStringLiteral("network.proxyExclude"),
+                                       QJsonArray{QStringLiteral("localhost"),
+                                                  QStringLiteral(".internal"),
+                                                  QStringLiteral("10.0.0.0/8")},
+                                       &error));
 
     QVERIFY(!PodStack::Config::validate(QStringLiteral("network.proxyExclude"),
-                                        QJsonArray{QStringLiteral("a"),
-                                                   QStringLiteral("a")},
+                                        QJsonArray{QStringLiteral("a"), QStringLiteral("a")},
                                         &error));
-    QVERIFY(!PodStack::Config::validate(QStringLiteral("machines.memoryBytes"),
-                                        1073741823, &error));
-    QVERIFY(PodStack::Config::validate(QStringLiteral("machines.memoryBytes"),
-                                       1073741824, &error));
+    QVERIFY(
+        !PodStack::Config::validate(QStringLiteral("machines.memoryBytes"), 1073741823, &error));
+    QVERIFY(PodStack::Config::validate(QStringLiteral("machines.memoryBytes"), 1073741824, &error));
     QVERIFY(!PodStack::Config::validate(QStringLiteral("machines.memoryBytes"),
                                         QStringLiteral("4GiB"), &error));
 
     QVERIFY(!PodStack::Config::validate(QStringLiteral("updates.lastCheck"),
                                         QStringLiteral("ontem"), &error));
-    QVERIFY(PodStack::Config::validate(QStringLiteral("updates.lastCheck"),
-                                       QJsonValue::Null, &error));
+    QVERIFY(
+        PodStack::Config::validate(QStringLiteral("updates.lastCheck"), QJsonValue::Null, &error));
     QVERIFY(PodStack::Config::validate(QStringLiteral("updates.lastCheck"),
                                        QStringLiteral("2026-11-09T12:00:00Z"), &error));
 
-    QVERIFY(!PodStack::Config::validate(QStringLiteral("engine.socketPath"),
-                                        QString(), &error));
-    QVERIFY(PodStack::Config::validate(QStringLiteral("engine.socketPath"),
-                                       QJsonValue::Null, &error));
+    QVERIFY(!PodStack::Config::validate(QStringLiteral("engine.socketPath"), QString(), &error));
+    QVERIFY(
+        PodStack::Config::validate(QStringLiteral("engine.socketPath"), QJsonValue::Null, &error));
 }
 
 void CoreTest::configResetPreservesSetup()
@@ -351,8 +349,7 @@ void CoreTest::configResetPreservesSetup()
     config.set(QStringLiteral("engine.mode"), QStringLiteral("rootful"));
     config.set(QStringLiteral("network.proxy"), QStringLiteral("none"));
     config.set(QStringLiteral("setup.completed"), true);
-    config.set(QStringLiteral("setup.completedAt"),
-               QStringLiteral("2026-11-09T12:00:00Z"));
+    config.set(QStringLiteral("setup.completedAt"), QStringLiteral("2026-11-09T12:00:00Z"));
     config.set(QStringLiteral("setup.components"), QJsonArray{QStringLiteral("caddy")});
 
     PodStack::Error error;
@@ -365,8 +362,7 @@ void CoreTest::configResetPreservesSetup()
     config.resetAll();
     QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 1);
     QCOMPARE(config.get(QStringLiteral("app.theme")).toString(), QStringLiteral("system"));
-    QCOMPARE(config.get(QStringLiteral("engine.mode")).toString(),
-             QStringLiteral("rootless"));
+    QCOMPARE(config.get(QStringLiteral("engine.mode")).toString(), QStringLiteral("rootless"));
     QCOMPARE(config.get(QStringLiteral("network.proxy")).toString(), QStringLiteral("auto"));
     QCOMPARE(config.get(QStringLiteral("setup.completed")).toBool(), true);
     QCOMPARE(config.get(QStringLiteral("setup.completedAt")).toString(),
@@ -405,16 +401,15 @@ void CoreTest::proxyValidation()
     QVERIFY(PodStack::Proxy::validate(QStringLiteral("https://proxy.example:8443"), {}, &error));
     QVERIFY(PodStack::Proxy::validate(QStringLiteral("http://127.0.0.1:3128/"), {}, &error));
     QVERIFY(PodStack::Proxy::validate(QStringLiteral("socks5://127.0.0.1:1080"), {}, &error));
-    QVERIFY(PodStack::Proxy::validate(
-        QStringLiteral("socks5h://user:pass@127.0.0.1:1080"), {}, &error));
+    QVERIFY(PodStack::Proxy::validate(QStringLiteral("socks5h://user:pass@127.0.0.1:1080"), {},
+                                      &error));
 
-    QVERIFY(PodStack::Proxy::validate(
-        QStringLiteral("http://127.0.0.1:3128"),
-        {QStringLiteral("localhost"), QStringLiteral(".internal"),
-         QStringLiteral("*.example.com"), QStringLiteral("10.0.0.0/8"),
-         QStringLiteral("192.168.1.10"), QStringLiteral("::1"),
-         QStringLiteral("2001:db8::/32")},
-        &error));
+    QVERIFY(PodStack::Proxy::validate(QStringLiteral("http://127.0.0.1:3128"),
+                                      {QStringLiteral("localhost"), QStringLiteral(".internal"),
+                                       QStringLiteral("*.example.com"),
+                                       QStringLiteral("10.0.0.0/8"), QStringLiteral("192.168.1.10"),
+                                       QStringLiteral("::1"), QStringLiteral("2001:db8::/32")},
+                                      &error));
     QVERIFY(error.isEmpty());
 
     const QStringList invalidProxies = {
@@ -707,15 +702,13 @@ void CoreTest::proxyEnvironment()
     const QMap<QString, QString> automatic =
         PodStack::Proxy::environment(QStringLiteral("auto"), {});
     QCOMPARE(automatic.size(), 1);
-    QCOMPARE(automatic.value(QStringLiteral("HTTP_PROXY")),
-             QStringLiteral("http://daemon:8080"));
+    QCOMPARE(automatic.value(QStringLiteral("HTTP_PROXY")), QStringLiteral("http://daemon:8080"));
     QVERIFY(!automatic.contains(QStringLiteral("HTTPS_PROXY")));
 
     const QString proxy = QStringLiteral("http://127.0.0.1:3128");
-    QMap<QString, QString> values =
-        PodStack::Proxy::environment(proxy, {QStringLiteral("localhost"),
-                                             QStringLiteral(".internal"),
-                                             QStringLiteral("10.0.0.0/8")});
+    QMap<QString, QString> values = PodStack::Proxy::environment(
+        proxy,
+        {QStringLiteral("localhost"), QStringLiteral(".internal"), QStringLiteral("10.0.0.0/8")});
     QCOMPARE(values.value(QStringLiteral("HTTP_PROXY")), proxy);
     QCOMPARE(values.value(QStringLiteral("HTTPS_PROXY")), proxy);
     QCOMPARE(values.value(QStringLiteral("ALL_PROXY")), proxy);
@@ -724,25 +717,22 @@ void CoreTest::proxyEnvironment()
     QCOMPARE(values.value(QStringLiteral("all_proxy")), proxy);
     QCOMPARE(values.value(QStringLiteral("NO_PROXY")),
              QStringLiteral("localhost,127.0.0.1,::1,*.localhost,.internal,10.0.0.0/8"));
-    QCOMPARE(values.value(QStringLiteral("no_proxy")),
-             values.value(QStringLiteral("NO_PROXY")));
+    QCOMPARE(values.value(QStringLiteral("no_proxy")), values.value(QStringLiteral("NO_PROXY")));
 
     qputenv("NO_PROXY", "existing.local, localhost, 10.0.0.0/8");
     qputenv("no_proxy", "other.local");
-    values = PodStack::Proxy::environment(proxy, {QStringLiteral(".internal"),
-                                                  QStringLiteral("10.0.0.0/8")});
+    values = PodStack::Proxy::environment(
+        proxy, {QStringLiteral(".internal"), QStringLiteral("10.0.0.0/8")});
     QCOMPARE(values.value(QStringLiteral("NO_PROXY")),
              QStringLiteral("localhost,127.0.0.1,::1,*.localhost,.internal,10.0.0.0/8,"
                             "existing.local,other.local"));
-    QCOMPARE(values.value(QStringLiteral("no_proxy")),
-             values.value(QStringLiteral("NO_PROXY")));
+    QCOMPARE(values.value(QStringLiteral("no_proxy")), values.value(QStringLiteral("NO_PROXY")));
 
     const QMap<QString, QString> automaticWithNoProxy =
         PodStack::Proxy::environment(QStringLiteral("auto"), {});
     QCOMPARE(automaticWithNoProxy.value(QStringLiteral("NO_PROXY")),
              QStringLiteral("existing.local, localhost, 10.0.0.0/8"));
-    QCOMPARE(automaticWithNoProxy.value(QStringLiteral("no_proxy")),
-             QStringLiteral("other.local"));
+    QCOMPARE(automaticWithNoProxy.value(QStringLiteral("no_proxy")), QStringLiteral("other.local"));
 }
 
 void CoreTest::setupActionsMapPodmanStatus()
@@ -757,12 +747,11 @@ void CoreTest::setupActionsMapPodmanStatus()
 
 void CoreTest::setupPolicyMandatoryChecks()
 {
-    for (const QString &id : {QStringLiteral("podman"), QStringLiteral("systemd-user"),
-                              QStringLiteral("sqlite"), QStringLiteral("qemu"),
-                              QStringLiteral("ovmf"), QStringLiteral("virtiofsd")}) {
+    for (const QString &id :
+         {QStringLiteral("podman"), QStringLiteral("systemd-user"), QStringLiteral("sqlite"),
+          QStringLiteral("qemu"), QStringLiteral("ovmf"), QStringLiteral("virtiofsd")}) {
         QVERIFY2(PodStack::SetupPolicy::isMandatoryCheck(id), qPrintable(id));
-        QVERIFY2(PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("ok")),
-                 qPrintable(id));
+        QVERIFY2(PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("ok")), qPrintable(id));
         QVERIFY2(!PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("missing")),
                  qPrintable(id));
     }
@@ -822,8 +811,7 @@ void CoreTest::buildStorePlatforms()
         QCOMPARE(items.size(), 1);
         QCOMPARE(items.first().platforms, record.platforms);
 
-        const QJsonArray platforms =
-            loaded.toJson().value(QStringLiteral("platforms")).toArray();
+        const QJsonArray platforms = loaded.toJson().value(QStringLiteral("platforms")).toArray();
         QCOMPARE(platforms.size(), 2);
         QCOMPARE(platforms.at(0).toString(), QStringLiteral("linux/amd64"));
         QCOMPARE(platforms.at(1).toString(), QStringLiteral("linux/arm64"));
@@ -917,8 +905,8 @@ void CoreTest::manifestBuilderValidation()
     QVERIFY(!PodStack::ManifestBuilder::validatePlatforms({}, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
-    QVERIFY(!PodStack::ManifestBuilder::validatePlatforms(
-        {QStringLiteral("linux/amd64/extra/v8")}, &error));
+    QVERIFY(!PodStack::ManifestBuilder::validatePlatforms({QStringLiteral("linux/amd64/extra/v8")},
+                                                          &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
     QStringList tooMany;
@@ -940,9 +928,9 @@ void CoreTest::manifestBuilderValidation()
     PodStack::ManifestBuilder builder;
     PodStack::Error unsupported;
     const bool ok = builder.build(
-        directory.path(), QStringLiteral("Dockerfile"), QStringLiteral("localhost/test:multi"),
-        {}, {QStringLiteral("linux/amd64"), QStringLiteral("linux/arm64")},
-        [](const QString &) {}, {}, &unsupported);
+        directory.path(), QStringLiteral("Dockerfile"), QStringLiteral("localhost/test:multi"), {},
+        {QStringLiteral("linux/amd64"), QStringLiteral("linux/arm64")}, [](const QString &) {}, {},
+        &unsupported);
     if (previous.isNull()) {
         qunsetenv("PODSTACK_PODMAN_CLI");
     } else {
@@ -1101,9 +1089,9 @@ void CoreTest::rpcStreamProtocol()
 
 void CoreTest::rpcClientUnavailable()
 {
-    const QString socketPath = QDir::tempPath()
-                               + QStringLiteral("/podstack-missing-%1.sock")
-                                     .arg(QCoreApplication::applicationPid());
+    const QString socketPath =
+        QDir::tempPath() +
+        QStringLiteral("/podstack-missing-%1.sock").arg(QCoreApplication::applicationPid());
     QFile::remove(socketPath);
 
     PodStack::RpcClient client(socketPath);

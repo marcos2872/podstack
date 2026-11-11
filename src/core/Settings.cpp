@@ -220,9 +220,10 @@ const QVector<SettingDef> &definitions()
                              QStringLiteral("Geral"), QStringLiteral("Tema da UI.")));
         list.append(makeInt(QStringLiteral("app.fontScale"), 100, 80, 150, QStringLiteral("Geral"),
                             QStringLiteral("Escala da fonte da interface (%).")));
-        list.append(makeString(QStringLiteral("app.language"), QStringLiteral("pt-BR"),
-                               QStringLiteral("Geral"),
-                               QStringLiteral("Idioma da interface (pt-BR ou en-US).")));
+        list.append(makeEnum(QStringLiteral("app.language"), QStringLiteral("pt-BR"),
+                             {QStringLiteral("pt-BR"), QStringLiteral("en-US")},
+                             QStringLiteral("Geral"),
+                             QStringLiteral("Idioma da interface (pt-BR ou en-US)."), true));
         list.append(makeBool(QStringLiteral("app.confirmDestructive"), true,
                              QStringLiteral("Geral"),
                              QStringLiteral("Confirma ações destrutivas.")));

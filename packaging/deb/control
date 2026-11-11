@@ -1,0 +1,18 @@
+Source: podstack
+Section: admin
+Priority: optional
+Maintainer: PodStack contributors <dev@podstack.dev>
+Build-Depends: cmake (>= 3.24), ninja-build, g++, qt6-base-dev (>= 6.10), qt6-declarative-dev, qt6-wayland-dev, qt6-5compat-dev, libkf6statusnotifieritem-dev, libqtermwidget-dev, libarchive-dev, libcurl4-openssl-dev, libcrypt-dev, libsqlite3-dev, libssl-dev
+Standards-Version: 4.6.2
+Homepage: https://podstack.dev
+Rules-Requires-Root: no
+
+Package: podstack
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, podman (>= 5.8), systemd, openssh-client, qtermwidget
+Recommends: qemu-kvm, qemu-utils, virtiofsd, caddy, docker-compose-v2 | docker-compose
+Description: Native desktop for Podman containers, VMs and Kubernetes
+ PodStack provides containers, images, volumes, networks, Compose projects,
+ QEMU/KVM machines, Kubernetes and local HTTPS domains in one native Linux
+ application. The GUI and CLI talk to a per-user daemon over a 0600 Unix
+ socket; privileged setup actions use an allowlisted polkit helper.

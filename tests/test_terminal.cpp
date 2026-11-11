@@ -8,6 +8,7 @@
 #include "gui/SingleInstance.h"
 #include "gui/TerminalView.h"
 #include "gui/TerminalWindow.h"
+#include "gui/Translation.h"
 #include "gui/Tray.h"
 #include "gui/UiState.h"
 
@@ -78,6 +79,7 @@ private slots:
     void mainWindowQml();
     void mainWindowRestoresSection();
     void mainWindowShortcuts();
+    void translationCatalog();
 
 private:
     QTemporaryDir m_runtime;
@@ -88,8 +90,7 @@ void TerminalTest::initTestCase()
     // Isola o Backend de um podstackd real (o refresh em background esperaria
     // o timeout de 30 s se houvesse um socket aceitando a conexão).
     QVERIFY(m_runtime.isValid());
-    qputenv("PODSTACK_CONTROL_SOCKET",
-            m_runtime.filePath(QStringLiteral("control.sock")).toUtf8());
+    qputenv("PODSTACK_CONTROL_SOCKET", m_runtime.filePath(QStringLiteral("control.sock")).toUtf8());
 }
 
 void TerminalTest::cleanupTestCase()
@@ -154,8 +155,7 @@ void TerminalTest::terminalViewConfiguration()
 
 void TerminalTest::terminalViewRestartsOnExit()
 {
-    PodStack::TerminalView view(QStringLiteral("restart"),
-                                QStringLiteral("/bin/sh"),
+    PodStack::TerminalView view(QStringLiteral("restart"), QStringLiteral("/bin/sh"),
                                 {QStringLiteral("-c"), QStringLiteral("exit 0")});
     QTRY_VERIFY_WITH_TIMEOUT(view.restartCount() > 0, 5000);
 }
@@ -163,13 +163,13 @@ void TerminalTest::terminalViewRestartsOnExit()
 void TerminalTest::externalTerminalCommands()
 {
     const QString program = QStringLiteral("podman");
-    const QStringList args{QStringLiteral("exec"), QStringLiteral("-it"),
-                           QStringLiteral("abc123"), QStringLiteral("/bin/sh")};
+    const QStringList args{QStringLiteral("exec"), QStringLiteral("-it"), QStringLiteral("abc123"),
+                           QStringLiteral("/bin/sh")};
     const QStringList direct = QStringList({program}) + args;
 
-    QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("xdg-terminal-exec"),
-                                                    program, args),
-             direct);
+    QCOMPARE(
+        PodStack::ExternalTerminal::commandFor(QStringLiteral("xdg-terminal-exec"), program, args),
+        direct);
     QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("/usr/bin/gnome-terminal"),
                                                     program, args),
              QStringList({QStringLiteral("--"), program}) + args);
@@ -183,13 +183,12 @@ void TerminalTest::externalTerminalCommands()
              QStringList({QStringLiteral("-e"), program}) + args);
     QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("ghostty"), program, args),
              QStringList({QStringLiteral("-e"), program}) + args);
-    QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("xfce4-terminal"),
-                                                    program, args),
-             QStringList({QStringLiteral("-x"), program}) + args);
+    QCOMPARE(
+        PodStack::ExternalTerminal::commandFor(QStringLiteral("xfce4-terminal"), program, args),
+        QStringList({QStringLiteral("-x"), program}) + args);
     QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("kitty"), program, args),
              direct);
-    QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("foot"), program, args),
-             direct);
+    QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("foot"), program, args), direct);
     QCOMPARE(PodStack::ExternalTerminal::commandFor(QStringLiteral("wezterm"), program, args),
              QStringList({QStringLiteral("start"), QStringLiteral("--"), program}) + args);
 }
@@ -203,8 +202,8 @@ void TerminalTest::externalTerminalDetection()
     QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Text));
     script.write("#!/bin/sh\nexit 0\n");
     script.close();
-    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                  | QFileDevice::ExeOwner));
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
 
     const QByteArray oldPath = qgetenv("PATH");
     const QByteArray oldTerminal = qgetenv("TERMINAL");
@@ -214,10 +213,8 @@ void TerminalTest::externalTerminalDetection()
     QCOMPARE(PodStack::ExternalTerminal::findTerminal(), fake);
 
     QString error;
-    QVERIFY2(PodStack::ExternalTerminal::launch(QStringLiteral("/bin/sh"),
-                                                {QStringLiteral("-c"),
-                                                 QStringLiteral("true")},
-                                                &error),
+    QVERIFY2(PodStack::ExternalTerminal::launch(
+                 QStringLiteral("/bin/sh"), {QStringLiteral("-c"), QStringLiteral("true")}, &error),
              qPrintable(error));
     // Deixa o processo falso iniciar antes de remover o diretório temporário.
     QTest::qWait(100);
@@ -248,15 +245,15 @@ void TerminalTest::externalTerminalDesktopFallback()
         file.write("#!/bin/sh\n");
         file.write(body);
         file.close();
-        if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                 | QFileDevice::ExeOwner)) {
+        if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                 QFileDevice::ExeOwner)) {
             return QString();
         }
         return path;
     };
 
-    const QString alacritty = writeScript(QStringLiteral("alacritty"),
-                                          QByteArrayLiteral("exit 0\n"));
+    const QString alacritty =
+        writeScript(QStringLiteral("alacritty"), QByteArrayLiteral("exit 0\n"));
     QVERIFY(!alacritty.isEmpty());
     // Simula um xdg-settings que não conhece a chave e imprime o usage.
     QVERIFY(!writeScript(QStringLiteral("xdg-settings"),
@@ -264,10 +261,10 @@ void TerminalTest::externalTerminalDesktopFallback()
                                            "exit 0\n"))
                  .isEmpty());
     // Simula gsettings apontando para xdg-terminal-exec, que não existe.
-    QVERIFY(!writeScript(QStringLiteral("gsettings"),
-                         QByteArrayLiteral("echo \"'xdg-terminal-exec'\"\n"
-                                           "exit 0\n"))
-                 .isEmpty());
+    QVERIFY(
+        !writeScript(QStringLiteral("gsettings"), QByteArrayLiteral("echo \"'xdg-terminal-exec'\"\n"
+                                                                    "exit 0\n"))
+             .isEmpty());
 
     const QByteArray oldPath = qgetenv("PATH");
     const QByteArray oldTerminal = qgetenv("TERMINAL");
@@ -481,10 +478,9 @@ void TerminalTest::containerDetailDialog()
     QVERIFY(terminal->isHidden());
     QCOMPARE(terminal->program(), QStringLiteral("podman"));
     QCOMPARE(terminal->arguments(),
-             QStringList({QStringLiteral("exec"), QStringLiteral("-it"),
-                          QStringLiteral("abc123"), QStringLiteral("/bin/sh")}));
-    auto *terminalToolbar =
-        terminal->findChild<QWidget *>(QStringLiteral("terminalToolbar"));
+             QStringList({QStringLiteral("exec"), QStringLiteral("-it"), QStringLiteral("abc123"),
+                          QStringLiteral("/bin/sh")}));
+    auto *terminalToolbar = terminal->findChild<QWidget *>(QStringLiteral("terminalToolbar"));
     QVERIFY(terminalToolbar != nullptr);
     QVERIFY(terminalToolbar->isHidden());
 
@@ -589,16 +585,14 @@ void TerminalTest::machineDetailDialog()
     QVERIFY(terminal != nullptr);
     QCOMPARE(terminal->program(), QStringLiteral("ssh"));
     QCOMPARE(terminal->arguments(),
-             QStringList({QStringLiteral("-i"), keyPath, QStringLiteral("-p"),
-                          QStringLiteral("1"), QStringLiteral("-o"),
-                          QStringLiteral("IdentitiesOnly=yes"), QStringLiteral("-o"),
-                          QStringLiteral("StrictHostKeyChecking=accept-new"),
+             QStringList({QStringLiteral("-i"), keyPath, QStringLiteral("-p"), QStringLiteral("1"),
+                          QStringLiteral("-o"), QStringLiteral("IdentitiesOnly=yes"),
+                          QStringLiteral("-o"), QStringLiteral("StrictHostKeyChecking=accept-new"),
                           QStringLiteral("podstack@127.0.0.1")}));
     // A sessão é criada ao abrir, mas só aparece quando o QML confirma que a
     // aba Terminal está ativa e informa a área do placeholder.
     QVERIFY(terminal->isHidden());
-    auto *terminalToolbar =
-        terminal->findChild<QWidget *>(QStringLiteral("terminalToolbar"));
+    auto *terminalToolbar = terminal->findChild<QWidget *>(QStringLiteral("terminalToolbar"));
     QVERIFY(terminalToolbar != nullptr);
     QVERIFY(terminalToolbar->isHidden());
 
@@ -673,8 +667,7 @@ void TerminalTest::machineDetailDialogFromList()
                     const QString method = request.value(QStringLiteral("method")).toString();
                     QJsonObject result;
                     if (method == QStringLiteral("machines.list")) {
-                        result.insert(QStringLiteral("items"),
-                                      QJsonArray{machineJson});
+                        result.insert(QStringLiteral("items"), QJsonArray{machineJson});
                     } else {
                         result = machineJson;
                     }
@@ -682,8 +675,7 @@ void TerminalTest::machineDetailDialogFromList()
                     response.insert(QStringLiteral("jsonrpc"), QStringLiteral("2.0"));
                     response.insert(QStringLiteral("id"), request.value(QStringLiteral("id")));
                     response.insert(QStringLiteral("result"), result);
-                    socket->write(
-                        QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n');
+                    socket->write(QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n');
                     socket->flush();
                     newline = buffer.indexOf('\n');
                 }
@@ -706,8 +698,7 @@ void TerminalTest::machineDetailDialogFromList()
     overlay.openMachine(QStringLiteral("server-machine"));
     QCOMPARE(overlay.machineId(), QStringLiteral("server-machine"));
     QVERIFY(!overlay.isHidden());
-    QCOMPARE(overlay.machine().value(QStringLiteral("name")).toString(),
-             QStringLiteral("dev"));
+    QCOMPARE(overlay.machine().value(QStringLiteral("name")).toString(), QStringLiteral("dev"));
     QTRY_VERIFY_WITH_TIMEOUT(infoSpy.count() > 0, 5000);
 
     overlay.closeOverlay();
@@ -748,8 +739,7 @@ void TerminalTest::machineDetailDialogQml()
     QVERIFY(overlay.terminalView()->geometry().width() > 0);
     QVERIFY(overlay.terminalView()->geometry().height() > 0);
 
-    QVERIFY(QMetaObject::invokeMethod(root, "selectTab",
-                                      Q_ARG(QVariant, QStringLiteral("info"))));
+    QVERIFY(QMetaObject::invokeMethod(root, "selectTab", Q_ARG(QVariant, QStringLiteral("info"))));
     QTRY_VERIFY(overlay.terminalView()->isHidden());
 
     QVERIFY(QMetaObject::invokeMethod(root, "close"));
@@ -901,6 +891,23 @@ void TerminalTest::mainWindowShortcuts()
     auto *containerList = root->findChild<QObject *>(QStringLiteral("containerList"));
     QVERIFY(containerList != nullptr);
     QCOMPARE(containerList->property("activeFocusOnTab").toBool(), true);
+}
+
+void TerminalTest::translationCatalog()
+{
+    QVERIFY(PodStack::installTranslation(qApp, QStringLiteral("en-US")));
+    QCOMPARE(QCoreApplication::translate("Main", "Buscar containers"),
+             QStringLiteral("Search containers"));
+    QCOMPARE(QCoreApplication::translate("TrayController", "Sair"), QStringLiteral("Quit"));
+
+    QVERIFY(PodStack::installTranslation(qApp, QStringLiteral("pt-BR")));
+    QCOMPARE(QCoreApplication::translate("Main", "Buscar containers"),
+             QStringLiteral("Buscar containers"));
+
+    QVERIFY(PodStack::installTranslation(qApp, QStringLiteral("fr-FR")));
+    QVERIFY(!PodStack::installTranslation(nullptr, QStringLiteral("en-US")));
+
+    QVERIFY(PodStack::installTranslation(qApp, QStringLiteral("en-US")));
 }
 
 void TerminalTest::mainWindowQml()

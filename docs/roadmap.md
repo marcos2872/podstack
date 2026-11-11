@@ -230,6 +230,7 @@ Pendências externas: validação em máquina limpa e benchmarks/auditoria de re
 - Migração **opcional** de dados de Docker/Podman.
 - Licença/conta opcional (o v1 é offline e não exige conta).
 - Avaliar Flatpak sob demanda (não no v1).
+- Empacotamento **RPM + DEB + Flatpak** entregue na T8-06 (Flatpak como cliente; daemon/helper no host).
 - i18n adicional, temas, plugins (avaliar).
 
 ---

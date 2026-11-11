@@ -1,0 +1,45 @@
+app-id: dev.podstack.PodStack
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+command: podstack-gui
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --device=all # /dev/kvm para as machines QEMU/KVM
+  - --filesystem=xdg-run/podman
+  - --filesystem=xdg-run/podstack
+  - --filesystem=~/.local/share/containers
+  - --filesystem=~/.local/share/podstack
+  - --filesystem=~/.local/state/podstack
+  - --filesystem=~/.config/podstack
+  - --filesystem=~/.cache/podstack
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --system-talk-name=dev.podstack.Helper1
+
+modules:
+  - name: qtermwidget
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_EXAMPLES=OFF
+    sources:
+      - type: git
+        url: https://github.com/lxqt/qtermwidget.git
+        tag: 2.1.0
+
+  - name: podstack
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - build
+          - .git
+          - coverage
