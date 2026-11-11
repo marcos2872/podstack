@@ -392,9 +392,8 @@ void TrayController::rebuildMachinesMenu()
     m_machinesMenu->clear();
 
     QAction *openAll = m_machinesMenu->addAction(tr("Abrir Machines"));
-    connect(openAll, &QAction::triggered, this, [this]() {
-        emit openViewRequested(QStringLiteral("machines"));
-    });
+    connect(openAll, &QAction::triggered, this,
+            [this]() { emit openViewRequested(QStringLiteral("machines")); });
 
     if (m_machines.isEmpty()) {
         QAction *empty = m_machinesMenu->addAction(tr("Nenhuma machine"));
@@ -416,18 +415,15 @@ void TrayController::rebuildKubernetesMenu()
     m_kubernetesMenu->clear();
 
     QAction *open = m_kubernetesMenu->addAction(tr("Abrir Kubernetes"));
-    connect(open, &QAction::triggered, this, [this]() {
-        emit openViewRequested(QStringLiteral("kubernetes"));
-    });
-    QAction *state =
-        m_kubernetesMenu->addAction(m_k8sEnabled ? tr("Cluster habilitado")
-                                                 : tr("Cluster desabilitado"));
+    connect(open, &QAction::triggered, this,
+            [this]() { emit openViewRequested(QStringLiteral("kubernetes")); });
+    QAction *state = m_kubernetesMenu->addAction(m_k8sEnabled ? tr("Cluster habilitado")
+                                                              : tr("Cluster desabilitado"));
     state->setEnabled(false);
     if (!m_k8sEnabled) {
         QAction *enable = m_kubernetesMenu->addAction(tr("Habilitar no PodStack"));
-        connect(enable, &QAction::triggered, this, [this]() {
-            emit openViewRequested(QStringLiteral("kubernetes"));
-        });
+        connect(enable, &QAction::triggered, this,
+                [this]() { emit openViewRequested(QStringLiteral("kubernetes")); });
     }
     m_tray->setContextMenu(m_menu.get());
 }
