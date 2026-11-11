@@ -30,6 +30,25 @@ ColumnLayout {
 
     signal machineExpandRequested(string id, int tab)
 
+    readonly property var settingsValues: backend.settingsValues
+    // Defaults de criação vindos de Configurações (machines.*); caem no valor
+    // histórico se a chave ainda não carregou.
+    readonly property int defaultCpus: {
+        const value = Number(settingsValues["machines.cpus"])
+        return isFinite(value) && value >= 1 ? value : 2
+    }
+    readonly property int defaultMemoryGiB: {
+        const bytes = Number(settingsValues["machines.memoryBytes"])
+        return isFinite(bytes) && bytes >= 1073741824 ? Math.round(bytes / 1073741824) : 4
+    }
+    readonly property int defaultDiskGiB: {
+        const bytes = Number(settingsValues["machines.diskBytes"])
+        return isFinite(bytes) && bytes >= 1073741824 ? Math.round(bytes / 1073741824) : 20
+    }
+    readonly property bool defaultIsolated: settingsValues["machines.isolated"] === true
+    readonly property bool defaultForwardSshAgent:
+        settingsValues["machines.forwardSshAgent"] === true
+
     readonly property int machineCount: backend.machines.length
     readonly property int runningCount: {
         let count = 0
@@ -377,9 +396,9 @@ ColumnLayout {
             name: machineName.text,
             distro: distro.distro || "",
             version: distro.version || "",
-            cpus: Number(machineCpus.text || 2),
-            memoryGiB: Number(machineMemory.text || 4),
-            diskGiB: Number(machineDisk.text || 20),
+            cpus: Number(machineCpus.text || machinesPage.defaultCpus),
+            memoryGiB: Number(machineMemory.text || machinesPage.defaultMemoryGiB),
+            diskGiB: Number(machineDisk.text || machinesPage.defaultDiskGiB),
             user: machineUser.text,
             password: machinePassword.text,
             userData: machineUserData.text,
@@ -411,16 +430,17 @@ ColumnLayout {
             enabled: !backend.machineCreateActive
             onClicked: {
                 machineName.text = ""
-                machineCpus.text = "2"
-                machineMemory.text = "4"
-                machineDisk.text = "20"
+                machineCpus.text = String(machinesPage.defaultCpus)
+                machineMemory.text = String(machinesPage.defaultMemoryGiB)
+                machineDisk.text = String(machinesPage.defaultDiskGiB)
                 machineUser.text = ""
                 machinePassword.text = ""
                 machineUserData.text = ""
                 machineMounts.text = ""
-                isolatedBox.checked = false
-                isolateNetworkBox.checked = false
-                forwardSshAgentBox.checked = false
+                isolatedBox.checked = machinesPage.defaultIsolated
+                isolateNetworkBox.checked = machinesPage.defaultIsolated
+                forwardSshAgentBox.checked = !machinesPage.defaultIsolated
+                                            && machinesPage.defaultForwardSshAgent
                 distroSelect.currentIndex = 0
                 backend.resetMachineCreateState()
                 backend.refreshMachineDistros()

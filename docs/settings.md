@@ -235,7 +235,19 @@ o conteúdo não é mesclado.
 | `updates.lastCheck`, `setup.completedAt`, `setup.lastValidation` | `null` ou ISO 8601 | `PODSTACK_VALIDATION` |
 
 - O schema é a autoridade: `podstack config schema --json` (ou `settings.schema`) devolve
-  `type`, `default`, `enum`, `min`, `max`, `restartRequired`, `secret` e `nullable`.
+  `type`, `default`, `enum`, `min`, `max`, `restartRequired`, `secret`, `nullable` e `hidden`.
+- `hidden: true` marca chaves que ainda não têm efeito no app. Elas continuam no schema e na
+  CLI, mas o diálogo de Configurações não as exibe. Ocultas hoje: `app.waitForContainerStop`,
+  `app.confirmDestructive`, `engine.socketPath/autoStart/restartOnConfigChange`, `docker.*`,
+  `network.subnet4/ipv6/domainsMode`, `machines.forwardPorts/exposePortsToLan/sshPortStart/`
+  `autoSuspend`, `ssh.*`, `kubernetes.enabled/kubeconfigUseDomain`, `terminal.fontBold`,
+  `logs.searchMode`, `updates.lastCheck`, `telemetry.*`, `advanced.*` e
+  `setup.components/lastValidation`.
+- Aplicação em runtime das chaves expostas: `terminal.fontFamily/fontSize/scrollback` valem no
+  próximo terminal aberto (QTermWidget); `logs.fontSize/wrapLines/prettyJson/bufferLines` valem
+  na hora nos logs (o buffer também poda as sessões abertas); `machines.cpus/memoryBytes/`
+  `diskBytes/isolated/forwardSshAgent` são os defaults do diálogo **Nova machine** e do
+  `machines.create` quando o cliente omite o parâmetro.
 - Erros retornam `{code, message, detail, remediation}` no RPC (`detail` = chave; o valor não é
   ecoado para não vazar segredos). A CLI mostra mensagem, detalhe e ação.
 - Valor inválido **não é salvo**.

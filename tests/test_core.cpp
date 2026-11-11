@@ -66,6 +66,7 @@ private slots:
     void diskSpaceSamplesRoot();
     void diskSpaceRejectsMissingPath();
     void diskSpaceThreshold();
+    void settingsSchemaHonesty();
     void emulationDetectsBinfmt();
     void redactionHidesSecrets();
     void proxyEnvironment();
@@ -645,6 +646,44 @@ void CoreTest::diskSpaceThreshold()
     QVERIFY(PodStack::isDiskLow({low, high}, 90));
     QVERIFY(PodStack::isDiskLow({high}, 85));
     QVERIFY(!PodStack::isDiskLow({}, 90));
+}
+
+void CoreTest::settingsSchemaHonesty()
+{
+    const QJsonArray schema =
+        PodStack::Settings::schemaJson().value(QStringLiteral("schema")).toArray();
+
+    const auto entry = [&schema](const QString &key) {
+        for (const QJsonValue &value : schema) {
+            const QJsonObject object = value.toObject();
+            if (object.value(QStringLiteral("key")).toString() == key) {
+                return object;
+            }
+        }
+        return QJsonObject{};
+    };
+
+    // Chaves sem efeito ficam no schema, mas marcadas para o diálogo ocultar.
+    QCOMPARE(entry(QStringLiteral("telemetry.enabled")).value(QStringLiteral("hidden")).toBool(),
+             true);
+    QCOMPARE(
+        entry(QStringLiteral("docker.defaultNetwork")).value(QStringLiteral("hidden")).toBool(),
+        true);
+    QCOMPARE(entry(QStringLiteral("app.theme")).value(QStringLiteral("hidden")).toBool(), false);
+    QCOMPARE(entry(QStringLiteral("terminal.fontSize")).value(QStringLiteral("hidden")).toBool(),
+             false);
+    QCOMPARE(entry(QStringLiteral("machines.cpus")).value(QStringLiteral("hidden")).toBool(),
+             false);
+
+    // Flags de reinício conferidas contra o consumidor real.
+    QCOMPARE(entry(QStringLiteral("network.exposeLan"))
+                 .value(QStringLiteral("restartRequired"))
+                 .toBool(),
+             true);
+    QCOMPARE(entry(QStringLiteral("kubernetes.exposeServices"))
+                 .value(QStringLiteral("restartRequired"))
+                 .toBool(),
+             false);
 }
 
 void CoreTest::emulationDetectsBinfmt()

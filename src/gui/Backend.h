@@ -509,6 +509,7 @@ private:
                                 bool applyAutostart = false);
     void startNextSettingsRequest();
     void setSettingsError(const QString &error);
+    void applySettingsValues(const QVariantMap &values);
     void onMachinesFinished();
     void onMachineDistrosFinished();
     void onMachineInfoFinished();
@@ -730,6 +731,7 @@ private:
     QVariantMap m_settingsValues;
     QString m_settingsError;
     QStringList m_pendingRestartKeys;
+    int m_logBufferLines = 10000;
 };
 
 } // namespace PodStack

@@ -39,7 +39,7 @@ Rectangle {
             Theme.dark = Qt.styleHints.colorScheme !== Qt.ColorScheme.Light
         }
         const scale = Number(backend.settingsValues["app.fontScale"] || 100)
-        Theme.fontScale = (isFinite(scale) && scale >= 50 && scale <= 200) ? scale / 100 : 1.0
+        Theme.fontScale = (isFinite(scale) && scale >= 80 && scale <= 150) ? scale / 100 : 1.0
     }
 
     function reveal() {
@@ -864,7 +864,9 @@ Rectangle {
             const category = categoryBox.currentValue
             for (let index = 0; index < schema.length; ++index) {
                 const definition = schema[index]
-                if (definition.category !== category) {
+                // `hidden` = chave ainda sem efeito no app; o schema/CLI continua
+                // expondo, mas o diálogo não promete o que não funciona.
+                if (definition.category !== category || definition.hidden === true) {
                     continue
                 }
                 const value = backend.settingsValues[definition.key]
