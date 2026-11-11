@@ -195,10 +195,12 @@ rootless; o M6 está concluído no código.
 
 ## M7 — Desktop, settings, updates
 
-> **Status (2026-11-10):** T7-02 (tema/escala) implementado. tray implementado (`TrayController`/SNI, fechar-para-bandeja, Abrir,
-> Containers por projeto Compose, Activity Monitor, Configurações, Sair, instância única e
-> autostart). Activity Monitor e notificações de falha/OOM/unhealthy entregues; submenus de
-> Machines/Kubernetes e “Verificar atualizações” seguem bloqueados por M4/M5 e T7-06.
+> **Status (2026-11-11):** M7 concluído no código. Settings (86 chaves), tema/escala,
+> tray (SNI, submenus de Machines/Kubernetes, Activity Monitor, “Verificar atualizações”),
+> notificações (falha/OOM/unhealthy/update/disco), updates assinados, diagnóstico/report,
+> setup/onboarding, coexistência e remoção opt-in do Docker, restauração de UI e atalhos.
+> T7-11 (migração Docker/Podman) e T7-12 (licença/conta) ficam no pós-v1/M8; a validação
+> de instalação em máquina limpa (T7-07/T7-14) segue como pendência externa.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
@@ -208,14 +210,14 @@ rootless; o M6 está concluído no código.
 | T7-04 | P1 | Activity Monitor (gráficos + `podstack top`) | T1-07 | Dados corretos — implementado (`system.stats.subscribe` + `ActivityMonitorWindow` + `podstack top [--once|--interval|--json|--plain]`); `test_cli::topCommand` |
 | T7-05 | P1 | Notificações (OOM, falha, update, disco) | T3-07 | ✅ — OOM/falha/unhealthy via D-Bus (cooldown 30 s), update/erro da T7-06 (cooldown 24 h) e disco baixo via `system.disk` (limiar configurável, histerese de 5 pontos e cooldown de 6 h por caminho); tudo respeita `app.notifications`. Provider de notificação do desktop aplica o DND. Evidência: `test_notifications` (update/disk), `test_rpc/systemDisk`, `test_cli/systemDf` e `test_core/diskSpace*`. |
 | T7-06 | P1 | Check de updates assinado + canal | T7-01 | ✅ — `updates.check` baixa o manifesto de `updates.feedUrl`, valida a assinatura Ed25519/minisign (`Ed`/`ED`) com `updates.publicKey`, compara versões por canal (`stable`/`beta`) e devolve `updateAvailable`; cache de 6 h e `updates.lastCheck` persistido. CLI `podstack update --check [--json] [--channel]` (exit 3 quando há versão nova), ação na bandeja e notificação; sem chave pública o status é `unconfigured` e o feed é rejeitado, nunca aceito sem verificação. Evidência: `test_core/updateVersion*`/`updateSignature*`, `test_rpc/updatesCheck`, `test_cli/updateCommand`, `test_notifications/updateNotifications*`. |
-| T7-07 | P0 | Onboarding e setup da máquina (diagnóstico, Podman, coexistência Docker, QEMU/KVM, componentes, validação) | T0-11 | Fluxo completo; reexecutável — implementado (SetupManager, SetupWindow e setup.*); setup agora é overlay modal e bloqueia a tela principal até os checks obrigatórios; `warn` do Podman usa `enable-socket` (sem helper); helper em dev via `scripts/dev-helper.sh`; validar instalação real em máquina limpa |
+| T7-07 | P0 | Onboarding e setup da máquina (diagnóstico, Podman, coexistência Docker, QEMU/KVM, componentes, validação) | T0-11 | ✅ código — SetupManager, SetupWindow e setup.*; overlay modal bloqueia a tela principal até os checks obrigatórios; `warn` do Podman usa `enable-socket` (sem helper); helper em dev via `scripts/dev-helper.sh`. ⏳ Pendente: validar a instalação real em máquina limpa. |
 | T7-08 | P1 | Diagnóstico/report com redaction | T0-15 | ✅ — `system.report` monta versão/plataforma/kernel/Qt/socket, settings, `doctor` e logs opcionais, grava JSON **0600** em `state/reports` e devolve `{path, bytes, sha256}`; `Redaction` cobre `Authorization`, `password`/`token`/`secret`/`api_key` e credenciais em URLs, recursivamente em JSON. CLI `podstack report [--include-logs|--json]` imprime o arquivo para revisão (nada é enviado). Evidência: `test_core/redactionHidesSecrets`, `test_rpc/systemReportRedactsSettings` (arquivo/hash/redaction) e `test_cli/reportCommand`. |
 | T7-09 | P1 | Janelas/abas múltiplas + restauração | T0-11 | ✅ — `UiState` grava `state/ui-state.json` (0600, atômico) com geometria, seção atual e abas de detalhe (container 0–8, machine info/logs/stats/terminal/files); a `MainWindow` restaura a geometria se ainda houver tela válida e o QML salva seção/abas com debounce. Evidência: `test_gui/uiStateRoundTrip`, `uiStateInvalidFallsBack`, `uiStateRejectsInvalidValues` e `test_terminal/mainWindowRestoresSection`. |
 | T7-10 | P1 | Atalhos e acessibilidade | T0-11 | ✅ — atalhos implementados: `Ctrl+N` (novo container), `Ctrl+,`, `Ctrl+B`, `F5`, `Ctrl+Q`, `Ctrl+Enter`, `Ctrl+Shift+L`, `Ctrl+Shift+T` (Containers) e `Ctrl+F`; listas de Containers/catálogo com foco por Tab, setas, Enter e Esc; `Accessible.name`/`role` nos controles principais. `Ctrl+W`/`Ctrl+Shift+B` são não aplicáveis (conflito com o shell/inspector por página); `Delete`/`Ctrl+Delete` e `Ctrl+Shift+F` ficam planejados com a auditoria WCAG (TX-14). Evidência: `test_terminal/mainWindowShortcuts`, `qmllint` em `Main/CatalogList/ContainersPage`. |
-| T7-11 | P2 | Migração **opcional** de dados de Docker/Podman | T2-05 | Prévia/rollback; não é pré-requisito |
-| T7-12 | P2 | Licença/conta (opcional) | T7-01 | Offline funciona |
+| T7-11 | P2 | Migração **opcional** de dados de Docker/Podman | T2-05 | 📄 Pós-v1 (M8): decisão de 2026-11-11 mantém a migração fora do v1; não é pré-requisito e o Docker continua intacto por padrão. |
+| T7-12 | P2 | Licença/conta (opcional) | T7-01 | 📄 Pós-v1: o app é 100% offline e não exige conta; nenhum recurso básico depende de rede (decisão de 2026-11-11). |
 | T7-13 | P1 | Coexistência Docker/Podman e remoção opt-in com confirmação | T7-07 | ✅ — Docker presente não bloqueia o setup; a remoção exige `confirm:true`/`--yes` e o helper allowlisted. `setup.dockerImpact` lê `/system/df` + `/networks` do socket (read-only) e mostra containers (total/em execução), imagens, redes e volumes no diálogo e no CLI (`setup --docker-impact [--json]`); o job registra o impacto antes de remover e logs do helper incluem `uid`. Evidência: `test_setup/dockerInventoryCounts`, `dockerInventoryNoSocket`, `helperAuditsUid`; `test_rpc/setupDockerImpact`; `test_cli/setupCommand`. |
-| T7-14 | P0 | Helper allowlisted para setup (pacotes e remoção) | T7-07 | Sem shell/sudo na GUI; auditoria — implementado (`podstack-helper`, polkit, allowlist); falta validação em máquina limpa |
+| T7-14 | P0 | Helper allowlisted para setup (pacotes e remoção) | T7-07 | ✅ código — `podstack-helper` com polkit/allowlist (`InstallPackages`/`RemovePackages` auditam uid) e sem shell/sudo na GUI. ⏳ Pendente: validação em máquina limpa. |
 
 **Evidência T7-01 (2026-11-09):** `cmake --build --preset dev` sem erros; `ctest --preset dev`
 com 14/14 testes verdes (core, podman, contract, rpc, cli, gui, terminal, tray, single_instance,

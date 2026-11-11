@@ -196,6 +196,10 @@ limitação rootless, documentada em `spec.md` §11.7.
 
 ### M7 — Desktop e v1.0 (3 semanas)
 
+**Status:** **concluído no código em 2026-11-11** (settings, tema, tray, notificações, updates
+assinados, setup/onboarding, report, coexistência Docker, restauração de UI e atalhos).
+Pendências externas: validação em máquina limpa e benchmarks/auditoria de release.
+
 **Objetivo:** experiência completa e release.
 
 **Entregáveis:**
@@ -209,12 +213,12 @@ limitação rootless, documentada em `spec.md` §11.7.
 **Critério de saída:**
 
 - [ ] Critérios de release do PRD (§14) atendidos.
-- [ ] `podstack doctor` verde em instalação limpa.
-- [ ] Docker presente não bloqueia o setup; a remoção é opt-in e confirmada.
-- [ ] Setup reexecutável com jobs persistentes e validação de obrigatórios/opcionais.
-- [ ] Benchmarks dentro das metas.
-- [ ] Auditoria de segurança concluída.
-- [ ] Pacote RPM assinado instalável em Fedora 43/44.
+- [ ] `podstack doctor` verde em instalação limpa. *(pendente de máquina limpa)*
+- [x] Docker presente não bloqueia o setup; a remoção é opt-in e confirmada.
+- [x] Setup reexecutável com jobs persistentes e validação de obrigatórios/opcionais.
+- [ ] Benchmarks dentro das metas. *(TX-09)*
+- [ ] Auditoria de segurança concluída. *(TX-08)*
+- [ ] Pacote RPM assinado instalável em Fedora 43/44. *(TX-07)*
 
 ---
 
@@ -224,6 +228,7 @@ limitação rootless, documentada em `spec.md` §11.7.
 - Snapshots de máquina.
 - CRIU/gVisor.
 - Migração **opcional** de dados de Docker/Podman.
+- Licença/conta opcional (o v1 é offline e não exige conta).
 - Avaliar Flatpak sob demanda (não no v1).
 - i18n adicional, temas, plugins (avaliar).
 
