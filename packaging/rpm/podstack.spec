@@ -76,6 +76,14 @@ if [ "$1" -eq 0 ]; then
     semodule -r podstack >/dev/null 2>&1 || :
 fi
 
+%posttrans
+# No upgrade de 0.1.0, o %preun do antigo podstack-helper remove o módulo
+# SELinux e para o serviço depois do %post do pacote novo. Reaplica no fim
+# da transação para o helper continuar disponível.
+semodule -i %{_datadir}/selinux/packages/podstack.pp >/dev/null 2>&1 || :
+restorecon -R /usr/libexec/podstack/podstack-helper /run/podstack >/dev/null 2>&1 || :
+systemctl enable --now podstack-helper.service >/dev/null 2>&1 || :
+
 %files
 %license LICENSE NOTICE
 %{_bindir}/podstack
