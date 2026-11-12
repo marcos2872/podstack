@@ -1132,10 +1132,9 @@ QVector<MachineSnapshot> MachineManager::parseSnapshots(const MachineMeta &meta,
             if (nanosecondsValue.isDouble()) {
                 milliseconds = nanosecondsValue.toInteger() / 1000000;
             }
-            snapshot.date = QDateTime::fromSecsSinceEpoch(secondsValue.toInteger(),
-                                                          utcTimeZone())
-                                .addMSecs(milliseconds)
-                                .toString(Qt::ISODateWithMs);
+            snapshot.date = QDateTime::fromSecsSinceEpoch(secondsValue.toInteger(), utcTimeZone())
+                                 .addMSecs(milliseconds)
+                                 .toString(Qt::ISODateWithMs);
         }
         items.append(snapshot);
     }

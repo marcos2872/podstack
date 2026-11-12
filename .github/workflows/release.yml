@@ -113,7 +113,6 @@ jobs:
 
       - name: Dependências
         run: |
-          set -euo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
             cmake ninja-build g++ pkg-config \
@@ -132,6 +131,7 @@ jobs:
         run: appstreamcli validate --no-net packaging/dev.podstack.PodStack.metainfo.xml
 
       - name: Configurar (release, qtermwidget vendorizado)
+        shell: bash
         env:
           UPDATE_PUBLIC_KEY: ${{ secrets.PODSTACK_UPDATE_PUBLIC_KEY }}
         run: |

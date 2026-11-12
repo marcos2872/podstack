@@ -2,7 +2,7 @@ Name:           podstack
 Version:        0.1.2
 Release:        1%{?dist}
 Summary:        Native desktop for Podman containers, VMs and Kubernetes
-License:        GPL-3.0-or-later
+License:        GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.0-or-later
 URL:            https://podstack.dev
 Source0:        %{name}-%{version}.tar.gz
 
@@ -86,6 +86,7 @@ systemctl enable --now podstack-helper.service >/dev/null 2>&1 || :
 
 %files
 %license LICENSE NOTICE
+%{_datadir}/licenses/podstack/qtermwidget
 %{_bindir}/podstack
 %{_bindir}/podstackd
 %{_bindir}/podstack-gui
