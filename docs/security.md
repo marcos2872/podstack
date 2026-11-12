@@ -323,12 +323,15 @@ encerra a janela da instância já em execução.
 
 ## 12. Checklist de release de segurança
 
-- [ ] Socket `0600`, dir `0700`, `SO_PEERCRED` testado.
-- [ ] Helper sem `Exec`/shell; métodos allowlisted; polkit testado.
-- [ ] Redaction validada com fixtures contendo tokens.
-- [ ] Path traversal testado (files, import/export).
-- [ ] CA/DNS install/remove idempotentes e reversíveis.
-- [ ] Update com assinatura inválida rejeitado.
-- [ ] SELinux enforcing sem AVC inesperado.
-- [ ] Dependências auditadas (SBOM + CVEs).
-- [ ] Threat model revisado.
+- [x] Socket `0600`, dir `0700`, `SO_PEERCRED` testado. Evidência: `test_rpc`/`test_single_instance`; o smoke de instalação limpa confere o modo `600` do socket.
+- [x] Helper sem `Exec`/shell e métodos allowlisted. Evidência: `test_setup` cobre `InstallPackages`/`RemovePackages` e ações inválidas; o binário não expõe execução arbitrária.
+- [ ] Polkit real do helper validado em máquina limpa. Pendente: o smoke em container não roda systemd como PID 1; falta exercitar autorização e negação reais.
+- [x] Redaction validada com fixtures contendo tokens. Evidência: `test_core/redactionHidesSecrets` e `test_rpc/systemReportRedactsSettings`.
+- [x] Path traversal testado (files, import/export). Evidência: `test_machines/machineFiles`, rejeição de hosts/paths no `test_http_proxy` e testes de `MachineArchive`.
+- [x] CA/DNS install/remove idempotentes e reversíveis. Evidência: `test_setup/CaTrust`, `DnsZone` e `test_dns`.
+- [x] Update com assinatura inválida rejeitado. Evidência: `test_core/updateSignature*` e `test_rpc/updatesCheck`.
+- [x] SBOM CycloneDX gerado e anexado ao release. Evidência: `scripts/generate-sbom.sh` e `.github/workflows/release.yml`.
+- [ ] SELinux enforcing sem AVC inesperado. Pendente: módulo mínimo em `packaging/selinux/`, compilado no spec, ainda não validado em enforcing com `ausearch -m avc`.
+- [ ] Dependências auditadas (SBOM + CVEs). Pendente: o SBOM é gerado no release, mas a revisão de CVEs ainda não foi realizada.
+- [x] Threat model revisado internamente. Evidência: §3 e este checklist; a auditoria externa segue pendente (TX-01/TX-08).
+- [ ] Auditoria externa de segurança. Pendente: socket, helper e proxy ainda não passaram por revisão independente.

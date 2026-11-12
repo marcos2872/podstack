@@ -836,11 +836,40 @@ Rectangle {
             backend.refreshSettings()
             rebuildSettingsRows()
         }
+        onAutoCheckUpdatesChanged: autoCheckBox.checked = autoCheckUpdates
 
         // Array JS em vez de ListModel: os roles defaultValue/currentValue
         // misturam string, número e bool, e o ListModel fixa o tipo no
         // primeiro append (String -> Bool falhava ao trocar de categoria).
         property var settingsRows: []
+
+        // Atualizações são internas do app: o diálogo expõe só o interruptor
+        // (updates.mode) e a verificação manual na aba Geral. O restante
+        // (canal, feed, chave) fica oculto no schema e disponível na CLI.
+        property bool autoCheckUpdates: true
+
+        function updateStatusText() {
+            const status = backend.updateStatus || {}
+            if (status.status === "ok") {
+                if (status.updateAvailable) {
+                    return qsTr("Versão %1 disponível.").arg(status.latestVersion || "")
+                }
+                return qsTr("Você está na versão mais recente.")
+            }
+            if (status.status === "disabled") {
+                return qsTr("Verificação automática desativada.")
+            }
+            if (status.status === "unconfigured") {
+                return qsTr("Canal de atualização não configurado.")
+            }
+            if (status.status === "no-feed") {
+                return qsTr("Feed de atualizações indisponível.")
+            }
+            if (status.reason) {
+                return status.reason
+            }
+            return qsTr("Ainda não verificado.")
+        }
 
         // `value` é a categoria do schema (pt-BR, estável no daemon); `label`
         // é só o texto traduzido exibido no select.
@@ -852,7 +881,6 @@ Rectangle {
             { value: "Máquinas", label: qsTr("Máquinas") },
             { value: "Kubernetes", label: qsTr("Kubernetes") },
             { value: "Terminal/Logs", label: qsTr("Terminal/Logs") },
-            { value: "Updates", label: qsTr("Updates") },
             { value: "Notificações", label: qsTr("Notificações") },
             { value: "Avançado", label: qsTr("Avançado") },
             { value: "Setup", label: qsTr("Setup") }
@@ -862,6 +890,8 @@ Rectangle {
             const rows = []
             const schema = backend.settingsSchema
             const category = categoryBox.currentValue
+            const updateMode = backend.settingsValues["updates.mode"] || "check"
+            settingsDialog.autoCheckUpdates = updateMode !== "off"
             for (let index = 0; index < schema.length; ++index) {
                 const definition = schema[index]
                 // `hidden` = chave ainda sem efeito no app; o schema/CLI continua
@@ -962,6 +992,75 @@ Rectangle {
                     id: settingsColumn
                     width: settingsScroll.availableWidth
                     spacing: Theme.spacingSm
+
+                    Rectangle {
+                        id: updateCheckRow
+                        objectName: "updateCheckRow"
+                        visible: categoryBox.currentValue === "Geral"
+                        width: settingsColumn.width
+                        implicitHeight: updateCheckLayout.implicitHeight + 20
+                        radius: Theme.radiusSm
+                        color: Theme.bgSurface2
+                        border.width: 1
+                        border.color: Theme.border
+
+                        ColumnLayout {
+                            id: updateCheckLayout
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 10
+                            spacing: 7
+
+                            Text {
+                                text: qsTr("Atualizações do PodStack")
+                                color: Theme.textPrimary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMeta
+                                font.weight: Font.DemiBold
+                            }
+
+                            FormCheck {
+                                id: autoCheckBox
+                                objectName: "updateAutoCheckBox"
+                                text: qsTr("Verificar atualizações ao iniciar")
+                                checked: settingsDialog.autoCheckUpdates
+                                Layout.fillWidth: true
+                                onClicked: backend.setSetting("updates.mode",
+                                                              checked ? "check" : "off")
+                            }
+
+                            Text {
+                                text: qsTr("A verificação consulta o manifesto assinado do canal estável e nunca instala nada sozinha.")
+                                color: Theme.textTertiary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMicro
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                ActionButton {
+                                    objectName: "updateCheckNowButton"
+                                    text: qsTr("Verificar atualizações")
+                                    size: "sm"
+                                    onClicked: backend.checkForUpdates(true)
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: settingsDialog.updateStatusText()
+                                    color: Theme.textTertiary
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontMicro
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+                    }
 
                     Repeater {
                         model: settingsDialog.settingsRows

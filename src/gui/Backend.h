@@ -715,6 +715,7 @@ private:
     QVariantMap m_setupDockerImpact;
     QVariantMap m_updateStatus;
     bool m_updateCheckRunning = false;
+    bool m_updatesEnabled = true;
     bool m_updateInteractive = false;
     QVariantMap m_diskHealth;
     bool m_diskCheckRunning = false;

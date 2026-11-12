@@ -11,8 +11,7 @@
 | Pacote | Conteúdo | Dependências |
 |---|---|---|
 | `podstack` | GUI, CLI, daemon, QML, ícones, `.desktop`, AppStream | Qt 6.10+, libcurl, libarchive, libxcrypt, sqlite, podman, openssh-clients |
-| `podstack-helper` | helper root, unit system, polkit | systemd, polkit |
-| `podstack-selinux` | política SELinux | `selinux-policy-targeted` |
+| `podstack-helper` | helper root, unit system, polkit, módulo SELinux | systemd, polkit, policycoreutils |
 | `podstack-devel` (opcional) | headers/libs para plugins | — |
 
 **Recomenda (não exige):** `qemu-kvm`, `qemu-img`, `cloud-utils` (cloud-localds), `virtiofsd`, `caddy`, `k3s`, `docker-compose` (provider Compose).
@@ -32,6 +31,7 @@
 /usr/lib/systemd/system/podstack-helper.service
 /usr/share/dbus-1/system.d/dev.podstack.Helper1.conf
 /usr/share/polkit-1/actions/dev.podstack.helper.policy
+/usr/share/selinux/packages/podstack.pp
 /usr/share/podstack/qml/
 /usr/share/icons/hicolor/scalable/apps/dev.podstack.PodStack.svg
 /usr/share/icons/hicolor/16x16/apps/dev.podstack.PodStack.png
@@ -215,17 +215,92 @@ Ações separadas por método; nunca uma ação "root genérica".
 
 ## 6. SELinux
 
-- Módulo `podstack.te` com tipos:
-  - `podstack_helper_t` (domínio do helper)
-  - `podstack_helper_exec_t`
-  - portas: `podstack_port_t` (80/443/8080/8443) ou reutilizar `http_port_t`
-  - `podstack_var_run_t` para sockets
-- Regras mínimas:
-  - helper lê/escreve `/etc/systemd/resolved.conf.d/`, `/etc/pki/ca-trust/source/anchors/`, `/run/podstack/`.
-  - helper sinaliza `systemd-resolved` (`systemctl reload`).
-  - helper faz bind em portas allowlisted.
-- Testar com `selinux=enforcing` e `ausearch -m avc`.
-- Documentar `setsebool`/`semanage` se necessário.
+O módulo mínimo está em [`packaging/selinux/`](../packaging/selinux/):
+`podstack.te`, `podstack.fc` e `podstack.if` (`policy_module(podstack, 0.1.0)`,
+refpolicy/Fedora).
+
+**Escopo:** apenas o helper privilegiado. O daemon do usuário, os containers, o
+Caddy e o `systemd-socket-proxyd` não têm domínio dedicado neste módulo e seguem
+a política padrão do sistema.
+
+| Tipo | Uso | Contexto de arquivo |
+|---|---|---|
+| `podstack_helper_t` | domínio do `podstack-helper` | — |
+| `podstack_helper_exec_t` | executável do helper | `/usr/libexec/podstack/podstack-helper` |
+| `podstack_var_run_t` | pid/socket/fifo de runtime | `/run/podstack(/.*)?` |
+
+Regras cobertas:
+
+- `init_daemon_domain` + `dbus_system_domain` para o serviço
+  `dev.podstack.Helper1`.
+- Escrita dos drop-ins do `systemd-resolved` em
+  `/etc/systemd/resolved.conf.d` (`systemd_conf_t`), incluindo a criação do
+  diretório via `filetrans`.
+- Escrita das âncoras de CA em `/etc/pki/ca-trust/source/anchors` (`cert_t`) e
+  execução de `update-ca-trust`/`update-ca-certificates`.
+- Units do `systemd-socket-proxyd` em `/etc/systemd/system`
+  (`systemd_unit_file_t`), `systemctl` e `daemon-reload`.
+- D-Bus com systemd (`init_dbus_chat`), systemd-resolved
+  (`systemd_chat_resolved`, antigo `systemd_dbus_chat_resolved`) e polkit
+  (`policykit_dbus_chat`).
+- Leitura do certificado fornecido pelo chamador (`user_home_t`; no Fedora
+  também `config_home_t`/`data_home_t` via `optional_policy` do módulo gnome) e
+  capacidades `dac_override`/`dac_read_search`.
+- `logging_send_syslog_msg` e estado de runtime em `/run/podstack`.
+- Interface `podstack_domtrans_helper()` exportada em `podstack.if`.
+
+**Fora do escopo:**
+
+- Portas 80/443: quem faz o bind é o `systemd-socket-proxyd` (socket
+  activation) e o Caddy; o helper apenas grava as units e chama `systemctl`.
+  Por isso não há `corenet_port()`/`podstack_port_t` no módulo.
+- Instalação/remoção de pacotes via `dnf`/`apt`/`pacman` e scriptlets de RPM:
+  o helper executa o gerenciador, mas este módulo mínimo não cobre todo o fluxo
+  `rpm_t`/`rpm_script_t`.
+- Firewall (`firewall-cmd`/`ufw`): a execução do binário é permitida como
+  `bin_t`, mas a comunicação D-Bus com o `firewalld` e o fluxo netfilter não
+  estão cobertos.
+- Containers e Caddy.
+
+> A interface `admin_domain()` citada em rascunhos não existe em refpolicy nem
+> em `selinux-policy` Fedora; as permissões são explícitas e mínimas, sem
+> `unconfined_domain()`.
+
+### 6.1 Compilar e validar
+
+```bash
+# compila o .pp (requer selinux-policy-devel)
+make -f /usr/share/selinux/devel/Makefile -C packaging/selinux podstack.pp
+
+# valida em diretório temporário, sem instalar no host
+./scripts/check-selinux.sh
+```
+
+> `checkmodule` não processa `policy_module()` nem as macros refpolicy; por
+> isso o `.te` deve ser compilado pelo Makefile do `selinux-policy-devel`
+> (que roda `m4` antes), não diretamente.
+
+O `%build` do RPM compila o módulo **sem** `|| :` (falha quebra o build). O
+`%post` do `podstack-helper` carrega com `semodule -i` e roda `restorecon` no
+binário; ambos tolerantes a host sem SELinux (`|| :`). O `%preun` remove com
+`semodule -r podstack` apenas na remoção final (`$1 -eq 0`).
+
+### 6.2 Verificar em runtime
+
+```bash
+ls -Z /usr/libexec/podstack/podstack-helper
+ls -Zd /run/podstack
+semodule -l | grep podstack
+ausearch -m avc -ts recent        # negações do domínio podstack_helper_t
+```
+
+Se aparecer AVC, ajuste `podstack.te` e recarregue com `semodule -i`. Use
+`audit2allow -w -a` apenas como diagnóstico, não como política final.
+
+> **Ressalva:** módulo mínimo, **não validado em SELinux enforcing no 0.1.0**.
+> A validação real depende de um build em Fedora com `selinux-policy-devel`
+> (COPR/CI) e de um ciclo de setup com `enforcing` + `ausearch`. Em
+> `permissive`, o módulo apenas registra negações.
 
 ---
 
@@ -267,6 +342,7 @@ BuildRequires:  libarchive-devel
 BuildRequires:  libcurl-devel
 BuildRequires:  libxcrypt-devel
 BuildRequires:  sqlite-devel
+BuildRequires:  selinux-policy-devel
 Requires:       podman >= 5.8
 Requires:       systemd >= 257
 Requires:       qtermwidget
@@ -281,13 +357,11 @@ Compose, Linux machines (QEMU/KVM), Kubernetes and local domains.
 Summary:        Privileged helper for PodStack
 Requires:       podstack = %{version}-%{release}
 Requires:       polkit
+Requires(post):  policycoreutils
+Requires(postun): policycoreutils
 
 %description helper
 Minimal root helper for DNS, privileged ports and local CA.
-
-%package selinux
-Summary:        SELinux policy for PodStack
-Requires:       selinux-policy-targeted
 
 %prep
 %autosetup
@@ -295,18 +369,30 @@ Requires:       selinux-policy-targeted
 %build
 %cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 %cmake_build
+make -f /usr/share/selinux/devel/Makefile -C packaging/selinux podstack.pp
 
 %install
 %cmake_install
+install -D -m 0644 packaging/selinux/podstack.pp \
+    %{buildroot}%{_datadir}/selinux/packages/podstack.pp
 # systemd units, polkit, desktop, icons, metainfo
 
 %post
 %systemd_user_post podstack.socket podstack.service
 %systemd_post podstack-helper.service
 
+%post helper
+semodule -i %{_datadir}/selinux/packages/podstack.pp >/dev/null 2>&1 || :
+restorecon -R /usr/libexec/podstack/podstack-helper /run/podstack >/dev/null 2>&1 || :
+
 %preun
 %systemd_user_preun podstack.socket podstack.service
+
+%preun helper
 %systemd_preun podstack-helper.service
+if [ "$1" -eq 0 ]; then
+    semodule -r podstack >/dev/null 2>&1 || :
+fi
 
 %postun
 %systemd_user_postun podstack.socket podstack.service
@@ -331,8 +417,6 @@ Requires:       selinux-policy-targeted
 /usr/lib/systemd/system/podstack-helper.service
 /usr/share/dbus-1/system.d/dev.podstack.Helper1.conf
 /usr/share/polkit-1/actions/dev.podstack.helper.policy
-
-%files selinux
 %{_datadir}/selinux/packages/podstack.pp
 ```
 
@@ -401,13 +485,64 @@ rpmbuild -ba podstack.spec
 - Feed oficial: `podstack-update.json` anexado à release do GitHub + `podstack-update.json.minisig`
   (Ed25519/minisign). O manifesto assinado contém os canais `stable`/`beta` com versão, notas,
   `releaseUrl` e artefatos (`arch`, `format`, `url`, `sha256`).
-- Checklist de release: assinar o manifesto com a chave de release, anexar os dois arquivos e
-  substituir `updates.publicKey` (ou a chave embutida) antes de publicar; sem chave, a checagem
-  retorna `unconfigured` e não aceita nada.
+
+### 11.1 Pipeline de release (`release.yml`)
+
+O workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) roda em
+push de tag `v*` e em `workflow_dispatch`, em container `fedora:44`:
+
+1. valida o AppStream;
+2. configura e compila o preset `release` e roda `ctest`;
+3. gera o RPM (`scripts/build-rpm.sh`) e o DEB (`scripts/build-deb.sh`);
+4. assina os RPMs com GPG (opcional) e gera `SHA256SUMS` dos `.rpm`/`.deb`;
+5. assina `SHA256SUMS` com GPG (opcional, gera `SHA256SUMS.asc`);
+6. gera o SBOM CycloneDX (`scripts/generate-sbom.sh`);
+7. confere se a tag `vX.Y.Z` corresponde à versão de `CMakeLists.txt` (falha se
+   divergir), extrai as notas da seção da versão no
+   [`CHANGELOG.md`](../CHANGELOG.md) e gera `podstack-update.json`
+   (`scripts/generate-update-manifest.sh`), com a URL base das releases do
+   GitHub e o canal de `PODSTACK_UPDATE_CHANNEL` (variável do repositório);
+8. assina o manifesto com minisign (opcional, gera `podstack-update.json.minisig`);
+9. publica os artefatos na release (`gh release create` ou `gh release upload --clobber`).
+
+Artefatos publicados: `*.rpm`, `*.deb`, `SHA256SUMS`, `SHA256SUMS.asc` (se assinado),
+`*.cdx.json`, `podstack-update.json` e `podstack-update.json.minisig` (se assinado).
+
+Secrets usados:
+
+| Secret | Uso | Sem ele |
+|---|---|---|
+| `GPG_PRIVATE_KEY` | assinar RPMs e `SHA256SUMS` | pacotes/checksums seguem sem assinatura GPG |
+| `GPG_KEY_ID` | selecionar a chave GPG | RPMs não são assinados; `SHA256SUMS` usa a chave padrão do keyring importado |
+| `PODSTACK_UPDATE_PUBLIC_KEY` | embutir a chave pública Ed25519 no build (`-DPODSTACK_UPDATE_PUBLIC_KEY`) e no RPM (`--define podstack_update_public_key`) | o updater usa `updates.publicKey` em runtime |
+| `MINISIGN_PRIVATE_KEY` | assinar o manifesto de updates | manifesto é publicado sem `.minisig` |
+
+### 11.2 Fallback sem secrets
+
+Sem os secrets, o pipeline continua publicando a release: RPM/DEB saem sem assinatura
+GPG, `SHA256SUMS` sai sem `.asc` e o manifesto sai sem `.minisig`. Nesse estado o
+updater retorna `unconfigured` e não aceita o feed (a verificação de assinatura é
+obrigatória). Para habilitar updates, importe a chave privada minisign, publique o
+`.minisig` e configure `updates.publicKey` (ou rode o pipeline com
+`PODSTACK_UPDATE_PUBLIC_KEY`). A assinatura de RPM é independente do feed: sem
+`GPG_PRIVATE_KEY`, o pacote instala, mas não é verificado por GPG.
 
 ---
 
 ## 12. Instalação limpa (checklist)
+
+**Automatizado:** [`scripts/clean-install-check.sh`](../scripts/clean-install-check.sh) roda
+em container Fedora 44 descartável (via Podman) e cobre instalação do RPM principal e do
+`podstack-helper`; presença de binários, units systemd de usuário, unit/polkit do helper e
+módulo SELinux; metainfo + `appstreamcli validate`; daemon com socket `0600`; `podstack
+status` e `podstack doctor`. O [`packaging.yml`](../.github/workflows/packaging.yml) executa
+o script em PRs que alteram `packaging/**`, `scripts/build-*`,
+`scripts/clean-install-check.sh`, `CMakeLists.txt` ou `release.yml`.
+
+**Manual (máquina/VM de referência):** GUI em sessão gráfica real, KVM (`/dev/kvm`) e
+machines com SSH, polkit real com systemd como PID 1, coexistência/remoção do Docker,
+upgrade a partir de versão anterior, desinstalação e as demais combinações da matriz de
+compatibilidade (Fedora 43, X11, GNOME, KDE Plasma, rootful).
 
 1. `dnf install podstack` em Fedora 43 limpo.
 2. `systemctl --user status podstack.socket` ativo.

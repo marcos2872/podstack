@@ -3593,7 +3593,9 @@ int machineSshCommand(const QStringList &args)
     sshArguments << QStringLiteral("-i") << identityFile << QStringLiteral("-p")
                  << QString::number(port) << QStringLiteral("-o")
                  << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
-                 << QStringLiteral("StrictHostKeyChecking=accept-new")
+                 << QStringLiteral("StrictHostKeyChecking=accept-new") << QStringLiteral("-o")
+                 << QStringLiteral("UserKnownHostsFile=%1/known_hosts")
+                        .arg(QFileInfo(identityFile).absolutePath())
                  << QStringLiteral("%1@%2").arg(user, host);
     sshArguments += command;
 

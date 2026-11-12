@@ -75,6 +75,10 @@ QString blockFor(const MachineMeta &machine, bool forwardAgent)
     block += QStringLiteral("  User %1\n").arg(machine.sshUser);
     block += QStringLiteral("  IdentityFile %1\n").arg(machine.sshKeyPath);
     block += QStringLiteral("  IdentitiesOnly yes\n");
+    // known_hosts por machine: evita colisão quando a porta SSH é reutilizada
+    // por outra VM (chave de host diferente).
+    block += QStringLiteral("  UserKnownHostsFile %1/known_hosts\n")
+                 .arg(QFileInfo(machine.sshKeyPath).absolutePath());
     if (forwardAgent) {
         block += QStringLiteral("  ForwardAgent yes\n");
     }
@@ -96,7 +100,14 @@ bool findBlock(const QString &content, const QString &name, int *start, int *end
             position += startText.size();
             continue;
         }
-        const int endPosition = content.indexOf(endText, position + startText.size());
+        // O marcador precisa terminar na nova linha: sem isso, uma machine
+        // chamada "teste" casaria o bloco de "teste02" por prefixo.
+        const int startNameEnd = position + startText.size();
+        if (startNameEnd < content.size() && content.at(startNameEnd) != QLatin1Char('\n')) {
+            position = startNameEnd;
+            continue;
+        }
+        const int endPosition = content.indexOf(endText, startNameEnd);
         if (endPosition < 0) {
             return false;
         }
@@ -106,8 +117,13 @@ bool findBlock(const QString &content, const QString &name, int *start, int *end
             position += startText.size();
             continue;
         }
+        const int endNameEnd = endPosition + endText.size();
+        if (endNameEnd < content.size() && content.at(endNameEnd) != QLatin1Char('\n')) {
+            position = endNameEnd;
+            continue;
+        }
         *start = position;
-        *end = endPosition + endText.size();
+        *end = endNameEnd;
         if (*end < content.size() && content.at(*end) == QLatin1Char('\n')) {
             ++(*end);
         }
@@ -206,7 +222,7 @@ bool writeContent(const QString &path, const QString &content, Error *error)
 
 } // namespace
 
-SshConfig::SshConfig(QString path)
+SshConfig::SshConfig(const QString &path)
 {
     m_path = path.trimmed();
     if (m_path.isEmpty()) {

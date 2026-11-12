@@ -1,0 +1,171 @@
+# Changelog
+
+Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
+
+O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
+versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
+
+## [0.1.0] - 2026-11-11
+
+Primeira release do PodStack, alternativa Linux ao OrbStack sobre o Podman Engine
+nativo, com GUI Qt 6/QML, CLI `podstack` e daemon de usuário `podstackd`.
+
+### Adicionado
+
+**Containers**
+
+- Ciclo de vida completo (create, start, stop, restart, pause, kill, rename,
+  duplicate, remove), ações em lote, confirmações e filtros.
+- Logs com follow, busca, timestamps e reconexão; terminal integrado com
+  QTermWidget e sessão externa opcional; estatísticas de CPU, memória, rede e
+  disco; navegação e transferência de arquivos; inspect; healthcheck; rootful
+  opt-in; checkpoint/restore via CRIU quando o runtime suporta.
+
+**Imagens, volumes, redes e pods**
+
+- Pull/push/tag/untag, remove/prune, histórico e digest de imagens, inclusive
+  pull por plataforma.
+- CRUD de volumes e redes, clone, export/import `.tar.zst` e import do host.
+- Pods do Podman no grupo Engine e resumo de uso em `system.df`.
+
+**Compose, builds e eventos**
+
+- Agrupamento de projetos Compose, up/down/restart, logs por serviço e abertura
+  do YAML/diretório.
+- Builds via Libpod com steps, cache, histórico em SQLite e manifest list
+  multi-plataforma.
+- Eventos globais do Podman refletidos na UI e em notificações.
+
+**Machines (QEMU/KVM)**
+
+- Criação com cloud-init para Ubuntu, Debian, Fedora, Arch, Alpine e outras,
+  cache de imagens com checksum e ciclo de vida com reconciliação de órfãos.
+- SSH com chave por machine, bloco gerenciado em `~/.ssh/config`, arquivos
+  (list/download/upload), virtiofs, CPU/memória/disco com restart, port
+  forwarding, agent forwarding e modo isolado.
+- Export/import `.tar.zst`, clone, rename e machine default; snapshots;
+  console serial; USB passthrough; portas seriais; áudio PipeWire; X11
+  forwarding.
+
+**Kubernetes (k3s)**
+
+- Cluster k3s em VM dedicada com instalação, enable/disable/reset idempotentes.
+- Kubeconfig isolado e contexto explícito; Pods/Services com refresh, logs por
+  container, delete e port-forward de Pod/Service; TLS SANs e exposição LAN.
+
+**Domínios e HTTPS**
+
+- Proxy `*.localhost` em loopback com detecção automática de porta e página de
+  índice; labels `dev.podstack.domains`, `http-port`, `https-port` e opt-out da
+  CA.
+- DNS userspace em `127.0.0.1:5353` para `*.podstack.local`, socket activation
+  de :80/:443 e Caddy com CA interna e HTTPS on-demand.
+- Confiança/remoção da CA local via helper com fingerprint SHA-256 e exposição
+  LAN opt-in.
+
+**Desktop**
+
+- Bandeja SNI com menu de containers por projeto, submenus de Machines e
+  Kubernetes, Activity Monitor e fechar-para-bandeja.
+- Settings com 86 chaves, validação central, tema claro/escuro reativo, escala
+  de fonte e reinício sinalizado quando necessário.
+- Notificações de falha, OOM, unhealthy, update e disco baixo com cooldown;
+  restauração de geometria, seção e abas; atalhos de teclado e navegação.
+- Updates assinados (Ed25519/minisign), canais `stable`/`beta`,
+  `podstack update --check` (exit 3 quando há versão nova) e report redigido.
+
+**Setup e onboarding**
+
+- Janela de setup em 7 etapas, reexecutável, com diagnóstico read-only,
+  instalação/atualização de Podman, coexistência com Docker e remoção opt-in
+  confirmada.
+- `podstack-helper` com polkit e API allowlisted, sem shell nem `Exec`.
+
+**CLI e empacotamento**
+
+- CLI para containers (listagem, inspect, exec, pause/kill e checkpoint/restore),
+  catálogo, Compose, builds, machines, kube, proxy, settings, report, update e setup;
+  saída humana/JSON e exit codes estáveis cobertos por golden tests.
+- Pacotes RPM (primário) e DEB, Flatpak como cliente do daemon/helper no host,
+  AppStream/metainfo, ícones e units systemd.
+- Módulo SELinux mínimo para o helper e o diretório de runtime.
+
+**Internacionalização**
+
+- UI principal traduzida para en-US (158 strings), com pt-BR como padrão e
+  troca por `app.language` com reinício.
+
+### Alterado
+
+- Versão 0.1.0 unificada em `CMakeLists.txt`, spec RPM e metainfo AppStream.
+- `scripts/build-deb.sh` passou a gerar o controle binário próprio, sem
+  `${shlibs:Depends}`, com alvo Debian 12/Ubuntu 24.04 validado por
+  `dpkg-deb`.
+- O build RPM compila o módulo SELinux e, quando o secret existe, embute
+  `PODSTACK_UPDATE_PUBLIC_KEY` via define.
+- CI ganhou `appstreamcli validate`; release ganhou pipelines de RPM/DEB,
+  checksums, SBOM e manifesto de updates.
+
+### Corrigido
+
+- Settings: carregamento das chaves com a categoria traduzida, select que
+  perdia o valor ao reabrir, aplicação de terminal/logs/machines e chaves sem
+  efeito ocultadas.
+- Machines: restart de áudio/serial/USB sem esperar ACPI e shutdown seguro.
+- Machines: criação prepara áudio e X11 nas distros Debian, Fedora e Ubuntu
+  (kernel genérico no Debian, `kernel-modules`/módulos de som no Fedora,
+  `xauth`/`x11-apps`/`xdg-utils`, grupo `audio`, linger e PipeWire/PulseAudio).
+- Machines/Ubuntu: `~/.ssh/environment` com `XAUTHORITY` +
+  `PermitUserEnvironment yes`, necessário para o Firefox snap enxergar o
+  cookie X11 fora do `HOME` redirecionado.
+- SSH: `known_hosts` isolado por machine, evitando falha de host key quando a
+  porta SSH é reutilizada por outra VM.
+- Terminal: copiar/colar e menu de contexto.
+- Setup: texto esclarece que o k3s roda em VM, não no host.
+- Correções acumuladas de inicialização do daemon, inspector e virtiofsd.
+
+### Segurança
+
+- Socket de controle com diretório `0700`, socket `0600` e validação por
+  `SO_PEERCRED`.
+- Helper privilegiado apenas com métodos allowlisted e autorização polkit;
+  nenhum shell ou comando arbitrário.
+- Redaction de tokens, senhas, chaves e `Authorization` em logs e reports;
+  proteção contra path traversal em arquivos e archives.
+- Instalação/remoção idempotente de CA e DNS; assinatura de update inválida é
+  rejeitada.
+- Release com `SHA256SUMS`, assinatura GPG opcional de RPM/checksums, SBOM
+  CycloneDX e assinatura minisign opcional do manifesto de updates.
+
+### Limitações conhecidas
+
+- O stack Supabase (T3-09) não foi entregue.
+- Mounts de host em machines (T4-07) existem na GUI e no RPC, mas
+  `machine create` não tem flags de mount no CLI.
+- O roteamento de domínios customizados via Compose (T6-08) não está
+  disponível; labels e montagem da CA em containers de Compose ficam
+  pendentes.
+- T5-07 e T5-08 são parciais: não há NodePort/LoadBalancer nativos nem
+  `k8s.podstack.local`; a troca de contexto é explícita, não automática por
+  projeto.
+- Portas não publicadas não podem ser encaminhadas no modo rootless (T6-10).
+- O console serial das machines é somente texto; não há VNC nem console
+  gráfico.
+- `machine export`/`import` e `machine clone` não preservam snapshots internos
+  do qcow2.
+- No Flatpak, o aplicativo é apenas cliente: `podstackd` e `podstack-helper`
+  precisam estar instalados no host.
+- A ativação das portas 80/443 via helper existe na API privilegiada, mas não
+  é acionada pela GUI/CLI em 0.1.0; o proxy usa `network.httpPort` e
+  `network.httpsPort` (8080/8443 por padrão).
+- A confiança na CA local e a instalação do drop-in de `*.podstack.local` ainda
+  não têm um fluxo pronto na GUI/CLI; use `*.localhost` ou os passos manuais de
+  `docs/user/troubleshooting.md`.
+- A instalação limpa tem smoke automatizado em container Fedora 44; a validação
+  da GUI, do KVM e do polkit reais em máquina limpa ainda é manual.
+- A assinatura GPG dos RPMs e a assinatura minisign do manifesto dependem dos
+  secrets do repositório; sem eles, a release é publicada sem assinatura e o
+  updater retorna `unconfigured`.
+- O módulo SELinux é mínimo e não foi validado em modo enforcing.
+- A auditoria externa de segurança e a revisão de CVEs do SBOM ainda não foram
+  concluídas.

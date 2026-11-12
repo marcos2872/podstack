@@ -18,6 +18,20 @@ constexpr double kGiB = 1024.0 * 1024.0 * 1024.0;
 constexpr double kTiB = 1024.0 * kGiB;
 constexpr double kMaxSafeInteger = 4503599627370496.0; // 2^52
 
+// Usa a chave pública embutida no build (PODSTACK_UPDATE_PUBLIC_KEY), quando
+// definida e não vazia; caso contrário o default continua null e o updater
+// aceita updates.publicKey configurado em runtime.
+QJsonValue embeddedUpdatePublicKey()
+{
+#if defined(PODSTACK_UPDATE_PUBLIC_KEY)
+    const QString embedded = QString::fromUtf8(PODSTACK_UPDATE_PUBLIC_KEY);
+    if (!embedded.isEmpty()) {
+        return QJsonValue(embedded);
+    }
+#endif
+    return QJsonValue();
+}
+
 SettingDef makeBool(const QString &key, bool value, const QString &category,
                     const QString &description, bool restart = false)
 {
@@ -424,14 +438,13 @@ const QVector<SettingDef> &definitions()
             QStringLiteral("Updates"),
             QStringLiteral("URL do manifesto assinado de updates (https; http só em loopback).")));
         list.append(makeString(
-            QStringLiteral("updates.publicKey"), QJsonValue(), QStringLiteral("Updates"),
+            QStringLiteral("updates.publicKey"), embeddedUpdatePublicKey(),
+            QStringLiteral("Updates"),
             QStringLiteral("Chave pública Ed25519 (base64/minisign) usada para validar o feed; "
                            "null usa a chave embutida.")));
         list.append(makeBool(QStringLiteral("diagnostics.includeLogs"), true,
-                             QStringLiteral("Updates"),
-                             QStringLiteral("Inclui logs no report.")));
-        list.append(makeBool(QStringLiteral("diagnostics.redact"), true,
-                             QStringLiteral("Updates"),
+                             QStringLiteral("Avançado"), QStringLiteral("Inclui logs no report.")));
+        list.append(makeBool(QStringLiteral("diagnostics.redact"), true, QStringLiteral("Avançado"),
                              QStringLiteral("Redige segredos no report.")));
         list.append(makeBool(QStringLiteral("telemetry.enabled"), false,
                              QStringLiteral("Updates"),
@@ -520,6 +533,10 @@ const QVector<SettingDef> &definitions()
             QStringLiteral("kubernetes.kubeconfigUseDomain"),
             QStringLiteral("terminal.fontBold"),
             QStringLiteral("logs.searchMode"),
+            QStringLiteral("updates.mode"),
+            QStringLiteral("updates.channel"),
+            QStringLiteral("updates.feedUrl"),
+            QStringLiteral("updates.publicKey"),
             QStringLiteral("updates.lastCheck"),
             QStringLiteral("telemetry.enabled"),
             QStringLiteral("telemetry.crashReports"),

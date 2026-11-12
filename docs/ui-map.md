@@ -343,16 +343,20 @@ inline. Nada é gravado direto no arquivo: `Backend::refreshSettings/setSetting/
 
 | Categoria | Conteúdo |
 |---|---|
-| **Geral** | iniciar no login, tema, idioma, tray, manter rodando, confirmações, onboarding |
+| **Geral** | iniciar no login, tema, idioma, tray, manter rodando, confirmações, onboarding e o bloco **Atualizações do PodStack** (checkbox “Verificar atualizações ao iniciar” + botão **Verificar atualizações**) |
 | **Engine** | rootless/rootful, socket, auto-start, restart em mudança de config |
 | **Docker** | expor portas na LAN, containerd image store, containers.conf, rede default |
 | **Rede** | HTTPS, proxy + exclusões, subnet, bridge, IPv6, LAN, domínio, portas |
 | **Máquinas** | default, portas/forward, CPU/memória/disco, SSH agent, isolamento, SSH (porta, config, chave) |
 | **Kubernetes** | habilitar, expor serviços, kubeconfig por domínio, SANs, CPU/memória/disco, paths |
 | **Terminal/Logs** | fonte, tamanho, scrollback, wrap, busca, JSON, buffer |
-| **Updates** | modo, canal, último check, diagnóstico/report, telemetria |
-| **Avançado** | helper, DNS, CA, log level, retenção de jobs/builds, cache de imagens |
+| **Avançado** | helper, DNS, CA, log level, retenção de jobs/builds, cache de imagens, diagnóstico/report e telemetria |
 | **Setup** | estado do onboarding, política do Docker, componentes, última validação |
+
+A aba **Geral** começa com o bloco **Atualizações do PodStack**: o checkbox “Verificar
+atualizações ao iniciar” grava `updates.mode` (`check`/`off`) e o botão **Verificar atualizações**
+chama `updates.check` com `force=true`, exibindo o resultado ao lado. Não existe aba **Updates**:
+canal, feed e chave pública são internos do app (schema/CLI), conforme `docs/settings.md` §2.9.
 
 O rodapé mantém **Executar configuração** (reabre o setup) e **Fechar**. Reset por chave usa o
 botão da linha; o reset total fica na CLI (`podstack config reset --all --yes`) e preserva

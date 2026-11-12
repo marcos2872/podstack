@@ -198,7 +198,8 @@ limitação rootless, documentada em `spec.md` §11.7.
 
 **Status:** **concluído no código em 2026-11-11** (settings, tema, tray, notificações, updates
 assinados, setup/onboarding, report, coexistência Docker, restauração de UI e atalhos).
-Pendências externas: validação em máquina limpa e benchmarks/auditoria de release.
+Pendências externas: validação GUI/KVM/polkit em máquina limpa, assinatura real dos
+pacotes e auditoria externa de segurança.
 
 **Objetivo:** experiência completa e release.
 
@@ -212,13 +213,14 @@ Pendências externas: validação em máquina limpa e benchmarks/auditoria de re
 
 **Critério de saída:**
 
-- [ ] Critérios de release do PRD (§14) atendidos.
-- [ ] `podstack doctor` verde em instalação limpa. *(pendente de máquina limpa)*
+- [ ] Critérios de release do PRD (§14) atendidos. *(depende dos itens abaixo)*
+- [ ] `podstack doctor` verde em instalação limpa. *(smoke em container cobre instalação, socket, `status` e `doctor`; GUI/KVM/polkit reais pendentes)*
 - [x] Docker presente não bloqueia o setup; a remoção é opt-in e confirmada.
 - [x] Setup reexecutável com jobs persistentes e validação de obrigatórios/opcionais.
-- [ ] Benchmarks dentro das metas. *(TX-09)*
-- [ ] Auditoria de segurança concluída. *(TX-08)*
-- [ ] Pacote RPM assinado instalável em Fedora 43/44. *(TX-07)*
+- [x] Benchmarks medidos dentro das metas locais. *(TX-09: `scripts/bench.sh`, host i5-10400F, build Debug e GUI offscreen; hardware de referência pendente)*
+- [x] Auditoria interna de segurança e SBOM no release. *(TX-08: threat model/checklist revisados e CycloneDX em `release.yml`; auditoria externa e CVEs pendentes)*
+- [x] Pipeline de RPM/DEB + smoke de instalação em container Fedora 44. *(TX-07: `release.yml` e `packaging.yml`)*
+- [ ] RPM assinado (GPG) e instalação GUI/KVM/polkit em máquina limpa. *(TX-07: assinatura depende dos secrets; validação real pendente)*
 
 ---
 

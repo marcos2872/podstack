@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Builds · PodStack 0.1.0</title>
+  <meta name="description" content="Build por contexto e Dockerfile, build args, múltiplas plataformas, progresso, logs e histórico em SQLite.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("podstack-docs-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 8 9 5 9-5"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="2" y="15" width="6" height="6" rx="1"/><rect x="16" y="15" width="6" height="6" rx="1"/><path d="M12 9v3"/><path d="M5 15v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></symbol>
+    <symbol id="i-terminal-2" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6"/><path d="M12 18h8"/></symbol>
+    <symbol id="i-hammer" viewBox="0 0 24 24"><path d="m14 5 5 5-3 3-5-5 3-3Z"/><path d="m3 21 7-7"/><path d="M11 3 3 11l4 4 8-8-4-4Z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.2 9.3 4.5 4.5 0 0 0 7 18Z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3 3.7-3.7Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path class="icon-fill" d="M12 .5C5.73.5.98 5.24.98 11.5c0 4.86 3.15 8.98 7.52 10.44.55.1.75-.24.75-.53 0-.26-.01-1.12-.02-2.03-3.06.67-3.71-1.3-3.71-1.3-.5-1.27-1.22-1.61-1.22-1.61-1-.68.08-.67.08-.67 1.1.08 1.68 1.13 1.68 1.13.98 1.68 2.57 1.2 3.2.92.1-.71.38-1.2.7-1.48-2.44-.28-5.01-1.22-5.01-5.43 0-1.2.43-2.18 1.13-2.95-.11-.28-.49-1.4.11-2.91 0 0 .92-.29 3.02 1.13a10.5 10.5 0 0 1 5.5 0c2.1-1.42 3.02-1.13 3.02-1.13.6 1.51.22 2.63.11 2.91.7.77 1.13 1.75 1.13 2.95 0 4.22-2.58 5.15-5.03 5.42.4.34.75 1.01.75 2.04 0 1.47-.01 2.65-.01 3.01 0 .29.2.64.76.53a11.02 11.02 0 0 0 7.51-10.44C23.02 5.24 18.27.5 12 .5Z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M10.3 4.1 2.7 18a2 2 0 0 0 1.8 3h15a2 2 0 0 0 1.8-3L13.7 4.1a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+  </defs>
+</svg>
+
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="icon-btn nav-toggle" type="button" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Abrir navegação">
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+      </button>
+      <a class="topbar-brand" href="index.html">
+        <img src="assets/podstack-capsule.svg" alt="" width="28" height="28">
+        <span>PodStack</span>
+      </a>
+      <span class="topbar-label">Documentação</span>
+    </div>
+
+    <div class="search" role="search">
+      <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input id="site-search" type="search" role="combobox" aria-label="Buscar na documentação"
+             aria-controls="search-results" aria-expanded="false" aria-autocomplete="list"
+             placeholder="Buscar na documentação…" autocomplete="off" spellcheck="false">
+      <kbd aria-hidden="true">/</kbd>
+      <div class="search-results" id="search-results" role="listbox" aria-label="Resultados da busca" hidden></div>
+    </div>
+
+    <div class="topbar-actions">
+      <a class="icon-btn" href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"></use></svg>
+      </a>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Alternar tema">
+        <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="nav-overlay" data-nav-overlay aria-hidden="true"></div>
+
+  <aside class="sidebar" id="sidebar" aria-label="Navegação da documentação">
+    <a class="sidebar-brand" href="index.html">
+      <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
+      <span>
+        <span class="brand-name">PodStack</span>
+        <span class="brand-sub">Documentação 0.1.0</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="Seções da documentação">
+      <div class="nav-section"><p class="nav-group">Introdução</p><ul><li><a href="index.html"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg><span>Visão geral</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Engine</p><ul><li><a href="containers.html"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg><span>Containers</span></a></li><li><a href="images.html"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg><span>Imagens</span></a></li><li><a href="volumes.html"><svg class="icon" aria-hidden="true"><use href="#i-database"></use></svg><span>Volumes</span></a></li><li><a href="networks.html"><svg class="icon" aria-hidden="true"><use href="#i-network"></use></svg><span>Redes</span></a></li><li><a href="pods.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Pods</span></a></li><li><a href="compose.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal"></use></svg><span>Compose</span></a></li><li><a href="builds.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg><span>Builds</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Linux e Kubernetes</p><ul><li><a href="machines.html"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span>Machines</span></a></li><li><a href="kubernetes.html"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Kubernetes</span></a></li><li><a href="domains.html"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span>Domínios</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Referência</p><ul><li><a href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Configurações</span></a></li><li><a href="cli.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><span>CLI</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
+    </nav>
+    <div class="sidebar-foot">
+      <p>Versão 0.1.0 · GPL-3.0-or-later</p>
+      <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
+    </div>
+  </aside>
+
+  <div class="main">
+    <main class="page" id="conteudo">
+      <nav class="breadcrumb" aria-label="Trilha de navegação">
+        <a href="index.html">Documentação</a>
+        <span class="sep" aria-hidden="true">›</span>
+        <span aria-current="page">Builds</span>
+      </nav>
+
+      <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg> PodStack Docs</div>
+      <h1>Builds</h1>
+<p class="lede">Construa imagens a partir de um contexto e Dockerfile, acompanhe steps e logs e consulte o histórico persistido em SQLite.</p>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.0</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<p>A seção <strong>Builds</strong> inicia builds de imagem pelo Libpod e mantém um histórico com
+imagem, status, duração, origem e plataformas. Com uma plataforma (ou nenhuma), o build usa o
+Libpod. Com duas ou mais, o daemon cria uma <strong>manifest list</strong> pelo CLI do Podman.</p>
+<p>O histórico é gravado em SQLite. Remover um registro do histórico <strong>não remove a imagem</strong>
+construída.</p>
+<h2 id="na-interface">Na interface</h2><ol class="steps">
+<li>Abra <strong>Builds</strong> na barra lateral.</li>
+<li>Clique em <strong>Novo build</strong>.</li>
+<li>Informe o <strong>Contexto</strong>, o <strong>Dockerfile</strong> (opcional; o padrão é <code>Dockerfile</code>), a <strong>Tag</strong>, os <strong>Build args</strong> (<code>A=B, C=D</code>) e as <strong>Plataformas</strong> (por exemplo, <code>linux/amd64,linux/arm64</code>).</li>
+<li>Clique em <strong>Buildar</strong> e acompanhe o painel <strong>Log do build</strong>.</li>
+<li>Use <strong>Cancelar</strong> enquanto o build estiver ativo ou <strong>Remover</strong> para apagar registros selecionados do histórico.</li>
+</ol>
+<p>A lista mostra <strong>IMAGEM</strong>, <strong>STATUS</strong>, <strong>DURAÇÃO</strong>,
+<strong>ORIGEM</strong> e, quando há dados, <strong>PLATAFORMAS</strong>. O painel lateral exibe o
+log; com uma plataforma, os steps e logs do Libpod aparecem; com várias, o log é linha a linha do
+processo de manifest list.</p>
+<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Manifest list para múltiplas plataformas</p><p>Com duas ou mais plataformas, o build usa o CLI do Podman e cria uma manifest list. Arquiteturas estrangeiras exigem <code>binfmt_misc</code>/<code>qemu-user-static</code> no host; sem isso, a plataforma adicional falha com a mensagem do runtime.</p></div></div><h2 id="na-cli">Na CLI</h2><div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Comando</th>
+<th scope="col">Flags</th>
+<th scope="col">O que faz</th>
+</tr></thead><tbody>
+<tr>
+<td><code>podstack build &lt;contexto&gt; -t &lt;tag&gt;</code></td>
+<td><code>-f Dockerfile</code>, <code>--build-arg K=V</code> (repetível), <code>--platform p1,p2</code></td>
+<td>Executa o build e transmite os passos e logs.</td>
+</tr>
+<tr>
+<td><code>podstack builds ls</code> / <code>list</code></td>
+<td>—</td>
+<td>Lista o histórico de builds.</td>
+</tr>
+<tr>
+<td><code>podstack builds rm &lt;id&gt;</code></td>
+<td>—</td>
+<td>Remove um registro do histórico; não remove a imagem.</td>
+</tr>
+</tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack build ./app -t local/app:dev --build-arg VERSION=0.1.0
+podstack build ./app -t local/app:dev -f Dockerfile.prod
+podstack build ./app -t local/app:multi --platform linux/amd64,linux/arm64
+podstack builds
+podstack builds rm 01a1c24e-44d9-76df-8db5-3185e34087b7</code></pre>
+<p>O contexto é enviado ao daemon; o Dockerfile é resolvido dentro do contexto. O build com uma
+plataforma usa o Libpod; com duas ou mais, o daemon executa o Podman sem shell, com timeout total
+(padrão 30 min) e cancelamento que encerra o processo.</p>
+<h2 id="referencia-rapida">Referência rápida</h2><div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Ação</th>
+<th scope="col">Na GUI</th>
+<th scope="col">Na CLI</th>
+</tr></thead><tbody>
+<tr>
+<td>Novo build</td>
+<td>Novo build → Buildar</td>
+<td><code>podstack build &lt;contexto&gt; -t &lt;tag&gt;</code></td>
+</tr>
+<tr>
+<td>Dockerfile alternativo</td>
+<td>Campo Dockerfile</td>
+<td><code>-f Dockerfile</code></td>
+</tr>
+<tr>
+<td>Build args</td>
+<td>Campo Build args</td>
+<td><code>--build-arg K=V</code></td>
+</tr>
+<tr>
+<td>Múltiplas plataformas</td>
+<td>Campo Plataformas</td>
+<td><code>--platform p1,p2</code></td>
+</tr>
+<tr>
+<td>Progresso / logs</td>
+<td>Painel Log do build</td>
+<td>Stream no terminal</td>
+</tr>
+<tr>
+<td>Histórico</td>
+<td>Lista de builds</td>
+<td><code>podstack builds</code></td>
+</tr>
+<tr>
+<td>Cancelar</td>
+<td>Cancelar (build ativo)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Remover registro</td>
+<td>Remover selecionados</td>
+<td><code>podstack builds rm &lt;id&gt;</code></td>
+</tr>
+</tbody></table></div><h2 id="limitacoes">Limitações</h2>
+<ul>
+  <li>Não há saída <code>--json</code> para <code>build</code> ou <code>builds</code> nesta versão.</li>
+  <li>O build multi-plataforma não mostra steps detalhados; o log é linha a linha do processo.</li>
+  <li>Arquiteturas estrangeiras dependem de <code>binfmt_misc</code> e do suporte do host.</li>
+  <li>Remover um build do histórico não remove a imagem resultante.</li>
+  <li>Não há configuração de cache, secrets ou registry auth na interface de build; use o Podman para fluxos avançados.</li>
+</ul>
+
+
+      <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
+
+      <nav class="pager" aria-label="Navegação entre páginas">
+        <a class="prev" href="compose.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Compose</span></a><a class="next" href="machines.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Machines</span></a>
+      </nav>
+
+      <footer class="site-footer">
+        <p>PodStack 0.1.0 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <div class="footer-links">
+          <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>
+          <a href="index.html#limitacoes">Limitações</a>
+        </div>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

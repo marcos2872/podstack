@@ -1,0 +1,211 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Empacotar e publicar
+    runs-on: ubuntu-latest
+    container: fedora:44
+
+    steps:
+      - name: Instalar git (necessário para o checkout)
+        run: dnf install -y git
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dependências
+        run: |
+          dnf install -y cmake ninja-build gcc-c++ clang-tools-extra \
+            openssl-devel \
+            qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
+            qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
+            qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
+            libxcrypt-devel openssh-clients \
+            rpm-build rpm-sign dpkg appstream minisign gnupg2 jq curl zip gh \
+            make selinux-policy-devel policycoreutils
+
+      - name: AppStream (validação)
+        run: appstreamcli validate --no-net packaging/dev.podstack.PodStack.metainfo.xml
+
+      - name: Configurar (release)
+        env:
+          UPDATE_PUBLIC_KEY: ${{ secrets.PODSTACK_UPDATE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "${UPDATE_PUBLIC_KEY:-}" ]; then
+            args+=("-DPODSTACK_UPDATE_PUBLIC_KEY=${UPDATE_PUBLIC_KEY}")
+            echo "Chave pública de updates embutida no build."
+          else
+            echo "PODSTACK_UPDATE_PUBLIC_KEY ausente; o updater usará updates.publicKey em runtime."
+          fi
+          cmake --preset release "${args[@]}"
+
+      - name: Compilar
+        run: cmake --build --preset release
+
+      - name: Testes
+        run: ctest --test-dir build/release --output-on-failure
+
+      - name: Empacotar RPM
+        env:
+          PODSTACK_UPDATE_PUBLIC_KEY: ${{ secrets.PODSTACK_UPDATE_PUBLIC_KEY }}
+        run: scripts/build-rpm.sh
+
+      - name: Empacotar DEB
+        run: PODSTACK_BUILD_DIR=build/release scripts/build-deb.sh
+
+      - name: Reunir pacotes
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp build/rpm/RPMS/*/*.rpm dist/
+          cp build/deb/*.deb dist/
+          ls -l dist/
+
+      - name: Assinar RPMs com GPG (opcional)
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PRIVATE_KEY:-}" ] || [ -z "${GPG_KEY_ID:-}" ]; then
+            echo "GPG_PRIVATE_KEY/GPG_KEY_ID ausentes; RPMs seguem sem assinatura GPG."
+            exit 0
+          fi
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          for rpm in dist/*.rpm; do
+            rpm --define "_gpg_name ${GPG_KEY_ID}" --addsign "$rpm"
+          done
+
+      - name: Gerar SHA256SUMS
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          (cd dist && sha256sum -- *.rpm *.deb > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Assinar SHA256SUMS com GPG (opcional)
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "GPG_PRIVATE_KEY ausente; SHA256SUMS segue sem assinatura GPG."
+            exit 0
+          fi
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg_args=(--batch --yes --armor --detach-sign --output dist/SHA256SUMS.asc)
+          if [ -n "${GPG_KEY_ID:-}" ]; then
+            gpg_args+=(--local-user "$GPG_KEY_ID")
+          fi
+          gpg "${gpg_args[@]}" dist/SHA256SUMS
+
+      - name: Gerar SBOM (CycloneDX)
+        run: |
+          set -euo pipefail
+          scripts/generate-sbom.sh
+          cp build/sbom/podstack-*.cdx.json dist/
+
+      - name: Notas e manifesto de updates
+        env:
+          CHANNEL: ${{ vars.PODSTACK_UPDATE_CHANNEL }}
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^project(PodStack VERSION \([^ ]*\).*/\1/p' CMakeLists.txt | head -1)"
+          tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
+            tag="v${version}"
+          fi
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ] && [ "${tag#v}" != "$version" ]; then
+            echo "A tag ${tag} não corresponde à versão ${version} do CMakeLists.txt." >&2
+            exit 1
+          fi
+
+          notes="$PWD/build/release-notes.md"
+          : >"$notes"
+          if [ -f CHANGELOG.md ]; then
+            awk -v ver="$version" '
+              $0 ~ "^##[[:space:]]+\\[?v?" ver "\\]?([[:space:]]|$)" { found = 1; next }
+              found && $0 ~ "^##[[:space:]]" { exit }
+              found { print }
+            ' CHANGELOG.md >"$notes"
+          fi
+          if [ -s "$notes" ]; then
+            echo "Notas extraídas de CHANGELOG.md."
+          else
+            echo "Sem seção no CHANGELOG.md; o GitHub gerará as notas da release."
+          fi
+
+          base="https://github.com/${GITHUB_REPOSITORY}/releases"
+          scripts/generate-update-manifest.sh \
+            "$version" "$tag" "$notes" dist dist/podstack-update.json "$base"
+
+      - name: Assinar manifesto com minisign (opcional)
+        env:
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MINISIGN_PRIVATE_KEY:-}" ]; then
+            echo "MINISIGN_PRIVATE_KEY ausente; manifesto segue sem assinatura."
+            exit 0
+          fi
+          key="$RUNNER_TEMP/podstack-minisign.key"
+          (umask 077 && printf '%s\n' "$MINISIGN_PRIVATE_KEY" >"$key")
+          chmod 600 "$key"
+          minisign -S -s "$key" -m dist/podstack-update.json \
+            -x dist/podstack-update.json.minisig </dev/null
+          rm -f "$key"
+
+      - name: Upload dos artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: podstack-release-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error
+
+      - name: Publicar no GitHub Releases
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=()
+          for file in dist/*.rpm dist/*.deb dist/SHA256SUMS \
+              dist/SHA256SUMS.asc dist/*.cdx.json \
+              dist/podstack-update.json dist/podstack-update.json.minisig; do
+            [ -f "$file" ] && assets+=("$file")
+          done
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "Nenhum artefato para publicar." >&2
+            exit 1
+          fi
+
+          notes="$PWD/build/release-notes.md"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          else
+            release_args=(--title "PodStack $GITHUB_REF_NAME")
+            if [ -s "$notes" ]; then
+              release_args+=(--notes-file "$notes")
+            else
+              release_args+=(--generate-notes)
+            fi
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" "${release_args[@]}"
+          fi

@@ -30,8 +30,9 @@ jobs:
       - name: Dependências
         run: |
           dnf install -y cmake ninja-build gcc-c++ gcovr clang-tools-extra \
-            openssl-devel \
+            appstream openssl-devel \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland-devel \
+            qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
             qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
             libxcrypt-devel openssh-clients
 
@@ -40,6 +41,9 @@ jobs:
 
       - name: Compilar
         run: cmake --build --preset coverage
+
+      - name: AppStream (validação)
+        run: appstreamcli validate --no-net packaging/dev.podstack.PodStack.metainfo.xml
 
       - name: clang-format (linhas alteradas)
         run: |

@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Domínios locais · PodStack 0.1.0</title>
+  <meta name="description" content="*.localhost, página de índice, detecção de porta, *.podstack.local, HTTPS com CA interna e labels dev.podstack.*.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("podstack-docs-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 8 9 5 9-5"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="2" y="15" width="6" height="6" rx="1"/><rect x="16" y="15" width="6" height="6" rx="1"/><path d="M12 9v3"/><path d="M5 15v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></symbol>
+    <symbol id="i-terminal-2" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6"/><path d="M12 18h8"/></symbol>
+    <symbol id="i-hammer" viewBox="0 0 24 24"><path d="m14 5 5 5-3 3-5-5 3-3Z"/><path d="m3 21 7-7"/><path d="M11 3 3 11l4 4 8-8-4-4Z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.2 9.3 4.5 4.5 0 0 0 7 18Z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3 3.7-3.7Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path class="icon-fill" d="M12 .5C5.73.5.98 5.24.98 11.5c0 4.86 3.15 8.98 7.52 10.44.55.1.75-.24.75-.53 0-.26-.01-1.12-.02-2.03-3.06.67-3.71-1.3-3.71-1.3-.5-1.27-1.22-1.61-1.22-1.61-1-.68.08-.67.08-.67 1.1.08 1.68 1.13 1.68 1.13.98 1.68 2.57 1.2 3.2.92.1-.71.38-1.2.7-1.48-2.44-.28-5.01-1.22-5.01-5.43 0-1.2.43-2.18 1.13-2.95-.11-.28-.49-1.4.11-2.91 0 0 .92-.29 3.02 1.13a10.5 10.5 0 0 1 5.5 0c2.1-1.42 3.02-1.13 3.02-1.13.6 1.51.22 2.63.11 2.91.7.77 1.13 1.75 1.13 2.95 0 4.22-2.58 5.15-5.03 5.42.4.34.75 1.01.75 2.04 0 1.47-.01 2.65-.01 3.01 0 .29.2.64.76.53a11.02 11.02 0 0 0 7.51-10.44C23.02 5.24 18.27.5 12 .5Z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M10.3 4.1 2.7 18a2 2 0 0 0 1.8 3h15a2 2 0 0 0 1.8-3L13.7 4.1a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+  </defs>
+</svg>
+
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="icon-btn nav-toggle" type="button" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Abrir navegação">
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+      </button>
+      <a class="topbar-brand" href="index.html">
+        <img src="assets/podstack-capsule.svg" alt="" width="28" height="28">
+        <span>PodStack</span>
+      </a>
+      <span class="topbar-label">Documentação</span>
+    </div>
+
+    <div class="search" role="search">
+      <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input id="site-search" type="search" role="combobox" aria-label="Buscar na documentação"
+             aria-controls="search-results" aria-expanded="false" aria-autocomplete="list"
+             placeholder="Buscar na documentação…" autocomplete="off" spellcheck="false">
+      <kbd aria-hidden="true">/</kbd>
+      <div class="search-results" id="search-results" role="listbox" aria-label="Resultados da busca" hidden></div>
+    </div>
+
+    <div class="topbar-actions">
+      <a class="icon-btn" href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"></use></svg>
+      </a>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Alternar tema">
+        <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="nav-overlay" data-nav-overlay aria-hidden="true"></div>
+
+  <aside class="sidebar" id="sidebar" aria-label="Navegação da documentação">
+    <a class="sidebar-brand" href="index.html">
+      <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
+      <span>
+        <span class="brand-name">PodStack</span>
+        <span class="brand-sub">Documentação 0.1.0</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="Seções da documentação">
+      <div class="nav-section"><p class="nav-group">Introdução</p><ul><li><a href="index.html"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg><span>Visão geral</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Engine</p><ul><li><a href="containers.html"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg><span>Containers</span></a></li><li><a href="images.html"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg><span>Imagens</span></a></li><li><a href="volumes.html"><svg class="icon" aria-hidden="true"><use href="#i-database"></use></svg><span>Volumes</span></a></li><li><a href="networks.html"><svg class="icon" aria-hidden="true"><use href="#i-network"></use></svg><span>Redes</span></a></li><li><a href="pods.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Pods</span></a></li><li><a href="compose.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal"></use></svg><span>Compose</span></a></li><li><a href="builds.html"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg><span>Builds</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Linux e Kubernetes</p><ul><li><a href="machines.html"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span>Machines</span></a></li><li><a href="kubernetes.html"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Kubernetes</span></a></li><li><a href="domains.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span>Domínios</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Referência</p><ul><li><a href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Configurações</span></a></li><li><a href="cli.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><span>CLI</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
+    </nav>
+    <div class="sidebar-foot">
+      <p>Versão 0.1.0 · GPL-3.0-or-later</p>
+      <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
+    </div>
+  </aside>
+
+  <div class="main">
+    <main class="page" id="conteudo">
+      <nav class="breadcrumb" aria-label="Trilha de navegação">
+        <a href="index.html">Documentação</a>
+        <span class="sep" aria-hidden="true">›</span>
+        <span aria-current="page">Domínios</span>
+      </nav>
+
+      <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg> PodStack Docs</div>
+      <h1>Domínios locais</h1>
+<p class="lede">Acesse containers por nome em <code>*.localhost</code>, descubra a porta certa automaticamente e habilite HTTPS com a CA interna do PodStack.</p>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.0</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<p>O PodStack tem um proxy HTTP em <strong>loopback</strong> na <code>network.httpPort</code>
+(8080 por padrão). Ele resolve o <code>Host</code> para um container e encaminha para uma porta TCP
+publicada. Para o navegador, <code>http://web.localhost:8080/</code> chega ao container
+<code>web</code> sem editar <code>/etc/hosts</code> e sem root.</p>
+<p>O HTTPS é opcional e usa Caddy com uma CA interna na <code>network.httpsPort</code>
+(8443 por padrão). O certificado é emitido sob demanda para <code>*.localhost</code> e
+<code>*.podstack.local</code>.</p>
+<h2 id="na-interface">Na interface</h2><h3 id="localhost">Domínios *.localhost na prática</h3><ol class="steps">
+<li>Publique uma porta TCP na criação do container, por exemplo <code>8080:80</code>.</li>
+<li>Abra <code>http://localhost:8080/</code> para ver o índice de containers que publicam porta.</li>
+<li>Abra <code>http://&lt;nome&gt;.localhost:8080/</code> para acessar o container pelo nome.</li>
+<li>Se houver várias portas publicadas, o proxy detecta a que responde HTTP; se nenhuma responder, usa a primeira publicada.</li>
+<li>Para forçar uma porta, adicione a label <code>dev.podstack.http-port</code> ao container.</li>
+</ol><pre data-lang="bash" tabindex="0"><code># exemplo de criação pela GUI: web com 8080:80
+curl -I http://web.localhost:8080/
+curl -I http://localhost:8080/
+
+getent hosts web.localhost
+podstack config get network.httpPort</code></pre>
+<p>A URL usa a porta do <strong>proxy</strong>, não a porta interna do container. O proxy fecha a
+conexão após a resposta e adiciona <code>X-Forwarded-For</code>, <code>X-Forwarded-Proto</code> e
+<code>X-Forwarded-Host</code>. <code>network.bridge=false</code> desliga o proxy HTTP e o DNS.</p>
+<h3 id="indice">Página de índice</h3>
+<p><code>http://localhost:&lt;network.httpPort&gt;/</code> serve uma página com os containers que
+publicam porta TCP: nome, estado, porta publicada e a URL
+<code>http://&lt;nome&gt;.localhost:&lt;porta&gt;/</code>. Apenas <code>GET</code> e
+<code>HEAD</code> são aceitos; os demais métodos recebem <strong>405</strong>. Um nome inexistente
+retorna <strong>404</strong> com a lista de serviços.</p>
+<h3 id="deteccao">Detecção automática da porta</h3>
+<p>Na primeira requisição, o proxy testa as portas TCP publicadas em paralelo, com timeout de
+300 ms e <code>HEAD /</code>. A resposta que começa com <code>HTTP/</code> vence. As portas comuns
+(80, 8080, 3000, 5000, 8000, 8081, 8888, 443 e 8443) são preferidas; depois as demais em ordem
+crescente. Com uma única porta publicada, ela é usada direto, sem probe.</p>
+<p>O resultado é cacheado por container (ID), digest da imagem e portas publicadas. Recriar o
+container troca o ID e invalida o cache; o limite é de 64 entradas e 10 minutos. Labels
+<code>dev.podstack.http-port</code> e <code>dev.podstack.https-port</code> sobrescrevem a detecção;
+a label <code>dev.podstack.domains</code> adiciona domínios customizados ao roteamento por
+<code>Host</code> e ao índice.</p>
+<h3 id="podstack-local">Domínios *.podstack.local e DNS</h3>
+<p><code>*.localhost</code> resolve para loopback pelo próprio sistema. Já
+<code>*.podstack.local</code> usa o DNS userspace do PodStack em <code>127.0.0.1:5353</code> e um
+drop-in do <code>systemd-resolved</code>. Em 0.1.0, a instalação do drop-in ainda
+<strong>não está ligada à GUI/CLI</strong>; sem ele, o nome não resolve.</p>
+<p>Para usar <code>*.podstack.local</code>, instale o drop-in manualmente (operação de sistema;
+revise antes):</p>
+<pre data-lang="bash" tabindex="0"><code>sudo mkdir -p /etc/systemd/resolved.conf.d
+sudo tee /etc/systemd/resolved.conf.d/podstack.conf &gt;/dev/null &lt;&lt;&#x27;EOF&#x27;
+[Resolve]
+DNS=127.0.0.1:5353
+Domains=~podstack.local
+EOF
+sudo systemctl reload systemd-resolved
+
+# testar
+resolvectl query web.podstack.local
+getent hosts web.podstack.local</code></pre>
+<p>O DNS escuta UDP e, quando disponível, TCP. Ele usa <code>SO_REUSEADDR</code> para conviver com
+Avahi/mDNS em <code>0.0.0.0:5353</code>; se ainda assim não responder, o journal mostra o aviso.
+O DNS só sobe com <code>network.bridge=true</code>. Para a maioria dos casos, prefira
+<code>*.localhost</code>, que não exige root, DNS ou CA.</p>
+<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">O drop-in é manual nesta versão</p><p>O helper tem a API de DNS, mas a fiação automática ainda não foi ligada à GUI/CLI. Os passos acima são os mesmos do guia de troubleshooting. Para remover, apague <code>/etc/systemd/resolved.conf.d/podstack.conf</code> e recarregue o resolved.</p></div></div><h3 id="https">HTTPS com CA interna</h3><ol class="steps">
+<li>Instale o Caddy, se ainda não estiver presente: <code>podstack setup --apply components --caddy</code>.</li>
+<li>Habilite o HTTPS: <code>podstack config set network.https true</code>.</li>
+<li>Reinicie o daemon: <code>systemctl --user restart podstack.service</code>.</li>
+<li>Acesse <code>https://&lt;nome&gt;.localhost:8443/</code>.</li>
+<li>Teste sem alterar o trust store com <code>curl --cacert &lt;root.crt&gt;</code>.</li>
+</ol><pre data-lang="bash" tabindex="0"><code>podstack setup --apply components --caddy
+podstack config set network.https true
+systemctl --user restart podstack.service
+
+curl --cacert ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
+  https://web.localhost:8443/</code></pre>
+<p>A CA local fica em
+<code>~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt</code>. O navegador não
+confia nela por padrão. A importação é manual nesta versão; no Fedora, copie o arquivo para
+<code>/etc/pki/ca-trust/source/anchors/podstack-local-ca.crt</code> e rode
+<code>sudo update-ca-trust</code>. No Debian/Ubuntu, use
+<code>/usr/local/share/ca-certificates/</code> e <code>sudo update-ca-certificates</code>. No Firefox,
+importe o <code>root.crt</code> nas autoridades do próprio navegador.</p>
+<p>Containers criados ou duplicados pelo PodStack recebem a CA montada read-only quando o arquivo
+existe. A label <code>dev.podstack.ca=false</code> faz opt-out. Containers de Compose ficam
+pendentes: o provider externo monta os volumes.</p>
+<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Confiar na CA afeta o sistema</p><p>Adicionar a CA ao trust store do sistema faz todas as aplicações confiarem nela. Use apenas em desenvolvimento e remova o arquivo quando não precisar mais. O helper tem a ação <code>TrustCa</code>, mas a fiação automática não está pronta em 0.1.0.</p></div></div><h3 id="labels">Labels dev.podstack.*</h3><div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Label</th>
+<th scope="col">Efeito</th>
+<th scope="col">Onde usar</th>
+</tr></thead><tbody>
+<tr>
+<td><code>dev.podstack.http-port</code></td>
+<td>Força a porta publicada usada pelo HTTP. Aceita a porta do container ou do host.</td>
+<td>Container; útil quando há várias portas publicadas.</td>
+</tr>
+<tr>
+<td><code>dev.podstack.https-port</code></td>
+<td>Força a porta publicada usada pelo HTTPS; o proxy conecta com TLS sem verificação de peer.</td>
+<td>Container com backend HTTPS.</td>
+</tr>
+<tr>
+<td><code>dev.podstack.domains</code></td>
+<td>Adiciona domínios customizados ao roteamento por <code>Host</code> e ao índice.</td>
+<td>Container; separe os domínios conforme o formato aceito pela label.</td>
+</tr>
+<tr>
+<td><code>dev.podstack.ca=false</code></td>
+<td>Não monta a CA local no container.</td>
+<td>Container que não deve receber a CA.</td>
+</tr>
+</tbody></table></div>
+<p>Labels inválidas caem na detecção normal, sem quebrar o proxy. Para aplicar uma label, recrie o
+container (a label é lida na criação) ou use o Compose, lembrando que o roteamento de domínios
+customizados via Compose ainda está pendente.</p>
+<h3 id="lan">Expor na LAN</h3>
+<p>Para acessar os domínios de outros dispositivos, ative
+<code>network.exposeLan=true</code> e reinicie o daemon. O proxy HTTP passa a escutar em
+<code>0.0.0.0</code>/<code>::</code> e o Caddyfile usa <code>bind 0.0.0.0</code> no HTTPS. O firewall
+do host precisa ser liberado separadamente; o PodStack não abre as portas do proxy
+automaticamente.</p>
+<pre data-lang="bash" tabindex="0"><code>podstack config set network.exposeLan true
+systemctl --user restart podstack.service
+
+# firewalld (regra runtime; um reload/restart a remove)
+sudo firewall-cmd --add-port=8080/tcp
+sudo firewall-cmd --add-port=8443/tcp
+
+# ufw
+sudo ufw allow 8080/tcp
+sudo ufw allow 8443/tcp</code></pre><h2 id="na-cli">Na CLI</h2>
+<p>O proxy e o HTTPS são configurados pelas chaves <code>network.*</code>. O CLI não cria o
+container por você, mas permite conferir portas publicadas, alterar as portas do proxy e testar o
+resultado com <code>curl</code>.</p>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Comando</th>
+<th scope="col">O que faz</th>
+</tr></thead><tbody>
+<tr>
+<td><code>podstack config get network.httpPort</code></td>
+<td>Mostra a porta do proxy HTTP.</td>
+</tr>
+<tr>
+<td><code>podstack config get network.httpsPort</code></td>
+<td>Mostra a porta do proxy HTTPS.</td>
+</tr>
+<tr>
+<td><code>podstack config set network.https true</code></td>
+<td>Habilita o HTTPS; exige reinício.</td>
+</tr>
+<tr>
+<td><code>podstack config set network.exposeLan true</code></td>
+<td>Expõe o proxy na LAN; exige reinício.</td>
+</tr>
+<tr>
+<td><code>podstack ps</code></td>
+<td>Mostra as portas publicadas dos containers.</td>
+</tr>
+<tr>
+<td><code>podstack status</code></td>
+<td>Confirma daemon e engine antes de testar.</td>
+</tr>
+</tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack config get network.httpPort
+podstack config get network.httpsPort
+podstack ps
+curl -I http://web.localhost:8080/
+
+podstack config set network.https true
+podstack config set network.exposeLan true
+systemctl --user restart podstack.service</code></pre><h2 id="referencia-rapida">Referência rápida</h2><div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Recurso</th>
+<th scope="col">Na UI</th>
+<th scope="col">Na CLI</th>
+</tr></thead><tbody>
+<tr>
+<td><code>*.localhost</code></td>
+<td>Criar o container com uma porta publicada e abrir <code>http://&lt;nome&gt;.localhost:8080/</code></td>
+<td><code>podstack ps</code> + <code>curl -I</code></td>
+</tr>
+<tr>
+<td>Índice</td>
+<td>Abrir <code>http://localhost:8080/</code></td>
+<td><code>curl -I http://localhost:8080/</code></td>
+</tr>
+<tr>
+<td>Detecção de porta</td>
+<td>Automática; label <code>dev.podstack.http-port</code> força a porta</td>
+<td>A label é lida na criação; recrie o container</td>
+</tr>
+<tr>
+<td><code>*.podstack.local</code></td>
+<td>Depende do drop-in do resolved (manual)</td>
+<td>Drop-in manual; teste com <code>getent hosts</code></td>
+</tr>
+<tr>
+<td>HTTPS</td>
+<td>Configurações → Rede → <code>network.https</code></td>
+<td><code>podstack config set network.https true</code></td>
+</tr>
+<tr>
+<td>Labels</td>
+<td>Criar o container com a label; recriar para aplicar</td>
+<td><code>dev.podstack.http-port</code>, <code>https-port</code>, <code>domains</code>, <code>ca=false</code></td>
+</tr>
+<tr>
+<td>LAN</td>
+<td>Configurações → Rede → <code>network.exposeLan</code></td>
+<td><code>podstack config set network.exposeLan true</code></td>
+</tr>
+</tbody></table></div><h2 id="limitacoes">Limitações</h2>
+<ul>
+  <li><strong>Portas não publicadas não podem ser encaminhadas no rootless</strong> (T6-10). Publique a porta na criação do container ou no Compose.</li>
+  <li><strong>As portas 80/443 não são ativadas automaticamente</strong> pela GUI/CLI em 0.1.0; use 8080/8443. O helper tem <code>BindPorts</code>, mas a fiação do app ainda não a chama.</li>
+  <li><strong>CA e <code>*.podstack.local</code> são manuais</strong>: a confiança na CA e o drop-in do resolved não têm fluxo pronto na GUI/CLI.</li>
+  <li><strong>Domínios customizados via Compose</strong> (T6-08) estão pendentes; a montagem da CA em containers de Compose também.</li>
+  <li><strong>Não há <code>k8s.podstack.local</code></strong> em 0.1.0.</li>
+  <li><strong>O proxy usa a primeira porta publicada</strong> quando nenhuma responde HTTP; se o serviço não for HTTP, a URL pode não funcionar como esperado.</li>
+</ul>
+
+
+      <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
+
+      <nav class="pager" aria-label="Navegação entre páginas">
+        <a class="prev" href="kubernetes.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Kubernetes</span></a><a class="next" href="settings.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Configurações</span></a>
+      </nav>
+
+      <footer class="site-footer">
+        <p>PodStack 0.1.0 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <div class="footer-links">
+          <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>
+          <a href="index.html#limitacoes">Limitações</a>
+        </div>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

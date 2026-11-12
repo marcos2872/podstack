@@ -16,7 +16,7 @@ namespace PodStack {
 /// de forma idempotente; o restante do arquivo é preservado.
 class SshConfig {
 public:
-    explicit SshConfig(QString path = {});
+    explicit SshConfig(const QString &path = {});
 
     QString path() const { return m_path; }
 

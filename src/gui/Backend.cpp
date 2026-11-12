@@ -198,7 +198,9 @@ Backend::Backend(QObject *parent)
     m_updateTimer.setInterval(6 * 60 * 60 * 1000);
     connect(&m_updateTimer, &QTimer::timeout, this, [this] { checkForUpdates(false); });
     m_updateTimer.start();
-    QTimer::singleShot(30000, this, [this] { checkForUpdates(false); });
+    // Verifica logo após o app abrir; o modo `off` é respeitado em
+    // checkForUpdates() e pode ser alterado em Configurações → Geral.
+    QTimer::singleShot(5000, this, [this] { checkForUpdates(false); });
     m_diskTimer.setInterval(5 * 60 * 1000);
     connect(&m_diskTimer, &QTimer::timeout, this, &Backend::checkDiskHealth);
     m_diskTimer.start();
@@ -270,6 +272,9 @@ Backend::Backend(QObject *parent)
                           << QString::number(port) << QStringLiteral("-o")
                           << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
                           << QStringLiteral("StrictHostKeyChecking=accept-new")
+                          << QStringLiteral("-o")
+                          << QStringLiteral("UserKnownHostsFile=%1/known_hosts")
+                                 .arg(QFileInfo(identityFile).absolutePath())
                           << QStringLiteral("%1@%2").arg(user, host);
                 if (isSignalConnected(
                         QMetaMethod::fromSignal(&Backend::terminalRequested))) {
@@ -2108,6 +2113,9 @@ void Backend::setSettingsError(const QString &error)
 void Backend::applySettingsValues(const QVariantMap &values)
 {
     m_settingsValues = values;
+    m_updatesEnabled =
+        m_settingsValues.value(QStringLiteral("updates.mode"), QStringLiteral("check"))
+            .toString() != QStringLiteral("off");
     const int bufferLines = m_settingsValues.value(QStringLiteral("logs.bufferLines")).toInt();
     if (bufferLines >= 100 && bufferLines <= 1000000) {
         m_logBufferLines = bufferLines;
@@ -2483,6 +2491,9 @@ void Backend::setupApply(const QString &action, const QVariantList &components)
 void Backend::checkForUpdates(bool interactive)
 {
     if (m_updateCheckRunning) {
+        return;
+    }
+    if (!interactive && !m_updatesEnabled) {
         return;
     }
     m_updateCheckRunning = true;

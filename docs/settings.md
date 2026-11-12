@@ -135,17 +135,21 @@ o conteúdo não é mesclado.
 | `logs.prettyJson` | bool | `true` | não | Destaca/format JSON |
 | `logs.bufferLines` | int | `10000` | não | Buffer por sessão |
 
-### 2.9 Updates e diagnóstico
+### 2.9 Updates (interno)
 
 | Chave | Tipo | Default | Reinício | Descrição |
 |---|---|---|---|---|
-| `updates.mode` | enum `off\|check\|auto` | `check` | não | Política de update |
+| `updates.mode` | enum `off\|check\|auto` | `check` | não | Política de update (`off` desliga a verificação; `check`/`auto` mantêm a checagem) |
 | `updates.channel` | enum `stable\|beta` | `stable` | não | Canal |
 | `updates.lastCheck` | timestamp? | `null` | não | Última verificação |
 | `updates.feedUrl` | string (URL) | feed oficial no GitHub | não | Manifesto assinado; `https` (ou `http` em loopback para testes) |
 | `updates.publicKey` | string? | `null` | não | Chave Ed25519 em base64/minisign; `null` usa a chave embutida |
-| `diagnostics.includeLogs` | bool | `true` | não | Inclui logs no report |
-| `diagnostics.redact` | bool | `true` | não | Redige segredos |
+
+> As chaves `updates.*` são internas e **não** aparecem em Configurações. A aba **Geral** expõe
+> apenas o checkbox “Verificar atualizações ao iniciar” (grava `updates.mode` como `check`/`off`)
+> e o botão **Verificar atualizações**; canal, feed e chave continuam disponíveis na CLI
+> (`podstack config`). A checagem automática roda alguns segundos após o app abrir e a cada 6 h,
+> respeitando `updates.mode=off`.
 | `telemetry.enabled` | bool | `false` | não | Master switch da telemetria (opt-in) |
 | `telemetry.crashReports` | bool | `false` | não | Enviar relatórios de crash (anônimos) |
 | `telemetry.usage` | bool | `false` | não | Enviar uso agregado de features |
@@ -163,6 +167,8 @@ o conteúdo não é mesclado.
 | `advanced.jobRetentionDays` | int | `7` | não | Retenção de jobs |
 | `advanced.buildLogRetentionDays` | int | `30` | não | Retenção de logs de build |
 | `advanced.cloudImageCacheBytes` | int64 | `21474836480` | não | Cache de imagens cloud |
+| `diagnostics.includeLogs` | bool | `true` | não | Inclui logs no report |
+| `diagnostics.redact` | bool | `true` | não | Redige segredos |
 
 ### 2.11 Setup
 
@@ -241,8 +247,8 @@ o conteúdo não é mesclado.
   `app.confirmDestructive`, `engine.socketPath/autoStart/restartOnConfigChange`, `docker.*`,
   `network.subnet4/ipv6/domainsMode`, `machines.forwardPorts/exposePortsToLan/sshPortStart/`
   `autoSuspend`, `ssh.*`, `kubernetes.enabled/kubeconfigUseDomain`, `terminal.fontBold`,
-  `logs.searchMode`, `updates.lastCheck`, `telemetry.*`, `advanced.*` e
-  `setup.components/lastValidation`.
+  `logs.searchMode`, `updates.*` (internas; controle pela aba Geral/CLI), `telemetry.*`,
+  `advanced.*` e `setup.components/lastValidation`.
 - Aplicação em runtime das chaves expostas: `terminal.fontFamily/fontSize/scrollback` valem no
   próximo terminal aberto (QTermWidget); `logs.fontSize/wrapLines/prettyJson/bufferLines` valem
   na hora nos logs (o buffer também poda as sessões abertas); `machines.cpus/memoryBytes/`

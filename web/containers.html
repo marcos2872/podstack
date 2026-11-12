@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Containers · PodStack 0.1.0</title>
+  <meta name="description" content="Listar, filtrar, criar e operar containers: ciclo de vida, logs, terminal, stats, arquivos, inspect, health, rootful e CRIU.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("podstack-docs-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 8 9 5 9-5"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="2" y="15" width="6" height="6" rx="1"/><rect x="16" y="15" width="6" height="6" rx="1"/><path d="M12 9v3"/><path d="M5 15v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></symbol>
+    <symbol id="i-terminal-2" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6"/><path d="M12 18h8"/></symbol>
+    <symbol id="i-hammer" viewBox="0 0 24 24"><path d="m14 5 5 5-3 3-5-5 3-3Z"/><path d="m3 21 7-7"/><path d="M11 3 3 11l4 4 8-8-4-4Z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.2 9.3 4.5 4.5 0 0 0 7 18Z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3 3.7-3.7Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path class="icon-fill" d="M12 .5C5.73.5.98 5.24.98 11.5c0 4.86 3.15 8.98 7.52 10.44.55.1.75-.24.75-.53 0-.26-.01-1.12-.02-2.03-3.06.67-3.71-1.3-3.71-1.3-.5-1.27-1.22-1.61-1.22-1.61-1-.68.08-.67.08-.67 1.1.08 1.68 1.13 1.68 1.13.98 1.68 2.57 1.2 3.2.92.1-.71.38-1.2.7-1.48-2.44-.28-5.01-1.22-5.01-5.43 0-1.2.43-2.18 1.13-2.95-.11-.28-.49-1.4.11-2.91 0 0 .92-.29 3.02 1.13a10.5 10.5 0 0 1 5.5 0c2.1-1.42 3.02-1.13 3.02-1.13.6 1.51.22 2.63.11 2.91.7.77 1.13 1.75 1.13 2.95 0 4.22-2.58 5.15-5.03 5.42.4.34.75 1.01.75 2.04 0 1.47-.01 2.65-.01 3.01 0 .29.2.64.76.53a11.02 11.02 0 0 0 7.51-10.44C23.02 5.24 18.27.5 12 .5Z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M10.3 4.1 2.7 18a2 2 0 0 0 1.8 3h15a2 2 0 0 0 1.8-3L13.7 4.1a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+  </defs>
+</svg>
+
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="icon-btn nav-toggle" type="button" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Abrir navegação">
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+      </button>
+      <a class="topbar-brand" href="index.html">
+        <img src="assets/podstack-capsule.svg" alt="" width="28" height="28">
+        <span>PodStack</span>
+      </a>
+      <span class="topbar-label">Documentação</span>
+    </div>
+
+    <div class="search" role="search">
+      <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input id="site-search" type="search" role="combobox" aria-label="Buscar na documentação"
+             aria-controls="search-results" aria-expanded="false" aria-autocomplete="list"
+             placeholder="Buscar na documentação…" autocomplete="off" spellcheck="false">
+      <kbd aria-hidden="true">/</kbd>
+      <div class="search-results" id="search-results" role="listbox" aria-label="Resultados da busca" hidden></div>
+    </div>
+
+    <div class="topbar-actions">
+      <a class="icon-btn" href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"></use></svg>
+      </a>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Alternar tema">
+        <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="nav-overlay" data-nav-overlay aria-hidden="true"></div>
+
+  <aside class="sidebar" id="sidebar" aria-label="Navegação da documentação">
+    <a class="sidebar-brand" href="index.html">
+      <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
+      <span>
+        <span class="brand-name">PodStack</span>
+        <span class="brand-sub">Documentação 0.1.0</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="Seções da documentação">
+      <div class="nav-section"><p class="nav-group">Introdução</p><ul><li><a href="index.html"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg><span>Visão geral</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Engine</p><ul><li><a href="containers.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg><span>Containers</span></a></li><li><a href="images.html"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg><span>Imagens</span></a></li><li><a href="volumes.html"><svg class="icon" aria-hidden="true"><use href="#i-database"></use></svg><span>Volumes</span></a></li><li><a href="networks.html"><svg class="icon" aria-hidden="true"><use href="#i-network"></use></svg><span>Redes</span></a></li><li><a href="pods.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Pods</span></a></li><li><a href="compose.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal"></use></svg><span>Compose</span></a></li><li><a href="builds.html"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg><span>Builds</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Linux e Kubernetes</p><ul><li><a href="machines.html"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span>Machines</span></a></li><li><a href="kubernetes.html"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Kubernetes</span></a></li><li><a href="domains.html"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span>Domínios</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Referência</p><ul><li><a href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Configurações</span></a></li><li><a href="cli.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><span>CLI</span></a></li></ul></div>
+<div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
+    </nav>
+    <div class="sidebar-foot">
+      <p>Versão 0.1.0 · GPL-3.0-or-later</p>
+      <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
+    </div>
+  </aside>
+
+  <div class="main">
+    <main class="page" id="conteudo">
+      <nav class="breadcrumb" aria-label="Trilha de navegação">
+        <a href="index.html">Documentação</a>
+        <span class="sep" aria-hidden="true">›</span>
+        <span aria-current="page">Containers</span>
+      </nav>
+
+      <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg> PodStack Docs</div>
+      <h1>Containers</h1>
+<p class="lede">Crie, opere e inspecione containers Podman sem sair da GUI — com logs, terminal, arquivos, estatísticas, health e inspect no mesmo detalhe.</p>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.0</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<p>A seção <strong>Containers</strong> é a tela principal do PodStack. Ela combina uma lista com
+filtros, um inspetor lateral e um detalhe expansível com nove abas. Os containers criados fora do
+PodStack também aparecem, desde que o daemon consiga reconciliar o estado com o Podman.</p>
+
+<p>As ações usam a API Libpod do <code>podman.socket</code>. O estado é reconciliado por eventos:
+a linha pode mostrar <code>starting</code> ou uma transição otimista antes de o engine confirmar.
+<strong>Health</strong> aparece como <code>healthy</code>, <code>unhealthy</code>, <code>starting</code>
+ou <strong>sem healthcheck</strong>.</p>
+<h2 id="na-interface">Na interface</h2><h3 id="listar-filtrar">Listar, filtrar e selecionar</h3>
+<ol class="steps">
+  <li>Abra <strong>Containers</strong> na barra lateral.</li>
+  <li>Use as abas <strong>Todos</strong>, <strong>Em execução</strong> e <strong>Parados</strong> para filtrar por estado.</li>
+  <li>Digite na busca da seção (atalho <kbd>Ctrl</kbd>+<kbd>F</kbd>) para filtrar por nome, imagem ou porta.</li>
+  <li>Selecione uma linha para abrir o inspetor. Use <kbd>Ctrl</kbd>+clique ou <kbd>Shift</kbd>+clique para multi-seleção.</li>
+  <li>Com vários itens selecionados, use as ações em lote da barra; <strong>Start all</strong> e <strong>Stop all</strong> afetam todos os containers conhecidos.</li>
+</ol>
+<p>As setas do teclado navegam pela lista; <kbd>Enter</kbd> abre o detalhe; <kbd>Esc</kbd> desseleciona.
+<kbd>F5</kbd> atualiza e <kbd>Ctrl</kbd>+<kbd>Enter</kbd> inicia ou para o container selecionado.</p>
+<h3 id="criar">Criar um container</h3>
+<ol class="steps">
+  <li>Clique em <strong>Novo container</strong> (ou <kbd>Ctrl</kbd>+<kbd>N</kbd>).</li>
+  <li>Preencha <strong>Imagem</strong> (por exemplo, <code>nginx:alpine</code>). Se a imagem não existir localmente, faça o pull antes em <a href="images.html">Imagens</a>.</li>
+  <li>Defina <strong>Nome</strong>, <strong>Comando</strong>, <strong>Portas</strong>, <strong>Env</strong>, <strong>Volumes</strong>, <strong>Workdir</strong> e <strong>Usuário</strong> conforme a necessidade.</li>
+  <li>Marque as opções: <strong>Remover ao parar</strong>, <strong>Init</strong>, <strong>Privileged</strong> e <strong>Expor portas na LAN</strong>.</li>
+  <li>Clique em <strong>Criar e iniciar</strong>.</li>
+</ol>
+<p>O campo <strong>Portas</strong> aceita o formato <code>8080:80</code> ou
+<code>127.0.0.1:8081:81</code>. O campo <strong>Env</strong> aceita <code>A=B, C=D</code>;
+<strong>Volumes</strong> aceita <code>/host:/container, /tmp:/mnt</code>. Sem
+<strong>Expor portas na LAN</strong>, as portas publicadas ficam em <code>127.0.0.1</code>.</p>
+<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">A imagem precisa existir</p><p>A criação usa a imagem local. O Podman retorna erro se ela não estiver disponível; baixe com <a href="images.html">Pull</a> ou <code>podstack images pull &lt;imagem&gt;</code>.</p></div></div><h3 id="ciclo-de-vida">Ciclo de vida e ações do inspetor</h3>
+<p>Com um container selecionado, o inspetor mostra o nome, a imagem, o estado e as ações principais:</p>
+<ul>
+  <li><strong>Iniciar</strong>, <strong>Parar</strong>, <strong>Reiniciar</strong> e <strong>Remover</strong> no cabeçalho.</li>
+  <li><strong>Pausar</strong> e <strong>Despausar</strong> no bloco <strong>Ações</strong>.</li>
+  <li><strong>Matar</strong> envia o sinal de término pelo engine; use com cuidado.</li>
+  <li><strong>Abrir porta</strong> abre <code>http://localhost:&lt;porta&gt;</code> para a primeira porta publicada.</li>
+  <li><strong>Renomear</strong> abre um diálogo com o novo nome; <strong>Duplicar</strong> cria uma cópia a partir do container selecionado.</li>
+  <li><strong>Expandir</strong> abre o detalhe completo em overlay. O <strong>x</strong> ou <kbd>Esc</kbd> fecha e encerra os streams e a sessão de terminal.</li>
+</ul>
+<p>O botão de lixeira remove o container após confirmação. A GUI usa remoção forçada e
+<strong>preserva os volumes</strong>; não há caixa “remover volumes” nesta versão.</p>
+<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Remoção é permanente</p><p>O container é removido permanentemente. Se precisar dos dados de um volume nomeado, eles continuam no volume; binds do host não são afetados. A API RPC <code>containers.remove</code> aceita <code>volumes</code>, mas a GUI/CLI 0.1.0 não expõe esse controle.</p></div></div><h3 id="detalhe">Detalhe: nove abas</h3>
+<p>O detalhe expandido (<code>ContainerDetail</code>) abre com <strong>Visão geral</strong> e
+oferece:</p>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Aba</th>
+<th scope="col">O que mostra</th>
+<th scope="col">Ações</th>
+</tr></thead><tbody>
+<tr>
+<td><strong>Visão geral</strong></td>
+<td>Cards de CPU, RAM, rede ↓/↑ e disco R/W com sparklines de 60 amostras; stats a cada ~1 s.</td>
+<td>Pausar/retomar a atualização quando disponível.</td>
+</tr>
+<tr>
+<td><strong>Logs</strong></td>
+<td>Stream ao vivo de stdout/stderr no detalhe.</td>
+<td><strong>Seguir</strong>, busca, <strong>Wrap</strong>, <strong>Timestamp</strong>, <strong>Copiar</strong> e <strong>Limpar</strong>.</td>
+</tr>
+<tr>
+<td><strong>Info</strong></td>
+<td>Estado, PID/exit code, health, criado/iniciado, restart policy, imagem/digest, entrypoint/comando, workdir, usuário, portas e labels.</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Ambiente</strong></td>
+<td>Todas as variáveis <code>Config.Env</code>; chaves com token, password, secret, authorization ou key ficam mascaradas.</td>
+<td><strong>Mostrar valores</strong> e <strong>Copiar</strong> (respeita o mascaramento).</td>
+</tr>
+<tr>
+<td><strong>Redes</strong></td>
+<td>Redes conectadas com IP, gateway, MAC, aliases e network ID; portas publicadas.</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Volumes</strong></td>
+<td>Mounts com tipo, nome, origem, destino, driver, RW e propagação.</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Arquivos</strong></td>
+<td>Navegação no filesystem do container.</td>
+<td>Clicar em um arquivo baixa para <code>~/Downloads</code>; <strong>Enviar</strong> faz upload do caminho local informado.</td>
+</tr>
+<tr>
+<td><strong>Terminal</strong></td>
+<td>Sessão embutida <code>podman exec -it &lt;id&gt; /bin/sh</code>.</td>
+<td><strong>Nova sessão em janela</strong> abre um terminal externo.</td>
+</tr>
+<tr>
+<td><strong>Inspect</strong></td>
+<td>JSON completo do Libpod (<code>containers.inspect</code>), indentado.</td>
+<td><strong>Copiar</strong>.</td>
+</tr>
+</tbody></table></div>
+<p>Os atalhos <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> e <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>
+abrem logs e terminal do container selecionado. O terminal embutido também pode ser aberto em uma
+janela separada; o fechamento da janela encerra a sessão.</p>
+<h3 id="rootful">Rootful opt-in</h3>
+<p>O padrão é rootless. Para usar o socket rootful, abra <strong>Configurações</strong> (item
+<strong>Settings</strong> na barra lateral), escolha a categoria <strong>Engine</strong> e altere
+<code>engine.mode</code> para <code>rootful</code>. A mudança exige reiniciar o PodStack e o seu
+usuário precisa de acesso ao socket correspondente (normalmente <code>/run/podman/podman.sock</code>).</p>
+<p>Rootful é opt-in explícito. A GUI mostra o modo no rodapé e os erros de permissão explicam a
+limitação. O PodStack não usa setuid nem <code>sudo</code> para containers.</p>
+<h2 id="na-cli">Na CLI</h2>
+<p>O CLI 0.1.0 lista e opera containers existentes, mas <strong>não cria, inicia, para nem remove</strong>
+containers. Para essas ações, use a GUI. As operações disponíveis são:</p>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Comando</th>
+<th scope="col">Flags</th>
+<th scope="col">O que faz</th>
+</tr></thead><tbody>
+<tr>
+<td><code>podstack ps</code></td>
+<td><code>--all</code>/<code>-a</code>, <code>--running</code>/<code>-r</code>, <code>--stopped</code>/<code>-s</code>, <code>--format table|json</code>, <code>--quiet</code>/<code>-q</code></td>
+<td>Lista containers. Sem filtro, mostra apenas os que estão em execução; <code>--all</code> inclui parados.</td>
+</tr>
+<tr>
+<td><code>podstack inspect &lt;id|nome&gt;</code></td>
+<td>—</td>
+<td>Imprime o JSON bruto do container.</td>
+</tr>
+<tr>
+<td><code>podstack exec &lt;id|nome&gt; -- &lt;cmd...&gt;</code></td>
+<td>—</td>
+<td>Execução one-shot; imprime stdout e devolve o exit code do comando. Para shell interativo, use a aba Terminal da GUI.</td>
+</tr>
+<tr>
+<td><code>podstack pause &lt;id|nome&gt;</code></td>
+<td>—</td>
+<td>Pausa o container.</td>
+</tr>
+<tr>
+<td><code>podstack unpause &lt;id|nome&gt;</code></td>
+<td>—</td>
+<td>Despausa o container.</td>
+</tr>
+<tr>
+<td><code>podstack kill &lt;id|nome&gt;</code></td>
+<td><code>--signal S</code></td>
+<td>Envia um sinal, por exemplo <code>SIGTERM</code>.</td>
+</tr>
+<tr>
+<td><code>podstack checkpoint &lt;id|nome&gt;</code></td>
+<td><code>--leave-running</code>, <code>--tcp-established</code>, <code>--json</code></td>
+<td>Cria um checkpoint CRIU; depende do host.</td>
+</tr>
+<tr>
+<td><code>podstack restore &lt;id|nome&gt;</code></td>
+<td><code>--tcp-established</code>, <code>--json</code></td>
+<td>Restaura o checkpoint CRIU do container.</td>
+</tr>
+</tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack ps --all
+podstack ps --format json | jq -r &#x27;.items[].name&#x27;
+podstack inspect web
+podstack exec web -- sh -c &#x27;echo olá&#x27;
+podstack pause web
+podstack unpause web
+podstack kill web --signal SIGTERM
+podstack checkpoint web --leave-running
+podstack restore web</code></pre><div class="callout limit" role="note"><svg class="icon" aria-hidden="true"><use href="#i-ban"></use></svg><div class="callout-body"><p class="callout-title">Checkpoint/restore depende do host</p><p>CRIU exige cgroup v2 com delegação e o binário <code>criu</code> disponível. Em rootless, muitos hosts não permitem o checkpoint. Se o host não oferecer suporte, use rootful (opt-in) ou trate o recurso como indisponível. Detalhes em <a href="troubleshooting.html#criu">CRIU e cgroup rootless</a>.</p></div></div><h2 id="referencia-rapida">Referência rápida</h2><div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Ação</th>
+<th scope="col">Na GUI</th>
+<th scope="col">Na CLI</th>
+</tr></thead><tbody>
+<tr>
+<td>Listar / filtrar</td>
+<td>Containers → abas Todos/Em execução/Parados</td>
+<td><code>podstack ps --all</code></td>
+</tr>
+<tr>
+<td>Criar e iniciar</td>
+<td>Novo container → Criar e iniciar</td>
+<td>— (use a GUI)</td>
+</tr>
+<tr>
+<td>Iniciar / parar / reiniciar</td>
+<td>Cabeçalho do inspetor ou hover na linha</td>
+<td>— (use a GUI)</td>
+</tr>
+<tr>
+<td>Pausar / despausar</td>
+<td>Ações → Pausar/Despausar</td>
+<td><code>podstack pause|unpause</code></td>
+</tr>
+<tr>
+<td>Matar</td>
+<td>Ações → Matar</td>
+<td><code>podstack kill --signal</code></td>
+</tr>
+<tr>
+<td>Remover</td>
+<td>Lixeira → confirmar</td>
+<td>— (use a GUI)</td>
+</tr>
+<tr>
+<td>Renomear / duplicar</td>
+<td>Ações → Renomear/Duplicar</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Logs</td>
+<td>Detalhe → Logs</td>
+<td>— (use a GUI ou <code>podman logs</code>)</td>
+</tr>
+<tr>
+<td>Terminal</td>
+<td>Detalhe → Terminal / Nova sessão em janela</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Exec one-shot</td>
+<td>—</td>
+<td><code>podstack exec</code></td>
+</tr>
+<tr>
+<td>Stats</td>
+<td>Visão geral / Activity Monitor</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Arquivos</td>
+<td>Detalhe → Arquivos</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Inspect</td>
+<td>Detalhe → Inspect</td>
+<td><code>podstack inspect</code></td>
+</tr>
+<tr>
+<td>Checkpoint / restore</td>
+<td>—</td>
+<td><code>podstack checkpoint|restore</code></td>
+</tr>
+</tbody></table></div><h2 id="limitacoes">Limitações</h2>
+<ul>
+  <li>O CLI não cria, inicia, para nem remove containers; o ciclo de vida completo está na GUI.</li>
+  <li>A remoção pela GUI usa <code>force</code> e preserva volumes. A API aceita <code>volumes</code>, mas não há controle na GUI/CLI 0.1.0.</li>
+  <li>O diálogo de criação não expõe CPU/memória nem restart policy; esses campos podem existir no contrato RPC, mas não na interface.</li>
+  <li>Checkpoint/restore CRIU é dependente do host e costuma falhar em rootless.</li>
+  <li>Portas não publicadas não podem ser adicionadas depois do create no modo rootless. Publique na criação ou use Compose.</li>
+  <li>Logs e terminal não têm comando equivalente no CLI 0.1.0; use a GUI ou o Podman diretamente.</li>
+</ul>
+
+
+      <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
+
+      <nav class="pager" aria-label="Navegação entre páginas">
+        <a class="prev" href="index.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Visão geral</span></a><a class="next" href="images.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Imagens</span></a>
+      </nav>
+
+      <footer class="site-footer">
+        <p>PodStack 0.1.0 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <div class="footer-links">
+          <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>
+          <a href="index.html#limitacoes">Limitações</a>
+        </div>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

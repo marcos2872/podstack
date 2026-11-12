@@ -1,0 +1,6 @@
+# Entrada do helper privilegiado do PodStack.
+/usr/libexec/podstack/podstack-helper	--	gen_context(system_u:object_r:podstack_helper_exec_t,s0)
+
+# Estado de runtime do helper (pid/socket/fifo). Sem especificador de tipo
+# para cobrir o diretório, os arquivos e os sockets criados em /run/podstack.
+/run/podstack(/.*)?	gen_context(system_u:object_r:podstack_var_run_t,s0)

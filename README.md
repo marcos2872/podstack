@@ -22,7 +22,7 @@
 </p>
 
 > **Status:** **M4 validado em VM real e M5 concluído no código** — machines QEMU/KVM (ciclo de vida, SSH/arquivos, virtiofs, export/import, clone/rename/default, recursos, portas, agent forwarding, modo isolado, console serial e snapshots), sobre o M3 (Compose e builds), o M2 (imagens, volumes, redes e pods) e o M1 (containers, logs, stats, files, terminal, batch, health e rootful). **Pré-M5** entregue com multi-seleção em todas as listas, testes QML reais e gates de `clang-format`/`clang-tidy`. **15 testes**, cobertura **~80%** com gate bloqueante de **80%** (ver [`docs/testing.md`](docs/testing.md)). **M5 (Kubernetes/k3s) concluído no código** (VM dedicada, kubeconfig isolado, Pods/Services, logs, port-forward, enable/disable/reset e contexto). **M6 iniciado** com a T6-01: `*.localhost` via proxy HTTP do daemon em loopback (`network.httpPort`), sem root e sem `/etc/hosts`.
-> **Ressalvas:** console serial sem VNC; export/clone não preservam snapshots internos do qcow2; instalação limpa do onboarding ainda a validar (T7-07/T7-14).
+> **Ressalvas:** console serial sem VNC; export/clone não preservam snapshots internos do qcow2; a instalação limpa tem smoke automatizado em container Fedora 44 (`scripts/clean-install-check.sh`), mas a validação da GUI, do KVM e do polkit em máquina limpa segue manual (T7-07/T7-14). Histórico de versões em [`CHANGELOG.md`](CHANGELOG.md) e guias em [`docs/user/`](docs/user/README.md).
 > **Plataforma:** Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10.
 > **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).
 
@@ -61,6 +61,16 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 | [`docs/tasks.md`](docs/tasks.md) | 133 tarefas em M0–M8, com dependências e definição de pronto |
 | [`docs/testing.md`](docs/testing.md) | Pirâmide de testes, matriz de compatibilidade, CI e performance |
 
+### Usuário
+
+| Documento | O que responde |
+|---|---|
+| [`docs/user/README.md`](docs/user/README.md) | Índice da documentação de usuário e limitações conhecidas do 0.1.0 |
+| [`docs/user/install.md`](docs/user/install.md) | Requisitos, instalação por RPM/DEB, build do fonte, primeiro start, setup, helper/polkit e desinstalação |
+| [`docs/user/quickstart.md`](docs/user/quickstart.md) | Primeiro container, machine com SSH, Kubernetes, domínios `*.localhost`, HTTPS/CA, bandeja e atalhos |
+| [`docs/user/cli.md`](docs/user/cli.md) | Comandos e flags reais do `podstack`, saída JSON, exit codes e exemplos |
+| [`docs/user/troubleshooting.md`](docs/user/troubleshooting.md) | Diagnóstico de daemon, Podman, helper, KVM, SSH, portas, firewall, CA, DNS e erros `PODSTACK_*` |
+
 ### Engenharia e produto
 
 | Documento | Conteúdo |
@@ -75,6 +85,7 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 | [`docs/security.md`](docs/security.md) | Threat model, helper/polkit, socket, segredos e SELinux |
 | [`docs/packaging.md`](docs/packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
 | [`docs/roadmap.md`](docs/roadmap.md) | Marcos, estimativas, caminho crítico e versões |
+| [`CHANGELOG.md`](CHANGELOG.md) | Histórico de versões, mudanças e limitações conhecidas do 0.1.0 |
 
 ### Decisões arquiteturais (ADRs)
 
@@ -128,6 +139,7 @@ Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`. Regras de uso, tam
 .
 ├── README.md              # este arquivo
 ├── AGENTS.md              # instruções para agentes/devs iniciando no projeto
+├── CHANGELOG.md           # histórico de versões e limitações conhecidas
 ├── LICENSE                # GPL-3.0-or-later
 ├── NOTICE                 # aviso de copyright/licença
 ├── assets/                # marca aprovada (cápsula + camadas)
@@ -222,6 +234,11 @@ ctest --preset dev
 
 # depois do primeiro build, sem recompilar:
 PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
+
+# opcional: desktop entry no perfil do usuário para a dock/menu mostrarem
+# o ícone do PodStack em dev (sem instalar o pacote)
+./scripts/install-dev-desktop.sh
+./scripts/install-dev-desktop.sh --uninstall
 ```
 
 O `scripts/dev.sh` usa `$XDG_RUNTIME_DIR/podstack/control.sock`, inicia o daemon se necessário e reaproveita um daemon já ativo. Para isolar do daemon do sistema, defina `PODSTACK_CONTROL_SOCKET`:
