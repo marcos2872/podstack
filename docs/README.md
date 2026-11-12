@@ -47,6 +47,7 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 | [`settings.md`](settings.md) | Chaves, defaults, validação e arquivo de configuração |
 | [`security.md`](security.md) | Modelo de ameaças, privilégios, helper, polkit e segredos |
 | [`packaging.md`](packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
+| [`web.md`](web.md) | Site público em GitHub Pages: estrutura de `web/`, publicação, gatilhos e rollback |
 | [`roadmap.md`](roadmap.md) | Marcos M0–M8, entregáveis e critérios de saída |
 | [UI Concept (POC)](../poc/ui/README.md) | Referência visual navegável (HTML/CSS/JS) para o redesign; **não** é o app |
 

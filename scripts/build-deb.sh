@@ -40,7 +40,7 @@ Section: admin
 Priority: optional
 Maintainer: PodStack contributors <dev@podstack.dev>
 Homepage: https://podstack.dev
-Depends: podman (>= 5.0), systemd, openssh-client, libqt6core6, libqt6gui6, libqt6widgets6, libqt6qml6, libqt6quick6, libqt6quickwidgets6, libqt6network6, libqt6dbus6, libqt6svg6, libqt6sql6, libqt6concurrent6, libarchive13, libcurl4, libsqlite3-0, libssl3, libcrypt1
+Depends: podman (>= 5.0), systemd, polkitd, openssh-client, libqt6core6, libqt6gui6, libqt6widgets6, libqt6qml6, libqt6quick6, libqt6quickwidgets6, libqt6network6, libqt6dbus6, libqt6svg6, libqt6sql6, libqt6concurrent6, libarchive13, libcurl4, libsqlite3-0, libssl3, libcrypt1
 Recommends: qemu-kvm, qemu-utils, virtiofsd, caddy, docker-compose-v2 | docker-compose
 Description: Native desktop for Podman containers, VMs and Kubernetes
  PodStack provides containers, images, volumes, networks, Compose projects,

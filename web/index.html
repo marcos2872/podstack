@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Visão geral · PodStack 0.1.0</title>
-  <meta name="description" content="O que é o PodStack, arquitetura, primeiros passos, mapa da documentação e limitações gerais da versão 0.1.0.">
+  <title>Visão geral · PodStack 0.1.1</title>
+  <meta name="description" content="O que é o PodStack, arquitetura, primeiros passos, mapa da documentação e limitações gerais da versão 0.1.1.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css">
@@ -94,7 +94,7 @@
       <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
       <span>
         <span class="brand-name">PodStack</span>
-        <span class="brand-sub">Documentação 0.1.0</span>
+        <span class="brand-sub">Documentação 0.1.1</span>
       </span>
     </a>
     <nav class="nav" aria-label="Seções da documentação">
@@ -105,7 +105,7 @@
 <div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
     </nav>
     <div class="sidebar-foot">
-      <p>Versão 0.1.0 · GPL-3.0-or-later</p>
+      <p>Versão 0.1.1 · GPL-3.0-or-later</p>
       <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
     </div>
   </aside>
@@ -121,7 +121,7 @@
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg> PodStack Docs</div>
       <h1>PodStack</h1>
 <p class="lede">Containers, Compose, machines Linux, Kubernetes e domínios locais em um app desktop sobre o Podman Engine nativo — com CLI scriptable, daemon de usuário e rootless por padrão.</p>
-<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.0</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.1</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
 <p>O PodStack é uma alternativa Linux ao OrbStack para desenvolver com containers e VMs.
 Ele reúne, em uma única interface Qt 6/QML, o que normalmente exige vários comandos: containers,
 imagens, volumes, redes, pods, projetos Compose, builds, machines QEMU/KVM, um cluster Kubernetes
@@ -170,7 +170,7 @@ instalar, o setup em 7 etapas verifica e prepara Podman, QEMU/KVM, OVMF, virtiof
 usuário, SQLite e, opcionalmente, Caddy.</p>
 <ol class="steps">
 <li><strong>Confira o Podman</strong>: <code>podman --version</code> e <code>podman info</code> devem funcionar sem <code>sudo</code>. Se o socket rootless não estiver ativo, use <code>systemctl --user enable --now podman.socket</code>.</li>
-<li><strong>Instale o pacote</strong>: <code>sudo dnf install ./podstack-0.1.0-1.fc44.x86_64.rpm</code>. Para ações privilegiadas do setup, instale também <code>podstack-helper</code> e habilite <code>podstack-helper.service</code>.</li>
+<li><strong>Instale o pacote</strong>: <code>sudo dnf install ./podstack-0.1.1-1.fc44.x86_64.rpm</code>. Para ações privilegiadas do setup, instale também <code>podstack-helper</code> e habilite <code>podstack-helper.service</code>.</li>
 <li><strong>Inicie o socket de usuário</strong>: <code>systemctl --user daemon-reload</code> e <code>systemctl --user start podstack.socket</code>. O daemon sobe sob demanda na primeira conexão.</li>
 <li><strong>Valide</strong>: <code>podstack status</code> deve mostrar <code>estado: ok</code> e <code>engine: running</code>; <code>podstack doctor</code> deve terminar com exit 0.</li>
 <li><strong>Abra a GUI</strong> pelo menu <strong>PodStack</strong> ou com <code>podstack-gui</code> e conclua o assistente de configuração.</li>
@@ -198,13 +198,13 @@ O guia de instalação detalhado do repositório está em
 <a class="card" href="settings.html" aria-label="Configurações: Categorias, chaves, tema, tray, proxy e portas."><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><h3>Configurações</h3><p>Categorias, chaves, tema, tray, proxy e portas.</p></a>
 <a class="card" href="cli.html" aria-label="CLI: Comandos, flags, JSON, exit codes e socket."><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><h3>CLI</h3><p>Comandos, flags, JSON, exit codes e socket.</p></a>
 <a class="card" href="troubleshooting.html" aria-label="Solução de problemas: Daemon, Podman, KVM, SSH, portas, CA, DNS e report."><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><h3>Solução de problemas</h3><p>Daemon, Podman, KVM, SSH, portas, CA, DNS e report.</p></a>
-</div><h2 id="limitacoes">Limitações gerais do 0.1.0</h2>
+</div><h2 id="limitacoes">Limitações gerais do 0.1.1</h2>
 <ul>
   <li><strong>O CLI não cria, inicia, para nem remove containers.</strong> Use a GUI para essas ações; o CLI cobre listagem, inspect, exec, pause/unpause, kill e checkpoint/restore.</li>
   <li><strong>Console de machine somente texto.</strong> Não há VNC nem console gráfico.</li>
   <li><strong>Export/import e clone de machine não preservam snapshots internos do qcow2.</strong></li>
   <li><strong>Portas não publicadas não podem ser encaminhadas no modo rootless.</strong> Publique a porta na criação do container ou no Compose.</li>
-  <li><strong>As portas 80/443 do helper não são acionadas pela GUI/CLI em 0.1.0.</strong> O proxy usa 8080/8443 por padrão.</li>
+  <li><strong>As portas 80/443 do helper não são acionadas pela GUI/CLI em 0.1.1.</strong> O proxy usa 8080/8443 por padrão.</li>
   <li><strong>CA e <code>*.podstack.local</code> ainda não têm fluxo pronto na GUI/CLI.</strong> A confiança na CA e o drop-in do resolved são manuais nesta versão.</li>
   <li><strong>Kubernetes sem NodePort/LoadBalancer nativos e sem <code>k8s.podstack.local</code>.</strong> A troca de contexto é explícita.</li>
   <li><strong>Domínios customizados via Compose ficam pendentes.</strong> Labels e montagem da CA em containers de Compose não estão disponíveis.</li>
@@ -221,7 +221,7 @@ O guia de instalação detalhado do repositório está em
       </nav>
 
       <footer class="site-footer">
-        <p>PodStack 0.1.0 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <p>PodStack 0.1.1 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
         <div class="footer-links">
           <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>

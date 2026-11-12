@@ -1,6 +1,6 @@
-# Instalação e primeiro start — PodStack 0.1.0
+# Instalação e primeiro start — PodStack 0.1.1
 
-Este guia cobre a instalação do PodStack 0.1.0 em Fedora 43/44, o primeiro start, o setup em
+Este guia cobre a instalação do PodStack 0.1.1 em Fedora 43/44, o primeiro start, o setup em
 7 etapas, o helper privilegiado e a desinstalação. Para o fluxo de uso depois da instalação, veja
 [`quickstart.md`](quickstart.md).
 
@@ -8,7 +8,7 @@ Este guia cobre a instalação do PodStack 0.1.0 em Fedora 43/44, o primeiro sta
 
 | Item | Requisito | Observação |
 |---|---|---|
-| Sistema | Fedora 43 ou 44 | Wayland ou X11. Os pacotes de exemplo são `x86_64` e o registro de machines 0.1.0 usa imagens `amd64`. |
+| Sistema | Fedora 43 ou 44 | Wayland ou X11. Os pacotes de exemplo são `x86_64` e o registro de machines 0.1.1 usa imagens `amd64`. |
 | Podman | 5.8 ou mais novo, rootless | O PodStack usa o `podman.socket` do usuário; não reimplementa o runtime. |
 | systemd | 257 ou mais novo | Socket e serviço de usuário `podstack.socket`/`podstack.service`. |
 | Polkit | Agente de autenticação na sessão | Necessário para o `podstack-helper`; em sessão gráfica o prompt aparece normalmente. |
@@ -38,7 +38,7 @@ systemctl --user enable --now podman.socket
 Com o RPM baixado ou gerado localmente:
 
 ```bash
-sudo dnf install ./podstack-0.1.0-1.fc44.x86_64.rpm
+sudo dnf install ./podstack-0.1.1-1.fc44.x86_64.rpm
 ```
 
 Ajuste `fc44`/`x86_64` para a release e a arquitetura do seu Fedora (por exemplo, `fc43`).
@@ -47,7 +47,7 @@ O subpacote do helper é separado. Instale-o se quiser que o setup instale/remov
 DNS, CA e portas privilegiadas:
 
 ```bash
-sudo dnf install ./podstack-helper-0.1.0-1.fc44.x86_64.rpm
+sudo dnf install ./podstack-helper-0.1.1-1.fc44.x86_64.rpm
 sudo systemctl enable --now podstack-helper.service
 ```
 
@@ -78,13 +78,13 @@ sudo apt install dpkg-dev
 sudo dnf install dpkg
 
 ./scripts/build-deb.sh
-# saída: build/deb/podstack_0.1.0_amd64.deb
+# saída: build/deb/podstack_0.1.1_amd64.deb
 ```
 
 Instale o arquivo gerado (ou o `.deb` publicado para a sua arquitetura):
 
 ```bash
-sudo apt install ./build/deb/podstack_0.1.0_amd64.deb
+sudo apt install ./build/deb/podstack_0.1.1_amd64.deb
 ```
 
 O pacote DEB inclui o binário e as units do helper. Habilite o serviço de sistema:
@@ -253,7 +253,7 @@ sessão gráfica), a autorização falha; rode o setup a partir do desktop.
 
 | Verificação | Comando | Resultado esperado |
 |---|---|---|
-| Versão | `podstack version` | `PodStack 0.1.0` |
+| Versão | `podstack version` | `PodStack 0.1.1` |
 | Socket de usuário | `systemctl --user status podstack.socket` | `active (listening)` |
 | Daemon e engine | `podstack status` | `estado: ok` e `engine: running` |
 | Diagnóstico rápido | `podstack doctor` | checks `[ok]`; exit 0 |
@@ -333,7 +333,7 @@ rm -rf ~/.config/podstack ~/.local/share/podstack ~/.local/state/podstack ~/.cac
 
 - O Flatpak é um cliente: o daemon e o helper precisam estar instalados no host.
 - A validação de instalação limpa (T7-07/T7-14) ainda está em andamento; trate o checklist acima
-  como a verificação mínima da versão 0.1.0.
+  como a verificação mínima da versão 0.1.1.
 - Esta documentação não fixa uma URL de repositório; use o arquivo RPM/DEB gerado localmente ou o
   repositório que você configurou.
 

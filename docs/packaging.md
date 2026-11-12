@@ -216,7 +216,7 @@ Ações separadas por método; nunca uma ação "root genérica".
 ## 6. SELinux
 
 O módulo mínimo está em [`packaging/selinux/`](../packaging/selinux/):
-`podstack.te`, `podstack.fc` e `podstack.if` (`policy_module(podstack, 0.1.0)`,
+`podstack.te`, `podstack.fc` e `podstack.if` (`policy_module(podstack, 0.1.1)`,
 refpolicy/Fedora).
 
 **Escopo:** apenas o helper privilegiado. O daemon do usuário, os containers, o
@@ -297,7 +297,7 @@ ausearch -m avc -ts recent        # negações do domínio podstack_helper_t
 Se aparecer AVC, ajuste `podstack.te` e recarregue com `semodule -i`. Use
 `audit2allow -w -a` apenas como diagnóstico, não como política final.
 
-> **Ressalva:** módulo mínimo, **não validado em SELinux enforcing no 0.1.0**.
+> **Ressalva:** módulo mínimo, **não validado em SELinux enforcing no 0.1.1**.
 > A validação real depende de um build em Fedora com `selinux-policy-devel`
 > (COPR/CI) e de um ciclo de setup com `enforcing` + `ausearch`. Em
 > `permissive`, o módulo apenas registra negações.
@@ -323,7 +323,7 @@ globalmente (`systemctl --global enable`).
 
 ```spec
 Name:           podstack
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Fast, light desktop for Podman containers, VMs and Kubernetes
 License:        GPL-3.0-or-later

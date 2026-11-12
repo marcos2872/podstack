@@ -10,16 +10,20 @@ Restart=on-failure
 RestartSec=2
 TimeoutStopSec=20
 
-# Hardening básico
-NoNewPrivileges=yes
+# Hardening básico. O daemon lança `podman` (Compose/builds) como filho:
+# NoNewPrivileges impediria a transição SELinux para container_runtime_t e
+# SystemCallFilter bloquearia fsopen/outras syscalls usadas pelo Podman.
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.config/podstack %h/.local/share/podstack %h/.local/state/podstack %h/.cache/podstack %t/podstack
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-SystemCallFilter=@system-service
+# Estas diretivas criam os diretórios antes do sandbox: ReadWritePaths não
+# pode apontar para um caminho que ainda não existe no primeiro start.
+StateDirectory=podstack
+CacheDirectory=podstack
+ConfigurationDirectory=podstack
+ReadWritePaths=%h/.config %h/.local %h/.cache %t
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
 LockPersonality=yes
-MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=default.target

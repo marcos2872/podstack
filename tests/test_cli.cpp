@@ -1921,7 +1921,7 @@ void CliTest::updateCommand()
     QCOMPARE(document.object().value(QStringLiteral("api")).toInt(), 1);
     QCOMPARE(document.object().value(QStringLiteral("updateAvailable")).toBool(), true);
 
-    const QByteArray currentManifest = UpdateTestUtils::manifestForVersion("0.1.0", "stable");
+    const QByteArray currentManifest = UpdateTestUtils::manifestForVersion("0.1.1", "stable");
     m_updateServer.setResponse(QStringLiteral("/manifest.json"), 200, currentManifest);
     m_updateServer.setResponse(QStringLiteral("/manifest.json.minisig"), 200,
                                UpdateTestUtils::minisignFile(currentManifest, key, false));
@@ -2002,7 +2002,7 @@ void CliTest::goldenExitCodes()
         {"version-json",
          {QStringLiteral("version"), QStringLiteral("--json")},
          0,
-         QStringLiteral("PodStack 0.1.0"),
+         QStringLiteral("PodStack 0.1.1"),
          {},
          false},
         {"help", {QStringLiteral("help")}, 0, QStringLiteral("Uso:"), {}, false},
@@ -2049,7 +2049,7 @@ void CliTest::goldenExitCodes()
             QCOMPARE(document.object().value(QStringLiteral("status")).toString(),
                      QStringLiteral("no-feed"));
             QCOMPARE(document.object().value(QStringLiteral("currentVersion")).toString(),
-                     QStringLiteral("0.1.0"));
+                     QStringLiteral("0.1.1"));
         }
     }
 
@@ -2061,7 +2061,7 @@ void CliTest::goldenExitCodes()
     const QJsonDocument reportJson = QJsonDocument::fromJson(report.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
     QCOMPARE(reportJson.object().value(QStringLiteral("version")).toString(),
-             QStringLiteral("0.1.0"));
+             QStringLiteral("0.1.1"));
 }
 
 void CliTest::configCommands()

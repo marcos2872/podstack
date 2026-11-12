@@ -2,6 +2,7 @@
 
 #include "core/Logging.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -43,10 +44,49 @@ RpcServer::~RpcServer()
     m_buffers.clear();
 }
 
+bool RpcServer::systemdListenFd(qintptr *descriptor)
+{
+    if (!descriptor) {
+        return false;
+    }
+    const QByteArray pidText = qgetenv("LISTEN_PID");
+    const QByteArray fdsText = qgetenv("LISTEN_FDS");
+    if (pidText.isEmpty() || fdsText.isEmpty()) {
+        return false;
+    }
+    bool pidOk = false;
+    bool fdsOk = false;
+    const qint64 pid = pidText.toLongLong(&pidOk);
+    const int fds = fdsText.toInt(&fdsOk);
+    if (!pidOk || !fdsOk || pid != QCoreApplication::applicationPid() || fds < 1) {
+        return false;
+    }
+    // SD_LISTEN_FDS_START; o socket unit entrega um único socket.
+    *descriptor = 3;
+    return true;
+}
+
 bool RpcServer::listen(const QString &socketPath, Error *error)
 {
     if (error) {
         *error = {};
+    }
+
+    qintptr systemdFd = -1;
+    if (systemdListenFd(&systemdFd)) {
+        if (!m_server.listen(systemdFd)) {
+            if (error) {
+                *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                     QStringLiteral("Não foi possível usar o socket do systemd."),
+                                     m_server.errorString());
+            }
+            return false;
+        }
+        if (!socketPath.isEmpty() && QFileInfo::exists(socketPath)) {
+            QFile::setPermissions(socketPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        }
+        qCInfo(lcRpc) << "podstackd usando socket do systemd:" << socketPath;
+        return true;
     }
 
     const QFileInfo info(socketPath);

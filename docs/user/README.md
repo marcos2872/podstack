@@ -1,6 +1,6 @@
-# Documentação de usuário — PodStack 0.1.0
+# Documentação de usuário — PodStack 0.1.1
 
-Guias para instalar, configurar e usar o PodStack 0.1.0 em um Linux desktop. A documentação
+Guias para instalar, configurar e usar o PodStack 0.1.1 em um Linux desktop. A documentação
 técnica (PRD, spec, arquitetura, ADRs e contrato RPC) continua em [`../README.md`](../README.md);
 para desenvolver ou contribuir, leia o [`AGENTS.md`](../../AGENTS.md).
 
@@ -10,10 +10,10 @@ para desenvolver ou contribuir, leia o [`AGENTS.md`](../../AGENTS.md).
 |---|---|
 | [`install.md`](install.md) | Requisitos, instalação por RPM/DEB, build do fonte, primeiro start, setup em 7 etapas, helper/polkit, verificação e desinstalação. |
 | [`quickstart.md`](quickstart.md) | Do zero ao primeiro container acessível, primeira machine com SSH, Kubernetes, domínios `*.localhost`, HTTPS/CA, bandeja e atalhos. |
-| [`cli.md`](cli.md) | Referência dos comandos e flags reais do `podstack` 0.1.0, saída JSON, exit codes e exemplos. |
+| [`cli.md`](cli.md) | Referência dos comandos e flags reais do `podstack` 0.1.1, saída JSON, exit codes e exemplos. |
 | [`troubleshooting.md`](troubleshooting.md) | Diagnóstico de daemon/socket, Podman, polkit/helper, KVM, virtiofsd, SSH, portas, firewall, CA/HTTPS, DNS, CRIU e erros `PODSTACK_*`. |
 
-## Limitações conhecidas do 0.1.0
+## Limitações conhecidas do 0.1.1
 
 - O console serial das machines é somente texto; não há VNC nem console gráfico.
 - `machine export`/`import` e `machine clone` não preservam snapshots internos do qcow2.
@@ -35,7 +35,7 @@ Outras limitações desta versão:
 
 - O proxy de domínios usa `network.httpPort`/`network.httpsPort` (8080/8443 por padrão). A ativação
   das portas 80/443 pelo helper existe na API privilegiada, mas não é acionada pela GUI/CLI em
-  0.1.0.
+  0.1.1.
 - A confiança na CA local e a instalação do drop-in de `*.podstack.local` ainda não têm um fluxo
   pronto na GUI/CLI. Use `*.localhost` ou os passos manuais de
   [`troubleshooting.md`](troubleshooting.md).

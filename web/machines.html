@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Machines · PodStack 0.1.0</title>
+  <title>Machines · PodStack 0.1.1</title>
   <meta name="description" content="VMs Linux com QEMU/KVM: criar, SSH, arquivos, stats, portas, snapshots, USB, serial, áudio, clone e export/import.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
@@ -94,7 +94,7 @@
       <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
       <span>
         <span class="brand-name">PodStack</span>
-        <span class="brand-sub">Documentação 0.1.0</span>
+        <span class="brand-sub">Documentação 0.1.1</span>
       </span>
     </a>
     <nav class="nav" aria-label="Seções da documentação">
@@ -105,7 +105,7 @@
 <div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
     </nav>
     <div class="sidebar-foot">
-      <p>Versão 0.1.0 · GPL-3.0-or-later</p>
+      <p>Versão 0.1.1 · GPL-3.0-or-later</p>
       <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
     </div>
   </aside>
@@ -121,14 +121,14 @@
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg> PodStack Docs</div>
       <h1>Machines</h1>
 <p class="lede">Crie VMs Linux com cloud-init e QEMU/KVM, acesse por SSH, compartilhe diretórios com virtiofs e controle portas, snapshots e hardware no mesmo lugar.</p>
-<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.0</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.1</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
 <p>As <strong>Machines</strong> são VMs Linux completas, não containers. O PodStack usa QEMU/KVM,
 uma imagem cloud da distro, um disco qcow2 esparso e um seed cloud-init para criar o usuário, a
 chave SSH e a rede. Sem <code>/dev/kvm</code>, a VM usa TCG e fica bem mais lenta.</p>
 <p>Cada machine tem uma chave ed25519 própria e um bloco gerenciado em <code>~/.ssh/config</code>
 quando <code>ssh.manageConfig</code> está ativo. O usuário padrão é <code>podstack</code>; a porta
 SSH é publicada em <code>127.0.0.1</code> e gerenciada automaticamente.</p>
-<p>Distros disponíveis em 0.1.0: <code>ubuntu:24.04</code>, <code>debian:12</code> e
+<p>Distros disponíveis em 0.1.1: <code>ubuntu:24.04</code>, <code>debian:12</code> e
 <code>fedora:44</code> (amd64). Os defaults são 2 CPUs, 4 GiB de memória, 20 GiB de disco e usuário
 <code>podstack</code>.</p>
 <h2 id="na-interface">Na interface</h2><h3 id="criar">Criar uma machine</h3><ol class="steps">
@@ -496,7 +496,7 @@ podstack machine audio dev on</code></pre><div class="callout warning" role="not
       </nav>
 
       <footer class="site-footer">
-        <p>PodStack 0.1.0 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <p>PodStack 0.1.1 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
         <div class="footer-links">
           <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>

@@ -5,7 +5,7 @@
 # descartável (o container é criado via podman e removido ao final).
 #
 # Cobre:
-#   - instalação via dnf do RPM principal e do subpacote podstack-helper;
+#   - instalação via dnf do RPM principal (helper incluído);
 #   - binários, unidades systemd de usuário, unit/polkit do helper;
 #   - metainfo instalado + appstreamcli validate;
 #   - daemon em background, socket com modo 0600;
@@ -119,16 +119,10 @@ echo
 echo "== Unidades systemd, polkit e metainfo =="
 check_file /usr/lib/systemd/user/podstack.socket
 check_file /usr/lib/systemd/user/podstack.service
-if rpm -q podstack-helper >/dev/null 2>&1; then
-    check_file /usr/lib/systemd/system/podstack-helper.service
-    check_file /usr/share/polkit-1/actions/dev.podstack.helper.policy
-    check_file /usr/share/dbus-1/system.d/dev.podstack.Helper1.conf
-    if rpm -ql podstack-helper | grep -q '/usr/share/selinux/packages/podstack.pp'; then
-        check_file /usr/share/selinux/packages/podstack.pp
-    fi
-else
-    echo "[aviso] podstack-helper não instalado; pulando unit/polkit do helper."
-fi
+check_file /usr/lib/systemd/system/podstack-helper.service
+check_file /usr/share/polkit-1/actions/dev.podstack.helper.policy
+check_file /usr/share/dbus-1/system.d/dev.podstack.Helper1.conf
+check_file /usr/share/selinux/packages/podstack.pp
 check_file /usr/share/applications/dev.podstack.PodStack.desktop
 check_file /usr/share/metainfo/dev.podstack.PodStack.metainfo.xml
 

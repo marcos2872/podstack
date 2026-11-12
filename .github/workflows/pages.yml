@@ -1,0 +1,51 @@
+name: Pages
+
+# Publica o site estático de web/ em https://marcos2872.github.io/podstack/
+# Ver docs/web.md para o contrato completo (estrutura, gatilhos e rollback).
+on:
+  push:
+    # Deploy automático quando o site muda em main.
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+    # Marco versionado do site (rollback/auditoria).
+    # Filtros de path não são avaliados em pushes de tag.
+    tags:
+      - 'web-*'
+  # Disparo manual: Actions > Pages > Run workflow, ou `gh workflow run pages.yml`.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Um deploy por vez; nunca cancela um deploy em andamento no meio.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v6
+
+      - name: Empacotar web/
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: web
+
+      - name: Publicar
+        id: deployment
+        uses: actions/deploy-pages@v5
