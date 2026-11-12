@@ -1384,8 +1384,7 @@ void SetupTest::ubuntuOvmfAndPackages()
     QVERIFY(apt.contains(QStringLiteral("qemu-utils")));
     QVERIFY(!apt.contains(QStringLiteral("edk2-ovmf")));
 
-    const QStringList dnf =
-        PodStack::SetupManager::qemuPackagesForManager(QStringLiteral("dnf"));
+    const QStringList dnf = PodStack::SetupManager::qemuPackagesForManager(QStringLiteral("dnf"));
     QVERIFY(dnf.contains(QStringLiteral("edk2-ovmf")));
     QVERIFY(dnf.contains(QStringLiteral("qemu-system-x86_64")));
 }

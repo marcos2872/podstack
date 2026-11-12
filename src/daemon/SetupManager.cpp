@@ -285,8 +285,7 @@ QList<SetupCheck> SetupManager::check(bool deep)
     ovmfCheck.detail = hasOvmf ? QStringLiteral("OVMF presente")
                                : QStringLiteral("OVMF não encontrado");
     if (!hasOvmf) {
-        ovmfCheck.remediation =
-            QStringLiteral("Instale edk2-ovmf (Fedora) ou ovmf (Ubuntu).");
+        ovmfCheck.remediation = QStringLiteral("Instale edk2-ovmf (Fedora) ou ovmf (Ubuntu).");
     }
     checks.append(ovmfCheck);
 
