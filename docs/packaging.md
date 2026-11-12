@@ -216,7 +216,7 @@ Ações separadas por método; nunca uma ação "root genérica".
 ## 6. SELinux
 
 O módulo mínimo está em [`packaging/selinux/`](../packaging/selinux/):
-`podstack.te`, `podstack.fc` e `podstack.if` (`policy_module(podstack, 0.1.2)`,
+`podstack.te`, `podstack.fc` e `podstack.if` (`policy_module(podstack, 0.1.3)`,
 refpolicy/Fedora).
 
 **Escopo:** apenas o helper privilegiado. O daemon do usuário, os containers, o
@@ -297,7 +297,7 @@ ausearch -m avc -ts recent        # negações do domínio podstack_helper_t
 Se aparecer AVC, ajuste `podstack.te` e recarregue com `semodule -i`. Use
 `audit2allow -w -a` apenas como diagnóstico, não como política final.
 
-> **Ressalva:** módulo mínimo, **não validado em SELinux enforcing no 0.1.2**.
+> **Ressalva:** módulo mínimo, **não validado em SELinux enforcing no 0.1.3**.
 > A validação real depende de um build em Fedora com `selinux-policy-devel`
 > (COPR/CI) e de um ciclo de setup com `enforcing` + `ausearch`. Em
 > `permissive`, o módulo apenas registra negações.
@@ -323,7 +323,7 @@ globalmente (`systemctl --global enable`).
 
 ```spec
 Name:           podstack
-Version:        0.1.2
+Version:        0.1.3
 Release:        1%{?dist}
 Summary:        Fast, light desktop for Podman containers, VMs and Kubernetes
 License:        GPL-3.0-or-later
@@ -568,7 +568,7 @@ compatibilidade (Fedora 43/44, Ubuntu 24.04/26.04, Wayland/X11, GNOME, KDE Plasm
 4. Repetir em máquina com Docker instalado; confirmar coexistência e que a remoção é opt-in.
 5. Criar container → acessar.
 6. Criar máquina → SSH.
-7. `apt install ./podstack_0.1.2_amd64.deb` em Ubuntu 24.04 e 26.04 limpos; abrir a GUI sob
+7. `apt install ./podstack_0.1.3_amd64.deb` em Ubuntu 24.04 e 26.04 limpos; abrir a GUI sob
    Xvfb; validar o `podstack-helper` no D-Bus e `podstack status` com Podman 4.9/5.7.
 7. `podstack doctor` verde.
 8. Desinstalar → `dnf remove podstack` remove units; dados do usuário preservados (documentar).

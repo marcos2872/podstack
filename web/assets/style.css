@@ -936,7 +936,6 @@ td code {
   margin: 20px 0;
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--note);
   border-radius: 8px;
   background: var(--note-bg);
 }
@@ -973,7 +972,6 @@ td code {
 }
 
 .callout.warning {
-  border-left-color: var(--warning);
   background: var(--warning-bg);
 }
 
@@ -983,7 +981,6 @@ td code {
 }
 
 .callout.limit {
-  border-left-color: var(--danger);
   background: var(--danger-bg);
 }
 
@@ -993,7 +990,6 @@ td code {
 }
 
 .callout.success {
-  border-left-color: var(--success);
   background: var(--success-bg);
 }
 

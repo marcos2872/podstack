@@ -1,13 +1,15 @@
 # Site público (GitHub Pages) — PodStack
 
 > **URL:** https://marcos2872.github.io/podstack/
-> **Fonte:** [`../web/`](../web/) — 14 páginas HTML + CSS/JS/SVG, ~392 KB, **sem etapa de build**.
+> **Fonte:** [`../web/`](../web/) — 16 páginas HTML + CSS/JS/SVG + `_data/`, geradas por
+> [`../scripts/web_build.py`](../scripts/web_build.py) e commitadas. O Pages publica o HTML estático.
 > **Workflow:** [`.github/workflows/pages.yml`](../.github/workflows/pages.yml)
 
 O site é a vitrine pública do PodStack: páginas estáticas por área do produto (containers,
 images, volumes, networks, pods, compose, builds, machines, kubernetes, domains, settings,
-CLI e troubleshooting). É HTML/CSS/JS puro — nenhum gerador, nenhuma dependência externa
-(sem CDN, sem fontes remotas, sem backend) e nenhuma chamada de rede em runtime.
+CLI, troubleshooting, instalação e onboarding). O HTML/CSS/JS é estático e sem dependências
+externas (sem CDN, sem fontes remotas, sem backend). O único gerador é local/CI: ele injeta
+topbar, sidebar, TOC, pager e o índice de busca, e o resultado é commitado em `web/`.
 
 ---
 
@@ -15,15 +17,26 @@ CLI e troubleshooting). É HTML/CSS/JS puro — nenhum gerador, nenhuma dependê
 
 ```
 web/
-├── index.html            # visão geral, arquitetura, primeiros passos, limitações
-├── containers.html       # + images, volumes, networks, pods
-├── compose.html          # + builds
-├── machines.html         # + kubernetes, domains
-├── settings.html         # + cli, troubleshooting
+├── _data/
+│   ├── nav.json          # árvore: grupos, páginas, ícones, ordem e estados
+│   └── site.json         # versão, URL do GitHub e licença
+├── index.html            # visão geral (gerado)
+├── install.html          # instalação (gerado)
+├── onboarding.html       # 7 telas do setup (gerado)
+├── containers.html       # + images, volumes, networks, pods (gerados)
+├── compose.html          # + builds (gerados)
+├── machines.html         # + kubernetes, domains (gerados)
+├── settings.html         # + cli, troubleshooting (gerados)
 └── assets/
-    ├── style.css         # tokens de tema (claro/escuro), layout, componentes
-    ├── app.js            # navegação mobile, destaque da página atual, busca
+    ├── style.css         # tokens de tema (claro/escuro) e componentes
+    ├── docs-next.css     # shell de 3 colunas, sidebar, TOC e onboarding
+    ├── app.js            # tema, busca, copiar código
+    ├── docs-next.js      # drawer, accordion e scrollspy
+    ├── search-index.js   # gerado a partir de nav.json + headings
+    ├── img/setup/        # 7 capturas WebP do SetupWindow
     └── podstack-capsule.svg
+
+scripts/web_build.py      # gera o chrome, o pager e o índice de busca
 ```
 
 Regras que o site já cumpre e que **não devem ser quebradas**:
@@ -32,7 +45,8 @@ Regras que o site já cumpre e que **não devem ser quebradas**:
 |---|---|
 | Todos os links e assets são **relativos** (`cli.html`, `assets/style.css`) | O site é servido em subpath (`/podstack/`), não na raiz do domínio. Caminhos absolutos (`/assets/...`) quebrariam. |
 | Sem `<base>` | `app.js` resolve a página atual por `location.pathname`; a lógica já trata o caso vazio (`/podstack/` → `index.html`). |
-| Sem build, sem `node_modules`, sem gerador | O artefato publicado é exatamente o conteúdo de `web/`. |
+| HTML gerado e commitado | O Pages publica `web/` estático; `scripts/web_build.py` roda local/CI e `--check` impede divergência. Sem `node_modules`, sem CDN, sem fontes remotas. |
+| `nav.json` é a fonte da árvore | Sidebar, pager e índice de busca saem do mesmo arquivo; não edite a navegação à mão nas 16 páginas. |
 | Sem backend | Não há `<form>`, `fetch` ou XHR — nada de endpoint para hospedar. |
 
 ---
@@ -147,8 +161,10 @@ python3 -m http.server -d web 8080
 
 Checklist antes de publicar:
 
+- [ ] Rodar `python3 scripts/web_build.py --check` (HTML e `search-index.js` em dia).
 - [ ] Abrir todas as páginas pelo menu e conferir navegação/âncoras.
-- [ ] Testar a busca (`app.js`) em pelo menos duas páginas.
+- [ ] Testar a busca (`app.js`) em pelo menos duas páginas; buscar `Instalação` e `Onboarding` e conferir as subseções.
+- [ ] Conferir as 7 capturas em `web/assets/img/setup/` e o link de abrir em tamanho real.
 - [ ] Conferir tema claro/escuro e layout em 1280 px e 390 px de largura.
 - [ ] Verificar que nenhum link relativo ficou quebrado:
 
@@ -170,8 +186,9 @@ done
 | `web/404.html` | Não existe. Um caminho inválido exibe o **404 genérico do GitHub**. Se o site precisar de 404 com a identidade visual, adicione `web/404.html` (o Pages o usa automaticamente). |
 | Domínio próprio | Não configurado. A URL é `marcos2872.github.io/podstack/`. Um domínio exige DNS (CNAME/A) e o arquivo `CNAME` no artefato, além de habilitar *Custom domain* nas settings. |
 | Links para o GitHub | Instalação e licença apontam para `github.com/marcos2872/podstack` (`docs/user/install.md`, `LICENSE`). Dependem de o caminho existir em `main`. |
-| Limites do Pages | 1 GB de site, ~100 GB/mês de banda, ~10 builds/hora. Irrelevantes para 392 KB. |
-| Validação no CI | O `ci.yml` não valida HTML/link do site. Link quebrado só é detectado manualmente ou em revisão. |
+| Limites do Pages | 1 GB de site, ~100 GB/mês de banda, ~10 builds/hora. Irrelevantes para o tamanho atual (menos de 1 MB). |
+| Validação no CI | O `--check` valida links/âncoras internas e o índice de busca. A validação visual, o contraste e o Lighthouse continuam manuais. |
+| Capturas do onboarding | Foram feitas em ambiente isolado; estados de checks (socket/systemd) variam por host. |
 
 ---
 
@@ -191,6 +208,9 @@ done
 ## 8. Arquivos relacionados
 
 - [`../web/`](../web/) — fonte do site.
+- [`../web/_data/nav.json`](../web/_data/nav.json) — árvore da navegação.
+- [`../web/_data/site.json`](../web/_data/site.json) — versão, GitHub e licença.
+- [`../scripts/web_build.py`](../scripts/web_build.py) — gerador do chrome, pager e busca.
 - [`../.github/workflows/pages.yml`](../.github/workflows/pages.yml) — pipeline de publicação.
 - [`packaging.md`](packaging.md) — empacotamento de binários (RPM/DEB/Flatpak), que é independente do site.
 - [`branding.md`](branding.md) — paleta, marca e assets usados pelo site.

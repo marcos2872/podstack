@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Instalação · PodStack 0.1.3</title>
+  <meta name="description" content="Instale o PodStack no Fedora ou Ubuntu, configure o daemon de usuário e conclua o setup em 7 etapas.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/docs-next.css">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("podstack-docs-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <script src="assets/search-index.js" defer></script>
+  <script src="assets/app.js" defer></script>
+  <script src="assets/docs-next.js" defer></script>
+</head>
+<body class="docs-next">
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 8 9 5 9-5"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="2" y="15" width="6" height="6" rx="1"/><rect x="16" y="15" width="6" height="6" rx="1"/><path d="M12 9v3"/><path d="M5 15v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></symbol>
+    <symbol id="i-terminal-2" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6"/><path d="M12 18h8"/></symbol>
+    <symbol id="i-hammer" viewBox="0 0 24 24"><path d="m14 5 5 5-3 3-5-5 3-3Z"/><path d="m3 21 7-7"/><path d="M11 3 3 11l4 4 8-8-4-4Z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.2 9.3 4.5 4.5 0 0 0 7 18Z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3 3.7-3.7Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path class="icon-fill" d="M12 .5C5.73.5.98 5.24.98 11.5c0 4.86 3.15 8.98 7.52 10.44.55.1.75-.24.75-.53 0-.26-.01-1.12-.02-2.03-3.06.67-3.71-1.3-3.71-1.3-.5-1.27-1.22-1.61-1.22-1.61-1-.68.08-.67.08-.67 1.1.08 1.68 1.13 1.68 1.13.98 1.68 2.57 1.2 3.2.92.1-.71.38-1.2.7-1.48-2.44-.28-5.01-1.22-5.01-5.43 0-1.2.43-2.18 1.13-2.95-.11-.28-.49-1.4.11-2.91 0 0 .92-.29 3.02 1.13a10.5 10.5 0 0 1 5.5 0c2.1-1.42 3.02-1.13 3.02-1.13.6 1.51.22 2.63.11 2.91.7.77 1.13 1.75 1.13 2.95 0 4.22-2.58 5.15-5.03 5.42.4.34.75 1.01.75 2.04 0 1.47-.01 2.65-.01 3.01 0 .29.2.64.76.53a11.02 11.02 0 0 0 7.51-10.44C23.02 5.24 18.27.5 12 .5Z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M10.3 4.1 2.7 18a2 2 0 0 0 1.8 3h15a2 2 0 0 0 1.8-3L13.7 4.1a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></symbol>
+  </defs>
+</svg>
+
+
+  <!-- dx:topbar:start -->
+<header class="dx-topbar">
+    <div class="dx-topbar-left">
+      <button class="dx-icon-btn dx-nav-toggle" type="button" data-dx-nav-toggle aria-controls="dx-sidebar" aria-expanded="false" aria-label="Abrir navegação">
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+      </button>
+      <a class="dx-brand" href="index.html">
+        <img src="assets/podstack-capsule.svg" alt="" width="26" height="26">
+        <span class="dx-brand-name">PodStack</span>
+        <span class="dx-brand-tag">Docs</span>
+      </a>
+      <span class="dx-version">0.1.3</span>
+    </div>
+
+    <div class="search dx-search" role="search">
+      <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input id="site-search" type="search" role="combobox" aria-label="Buscar na documentação"
+             aria-controls="search-results" aria-expanded="false" aria-autocomplete="list"
+             placeholder="Buscar na documentação…" autocomplete="off" spellcheck="false">
+      <kbd aria-hidden="true">/</kbd>
+      <div class="search-results" id="search-results" role="listbox" aria-label="Resultados da busca" hidden></div>
+    </div>
+
+    <div class="dx-topbar-actions">
+      <a class="dx-cta" href="install.html">Instalar</a>
+      <a class="dx-icon-btn" href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"></use></svg>
+      </a>
+      <button class="dx-icon-btn" id="theme-toggle" type="button" aria-label="Alternar tema">
+        <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+      </button>
+    </div>
+  </header>
+<!-- dx:topbar:end -->
+
+  <div class="dx-overlay" data-dx-overlay aria-hidden="true"></div>
+
+  <div class="dx-shell">
+<!-- dx:sidebar:start -->
+<aside class="dx-sidebar" id="dx-sidebar" aria-label="Navegação da documentação">
+  <nav class="dx-nav" aria-label="Seções da documentação">
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Começar</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="index.html"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg><span>Visão geral</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-index" aria-label="Expandir seção Visão geral"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-index" hidden>
+            <li><a href="index.html#visao-geral">Visão geral</a></li>
+            <li><a href="index.html#arquitetura">Arquitetura em uma frase</a></li>
+            <li><a href="index.html#primeiros-passos">Primeiros passos</a></li>
+            <li><a href="index.html#mapa">Mapa da documentação</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page is-active">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="install.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg><span>Instalação</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="true" aria-controls="dx-sub-install" aria-label="Recolher seção Instalação"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-install">
+            <li><a href="install.html#requisitos">Requisitos</a></li>
+            <li><a href="install.html#instalar">Instalar o pacote</a></li>
+            <li><a href="install.html#primeiro-start">Primeiro start</a></li>
+            <li><a href="install.html#setup">Setup em 7 etapas</a></li>
+            <li><a href="install.html#helper">Helper e polkit</a></li>
+            <li><a href="install.html#verificar">Verificar a instalação</a></li>
+            <li><a href="install.html#atualizar-desinstalar">Atualizar e desinstalar</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page dx-nav-page--child">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="onboarding.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Onboarding</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-onboarding" aria-label="Expandir seção Onboarding"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-onboarding" hidden>
+            <li><a href="onboarding.html#boas-vindas">1. Boas-vindas</a></li>
+            <li><a href="onboarding.html#diagnostico">2. Diagnóstico</a></li>
+            <li><a href="onboarding.html#podman">3. Podman</a></li>
+            <li><a href="onboarding.html#qemu-kvm">4. QEMU/KVM</a></li>
+            <li><a href="onboarding.html#componentes">5. Componentes</a></li>
+            <li><a href="onboarding.html#validacao">6. Validação</a></li>
+            <li><a href="onboarding.html#pronto">7. Pronto</a></li>
+            <li><a href="onboarding.html#depois-do-setup">Depois do setup</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Engine</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="containers.html"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg><span>Containers</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-containers" aria-label="Expandir seção Containers"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-containers" hidden>
+            <li><a href="containers.html#visao-geral">Visão geral</a></li>
+            <li><a href="containers.html#criar">Criar e executar</a></li>
+            <li><a href="containers.html#rede-e-portas">Rede e portas</a></li>
+            <li><a href="containers.html#volumes-e-mounts">Volumes e mounts</a></li>
+            <li><a href="containers.html#ciclo-de-vida">Ciclo de vida</a></li>
+            <li><a href="containers.html#detalhe">Detalhe e abas</a></li>
+            <li><a href="containers.html#rootful">Rootful</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="images.html"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg><span>Imagens</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-images" aria-label="Expandir seção Imagens"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-images" hidden>
+            <li><a href="images.html#visao-geral">Visão geral</a></li>
+            <li><a href="images.html#pull-importacao">Pull e importação</a></li>
+            <li><a href="images.html#tags-remocao">Tags e remoção</a></li>
+            <li><a href="images.html#prune">Prune com prévia</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="volumes.html"><svg class="icon" aria-hidden="true"><use href="#i-database"></use></svg><span>Volumes</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-volumes" aria-label="Expandir seção Volumes"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-volumes" hidden>
+            <li><a href="volumes.html#visao-geral">Visão geral</a></li>
+            <li><a href="volumes.html#criar-clonar">Criar, clonar e importar do host</a></li>
+            <li><a href="volumes.html#usar-em-containers">Usar em containers</a></li>
+            <li><a href="volumes.html#prune-remocao">Prune e remoção</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="networks.html"><svg class="icon" aria-hidden="true"><use href="#i-network"></use></svg><span>Redes</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-networks" aria-label="Expandir seção Redes"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-networks" hidden>
+            <li><a href="networks.html#visao-geral">Visão geral</a></li>
+            <li><a href="networks.html#criar-uma-rede">Criar uma rede</a></li>
+            <li><a href="networks.html#conectar-containers">Conectar containers</a></li>
+            <li><a href="networks.html#remover-uma-rede">Remover uma rede</a></li>
+            <li><a href="networks.html#aliases-e-dns">Aliases e DNS</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="pods.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Pods</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-pods" aria-label="Expandir seção Pods"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-pods" hidden>
+            <li><a href="pods.html#visao-geral">Visão geral</a></li>
+            <li><a href="pods.html#criar-um-pod">Criar um pod</a></li>
+            <li><a href="pods.html#ciclo-de-vida">Ciclo de vida</a></li>
+            <li><a href="pods.html#remover-um-pod">Remover um pod</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Compose e builds</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="compose.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal"></use></svg><span>Compose</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-compose" aria-label="Expandir seção Compose"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-compose" hidden>
+            <li><a href="compose.html#visao-geral">Visão geral</a></li>
+            <li><a href="compose.html#subir">Subir um projeto</a></li>
+            <li><a href="compose.html#operar">Operar o projeto</a></li>
+            <li><a href="compose.html#logs">Serviços e logs</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="builds.html"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg><span>Builds</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-builds" aria-label="Expandir seção Builds"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-builds" hidden>
+            <li><a href="builds.html#visao-geral">Visão geral</a></li>
+            <li><a href="builds.html#criar-um-build">Criar um build</a></li>
+            <li><a href="builds.html#contexto-e-dockerfile">Contexto e Dockerfile</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Linux</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="machines.html"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span>Machines</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-machines" aria-label="Expandir seção Machines"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-machines" hidden>
+            <li><a href="machines.html#visao-geral">Visão geral</a></li>
+            <li><a href="machines.html#criar">Criar uma machine</a></li>
+            <li><a href="machines.html#ciclo-de-vida">Ciclo de vida</a></li>
+            <li><a href="machines.html#detalhe">Detalhe</a></li>
+            <li><a href="machines.html#hardware">Portas e dispositivos</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Kubernetes</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="kubernetes.html"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Kubernetes</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-kubernetes" aria-label="Expandir seção Kubernetes"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-kubernetes" hidden>
+            <li><a href="kubernetes.html#visao-geral">Visão geral</a></li>
+            <li><a href="kubernetes.html#habilitar-o-cluster">Habilitar o cluster</a></li>
+            <li><a href="kubernetes.html#operar-o-cluster">Operar o cluster</a></li>
+            <li><a href="kubernetes.html#contexto-e-kubeconfig">Contexto e kubeconfig</a></li>
+            <li><a href="kubernetes.html#tls">TLS, SANs e exposição</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Rede local</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="domains.html"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span>Domínios</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-domains" aria-label="Expandir seção Domínios"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-domains" hidden>
+            <li><a href="domains.html#visao-geral">Visão geral</a></li>
+            <li><a href="domains.html#localhost">Domínios *.localhost na prática</a></li>
+            <li><a href="domains.html#indice">Página de índice</a></li>
+            <li><a href="domains.html#deteccao">Detecção automática da porta</a></li>
+            <li><a href="domains.html#podstack-local">Domínios *.podstack.local e DNS</a></li>
+            <li><a href="domains.html#https">HTTPS com CA interna</a></li>
+            <li><a href="domains.html#labels">Labels dev.podstack.*</a></li>
+            <li><a href="domains.html#lan">Expor na LAN</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Referência</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Configurações</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-settings" aria-label="Expandir seção Configurações"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-settings" hidden>
+            <li><a href="settings.html#visao-geral">Visão geral</a></li>
+            <li><a href="settings.html#categorias">Categorias</a></li>
+            <li><a href="settings.html#geral">Geral</a></li>
+            <li><a href="settings.html#rede">Rede e portas</a></li>
+            <li><a href="settings.html#maquinas-retencao">Machines e retenção</a></li>
+            <li><a href="settings.html#diagnostico">Diagnóstico e report</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="cli.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><span>CLI</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-cli" aria-label="Expandir seção CLI"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-cli" hidden>
+            <li><a href="cli.html#visao-geral">Visão geral</a></li>
+            <li><a href="cli.html#daemon">Daemon, socket e ativação</a></li>
+            <li><a href="cli.html#comandos">Grupos de comandos</a></li>
+            <li><a href="cli.html#json">JSON, exit codes e automação</a></li>
+            <li><a href="cli.html#ambiente">Variáveis de ambiente</a></li>
+            <li><a href="cli.html#exemplos">Exemplos de automação</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Ajuda</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-troubleshooting" aria-label="Expandir seção Solução de problemas"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-troubleshooting" hidden>
+            <li><a href="troubleshooting.html#primeiros-checks">Primeiros checks</a></li>
+            <li><a href="troubleshooting.html#daemon-socket">Daemon e socket</a></li>
+            <li><a href="troubleshooting.html#podman">Podman e engine</a></li>
+            <li><a href="troubleshooting.html#helper-polkit">Helper e polkit</a></li>
+            <li><a href="troubleshooting.html#kvm">KVM, QEMU e virtiofsd</a></li>
+            <li><a href="troubleshooting.html#ssh">Machines, SSH e known_hosts</a></li>
+            <li><a href="troubleshooting.html#x11">X11</a></li>
+            <li><a href="troubleshooting.html#portas">Portas, proxy e firewall</a></li>
+            <li><a href="troubleshooting.html#https-ca">HTTPS e CA</a></li>
+            <li><a href="troubleshooting.html#dns">DNS e *.podstack.local</a></li>
+            <li><a href="troubleshooting.html#audio">Áudio no guest</a></li>
+            <li><a href="troubleshooting.html#criu">CRIU, checkpoint e cgroup rootless</a></li>
+            <li><a href="troubleshooting.html#compose">Compose e builds</a></li>
+            <li><a href="troubleshooting.html#updates">Updates</a></li>
+            <li><a href="troubleshooting.html#erros">Códigos de erro PODSTACK</a></li>
+            <li><a href="troubleshooting.html#logs">Logs e diagnóstico avançado</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </nav>
+  <div class="dx-sidebar-foot">
+    <p>Versão 0.1.3 · GPL-3.0-or-later</p>
+    <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
+  </div>
+</aside>
+<!-- dx:sidebar:end -->
+
+  <div class="main dx-main">
+    <main class="page dx-page" id="conteudo"><nav class="breadcrumb" aria-label="Trilha de navegação"><a href="index.html">Documentação</a><span class="sep" aria-hidden="true">›</span><span>Começar</span><span class="sep" aria-hidden="true">›</span><span aria-current="page">Instalação</span></nav>
+
+<h1>Instalação</h1>
+<p class="lede">Do pacote ao primeiro container: instale o PodStack no Fedora ou Ubuntu, inicie o daemon de usuário e conclua o setup em 7 etapas.</p>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.3</span><span>Fedora 43/44 · Ubuntu 24.04–26.04</span></div>
+
+<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Rootless por padrão</p><p>O daemon roda com o seu usuário e o socket de controle fica em <code>$XDG_RUNTIME_DIR/podstack/control.sock</code>, com diretório <code>0700</code> e socket <code>0600</code>. Ações de sistema passam pelo <code>podstack-helper</code> com polkit e allowlist. O Docker não é removido por padrão.</p></div></div>
+
+<h2 id="requisitos">Requisitos</h2>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Item</th>
+<th scope="col">Requisito</th>
+<th scope="col">Observação</th>
+</tr></thead><tbody>
+<tr>
+<td>Sistema</td>
+<td>Fedora 43/44 ou Ubuntu 24.04+</td>
+<td>Wayland ou X11. O RPM é o caminho principal no Fedora; o DEB é construído no Ubuntu 24.04 e roda em 24.04–26.04.</td>
+</tr>
+<tr>
+<td>Podman</td>
+<td>Fedora: 5.8+; Ubuntu: 4.9+ (5.8 recomendado)</td>
+<td>O PodStack usa o <code>podman.socket</code> do usuário; não reimplementa o runtime.</td>
+</tr>
+<tr>
+<td>systemd</td>
+<td>Fedora: 257+; Ubuntu: 255+</td>
+<td>Socket e serviço de usuário <code>podstack.socket</code>/<code>podstack.service</code>.</td>
+</tr>
+<tr>
+<td>Polkit</td>
+<td>Agente de autenticação na sessão</td>
+<td>Necessário para o <code>podstack-helper</code>; em sessão gráfica o prompt aparece normalmente.</td>
+</tr>
+<tr>
+<td>OpenSSH</td>
+<td>Cliente <code>ssh</code> e <code>scp</code></td>
+<td>Usado pelas machines e pelo encaminhamento de chaves.</td>
+</tr>
+<tr>
+<td>Qt</td>
+<td>Qt 6.4+ em runtime</td>
+<td>Fedora 43/44: 6.10/6.11; Ubuntu 24.04: 6.4.2. O DEB leva o qtermwidget 2.0.0 embutido.</td>
+</tr>
+<tr>
+<td>KVM</td>
+<td><code>/dev/kvm</code> legível e gravável</td>
+<td>Opcional. Sem KVM, as machines usam TCG (muito mais lentas).</td>
+</tr>
+<tr>
+<td>QEMU/OVMF/virtiofsd</td>
+<td>Instalados para machines</td>
+<td>O setup pode instalar; o virtiofsd atende os mounts virtiofs.</td>
+</tr>
+<tr>
+<td>Caddy</td>
+<td>Opcional</td>
+<td>Necessário para HTTPS em <code>*.localhost</code>/<code>*.podstack.local</code>.</td>
+</tr>
+<tr>
+<td><code>docker-compose</code></td>
+<td>Opcional</td>
+<td>Provider usado pelos projetos Compose; a engine continua sendo o Podman.</td>
+</tr>
+<tr>
+<td>k3s no host</td>
+<td>Não necessário</td>
+<td>O Kubernetes roda em uma VM dedicada criada pelo PodStack.</td>
+</tr>
+</tbody></table></div>
+<p>Confira o Podman antes de instalar:</p>
+<pre data-lang="bash" tabindex="0"><code>podman --version
+podman info</code></pre>
+<p><code>podman info</code> deve funcionar sem <code>sudo</code>. Se o socket rootless não estiver ativo:</p>
+<pre data-lang="bash" tabindex="0"><code>systemctl --user enable --now podman.socket</code></pre>
+
+<h2 id="instalar">Instalar o pacote</h2>
+<h3 id="fedora-rpm">Fedora (RPM)</h3>
+<pre data-lang="bash" tabindex="0"><code>sudo dnf install ./podstack-0.1.3-1.fc44.x86_64.rpm
+
+# com um repositório configurado
+sudo dnf install podstack</code></pre>
+<p>Ajuste <code>fc44</code> e <code>x86_64</code> para a release e a arquitetura do seu Fedora. O <code>%post</code> habilita <code>podstack.socket</code> globalmente; o daemon sobe sob demanda na primeira conexão.</p>
+<h3 id="ubuntu-deb">Ubuntu (DEB)</h3>
+<pre data-lang="bash" tabindex="0"><code>sudo apt install ./podstack_0.1.3_amd64.deb</code></pre>
+<p>O <code>postinst</code> habilita <code>podstack.socket</code> por usuário e o <code>podstack-helper.service</code>. O qtermwidget 2.0.0 vai embutido no binário.</p>
+<h3 id="build-do-fonte">Build a partir do código</h3>
+<p>Para testar uma versão local, o caminho é <code>cmake --preset dev</code>, <code>cmake --build --preset dev</code> e <code>./scripts/dev.sh</code>. O guia completo, com as dependências de Fedora e Ubuntu, está em <a href="https://github.com/marcos2872/podstack/blob/main/docs/user/install.md" target="_blank" rel="noopener noreferrer">docs/user/install.md</a>.</p>
+
+<h2 id="primeiro-start">Primeiro start</h2>
+<p>Depois da instalação, recarregue as units de usuário e inicie o socket:</p>
+<pre data-lang="bash" tabindex="0"><code>systemctl --user daemon-reload
+systemctl --user start podstack.socket
+systemctl --user status podstack.socket</code></pre>
+<p>O estado esperado é <code>active (listening)</code>. O <code>podstack.service</code> não é habilitado no boot; ele é ativado na primeira conexão ao socket e permanece ativo até o fim da sessão.</p>
+<pre data-lang="bash" tabindex="0"><code>podstack status
+podstack doctor</code></pre>
+<p><code>podstack status</code> deve mostrar <code>estado: ok</code> e <code>engine: running</code>; <code>podstack doctor</code> termina com exit 0 quando os checks passam.</p>
+
+<h2 id="setup">Setup em 7 etapas</h2>
+<p>Na primeira execução, a GUI abre o assistente e mantém a tela principal bloqueada enquanto os checks obrigatórios não passam. As etapas são:</p>
+<ol class="steps">
+<li><strong>Boas-vindas</strong> — explica o que será feito; nada é alterado.</li>
+<li><strong>Diagnóstico</strong> — checks somente leitura de Docker, Podman, QEMU/KVM, <code>/dev/kvm</code>, virtiofsd, systemd de usuário, SQLite, Caddy e k3s.</li>
+<li><strong>Podman</strong> — instala/atualiza o Podman e ativa o <code>podman.socket</code> rootless. O Docker não é removido por padrão.</li>
+<li><strong>QEMU/KVM</strong> — instala QEMU, OVMF, virtiofsd e libvirt opcional. No Ubuntu usa <code>ovmf</code>, <code>qemu-system-x86</code>, <code>qemu-utils</code> e <code>virtiofsd</code>; se a instalação falhar, o erro do helper aparece no painel de log/rodapé. Sem <code>/dev/kvm</code>, avisa e permite TCG.</li>
+<li><strong>Componentes</strong> — socket/rootless/SQLite são obrigatórios; Caddy é opcional. O k3s não é instalado no host.</li>
+<li><strong>Validação</strong> — checklist final, separando obrigatórios de opcionais.</li>
+<li><strong>Pronto</strong> — resumo e abertura do app; grava <code>setup.completed</code>.</li>
+</ol>
+<p>Veja <a href="onboarding.html">Onboarding: as 7 telas</a> para o detalhe de cada etapa e as capturas reais. Os mesmos checks podem ser feitos pela CLI:</p>
+<pre data-lang="bash" tabindex="0"><code>podstack setup --check       # somente leitura
+podstack setup --validate    # validação final; exit 1 se houver pendência obrigatória
+podstack setup               # resumo do estado atual (igual a --status)</code></pre>
+<p>Instalações e ativações pela CLI:</p>
+<pre data-lang="bash" tabindex="0"><code>podstack setup --apply socket                 # ativa o podman.socket; não exige helper
+podstack setup --apply podman                 # instala/atualiza o Podman; exige helper
+podstack setup --apply qemu                   # instala QEMU/OVMF/virtiofsd; exige helper
+podstack setup --apply components --caddy     # instala o Caddy; exige helper</code></pre>
+<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Ações privilegiadas</p><p><code>--apply</code> inicia um job no daemon e imprime o <code>jobId</code>; o progresso detalhado aparece na GUI e nos eventos do daemon. A GUI nunca executa <code>sudo</code> ou shell. Se o helper falhar (por exemplo, pacote inexistente), a mensagem de erro aparece no painel de log e no rodapé do setup.</p></div></div>
+
+<h2 id="helper">Helper e polkit</h2>
+<p>O <code>podstack-helper</code> é um serviço de sistema, com API declarativa e allowlist. Ele existe para ações que precisam de root, não para executar comandos arbitrários:</p>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Ação</th>
+<th scope="col">Para que serve</th>
+</tr></thead><tbody>
+<tr>
+<td><code>install-packages</code> / <code>remove-packages</code></td>
+<td>Instalar/remover pacotes allowlistados (Podman, QEMU, virtiofsd, Caddy, remoção opt-in do Docker).</td>
+</tr>
+<tr>
+<td><code>bind-ports</code></td>
+<td>Criar unidades systemd para as portas 80/443.</td>
+</tr>
+<tr>
+<td><code>dns-zone</code></td>
+<td>Instalar/remover o drop-in do <code>systemd-resolved</code> para <code>*.podstack.local</code>.</td>
+</tr>
+<tr>
+<td><code>trust-ca</code></td>
+<td>Confiar/remover a CA local no trust store do sistema.</td>
+</tr>
+<tr>
+<td><code>open-ports</code> / <code>close-ports</code></td>
+<td>Abrir/fechar portas no firewall em modo runtime.</td>
+</tr>
+</tbody></table></div>
+<pre data-lang="bash" tabindex="0"><code>systemctl status podstack-helper.service
+journalctl -u podstack-helper.service -n 100 --no-pager</code></pre>
+<p>Se o helper não estiver instalado, o setup ainda consegue ativar o <code>podman.socket</code>; as ações que instalam pacotes, configuram DNS/CA ou abrem portas falham com <code>PODSTACK_HELPER_REQUIRED</code> ou <code>PODSTACK_HELPER_UNAVAILABLE</code>.</p>
+<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Polkit precisa de uma sessão gráfica</p><p>O polkit pede autenticação na sessão ativa. Em uma sessão sem agente polkit (por exemplo, SSH sem sessão gráfica), a autorização falha; rode o setup a partir do desktop.</p></div></div>
+
+<h2 id="verificar">Verificar a instalação</h2>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th scope="col">Verificação</th>
+<th scope="col">Comando</th>
+<th scope="col">Resultado esperado</th>
+</tr></thead><tbody>
+<tr>
+<td>Versão</td>
+<td><code>podstack version</code></td>
+<td><code>PodStack 0.1.3</code></td>
+</tr>
+<tr>
+<td>Socket de usuário</td>
+<td><code>systemctl --user status podstack.socket</code></td>
+<td><code>active (listening)</code></td>
+</tr>
+<tr>
+<td>Daemon e engine</td>
+<td><code>podstack status</code></td>
+<td><code>estado: ok</code> e <code>engine: running</code></td>
+</tr>
+<tr>
+<td>Diagnóstico rápido</td>
+<td><code>podstack doctor</code></td>
+<td>checks <code>[ok]</code>; exit 0</td>
+</tr>
+<tr>
+<td>Validação do setup</td>
+<td><code>podstack setup --validate</code></td>
+<td><code>Validação OK.</code>; exit 0</td>
+</tr>
+</tbody></table></div>
+<p><code>podstack doctor</code> verifica o socket do daemon e o socket do Podman. Se algum check falhar, ele mostra a ação sugerida e retorna exit 1; se o daemon não responder, retorna exit 7.</p>
+
+<h2 id="atualizar-desinstalar">Atualizar e desinstalar</h2>
+<h3 id="atualizar">Atualizar</h3>
+<p>Os updates são assinados e verificados antes de aplicar. Para consultar o manifesto:</p>
+<pre data-lang="bash" tabindex="0"><code>podstack update --check</code></pre>
+<p>O comando retorna exit 3 quando há uma versão nova e exit 1 quando a checagem está indisponível. A instalação é feita pelo gerenciador de pacotes: <code>sudo dnf upgrade podstack</code> ou <code>sudo apt upgrade podstack</code>.</p>
+<h3 id="desinstalar">Desinstalar</h3>
+<pre data-lang="bash" tabindex="0"><code># RPM
+sudo systemctl --global disable podstack.socket
+sudo dnf remove podstack-helper podstack
+
+# DEB
+sudo systemctl --global disable podstack.socket
+sudo apt remove podstack</code></pre>
+<p>Depois da remoção, recarregue as units de usuário com <code>systemctl --user daemon-reload</code>. A desinstalação remove binários, units, política polkit e arquivos de sistema, mas <strong>não remove os dados do usuário</strong>:</p>
+<pre data-lang="text" tabindex="0"><code>~/.config/podstack/       # configuração (config.json, 0600)
+~/.local/share/podstack/  # machines, kubeconfigs, CA/Caddy
+~/.local/state/podstack/  # estado, jobs, reports
+~/.cache/podstack/        # cache, incluindo imagens cloud
+$XDG_RUNTIME_DIR/podstack/  # socket e estado de runtime (some no logout)</code></pre>
+<p>Containers, imagens, volumes e redes continuam no storage do Podman. Se você ativou a CA local ou o DNS de <code>*.podstack.local</code>, remova os artefatos do sistema antes de apagar os dados; o guia completo está em <a href="https://github.com/marcos2872/podstack/blob/main/docs/user/install.md" target="_blank" rel="noopener noreferrer">docs/user/install.md</a>.</p>
+
+<h2 id="limitacoes">Limitações de instalação</h2>
+<ul>
+  <li>O Flatpak é um cliente: o daemon e o helper precisam estar instalados no host.</li>
+  <li>A validação de instalação limpa (T7-07/T7-14) ainda está em andamento; trate o checklist acima como a verificação mínima da versão 0.1.3.</li>
+  <li>Esta documentação não fixa uma URL de repositório; use o arquivo RPM/DEB gerado localmente ou o repositório que você configurou.</li>
+</ul>
+
+      <nav class="pager" aria-label="Navegação entre páginas"><a class="prev" href="index.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Visão geral</span></a><a class="next" href="onboarding.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Onboarding</span></a></nav>
+
+      <footer class="site-footer">
+        <p>PodStack 0.1.3 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <div class="footer-links">
+          <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>
+          <a href="troubleshooting.html">Solução de problemas</a>
+        </div>
+      </footer>
+</main>
+  </div>
+  <!-- dx:toc:start -->
+<aside class="dx-toc" aria-label="Nesta página">
+  <p class="dx-toc-title">Nesta página</p>
+  <ul>
+    <li><a href="#requisitos">Requisitos</a></li>
+    <li><a href="#instalar">Instalar o pacote</a></li>
+    <li class="dx-toc-sub"><a href="#fedora-rpm">Fedora (RPM)</a></li>
+    <li class="dx-toc-sub"><a href="#ubuntu-deb">Ubuntu (DEB)</a></li>
+    <li class="dx-toc-sub"><a href="#build-do-fonte">Build a partir do código</a></li>
+    <li><a href="#primeiro-start">Primeiro start</a></li>
+    <li><a href="#setup">Setup em 7 etapas</a></li>
+    <li><a href="#helper">Helper e polkit</a></li>
+    <li><a href="#verificar">Verificar a instalação</a></li>
+    <li><a href="#atualizar-desinstalar">Atualizar e desinstalar</a></li>
+    <li class="dx-toc-sub"><a href="#atualizar">Atualizar</a></li>
+    <li class="dx-toc-sub"><a href="#desinstalar">Desinstalar</a></li>
+    <li><a href="#limitacoes">Limitações de instalação</a></li>
+  </ul>
+</aside>
+  <!-- dx:toc:end -->
+</div>
+</body>
+</html>

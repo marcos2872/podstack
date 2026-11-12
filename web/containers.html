@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Containers · PodStack 0.1.2</title>
+  <title>Containers · PodStack 0.1.3</title>
   <meta name="description" content="Listar, filtrar, criar e operar containers: ciclo de vida, logs, terminal, stats, arquivos, inspect, health, rootful e CRIU.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/docs-next.css">
   <script>
     (function () {
       try {
@@ -18,9 +19,11 @@
       } catch (_) {}
     })();
   </script>
+  <script src="assets/search-index.js" defer></script>
   <script src="assets/app.js" defer></script>
+  <script src="assets/docs-next.js" defer></script>
 </head>
-<body>
+<body class="docs-next">
   <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
 
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
@@ -52,23 +55,26 @@
     <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
     <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
     <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></symbol>
   </defs>
 </svg>
 
 
-  <header class="topbar">
-    <div class="topbar-left">
-      <button class="icon-btn nav-toggle" type="button" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Abrir navegação">
+  <!-- dx:topbar:start -->
+<header class="dx-topbar">
+    <div class="dx-topbar-left">
+      <button class="dx-icon-btn dx-nav-toggle" type="button" data-dx-nav-toggle aria-controls="dx-sidebar" aria-expanded="false" aria-label="Abrir navegação">
         <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
       </button>
-      <a class="topbar-brand" href="index.html">
-        <img src="assets/podstack-capsule.svg" alt="" width="28" height="28">
-        <span>PodStack</span>
+      <a class="dx-brand" href="index.html">
+        <img src="assets/podstack-capsule.svg" alt="" width="26" height="26">
+        <span class="dx-brand-name">PodStack</span>
+        <span class="dx-brand-tag">Docs</span>
       </a>
-      <span class="topbar-label">Documentação</span>
+      <span class="dx-version">0.1.3</span>
     </div>
 
-    <div class="search" role="search">
+    <div class="search dx-search" role="search">
       <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
       <input id="site-search" type="search" role="combobox" aria-label="Buscar na documentação"
              aria-controls="search-results" aria-expanded="false" aria-autocomplete="list"
@@ -77,51 +83,304 @@
       <div class="search-results" id="search-results" role="listbox" aria-label="Resultados da busca" hidden></div>
     </div>
 
-    <div class="topbar-actions">
-      <a class="icon-btn" href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
+    <div class="dx-topbar-actions">
+      <a class="dx-cta" href="install.html">Instalar</a>
+      <a class="dx-icon-btn" href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
         <svg class="icon" aria-hidden="true"><use href="#i-github"></use></svg>
       </a>
-      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Alternar tema">
+      <button class="dx-icon-btn" id="theme-toggle" type="button" aria-label="Alternar tema">
         <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
       </button>
     </div>
   </header>
+<!-- dx:topbar:end -->
 
-  <div class="nav-overlay" data-nav-overlay aria-hidden="true"></div>
+  <div class="dx-overlay" data-dx-overlay aria-hidden="true"></div>
 
-  <aside class="sidebar" id="sidebar" aria-label="Navegação da documentação">
-    <a class="sidebar-brand" href="index.html">
-      <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
-      <span>
-        <span class="brand-name">PodStack</span>
-        <span class="brand-sub">Documentação 0.1.2</span>
-      </span>
-    </a>
-    <nav class="nav" aria-label="Seções da documentação">
-      <div class="nav-section"><p class="nav-group">Introdução</p><ul><li><a href="index.html"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg><span>Visão geral</span></a></li></ul></div>
-<div class="nav-section"><p class="nav-group">Engine</p><ul><li><a href="containers.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg><span>Containers</span></a></li><li><a href="images.html"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg><span>Imagens</span></a></li><li><a href="volumes.html"><svg class="icon" aria-hidden="true"><use href="#i-database"></use></svg><span>Volumes</span></a></li><li><a href="networks.html"><svg class="icon" aria-hidden="true"><use href="#i-network"></use></svg><span>Redes</span></a></li><li><a href="pods.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Pods</span></a></li><li><a href="compose.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal"></use></svg><span>Compose</span></a></li><li><a href="builds.html"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg><span>Builds</span></a></li></ul></div>
-<div class="nav-section"><p class="nav-group">Linux e Kubernetes</p><ul><li><a href="machines.html"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span>Machines</span></a></li><li><a href="kubernetes.html"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Kubernetes</span></a></li><li><a href="domains.html"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span>Domínios</span></a></li></ul></div>
-<div class="nav-section"><p class="nav-group">Referência</p><ul><li><a href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Configurações</span></a></li><li><a href="cli.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><span>CLI</span></a></li></ul></div>
-<div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
-    </nav>
-    <div class="sidebar-foot">
-      <p>Versão 0.1.2 · GPL-3.0-or-later</p>
-      <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
+  <div class="dx-shell">
+<!-- dx:sidebar:start -->
+<aside class="dx-sidebar" id="dx-sidebar" aria-label="Navegação da documentação">
+  <nav class="dx-nav" aria-label="Seções da documentação">
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Começar</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="index.html"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg><span>Visão geral</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-index" aria-label="Expandir seção Visão geral"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-index" hidden>
+            <li><a href="index.html#visao-geral">Visão geral</a></li>
+            <li><a href="index.html#arquitetura">Arquitetura em uma frase</a></li>
+            <li><a href="index.html#primeiros-passos">Primeiros passos</a></li>
+            <li><a href="index.html#mapa">Mapa da documentação</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="install.html"><svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg><span>Instalação</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-install" aria-label="Expandir seção Instalação"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-install" hidden>
+            <li><a href="install.html#requisitos">Requisitos</a></li>
+            <li><a href="install.html#instalar">Instalar o pacote</a></li>
+            <li><a href="install.html#primeiro-start">Primeiro start</a></li>
+            <li><a href="install.html#setup">Setup em 7 etapas</a></li>
+            <li><a href="install.html#helper">Helper e polkit</a></li>
+            <li><a href="install.html#verificar">Verificar a instalação</a></li>
+            <li><a href="install.html#atualizar-desinstalar">Atualizar e desinstalar</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page dx-nav-page--child">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="onboarding.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Onboarding</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-onboarding" aria-label="Expandir seção Onboarding"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-onboarding" hidden>
+            <li><a href="onboarding.html#boas-vindas">1. Boas-vindas</a></li>
+            <li><a href="onboarding.html#diagnostico">2. Diagnóstico</a></li>
+            <li><a href="onboarding.html#podman">3. Podman</a></li>
+            <li><a href="onboarding.html#qemu-kvm">4. QEMU/KVM</a></li>
+            <li><a href="onboarding.html#componentes">5. Componentes</a></li>
+            <li><a href="onboarding.html#validacao">6. Validação</a></li>
+            <li><a href="onboarding.html#pronto">7. Pronto</a></li>
+            <li><a href="onboarding.html#depois-do-setup">Depois do setup</a></li>
+          </ul>
+        </li>
+      </ul>
     </div>
-  </aside>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Engine</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page is-active">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="containers.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg><span>Containers</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="true" aria-controls="dx-sub-containers" aria-label="Recolher seção Containers"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-containers">
+            <li><a href="containers.html#visao-geral">Visão geral</a></li>
+            <li><a href="containers.html#criar">Criar e executar</a></li>
+            <li><a href="containers.html#rede-e-portas">Rede e portas</a></li>
+            <li><a href="containers.html#volumes-e-mounts">Volumes e mounts</a></li>
+            <li><a href="containers.html#ciclo-de-vida">Ciclo de vida</a></li>
+            <li><a href="containers.html#detalhe">Detalhe e abas</a></li>
+            <li><a href="containers.html#rootful">Rootful</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="images.html"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg><span>Imagens</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-images" aria-label="Expandir seção Imagens"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-images" hidden>
+            <li><a href="images.html#visao-geral">Visão geral</a></li>
+            <li><a href="images.html#pull-importacao">Pull e importação</a></li>
+            <li><a href="images.html#tags-remocao">Tags e remoção</a></li>
+            <li><a href="images.html#prune">Prune com prévia</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="volumes.html"><svg class="icon" aria-hidden="true"><use href="#i-database"></use></svg><span>Volumes</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-volumes" aria-label="Expandir seção Volumes"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-volumes" hidden>
+            <li><a href="volumes.html#visao-geral">Visão geral</a></li>
+            <li><a href="volumes.html#criar-clonar">Criar, clonar e importar do host</a></li>
+            <li><a href="volumes.html#usar-em-containers">Usar em containers</a></li>
+            <li><a href="volumes.html#prune-remocao">Prune e remoção</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="networks.html"><svg class="icon" aria-hidden="true"><use href="#i-network"></use></svg><span>Redes</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-networks" aria-label="Expandir seção Redes"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-networks" hidden>
+            <li><a href="networks.html#visao-geral">Visão geral</a></li>
+            <li><a href="networks.html#criar-uma-rede">Criar uma rede</a></li>
+            <li><a href="networks.html#conectar-containers">Conectar containers</a></li>
+            <li><a href="networks.html#remover-uma-rede">Remover uma rede</a></li>
+            <li><a href="networks.html#aliases-e-dns">Aliases e DNS</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="pods.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Pods</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-pods" aria-label="Expandir seção Pods"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-pods" hidden>
+            <li><a href="pods.html#visao-geral">Visão geral</a></li>
+            <li><a href="pods.html#criar-um-pod">Criar um pod</a></li>
+            <li><a href="pods.html#ciclo-de-vida">Ciclo de vida</a></li>
+            <li><a href="pods.html#remover-um-pod">Remover um pod</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Compose e builds</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="compose.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal"></use></svg><span>Compose</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-compose" aria-label="Expandir seção Compose"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-compose" hidden>
+            <li><a href="compose.html#visao-geral">Visão geral</a></li>
+            <li><a href="compose.html#subir">Subir um projeto</a></li>
+            <li><a href="compose.html#operar">Operar o projeto</a></li>
+            <li><a href="compose.html#logs">Serviços e logs</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="builds.html"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg><span>Builds</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-builds" aria-label="Expandir seção Builds"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-builds" hidden>
+            <li><a href="builds.html#visao-geral">Visão geral</a></li>
+            <li><a href="builds.html#criar-um-build">Criar um build</a></li>
+            <li><a href="builds.html#contexto-e-dockerfile">Contexto e Dockerfile</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Linux</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="machines.html"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span>Machines</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-machines" aria-label="Expandir seção Machines"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-machines" hidden>
+            <li><a href="machines.html#visao-geral">Visão geral</a></li>
+            <li><a href="machines.html#criar">Criar uma machine</a></li>
+            <li><a href="machines.html#ciclo-de-vida">Ciclo de vida</a></li>
+            <li><a href="machines.html#detalhe">Detalhe</a></li>
+            <li><a href="machines.html#hardware">Portas e dispositivos</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Kubernetes</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="kubernetes.html"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Kubernetes</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-kubernetes" aria-label="Expandir seção Kubernetes"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-kubernetes" hidden>
+            <li><a href="kubernetes.html#visao-geral">Visão geral</a></li>
+            <li><a href="kubernetes.html#habilitar-o-cluster">Habilitar o cluster</a></li>
+            <li><a href="kubernetes.html#operar-o-cluster">Operar o cluster</a></li>
+            <li><a href="kubernetes.html#contexto-e-kubeconfig">Contexto e kubeconfig</a></li>
+            <li><a href="kubernetes.html#tls">TLS, SANs e exposição</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Rede local</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="domains.html"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span>Domínios</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-domains" aria-label="Expandir seção Domínios"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-domains" hidden>
+            <li><a href="domains.html#visao-geral">Visão geral</a></li>
+            <li><a href="domains.html#localhost">Domínios *.localhost na prática</a></li>
+            <li><a href="domains.html#indice">Página de índice</a></li>
+            <li><a href="domains.html#deteccao">Detecção automática da porta</a></li>
+            <li><a href="domains.html#podstack-local">Domínios *.podstack.local e DNS</a></li>
+            <li><a href="domains.html#https">HTTPS com CA interna</a></li>
+            <li><a href="domains.html#labels">Labels dev.podstack.*</a></li>
+            <li><a href="domains.html#lan">Expor na LAN</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Referência</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Configurações</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-settings" aria-label="Expandir seção Configurações"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-settings" hidden>
+            <li><a href="settings.html#visao-geral">Visão geral</a></li>
+            <li><a href="settings.html#categorias">Categorias</a></li>
+            <li><a href="settings.html#geral">Geral</a></li>
+            <li><a href="settings.html#rede">Rede e portas</a></li>
+            <li><a href="settings.html#maquinas-retencao">Machines e retenção</a></li>
+            <li><a href="settings.html#diagnostico">Diagnóstico e report</a></li>
+          </ul>
+        </li>
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="cli.html"><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg><span>CLI</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-cli" aria-label="Expandir seção CLI"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-cli" hidden>
+            <li><a href="cli.html#visao-geral">Visão geral</a></li>
+            <li><a href="cli.html#daemon">Daemon, socket e ativação</a></li>
+            <li><a href="cli.html#comandos">Grupos de comandos</a></li>
+            <li><a href="cli.html#json">JSON, exit codes e automação</a></li>
+            <li><a href="cli.html#ambiente">Variáveis de ambiente</a></li>
+            <li><a href="cli.html#exemplos">Exemplos de automação</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="dx-nav-group">
+      <p class="dx-nav-label">Ajuda</p>
+      <ul class="dx-nav-list">
+        <li class="dx-nav-page">
+          <div class="dx-nav-row">
+            <a class="dx-nav-link" href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a>
+            <button class="dx-nav-chevron" type="button" data-dx-chevron aria-expanded="false" aria-controls="dx-sub-troubleshooting" aria-label="Expandir seção Solução de problemas"><span class="dx-chevron" aria-hidden="true"></span></button>
+          </div>
+          <ul class="dx-nav-sub" id="dx-sub-troubleshooting" hidden>
+            <li><a href="troubleshooting.html#primeiros-checks">Primeiros checks</a></li>
+            <li><a href="troubleshooting.html#daemon-socket">Daemon e socket</a></li>
+            <li><a href="troubleshooting.html#podman">Podman e engine</a></li>
+            <li><a href="troubleshooting.html#helper-polkit">Helper e polkit</a></li>
+            <li><a href="troubleshooting.html#kvm">KVM, QEMU e virtiofsd</a></li>
+            <li><a href="troubleshooting.html#ssh">Machines, SSH e known_hosts</a></li>
+            <li><a href="troubleshooting.html#x11">X11</a></li>
+            <li><a href="troubleshooting.html#portas">Portas, proxy e firewall</a></li>
+            <li><a href="troubleshooting.html#https-ca">HTTPS e CA</a></li>
+            <li><a href="troubleshooting.html#dns">DNS e *.podstack.local</a></li>
+            <li><a href="troubleshooting.html#audio">Áudio no guest</a></li>
+            <li><a href="troubleshooting.html#criu">CRIU, checkpoint e cgroup rootless</a></li>
+            <li><a href="troubleshooting.html#compose">Compose e builds</a></li>
+            <li><a href="troubleshooting.html#updates">Updates</a></li>
+            <li><a href="troubleshooting.html#erros">Códigos de erro PODSTACK</a></li>
+            <li><a href="troubleshooting.html#logs">Logs e diagnóstico avançado</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </nav>
+  <div class="dx-sidebar-foot">
+    <p>Versão 0.1.3 · GPL-3.0-or-later</p>
+    <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
+  </div>
+</aside>
+<!-- dx:sidebar:end -->
 
-  <div class="main">
-    <main class="page" id="conteudo">
-      <nav class="breadcrumb" aria-label="Trilha de navegação">
-        <a href="index.html">Documentação</a>
-        <span class="sep" aria-hidden="true">›</span>
-        <span aria-current="page">Containers</span>
-      </nav>
+  <div class="main dx-main">
+    <main class="page dx-page" id="conteudo">
+      <nav class="breadcrumb" aria-label="Trilha de navegação"><a href="index.html">Documentação</a><span class="sep" aria-hidden="true">›</span><span>Engine</span><span class="sep" aria-hidden="true">›</span><span aria-current="page">Containers</span></nav>
 
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg> PodStack Docs</div>
       <h1>Containers</h1>
 <p class="lede">Crie, opere e inspecione containers Podman sem sair da GUI — com logs, terminal, arquivos, estatísticas, health e inspect no mesmo detalhe.</p>
-<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.2</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.3</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
 <p>A seção <strong>Containers</strong> é a tela principal do PodStack. Ela combina uma lista com
 filtros, um inspetor lateral e um detalhe expansível com nove abas. Os containers criados fora do
 PodStack também aparecem, desde que o daemon consiga reconciliar o estado com o Podman.</p>
@@ -130,7 +389,7 @@ PodStack também aparecem, desde que o daemon consiga reconciliar o estado com o
 a linha pode mostrar <code>starting</code> ou uma transição otimista antes de o engine confirmar.
 <strong>Health</strong> aparece como <code>healthy</code>, <code>unhealthy</code>, <code>starting</code>
 ou <strong>sem healthcheck</strong>.</p>
-<h2 id="na-interface">Na interface</h2><h3 id="listar-filtrar">Listar, filtrar e selecionar</h3>
+<h3 id="listar-filtrar">Listar, filtrar e selecionar</h3>
 <ol class="steps">
   <li>Abra <strong>Containers</strong> na barra lateral.</li>
   <li>Use as abas <strong>Todos</strong>, <strong>Em execução</strong> e <strong>Parados</strong> para filtrar por estado.</li>
@@ -140,7 +399,7 @@ ou <strong>sem healthcheck</strong>.</p>
 </ol>
 <p>As setas do teclado navegam pela lista; <kbd>Enter</kbd> abre o detalhe; <kbd>Esc</kbd> desseleciona.
 <kbd>F5</kbd> atualiza e <kbd>Ctrl</kbd>+<kbd>Enter</kbd> inicia ou para o container selecionado.</p>
-<h3 id="criar">Criar um container</h3>
+<h2 id="criar">Criar e executar</h2>
 <ol class="steps">
   <li>Clique em <strong>Novo container</strong> (ou <kbd>Ctrl</kbd>+<kbd>N</kbd>).</li>
   <li>Preencha <strong>Imagem</strong> (por exemplo, <code>nginx:alpine</code>). Se a imagem não existir localmente, faça o pull antes em <a href="images.html">Imagens</a>.</li>
@@ -152,7 +411,26 @@ ou <strong>sem healthcheck</strong>.</p>
 <code>127.0.0.1:8081:81</code>. O campo <strong>Env</strong> aceita <code>A=B, C=D</code>;
 <strong>Volumes</strong> aceita <code>/host:/container, /tmp:/mnt</code>. Sem
 <strong>Expor portas na LAN</strong>, as portas publicadas ficam em <code>127.0.0.1</code>.</p>
-<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">A imagem precisa existir</p><p>A criação usa a imagem local. O Podman retorna erro se ela não estiver disponível; baixe com <a href="images.html">Pull</a> ou <code>podstack images pull &lt;imagem&gt;</code>.</p></div></div><h3 id="ciclo-de-vida">Ciclo de vida e ações do inspetor</h3>
+<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">A imagem precisa existir</p><p>A criação usa a imagem local. O Podman retorna erro se ela não estiver disponível; baixe com <a href="images.html">Pull</a> ou <code>podstack images pull &lt;imagem&gt;</code>.</p></div></div><h2 id="rede-e-portas">Rede e portas</h2>
+<p>Todo container nasce na rede bridge padrão do Podman ou em uma rede escolhida na criação. Para
+isolar projetos, crie uma rede em <a href="networks.html">Redes</a> e selecione-a no diálogo de
+criação; containers da mesma rede se resolvem por nome ou alias.</p>
+<p>As portas são publicadas na criação, no formato <code>8080:80</code> ou
+<code>127.0.0.1:8081:81</code>. Sem <strong>Expor portas na LAN</strong>, o bind fica em
+<code>127.0.0.1</code>; com o toggle, o bind é ampliado. No modo rootless, uma porta não publicada
+não pode ser adicionada depois do create — publique na criação ou use Compose.</p>
+<p>A aba <strong>Redes</strong> do detalhe mostra IP, gateway, MAC, aliases, network ID e as portas
+publicadas. O botão <strong>Abrir porta</strong> do inspetor abre
+<code>http://localhost:&lt;porta&gt;</code> para a primeira porta publicada.</p>
+<h2 id="volumes-e-mounts">Volumes e mounts</h2>
+<p>Use volumes nomeados para dados que precisam sobreviver ao container e binds do host para código
+ou arquivos locais. O campo <strong>Volumes</strong> da criação aceita
+<code>/host:/container</code> e <code>/tmp:/mnt</code>; volumes nomeados podem ser criados antes em
+<a href="volumes.html">Volumes</a>.</p>
+<p>A aba <strong>Volumes</strong> do detalhe lista tipo, nome, origem, destino, driver, RW e
+propagação. A remoção pela GUI usa <code>force</code> e <strong>preserva os volumes</strong>; não há
+caixa “remover volumes” nesta versão. Binds do host não são afetados.</p>
+<h2 id="ciclo-de-vida">Ciclo de vida</h2>
 <p>Com um container selecionado, o inspetor mostra o nome, a imagem, o estado e as ações principais:</p>
 <ul>
   <li><strong>Iniciar</strong>, <strong>Parar</strong>, <strong>Reiniciar</strong> e <strong>Remover</strong> no cabeçalho.</li>
@@ -164,7 +442,7 @@ ou <strong>sem healthcheck</strong>.</p>
 </ul>
 <p>O botão de lixeira remove o container após confirmação. A GUI usa remoção forçada e
 <strong>preserva os volumes</strong>; não há caixa “remover volumes” nesta versão.</p>
-<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Remoção é permanente</p><p>O container é removido permanentemente. Se precisar dos dados de um volume nomeado, eles continuam no volume; binds do host não são afetados. A API RPC <code>containers.remove</code> aceita <code>volumes</code>, mas a GUI/CLI 0.1.2 não expõe esse controle.</p></div></div><h3 id="detalhe">Detalhe: nove abas</h3>
+<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Remoção é permanente</p><p>O container é removido permanentemente. Se precisar dos dados de um volume nomeado, eles continuam no volume; binds do host não são afetados. A API RPC <code>containers.remove</code> aceita <code>volumes</code>, mas a GUI/CLI 0.1.3 não expõe esse controle.</p></div></div><h2 id="detalhe">Detalhe e abas</h2>
 <p>O detalhe expandido (<code>ContainerDetail</code>) abre com <strong>Visão geral</strong> e
 oferece:</p>
 <div class="table-wrap">
@@ -223,7 +501,7 @@ oferece:</p>
 <p>Os atalhos <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> e <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>
 abrem logs e terminal do container selecionado. O terminal embutido também pode ser aberto em uma
 janela separada; o fechamento da janela encerra a sessão.</p>
-<h3 id="rootful">Rootful opt-in</h3>
+<h2 id="rootful">Rootful</h2>
 <p>O padrão é rootless. Para usar o socket rootful, abra <strong>Configurações</strong> (item
 <strong>Settings</strong> na barra lateral), escolha a categoria <strong>Engine</strong> e altere
 <code>engine.mode</code> para <code>rootful</code>. A mudança exige reiniciar o PodStack e o seu
@@ -231,7 +509,7 @@ usuário precisa de acesso ao socket correspondente (normalmente <code>/run/podm
 <p>Rootful é opt-in explícito. A GUI mostra o modo no rodapé e os erros de permissão explicam a
 limitação. O PodStack não usa setuid nem <code>sudo</code> para containers.</p>
 <h2 id="na-cli">Na CLI</h2>
-<p>O CLI 0.1.2 lista e opera containers existentes, mas <strong>não cria, inicia, para nem remove</strong>
+<p>O CLI 0.1.3 lista e opera containers existentes, mas <strong>não cria, inicia, para nem remove</strong>
 containers. Para essas ações, use a GUI. As operações disponíveis são:</p>
 <div class="table-wrap">
 <table>
@@ -368,22 +646,17 @@ podstack restore web</code></pre><div class="callout limit" role="note"><svg cla
 </tbody></table></div><h2 id="limitacoes">Limitações</h2>
 <ul>
   <li>O CLI não cria, inicia, para nem remove containers; o ciclo de vida completo está na GUI.</li>
-  <li>A remoção pela GUI usa <code>force</code> e preserva volumes. A API aceita <code>volumes</code>, mas não há controle na GUI/CLI 0.1.2.</li>
+  <li>A remoção pela GUI usa <code>force</code> e preserva volumes. A API aceita <code>volumes</code>, mas não há controle na GUI/CLI 0.1.3.</li>
   <li>O diálogo de criação não expõe CPU/memória nem restart policy; esses campos podem existir no contrato RPC, mas não na interface.</li>
   <li>Checkpoint/restore CRIU é dependente do host e costuma falhar em rootless.</li>
   <li>Portas não publicadas não podem ser adicionadas depois do create no modo rootless. Publique na criação ou use Compose.</li>
-  <li>Logs e terminal não têm comando equivalente no CLI 0.1.2; use a GUI ou o Podman diretamente.</li>
+  <li>Logs e terminal não têm comando equivalente no CLI 0.1.3; use a GUI ou o Podman diretamente.</li>
 </ul>
 
-
-      <nav class="page-toc" data-toc aria-label="Nesta página" hidden></nav>
-
-      <nav class="pager" aria-label="Navegação entre páginas">
-        <a class="prev" href="index.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Visão geral</span></a><a class="next" href="images.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Imagens</span></a>
-      </nav>
+      <nav class="pager" aria-label="Navegação entre páginas"><a class="prev" href="onboarding.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Onboarding</span></a><a class="next" href="images.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Imagens</span></a></nav>
 
       <footer class="site-footer">
-        <p>PodStack 0.1.2 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <p>PodStack 0.1.3 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
         <div class="footer-links">
           <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>
@@ -392,5 +665,24 @@ podstack restore web</code></pre><div class="callout limit" role="note"><svg cla
       </footer>
     </main>
   </div>
+  <!-- dx:toc:start -->
+<aside class="dx-toc" aria-label="Nesta página">
+  <p class="dx-toc-title">Nesta página</p>
+  <ul>
+    <li><a href="#visao-geral">Visão geral</a></li>
+    <li class="dx-toc-sub"><a href="#listar-filtrar">Listar, filtrar e selecionar</a></li>
+    <li><a href="#criar">Criar e executar</a></li>
+    <li><a href="#rede-e-portas">Rede e portas</a></li>
+    <li><a href="#volumes-e-mounts">Volumes e mounts</a></li>
+    <li><a href="#ciclo-de-vida">Ciclo de vida</a></li>
+    <li><a href="#detalhe">Detalhe e abas</a></li>
+    <li><a href="#rootful">Rootful</a></li>
+    <li><a href="#na-cli">Na CLI</a></li>
+    <li><a href="#referencia-rapida">Referência rápida</a></li>
+    <li><a href="#limitacoes">Limitações</a></li>
+  </ul>
+</aside>
+  <!-- dx:toc:end -->
+</div>
 </body>
 </html>

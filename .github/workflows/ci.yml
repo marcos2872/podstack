@@ -27,6 +27,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Site (gerador)
+        run: python3 scripts/web_build.py --check
+
       - name: Dependências
         run: |
           dnf install -y cmake ninja-build gcc-c++ gcovr clang-tools-extra \

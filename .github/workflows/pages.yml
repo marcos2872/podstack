@@ -38,6 +38,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verificar site (gerador)
+        run: python3 scripts/web_build.py --check
+
       - name: Configurar Pages
         uses: actions/configure-pages@v6
 

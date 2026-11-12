@@ -117,92 +117,7 @@
 
   /* ---------- Busca ---------- */
 
-  const pageIndex = [
-    {
-      title: "Visão geral",
-      url: "index.html",
-      description: "O que é o PodStack, arquitetura, primeiros passos e limitações.",
-      keys: "podstack visao geral arquitetura json-rpc daemon libpod instalacao setup rootless limitacoes"
-    },
-    {
-      title: "Containers",
-      url: "containers.html",
-      description: "Listar, criar, operar, inspecionar, logs, terminal, arquivos e stats.",
-      keys: "container containers podman criar iniciar parar pausar matar remover logs terminal arquivos stats inspect health rootless rootful checkpoint criu"
-    },
-    {
-      title: "Imagens",
-      url: "images.html",
-      description: "Pull, push, tag, histórico, prune e export/load de imagens.",
-      keys: "imagem imagens pull push tag untag prune digest history export load tar plataforma amd64 arm64"
-    },
-    {
-      title: "Volumes",
-      url: "volumes.html",
-      description: "Criar, clonar, importar do host, exportar, importar e limpar volumes.",
-      keys: "volume volumes driver mountpoint clone reflink export import tar zst prune host"
-    },
-    {
-      title: "Redes",
-      url: "networks.html",
-      description: "Redes bridge, subnet, gateway, conectar containers e aliases.",
-      keys: "rede redes network subnet gateway bridge conectar desconectar alias ipv6"
-    },
-    {
-      title: "Pods",
-      url: "pods.html",
-      description: "Pods do Podman: criar, iniciar, parar, reiniciar e remover.",
-      keys: "pod pods podman agrupar containers start stop restart remover"
-    },
-    {
-      title: "Compose",
-      url: "compose.html",
-      description: "Projetos Compose por labels, up/down, logs por serviço e provider.",
-      keys: "compose docker-compose projeto labels servico up down logs provider yaml"
-    },
-    {
-      title: "Builds",
-      url: "builds.html",
-      description: "Build por contexto, Dockerfile, build args, plataformas e histórico.",
-      keys: "build builds dockerfile contexto tag build-arg plataforma manifest list sqlite historico"
-    },
-    {
-      title: "Machines",
-      url: "machines.html",
-      description: "VMs Linux QEMU/KVM, SSH, arquivos, portas, snapshots e hardware.",
-      keys: "machine machines vm qemu kvm ssh virtiofs cloud-init snapshot usb serial audio x11 clone export import"
-    },
-    {
-      title: "Kubernetes",
-      url: "kubernetes.html",
-      description: "Cluster k3s em VM, kubeconfig isolado, Pods, Services e port-forward.",
-      keys: "kubernetes k8s k3s kubectl kubeconfig contexto pods services port-forward tls"
-    },
-    {
-      title: "Domínios",
-      url: "domains.html",
-      description: "*.localhost, *.podstack.local, HTTPS com CA interna e labels.",
-      keys: "dominio dominios localhost podstack.local proxy http https caddy ca dns labels expose lan"
-    },
-    {
-      title: "Configurações",
-      url: "settings.html",
-      description: "Categorias, chaves, tema, tray, proxy, portas, machines e updates.",
-      keys: "config configuracoes settings tema escala tray proxy portas maquinas retencao diagnostico updates"
-    },
-    {
-      title: "CLI",
-      url: "cli.html",
-      description: "Sintaxe, comandos, flags, --json, exit codes e variáveis de ambiente.",
-      keys: "cli podstack comando comandos flags json exit codes socket daemon automacao"
-    },
-    {
-      title: "Solução de problemas",
-      url: "troubleshooting.html",
-      description: "Daemon, Podman, polkit, KVM, SSH, portas, CA, DNS, CRIU e report.",
-      keys: "troubleshooting erro problema daemon socket podman polkit helper kvm virtiofsd ssh x11 portas firewall ca dns audio criu doctor report logs"
-    }
-  ];
+  const pageIndex = window.PODSTACK_SEARCH || [];
 
   const searchInput = document.getElementById("site-search");
   const searchResults = document.getElementById("search-results");
@@ -227,6 +142,28 @@
           local: true
         });
       }
+    });
+    return items;
+  }
+
+  function globalHeadings(query) {
+    const items = [];
+    pageIndex.forEach((page) => {
+      if (page.url === currentFile) {
+        return;
+      }
+      (page.headings || []).forEach((heading) => {
+        const haystack = normalize(`${heading.title} ${page.title}`);
+        if (haystack.includes(query)) {
+          items.push({
+            title: heading.title,
+            url: heading.url,
+            description: page.title,
+            local: false,
+            heading: true
+          });
+        }
+      });
     });
     return items;
   }
@@ -283,6 +220,7 @@
         }
       });
       results.push(...localHeadings(query));
+      results.push(...globalHeadings(query));
     }
 
     searchResults.innerHTML = "";
