@@ -25,6 +25,9 @@ struct SettingDef {
     QString category;
     QString description;
     bool secret = false;
+    /// Aceita null mesmo quando o default é um valor (ex.: chave pública
+    /// embutida no build de release).
+    bool nullable = false;
     /// Chave sem efeito no app (ainda): continua no schema/CLI, mas o diálogo
     /// de Configurações não a exibe.
     bool hidden = false;
