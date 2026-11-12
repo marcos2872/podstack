@@ -45,7 +45,7 @@ O projeto segue **SDD (Spec-Driven Development)**: a especificação é a fonte 
 | `/speckit.implement` | `src/` (a criar no M0) |
 | `/speckit.analyze` | [`testing.md`](sdd/testing.md) + checklist do PRD §14 |
 
-Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem depender do CLI `specify`. Deltas de feature usam o mesmo trio em [`specs/<NNN>-<nome>/`](specs/) (ver [`specs/001-apps-remotos-vm/`](specs/001-apps-remotos-vm/)).
+Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem depender do CLI `specify`. Deltas de feature usam o mesmo trio em [`specs/<NNN>-<nome>/`](specs/) (ver [`specs/001-apps-remotos-vm/`](specs/001-apps-remotos-vm/) e [`specs/002-update-seguro-logs-debug/`](specs/002-update-seguro-logs-debug/)).
 
 ## Documentos de engenharia
 
