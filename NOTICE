@@ -13,3 +13,9 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+Third-party component:
+- qtermwidget 2.0.0 (https://github.com/lxqt/qtermwidget),
+  GPL-2.0-or-later, com arquivos LGPL-2.0-or-later, vendored under
+  third_party/qtermwidget. Modifications documented in
+  third_party/qtermwidget/README.podstack.md.

@@ -36,7 +36,14 @@ Rectangle {
         } else if (theme === "dark") {
             Theme.dark = true
         } else {
-            Theme.dark = Qt.styleHints.colorScheme !== Qt.ColorScheme.Light
+            const hints = Qt.styleHints
+            const scheme = (hints && hints.colorScheme !== undefined) ? hints.colorScheme : undefined
+            if (typeof Qt.ColorScheme !== "undefined" && scheme !== undefined) {
+                Theme.dark = scheme !== Qt.ColorScheme.Light
+            } else {
+                // Qt 6.4 não expõe Qt.ColorScheme; mantém o tema claro.
+                Theme.dark = false
+            }
         }
         const scale = Number(backend.settingsValues["app.fontScale"] || 100)
         Theme.fontScale = (isFinite(scale) && scale >= 80 && scale <= 150) ? scale / 100 : 1.0
@@ -79,6 +86,7 @@ Rectangle {
 
     Connections {
         target: Qt.styleHints
+        ignoreUnknownSignals: true
         function onColorSchemeChanged() {
             if ((backend.settingsValues["app.theme"] || "system") === "system") {
                 applyAppearance()

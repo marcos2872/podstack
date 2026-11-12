@@ -2002,7 +2002,7 @@ void CliTest::goldenExitCodes()
         {"version-json",
          {QStringLiteral("version"), QStringLiteral("--json")},
          0,
-         QStringLiteral("PodStack 0.1.1"),
+         QStringLiteral("PodStack ") + QStringLiteral(PODSTACK_VERSION),
          {},
          false},
         {"help", {QStringLiteral("help")}, 0, QStringLiteral("Uso:"), {}, false},
@@ -2049,7 +2049,7 @@ void CliTest::goldenExitCodes()
             QCOMPARE(document.object().value(QStringLiteral("status")).toString(),
                      QStringLiteral("no-feed"));
             QCOMPARE(document.object().value(QStringLiteral("currentVersion")).toString(),
-                     QStringLiteral("0.1.1"));
+                     QStringLiteral(PODSTACK_VERSION));
         }
     }
 
@@ -2061,7 +2061,7 @@ void CliTest::goldenExitCodes()
     const QJsonDocument reportJson = QJsonDocument::fromJson(report.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
     QCOMPARE(reportJson.object().value(QStringLiteral("version")).toString(),
-             QStringLiteral("0.1.1"));
+             QStringLiteral(PODSTACK_VERSION));
 }
 
 void CliTest::configCommands()

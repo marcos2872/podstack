@@ -14,6 +14,7 @@
 #include <QMessageBox>
 #include <QPalette>
 #include <QQmlContext>
+#include <QQmlEngine>
 #include <QQmlError>
 #include <QQuickItem>
 #include <QQuickWidget>
@@ -91,6 +92,9 @@ void MachineDetailDialog::setupInterface(bool loadQml)
 
     if (loadQml) {
         m_quickWidget = new QQuickWidget(m_card);
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+        m_quickWidget->engine()->addImportPath(QStringLiteral("qrc:/qt/qml"));
+#endif
         m_quickWidget->setObjectName(QStringLiteral("machineDetailQuickWidget"));
         m_quickWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
         m_quickWidget->setClearColor(palette().color(QPalette::Window));
@@ -106,8 +110,13 @@ void MachineDetailDialog::setupInterface(bool loadQml)
                         connectQmlSignals();
                     }
                 });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
         m_quickWidget->loadFromModule(QStringLiteral("PodStack"),
                                       QStringLiteral("MachineInspector"));
+#else
+        m_quickWidget->setSource(
+            QUrl(QStringLiteral("qrc:/qt/qml/PodStack/src/gui/qml/MachineInspector.qml")));
+#endif
         connectQmlSignals();
         cardLayout->addWidget(m_quickWidget);
     } else {

@@ -55,10 +55,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 34
             color: Theme.bgSurface2
-            topLeftRadius: Theme.radiusLg
-            topRightRadius: Theme.radiusLg
-            bottomLeftRadius: 0
-            bottomRightRadius: 0
+            radius: Theme.radiusLg
 
             RowLayout {
                 anchors.fill: parent
