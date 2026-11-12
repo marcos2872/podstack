@@ -114,11 +114,14 @@ Sequência validada no spike de T10-01 com QEMU real (`PODSTACK_QEMU_INTEGRATION
 | Host | binário `xpra` (cliente) | `SetupManager` + override `PODSTACK_XPRA_BINARY`; ausência → `PODSTACK_DEPENDENCY_MISSING` |
 | Guest | pacote `xpra` | instalação sob demanda com consentimento |
 
+Nomes de pacote e versões por distro ficam em [`spec.md`](spec.md) §11 (validado em Fedora 44 e Ubuntu 24.04).
+
 | Distro | Comando | Observação |
 |---|---|---|
-| Ubuntu/Debian | `sudo apt-get install -y xpra` | `universe` nas imagens cloud |
-| Fedora | `sudo dnf install -y xpra` | **validar disponibilidade**; se ausente, repo oficial do projeto |
-| Arch/Alpine | fora do v1 | `reason=backend_missing` com instrução |
+| Fedora 43/44 | `sudo dnf install -y xpra` | 6.5.4 nos updates |
+| Ubuntu 24.04 | `sudo apt-get install -y xpra` | **3.1.5** no noble → experimental (spec §11.2); repo oficial do xpra para ≥ 6 |
+| Ubuntu 26.04 | — | sem pacote; mesma instrução |
+| Debian 12 / Arch / Alpine | fora do v1 | `reason=backend_missing` com instrução |
 
 ### 3.2 Sessão
 
@@ -166,6 +169,7 @@ Senha aleatória em `machineDir/rdp.secret` (`0600`), passada por arquivo escrit
 
 - **Porta como `MachinePort`** (`MachineMeta.h:14`), alocada por `findFreePort` (`MachineManager.cpp:399`) e concatenada ao **mesmo** `-netdev user,hostfwd=…` de `QemuCommand.cpp:204-213`; `exposeLan=false` obrigatório, entrada marcada `internal` para não vazar na UI/CLI de portas.
 - `hostfwd=tcp:127.0.0.1:<porta>-:3389` — endereço explícito, nunca `0.0.0.0`.
+- **Binário:** `xfreerdp` no Fedora (`freerdp`) e **`xfreerdp3`** no Ubuntu (`freerdp3-x11`); resolver por candidatos/`PODSTACK_FREERDP_BINARY`, nunca por nome fixo (spec §11).
 - TOFU: SHA-256 em `MachineMeta.rdpCertFingerprint`; `/cert:ignore` proibido; NLA obrigatório.
 - **Senha fora de argv:** `xfreerdp /from-stdin` (validar no spike) ou helper com `--password-file`. O caminho nunca usa `/p:`.
 

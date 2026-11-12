@@ -97,6 +97,7 @@ Sobre o console gráfico: ele está **adiado como P2** em `docs/adr/0003-machine
 | NFR-MAC-003 | `qga.sock` vive em `machineDir` (0700); RDP escuta só em `127.0.0.1`. |
 | NFR-MAC-004 | Ausência de backend não impede o uso da machine: X11/SSH continuam funcionando. |
 | NFR-MAC-005 | Zero regressão nos 17 binários de teste existentes; gate de cobertura de 80% mantido. |
+| NFR-MAC-006 | O setup descobre dependências por candidatos **por distro** (nome de pacote, nome de binário e caminho de firmware) e nunca sugere pacote inexistente; teste cobre Fedora e Ubuntu. |
 
 ## 6. Casos de uso
 
@@ -146,3 +147,51 @@ Waypipe; console gráfico como modo de uso diário; GPU; áudio por RDP como pad
 | FR-MAC-117…120, 121 (Windows), 122 | T10-03 |
 | FR-MAC-123 | T10-01 |
 | FR-MAC-124 | T10-02, T10-03 |
+| NFR-MAC-006 | T9-01, T10-02 |
+
+## 11. Dependências de host por distro
+
+Nada aqui é dependência de instalação do PodStack. Ausência gera `PODSTACK_DEPENDENCY_MISSING` com `reason=backend_missing` e o pacote exato (FR-MAC-122); o restante do app continua funcionando. Nomes validados em **2026-11-12** contra Fedora 44 (`rpm`/`dnf`) e Ubuntu 24.04 noble (`packages.ubuntu.com`).
+
+| Componente | Fedora 43/44 | Ubuntu 24.04 (noble) | Binário esperado | Observação |
+|---|---|---|---|---|
+| xpra (cliente) | `xpra` (6.5.4) | `xpra` (3.1.5, universe) | `xpra` | versão do Ubuntu é antiga; ver §11.2 |
+| FreeRDP (RAIL) | `freerdp` (3.32.2) | `freerdp3-x11` (3.32.2, universe) | `xfreerdp` / **`xfreerdp3`** | **nome do binário difere**; usar `PODSTACK_FREERDP_BINARY` |
+| TPM 2.0 | `swtpm` (0.10.2) | `swtpm` (0.7.3, main) | `swtpm` | — |
+| Firmware Secure Boot | `edk2-ovmf` | `ovmf` (main) | — | caminhos diferentes; ver §11.1 |
+| Módulo SPICE do QEMU | `qemu-ui-spice-core` | `qemu-system-modules-spice` | — | sem ele, `-spice` falha |
+| Áudio PipeWire no QEMU | `qemu-audio-pipewire` | `qemu-system-gui` (`audio-pipewire.so`) | — | **pré-requisito do T8-03 no Ubuntu, hoje não declarado** |
+| virtiofsd | `virtiofsd` (1.14.0) | `virtiofsd` (1.10.0, universe) | `virtiofsd` | já usado por T4-07 |
+| Viewer SPICE | `virt-viewer` | `virt-viewer` (universe) | `remote-viewer` | evita `spice-gtk` como dependência de build |
+| ISO virtio-win | — (sem pacote) | — (sem pacote) | — | download com SHA-256 ou arquivo do usuário |
+
+`Debian 12` fica **fora** desta matriz: o `.deb` não o suporta (`docs/engineering/packaging.md` §8). Alvos DEB: Ubuntu 24.04, 25.10 e 26.04.
+
+### 11.1 Caminhos do OVMF (não fixar um só)
+
+| Distro | CODE | VARS |
+|---|---|---|
+| Fedora | `/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd` | `/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd` |
+| Ubuntu | `/usr/share/OVMF/OVMF_CODE_4M.secboot.fd` | `/usr/share/OVMF/OVMF_VARS_4M.ms.fd` |
+
+O Ubuntu **não publica** `OVMF_VARS_4M.secboot.fd`; a variante com Secure Boot usa `OVMF_VARS_4M.ms.fd` (certificados Microsoft). A descoberta deve ser por lista de candidatos, nunca por caminho fixo.
+
+### 11.2 xpra: versão mínima
+
+| Base | Versão | Status |
+|---|---|---|
+| Fedora 43/44 | 6.5.4 | suportado |
+| Ubuntu 24.04 | 3.1.5 (2021) | **experimental** até validar; recomendado repositório oficial do xpra (≥ 6) |
+| Ubuntu 26.04 | não listado | sem pacote; mesma instrução |
+
+O PodStack **não adiciona repositório de terceiros automaticamente** — apenas instrui. Em qualquer caso, X11 forwarding segue como fallback (FR-MAC-109) e nenhuma versão é instalada sem consentimento (FR-MAC-108).
+
+### 11.3 Onde cada dependência entra no produto
+
+| Mecanismo | O que entra | Regra |
+|---|---|---|
+| `Recommends` do RPM/DEB | freerdp, swtpm, firmware, módulos SPICE/áudio | instalado por padrão; removível |
+| Etapa do setup via `InstallPackages` | o que faltar, incluindo xpra | consentimento + polkit; allowlist por gerenciador |
+| Download em runtime | ISO virtio-win | SHA-256 + consentimento + cache local |
+
+`Requires`/`Depends` fortes são proibidos para estes itens: quebrariam instalação mínima e o `scripts/clean-install-check.sh`.
