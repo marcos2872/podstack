@@ -926,8 +926,10 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: backend.setupStatus || qsTr("Trabalhando…")
-                        color: Theme.textSecondary
+                        text: backend.setupError.length > 0
+                              ? backend.setupError
+                              : (backend.setupStatus || qsTr("Trabalhando…"))
+                        color: backend.setupError.length > 0 ? Theme.danger : Theme.textSecondary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
                         elide: Text.ElideRight
@@ -1074,7 +1076,7 @@ Item {
     Connections {
         target: backend
         function onSetupJobChanged() {
-            if (backend.setupJobActive) {
+            if (backend.setupJobActive || backend.setupError.length > 0) {
                 setupWindow.jobPanelDismissed = false
             }
         }
