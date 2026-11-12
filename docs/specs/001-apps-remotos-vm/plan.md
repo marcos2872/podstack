@@ -111,7 +111,7 @@ Sequência validada no spike de T10-01 com QEMU real (`PODSTACK_QEMU_INTEGRATION
 
 | Lado | Requisito | Checagem |
 |---|---|---|
-| Host | binário `xpra` (cliente) | `SetupManager` + override `PODSTACK_XPRA_BINARY`; ausência → `PODSTACK_DEPENDENCY_MISSING` |
+| Host | binário `xpra` (cliente) | **dependência obrigatória do pacote** (spec §11.3); `SetupManager` só verifica + override `PODSTACK_XPRA_BINARY` |
 | Guest | pacote `xpra` | instalação sob demanda com consentimento |
 
 Nomes de pacote e versões por distro ficam em [`spec.md`](spec.md) §11 (validado em Fedora 44 e Ubuntu 24.04).
@@ -261,10 +261,11 @@ Machine Linux existente: `ssh` + `x11`, comportamento idêntico. Nenhum método 
 
 ## 10. Fases
 
-1. **M9** (T9-01…T9-06): habilitação Windows. Bloqueia só T10-03.
-2. **T10-01** e **T10-02** em paralelo com M9 — não dependem dele.
-3. **T10-03a** (spike) → **T10-03**.
+1. **T9-07** (empacotamento) primeiro: sem as dependências no pacote, todo o resto depende de passo manual.
+2. **M9** (T9-01…T9-06): habilitação Windows. Bloqueia só T10-03.
+3. **T10-01** e **T10-02** em paralelo com M9 — não dependem dele.
+4. **T10-03a** (spike) → **T10-03**.
 
 ## Anexo — M9 (resumo)
 
-Detalhe em [`tasks.md`](tasks.md): T9-01 console SPICE (reverte P2, atualiza ADR/spec), T9-02 OVMF secboot+SMM, T9-03 swtpm, T9-04 provisioner Windows, T9-05 drivers+agente, T9-06 áudio validado.
+Detalhe em [`tasks.md`](tasks.md): T9-01 console SPICE (reverte P2, atualiza ADR/spec), T9-02 OVMF secboot+SMM, T9-03 swtpm, T9-04 provisioner Windows, T9-05 drivers+agente, T9-06 áudio validado, T9-07 dependências de host no RPM/DEB.

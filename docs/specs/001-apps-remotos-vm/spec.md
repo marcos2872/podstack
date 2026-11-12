@@ -98,6 +98,7 @@ Sobre o console gráfico: ele está **adiado como P2** em `docs/adr/0003-machine
 | NFR-MAC-004 | Ausência de backend não impede o uso da machine: X11/SSH continuam funcionando. |
 | NFR-MAC-005 | Zero regressão nos 17 binários de teste existentes; gate de cobertura de 80% mantido. |
 | NFR-MAC-006 | O setup descobre dependências por candidatos **por distro** (nome de pacote, nome de binário e caminho de firmware) e nunca sugere pacote inexistente; teste cobre Fedora e Ubuntu. |
+| NFR-MAC-007 | A instalação padrão (RPM/DEB) entrega **todas** as dependências de host; em base limpa, o setup não encontra item faltante. Única exceção: ISO do virtio-win, baixado na primeira VM Windows. |
 
 ## 6. Casos de uso
 
@@ -148,10 +149,11 @@ Waypipe; console gráfico como modo de uso diário; GPU; áudio por RDP como pad
 | FR-MAC-123 | T10-01 |
 | FR-MAC-124 | T10-02, T10-03 |
 | NFR-MAC-006 | T9-01, T10-02 |
+| NFR-MAC-007 | Empacotamento RPM/DEB (T9-01/T10-02 herdam o critério) |
 
 ## 11. Dependências de host por distro
 
-Nada aqui é dependência de instalação do PodStack. Ausência gera `PODSTACK_DEPENDENCY_MISSING` com `reason=backend_missing` e o pacote exato (FR-MAC-122); o restante do app continua funcionando. Nomes validados em **2026-11-12** contra Fedora 44 (`rpm`/`dnf`) e Ubuntu 24.04 noble (`packages.ubuntu.com`).
+Tudo aqui é **dependência de instalação do PodStack** (RPM/DEB), com uma única exceção: o ISO do virtio-win, que não existe como pacote (§11.3). Nomes validados em **2026-11-12** contra Fedora 44 (`rpm`/`dnf`) e Ubuntu 24.04 noble (`packages.ubuntu.com`). Se um item for removido manualmente, o app degrada com `PODSTACK_DEPENDENCY_MISSING` (`reason=backend_missing`, FR-MAC-122) em vez de falhar sem explicação.
 
 | Componente | Fedora 43/44 | Ubuntu 24.04 (noble) | Binário esperado | Observação |
 |---|---|---|---|---|
@@ -160,7 +162,7 @@ Nada aqui é dependência de instalação do PodStack. Ausência gera `PODSTACK_
 | TPM 2.0 | `swtpm` (0.10.2) | `swtpm` (0.7.3, main) | `swtpm` | — |
 | Firmware Secure Boot | `edk2-ovmf` | `ovmf` (main) | — | caminhos diferentes; ver §11.1 |
 | Módulo SPICE do QEMU | `qemu-ui-spice-core` | `qemu-system-modules-spice` | — | sem ele, `-spice` falha |
-| Áudio PipeWire no QEMU | `qemu-audio-pipewire` | `qemu-system-gui` (`audio-pipewire.so`) | — | **pré-requisito do T8-03 no Ubuntu, hoje não declarado** |
+| Áudio PipeWire no QEMU | `qemu-audio-pipewire` | `qemu-system-gui` (`audio-pipewire.so`) | — | **corrige o áudio do T8-03 no Ubuntu**, que hoje falha sem ele |
 | virtiofsd | `virtiofsd` (1.14.0) | `virtiofsd` (1.10.0, universe) | `virtiofsd` | já usado por T4-07 |
 | Viewer SPICE | `virt-viewer` | `virt-viewer` (universe) | `remote-viewer` | evita `spice-gtk` como dependência de build |
 | ISO virtio-win | — (sem pacote) | — (sem pacote) | — | download com SHA-256 ou arquivo do usuário |
@@ -186,12 +188,52 @@ O Ubuntu **não publica** `OVMF_VARS_4M.secboot.fd`; a variante com Secure Boot 
 
 O PodStack **não adiciona repositório de terceiros automaticamente** — apenas instrui. Em qualquer caso, X11 forwarding segue como fallback (FR-MAC-109) e nenhuma versão é instalada sem consentimento (FR-MAC-108).
 
-### 11.3 Onde cada dependência entra no produto
+### 11.3 Política: dependências obrigatórias
 
-| Mecanismo | O que entra | Regra |
-|---|---|---|
-| `Recommends` do RPM/DEB | freerdp, swtpm, firmware, módulos SPICE/áudio | instalado por padrão; removível |
-| Etapa do setup via `InstallPackages` | o que faltar, incluindo xpra | consentimento + polkit; allowlist por gerenciador |
-| Download em runtime | ISO virtio-win | SHA-256 + consentimento + cache local |
+Decisão de produto: **a instalação padrão já entrega tudo o que o app precisa**. Dependências de host entram como obrigatórias no pacote — não como `Recommends`/`Suggests` — para que nenhuma feature exija passo manual de instalação.
 
-`Requires`/`Depends` fortes são proibidos para estes itens: quebrariam instalação mínima e o `scripts/clean-install-check.sh`.
+**RPM (Fedora 43/44) — `Requires`:**
+
+```
+qemu-kvm
+qemu-system-x86-core
+qemu-system-aarch64-core
+qemu-img
+virtiofsd
+edk2-ovmf
+qemu-ui-spice-core
+qemu-audio-pipewire
+swtpm
+freerdp
+xpra
+virt-viewer
+```
+
+**DEB (Ubuntu 24.04–26.04) — `Depends`:**
+
+```
+qemu-system-x86
+qemu-system-arm
+qemu-utils
+virtiofsd
+ovmf
+qemu-efi-aarch64
+qemu-system-modules-spice
+qemu-system-gui
+swtpm
+freerdp3-x11
+xpra
+virt-viewer
+```
+
+`qemu-system-gui` é o que fornece `audio-pipewire.so` no Ubuntu: sem ele, `-audiodev pipewire` não existe e o áudio do T8-03 falha. Passa de lacuna silenciosa a dependência declarada.
+
+**Exceção única — ISO do virtio-win.** Não existe como pacote em nenhuma das duas bases (verificado em Fedora 44 e noble). O download é **automático** na primeira criação de VM Windows, com SHA-256, progresso e cache em `~/.local/share/podstack/virtio-win/`. Nunca no `%post` do pacote.
+
+**Consequências aceitas:**
+
+- instalação maior (xpra é o item mais pesado; o restante é pequeno);
+- `scripts/clean-install-check.sh` e containers de CI baixam mais pacotes;
+- Flatpak continua sem AppHost (o sandbox não executa binário do host);
+- **correção necessária no daemon:** `qemuPackagesForManager()` cai no caso default com `qemu-system-x86_64` e `qemu-system-aarch64`, que **não são nomes de pacote** no Fedora (`dnf` não resolve). Trocar por `qemu-system-x86-core` e `qemu-system-aarch64-core`, nomes validados nos repos.
+- versões de `xpra`/`swtpm` variam por base (§11.2); o código não deve fixar versão, apenas o mínimo suportado.

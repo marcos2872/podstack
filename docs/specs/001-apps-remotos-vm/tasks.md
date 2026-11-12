@@ -18,6 +18,7 @@
 | T9-04 | P0 | Provisioner Windows: `provisioner: windows`, `installerIso`, `-cdrom`, ordem de boot, `autounattend.xml` (conta local, OOBE, RDP, `DriverPaths` para `virtio-win.iso`), default ≥ 4 GB/64 GB, enlightenments `hv_*`; sem cloud-init nem seed. | T9-02, T9-03 | instalação unattended até o desktop; ISO sai da ordem de boot após instalar (FR-MAC-114) |
 | T9-05 | P0 | Drivers + agente: vioscsi/viostor, NetKVM, viogpudo, `virtio-win-guest-tools` e `qemu-guest-agent` (MSI) via `autounattend`; `provisioning` → `running` dirigido por `guest-ping`. | T9-04, T10-01 | disco/rede virtio sem `!`; `guest-ping` responde; estado muda sem novo valor de enum (FR-MAC-115) |
 | T9-06 | P1 | Áudio Windows: validar `intel-hda` duplex (saída + microfone), nó PipeWire nomeado por VM, setting de latência; `machines.audio.set` vale para Windows. | T9-04 | playback e microfone funcionam; stream identificável no mixer (FR-MAC-116) |
+| T9-07 | P0 | Dependências de host no empacotamento: `Requires` (RPM) e `Depends` (DEB) conforme spec §11.3 — QEMU x86/arm, utils, virtiofsd, firmware, módulos SPICE e áudio (`qemu-system-gui` no Ubuntu), swtpm, freerdp, xpra, virt-viewer; corrigir `qemuPackagesForManager()`, que usa `qemu-system-x86_64`/`qemu-system-aarch64` (nome de binário, não de pacote). | — | instalação limpa em Fedora 44 e Ubuntu 24.04 não deixa nenhum check do setup em `missing`; `dnf`/`apt` resolvem todos os nomes; `test_setup` cobre os nomes; ISO virtio-win segue como download (NFR-MAC-006/007) |
 
 **Bloqueios duros:** Windows Home não habilita RAIL; GPU/3D exige VFIO (fora); Windows ARM fora (machines arm64 não suportadas).
 
@@ -83,7 +84,7 @@ Caminho rápido para valor visível: **T10-02** (xpra), independente de tudo.
 
 1. FR-MAC-101…124 → `docs/sdd/PRD.md`.
 2. Comportamento → `docs/sdd/spec.md` §7.
-3. T9-01…T9-06 e T10-01…T10-03 → `docs/sdd/tasks.md` (M9 = Windows, M10 = apps).
+3. T9-01…T9-07 e T10-01…T10-03 → `docs/sdd/tasks.md` (M9 = Windows, M10 = apps).
 4. Decisões D1…D4 → `docs/sdd/plan.md` ou **`docs/adr/0011-apps-remotos-vm.md`** (0010 já é o do qemu/DEB vendorizado).
 5. Console SPICE (T9-01) atualiza ADR-0003 e a spec no mesmo PR.
 6. Este diretório permanece como registro do delta.
