@@ -55,8 +55,6 @@ QTimeZone utcTimeZone()
 constexpr qint64 kMaxPublicKeyBytes = 64LL * 1024;
 
 // NOLINTBEGIN(bugprone-throwing-static-initialization)
-const QString kOvmfCodeAmd64 = QStringLiteral("/usr/share/edk2/ovmf/OVMF_CODE.fd");
-const QString kOvmfVarsAmd64 = QStringLiteral("/usr/share/edk2/ovmf/OVMF_VARS.fd");
 const QString kAavmfCodeArm64 = QStringLiteral("/usr/share/AAVMF/AAVMF_CODE.fd");
 const QString kAavmfVarsArm64 = QStringLiteral("/usr/share/AAVMF/AAVMF_VARS.fd");
 // NOLINTEND(bugprone-throwing-static-initialization)
@@ -949,6 +947,50 @@ void MachineManager::reconcile(Error *error)
     }
 }
 
+QStringList MachineManager::ovmfCodeCandidates()
+{
+    return {
+        QStringLiteral("/usr/share/edk2/ovmf/OVMF_CODE.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_CODE_4M.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_CODE.fd"),
+    };
+}
+
+QStringList MachineManager::ovmfVarsCandidates()
+{
+    return {
+        QStringLiteral("/usr/share/edk2/ovmf/OVMF_VARS.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_VARS_4M.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_VARS.fd"),
+    };
+}
+
+bool MachineManager::resolveOvmfPaths(QString *code, QString *vars,
+                                      const QStringList &codeCandidates,
+                                      const QStringList &varCandidates)
+{
+    const QStringList codes = codeCandidates.isEmpty() ? ovmfCodeCandidates() : codeCandidates;
+    const QStringList varList = varCandidates.isEmpty() ? ovmfVarsCandidates() : varCandidates;
+    for (int i = 0; i < codes.size() && i < varList.size(); ++i) {
+        if (QFileInfo::exists(codes.at(i)) && QFileInfo::exists(varList.at(i))) {
+            if (code) {
+                *code = codes.at(i);
+            }
+            if (vars) {
+                *vars = varList.at(i);
+            }
+            return true;
+        }
+    }
+    if (code) {
+        *code = codes.value(0);
+    }
+    if (vars) {
+        *vars = varList.value(0);
+    }
+    return false;
+}
+
 bool MachineManager::resolveFirmware(const QString &arch, const QString &machineDir,
                                      QString *codePath, QString *varsPath, Error *error)
 {
@@ -963,8 +1005,7 @@ bool MachineManager::resolveFirmware(const QString &arch, const QString &machine
 
     if (code.isEmpty()) {
         if (arch == QStringLiteral("amd64")) {
-            code = kOvmfCodeAmd64;
-            vars = kOvmfVarsAmd64;
+            (void) resolveOvmfPaths(&code, &vars);
         } else if (arch == QStringLiteral("arm64")) {
             code = kAavmfCodeArm64;
             vars = kAavmfVarsArm64;

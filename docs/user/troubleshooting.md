@@ -160,6 +160,18 @@ Se o virtiofsd estiver em um caminho fora do padrão, defina `PODSTACK_VIRTIOFSD
 no path esperado (`/usr/libexec/virtiofsd` é o fallback). O setup verifica QEMU, OVMF e virtiofsd;
 se um deles estiver ausente e for obrigatório, a tela principal fica bloqueada até a instalação.
 
+No Ubuntu, o pacote `ovmf` instala `/usr/share/OVMF/OVMF_CODE_4M.fd` e `OVMF_VARS_4M.fd`; a 0.1.3
+reconhece esses caminhos. Na 0.1.2, instale `ovmf` e crie os links esperados pelo app:
+
+```bash
+sudo mkdir -p /usr/share/edk2/ovmf
+sudo ln -sf /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/edk2/ovmf/OVMF_CODE.fd
+sudo ln -sf /usr/share/OVMF/OVMF_VARS_4M.fd /usr/share/edk2/ovmf/OVMF_VARS.fd
+```
+
+Se o helper falhar ao instalar, o setup mostra a mensagem no log e no rodapé; o
+`journalctl -u podstack-helper.service -n 100 --no-pager` traz o erro do apt/dnf.
+
 Para diagnosticar uma machine que não sobe:
 
 ```bash

@@ -1,6 +1,6 @@
-# Instalação e primeiro start — PodStack 0.1.2
+# Instalação e primeiro start — PodStack 0.1.3
 
-Este guia cobre a instalação do PodStack 0.1.2 em Fedora 43/44 e Ubuntu 24.04/26.04, o
+Este guia cobre a instalação do PodStack 0.1.3 em Fedora 43/44 e Ubuntu 24.04/26.04, o
 primeiro start, o setup em 7 etapas, o helper privilegiado e a desinstalação. Para o
 fluxo de uso depois da instalação, veja [`quickstart.md`](quickstart.md).
 
@@ -15,7 +15,7 @@ fluxo de uso depois da instalação, veja [`quickstart.md`](quickstart.md).
 | OpenSSH | Cliente `ssh` e `scp` | Usado pelas machines e pelo encaminhamento de chaves. |
 | Qt | Qt 6.4+ em runtime | Fedora 43/44: 6.10/6.11; Ubuntu 24.04: 6.4.2. O DEB leva o qtermwidget 2.0.0 embutido (estático); no Fedora o RPM usa o qtermwidget do sistema. |
 | KVM | `/dev/kvm` legível e gravável | Opcional. Sem KVM, as machines usam TCG (muito mais lentas). |
-| QEMU/OVMF/virtiofsd | Instalados para machines | O setup pode instalar; o virtiofsd atende os mounts virtiofs. |
+| QEMU/OVMF/virtiofsd | Instalados para machines | O setup pode instalar; no Ubuntu 24.04 usa `ovmf`, `qemu-system-x86`, `qemu-utils` e `virtiofsd`; a 0.1.3 reconhece `OVMF_CODE_4M.fd`. |
 | Caddy | Opcional | Necessário para HTTPS em `*.localhost`/`*.podstack.local`. |
 | `docker-compose` | Opcional | Provider usado pelos projetos Compose; a engine continua sendo o Podman. |
 | k3s no host | Não necessário | O Kubernetes roda em uma VM dedicada criada pelo PodStack. |
@@ -38,7 +38,7 @@ systemctl --user enable --now podman.socket
 Com o RPM baixado ou gerado localmente:
 
 ```bash
-sudo dnf install ./podstack-0.1.2-1.fc44.x86_64.rpm
+sudo dnf install ./podstack-0.1.3-1.fc44.x86_64.rpm
 ```
 
 Ajuste `fc44`/`x86_64` para a release e a arquitetura do seu Fedora (por exemplo, `fc43`).
@@ -80,13 +80,13 @@ cmake -S . -B build/ubuntu -G Ninja \
   -DPODSTACK_USE_VENDORED_QTERMWIDGET=ON
 cmake --build build/ubuntu
 PODSTACK_BUILD_DIR=build/ubuntu ./scripts/build-deb.sh
-# saída: build/deb/podstack_0.1.2_amd64.deb
+# saída: build/deb/podstack_0.1.3_amd64.deb
 ```
 
 Instale o arquivo publicado para a sua arquitetura:
 
 ```bash
-sudo apt install ./podstack_0.1.2_amd64.deb
+sudo apt install ./podstack_0.1.3_amd64.deb
 ```
 
 O pacote inclui o binário, as units do helper e os dados do terminal em
@@ -189,7 +189,9 @@ checks obrigatórios não passam. As etapas são:
    systemd de usuário, SQLite, Caddy e k3s.
 3. **Podman** — instala/atualiza o Podman e ativa o `podman.socket` rootless. O Docker **não** é
    removido por padrão; a remoção é uma ação separada e opt-in.
-4. **QEMU/KVM** — instala QEMU, OVMF, virtiofsd e libvirt opcional. Sem `/dev/kvm`, avisa e permite
+4. **QEMU/KVM** — instala QEMU, OVMF, virtiofsd e libvirt opcional. No Ubuntu 24.04 usa `ovmf`,
+   `qemu-system-x86`, `qemu-utils` e `virtiofsd`, e reconhece `OVMF_CODE_4M.fd`/`OVMF_VARS_4M.fd`;
+   se o helper falhar, a mensagem aparece no log/rodapé do setup. Sem `/dev/kvm`, avisa e permite
    TCG, com desempenho muito inferior.
 5. **Componentes** — socket/rootless/SQLite são obrigatórios; Caddy é opcional. O k3s não é
    instalado no host: o cluster roda em uma VM dedicada e é habilitado depois na página Kubernetes.
@@ -251,7 +253,7 @@ sessão gráfica), a autorização falha; rode o setup a partir do desktop.
 
 | Verificação | Comando | Resultado esperado |
 |---|---|---|
-| Versão | `podstack version` | `PodStack 0.1.2` |
+| Versão | `podstack version` | `PodStack 0.1.3` |
 | Socket de usuário | `systemctl --user status podstack.socket` | `active (listening)` |
 | Daemon e engine | `podstack status` | `estado: ok` e `engine: running` |
 | Diagnóstico rápido | `podstack doctor` | checks `[ok]`; exit 0 |
@@ -331,7 +333,7 @@ rm -rf ~/.config/podstack ~/.local/share/podstack ~/.local/state/podstack ~/.cac
 
 - O Flatpak é um cliente: o daemon e o helper precisam estar instalados no host.
 - A validação de instalação limpa (T7-07/T7-14) ainda está em andamento; trate o checklist acima
-  como a verificação mínima da versão 0.1.2.
+  como a verificação mínima da versão 0.1.3.
 - Esta documentação não fixa uma URL de repositório; use o arquivo RPM/DEB gerado localmente ou o
   repositório que você configurou.
 

@@ -2413,7 +2413,8 @@ void Backend::applySetupJob(const QJsonObject &job)
         m_setupStatus = state;
     }
     const QString error = job.value(QStringLiteral("error")).toString();
-    if (!error.isEmpty()) {
+    const bool errorChanged = !error.isEmpty() && error != m_setupError;
+    if (errorChanged) {
         m_setupError = error;
     }
     m_setupLog.clear();
@@ -2422,6 +2423,9 @@ void Backend::applySetupJob(const QJsonObject &job)
         m_setupLog.append(line.toString());
     }
     emit setupJobChanged();
+    if (errorChanged) {
+        emit setupChanged();
+    }
 }
 
 QString Backend::setupPodmanAction() const

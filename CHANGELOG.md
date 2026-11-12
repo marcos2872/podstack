@@ -5,6 +5,30 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.1.3] - 2026-11-12
+
+Release de correção do setup no Ubuntu.
+
+### Corrigido
+
+- **OVMF no Ubuntu:** o check do setup e a criação de machines reconhecem
+  `/usr/share/OVMF/OVMF_CODE_4M.fd` e `OVMF_VARS_4M.fd`, além dos caminhos do
+  Fedora; instalar `ovmf` manualmente deixa de ser ignorado.
+- **Instalação de QEMU/OVMF:** o setup escolhe os nomes de pacote pelo
+  gerenciador da distro — `ovmf`, `qemu-system-x86`, `qemu-system-arm`,
+  `qemu-utils` e `qemu-efi-aarch64` no apt; `edk2-ovmf` etc. no dnf — e a
+  allowlist do helper cobre os dois conjuntos.
+- **Feedback de erro:** quando o helper falha ao instalar um pacote, a mensagem
+  retornada (por exemplo, `Unable to locate package`) aparece no painel de log e
+  no rodapé do setup, em vez de o job parecer ter terminado sem efeito.
+- **`MachineManager`:** a auto-detecção de OVMF usa a primeira combinação
+  code/vars existente, em vez de assumir apenas o caminho do Fedora.
+
+### Alterado
+
+- Site (`web/`) e documentação atualizados para a 0.1.3 e para os caminhos e
+  pacotes do Ubuntu.
+
 ## [0.1.2] - 2026-11-12
 
 Release de compatibilidade do pacote `.deb` com Ubuntu 24.04 LTS e versões

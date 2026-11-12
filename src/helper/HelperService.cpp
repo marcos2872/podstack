@@ -43,6 +43,13 @@ const QStringList &installAllowlist()
         QStringLiteral("qemu-system-aarch64"),
         QStringLiteral("virtiofsd"),
         QStringLiteral("edk2-ovmf"),
+        QStringLiteral("ovmf"),
+        QStringLiteral("qemu-system-x86"),
+        QStringLiteral("qemu-system-arm"),
+        QStringLiteral("qemu-utils"),
+        QStringLiteral("qemu-efi-aarch64"),
+        QStringLiteral("qemu-img"),
+        QStringLiteral("qemu-full"),
         QStringLiteral("libvirt-daemon-kvm"),
         QStringLiteral("caddy"),
     };

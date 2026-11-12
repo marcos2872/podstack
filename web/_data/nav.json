@@ -1,0 +1,61 @@
+{
+  "sidebarExclude": ["na-cli", "referencia-rapida", "limitacoes"],
+  "groups": [
+    {
+      "title": "Começar",
+      "pages": [
+        { "file": "index.html", "title": "Visão geral", "icon": "i-home", "status": "published" },
+        { "file": "install.html", "title": "Instalação", "icon": "i-download", "status": "published" },
+        { "file": "onboarding.html", "title": "Onboarding", "icon": "i-layers", "status": "published", "parent": "install.html" }
+      ]
+    },
+    {
+      "title": "Engine",
+      "pages": [
+        { "file": "containers.html", "title": "Containers", "icon": "i-box", "status": "published" },
+        { "file": "images.html", "title": "Imagens", "icon": "i-image", "status": "published" },
+        { "file": "volumes.html", "title": "Volumes", "icon": "i-database", "status": "published" },
+        { "file": "networks.html", "title": "Redes", "icon": "i-network", "status": "published" },
+        { "file": "pods.html", "title": "Pods", "icon": "i-layers", "status": "published" }
+      ]
+    },
+    {
+      "title": "Compose e builds",
+      "pages": [
+        { "file": "compose.html", "title": "Compose", "icon": "i-terminal", "status": "published" },
+        { "file": "builds.html", "title": "Builds", "icon": "i-hammer", "status": "published" }
+      ]
+    },
+    {
+      "title": "Linux",
+      "pages": [
+        { "file": "machines.html", "title": "Machines", "icon": "i-cpu", "status": "published" }
+      ]
+    },
+    {
+      "title": "Kubernetes",
+      "pages": [
+        { "file": "kubernetes.html", "title": "Kubernetes", "icon": "i-cloud", "status": "published" }
+      ]
+    },
+    {
+      "title": "Rede local",
+      "pages": [
+        { "file": "domains.html", "title": "Domínios", "icon": "i-globe", "status": "published" }
+      ]
+    },
+    {
+      "title": "Referência",
+      "pages": [
+        { "file": "settings.html", "title": "Configurações", "icon": "i-settings", "status": "published" },
+        { "file": "cli.html", "title": "CLI", "icon": "i-terminal-2", "status": "published" }
+      ]
+    },
+    {
+      "title": "Ajuda",
+      "pages": [
+        { "file": "troubleshooting.html", "title": "Solução de problemas", "icon": "i-wrench", "status": "published" }
+      ]
+    }
+  ]
+}

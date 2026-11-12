@@ -1,4 +1,4 @@
-# Primeiros passos — PodStack 0.1.2
+# Primeiros passos — PodStack 0.1.3
 
 Este guia assume o PodStack instalado e o setup concluído (veja [`install.md`](install.md)). O
 objetivo é chegar a um container acessível pelo navegador, criar a primeira machine com SSH e
@@ -92,7 +92,7 @@ podstack exec web -- sh -c 'echo olá'
 ```
 
 O `exec` é uma execução one-shot e imprime a saída do comando; para um shell interativo, use a aba
-**Terminal** da GUI. O CLI 0.1.2 não cria, inicia, para nem remove containers; essas ações estão na
+**Terminal** da GUI. O CLI 0.1.3 não cria, inicia, para nem remove containers; essas ações estão na
 GUI. Para automação, use o Podman diretamente ou o contrato RPC do daemon.
 
 ## 5. Primeira machine (VM Linux)
@@ -100,7 +100,7 @@ GUI. Para automação, use o Podman diretamente ou o contrato RPC do daemon.
 ### Pela GUI
 
 1. Abra **Machines** e clique em **Nova machine**.
-2. Escolha a distro (0.1.2: `ubuntu:24.04`, `debian:12` ou `fedora:44`), o nome, CPUs, memória e
+2. Escolha a distro (0.1.3: `ubuntu:24.04`, `debian:12` ou `fedora:44`), o nome, CPUs, memória e
    disco. O usuário em branco usa `podstack`.
 3. Clique em **Criar**. O progresso mostra download da imagem cloud, disco qcow2, seed cloud-init,
    QEMU e espera do SSH.
@@ -254,4 +254,4 @@ Atalhos implementados:
 
 - Comandos e flags: [`cli.md`](cli.md).
 - Problemas de daemon, Podman, KVM, portas ou HTTPS: [`troubleshooting.md`](troubleshooting.md).
-- Limitações do 0.1.2: [`README.md`](README.md#limitações-conhecidas-do-010).
+- Limitações do 0.1.3: [`README.md`](README.md#limitações-conhecidas-do-010).

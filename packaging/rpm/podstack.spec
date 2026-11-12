@@ -1,5 +1,5 @@
 Name:           podstack
-Version:        0.1.2
+Version:        0.1.3
 Release:        1%{?dist}
 Summary:        Native desktop for Podman containers, VMs and Kubernetes
 License:        GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.0-or-later
@@ -110,6 +110,10 @@ systemctl enable --now podstack-helper.service >/dev/null 2>&1 || :
 %{_datadir}/selinux/packages/podstack.pp
 
 %changelog
+* Thu Nov 12 2026 PodStack contributors <dev@podstack.dev> - 0.1.3-1
+- Detect Ubuntu OVMF paths and use distro package names in the setup.
+- Surface setup install failures in the GUI log and footer.
+
 * Thu Nov 12 2026 PodStack contributors <dev@podstack.dev> - 0.1.2-1
 - Build with Qt 6.4-compatible fallbacks.
 - Vendor qtermwidget 2.0.0 as a static library for the Ubuntu 24.04 DEB.
