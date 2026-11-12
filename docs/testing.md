@@ -131,7 +131,7 @@ plataforma continua no Libpod e não usa o override.
 
 ### 3.1 Pré-requisitos
 
-- Podman ≥ 5.8, `podman.socket` ativo, cgroup v2.
+- Podman ≥ 5.8 no Fedora e ≥ 4.9 no Ubuntu 24.04, `podman.socket` ativo, cgroup v2.
 - Imagens de teste leves: `alpine:3.20`, `busybox:1.36`, `nginx:alpine`.
 - Rede isolada de teste; limpeza por label `dev.podstack.test=1`.
 
@@ -358,6 +358,10 @@ de 60 s) em host de desenvolvimento, não no hardware de referência:
 **Ambiente:** Intel Core i5-10400F, 32 GB (23 GiB visíveis), Fedora 44, kernel 7.2.15, Wayland/niri,
 Podman 5.8.9, build **Debug**.
 
+**Validação complementar (2026-11-12):** Ubuntu 24.04.5 (Qt 6.4.2) e Ubuntu 26.04
+(Qt 6.10.2), `.deb` 0.1.2, GUI sob Xvfb/X11, helper registrado no D-Bus do sistema,
+Podman 4.9.3/5.7.0.
+
 **Ressalvas:** o hardware não é o de referência; a GUI foi medida em modo
 offscreen (software) até o primeiro paint, o que não representa um startup cold
 real em Wayland/GPU; o RSS cobre apenas o `podstackd`, enquanto a meta do NFR
@@ -447,13 +451,14 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 
 | Etapa | Conteúdo | Bloqueia merge |
 |---|---|---|
-| `ci` (job único) | checkout + deps Fedora 44, build com `coverage`, testes, gcovr | ✅ |
+| `ci` (Fedora 44) | checkout + deps Fedora 44, build com `coverage`, testes, gcovr | ✅ |
+| `ubuntu-24-04` | checkout + deps Ubuntu 24.04, build com Qt 6.4 + qtermwidget vendorizado, testes | ✅ |
 | Cobertura | relatório `src/` (XML/HTML) bloqueante; gate bloqueante em **80%** | ✅ |
 | Lint | `clang-format` nas linhas alteradas e `clang-tidy` nos fontes alterados (`scripts/check-format.sh`, `scripts/check-tidy.sh`) | ✅ |
 | Artefato | `coverage.xml`, `coverage/`, resumos | — |
 | Futuro | E2E GUI/CLI, segurança e performance no CI | planejado (o J1 é script opt-in; RPM fica no `packaging.yml`) |
 
-- Container: `fedora:44` com Qt 6.11, CMake/Ninja, libcurl e gcovr.
+- Container: `fedora:44` com Qt 6.11, CMake/Ninja, libcurl e gcovr; `ubuntu:24.04` com Qt 6.4 e o qtermwidget vendorizado.
 - O teste de integração com Podman roda quando há socket disponível; caso contrário, é `QSKIP` (o contrato e o RPC cobrem o caminho sem engine).
 - Cache: ccache e imagens Podman (quando o runner permitir).
 - Flaky tests: quarentena com issue e prazo; não podem ficar > 2 semanas.
@@ -463,7 +468,7 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 | Workflow | Gatilho | O que cobre |
 |---|---|---|
 | [`release.yml`](../.github/workflows/release.yml) | push de tag `v*` e `workflow_dispatch` | Confere se a tag corresponde à versão do `CMakeLists.txt`; build `release` + `ctest`; `appstreamcli validate`; RPM (`build-rpm.sh`) e DEB (`build-deb.sh`); assinatura GPG opcional dos RPMs e do `SHA256SUMS`; `SHA256SUMS`; SBOM CycloneDX (`generate-sbom.sh`); manifesto `podstack-update.json` com notas extraídas do `CHANGELOG.md` e assinatura minisign opcional; upload dos artefatos e `gh release create`/`gh release upload`. |
-| [`packaging.yml`](../.github/workflows/packaging.yml) | PR com mudanças em `packaging/**`, `scripts/build-*`, `scripts/clean-install-check.sh`, `CMakeLists.txt` ou `release.yml`; e `workflow_dispatch` | Build do RPM e `scripts/clean-install-check.sh --skip-build` em container Fedora 44: instalação do RPM/helper, binários, units systemd, polkit, metainfo/AppStream, socket 0600, `podstack status` e `podstack doctor`. Não cobre GUI, KVM nem polkit reais. |
+| [`packaging.yml`](../.github/workflows/packaging.yml) | PR com mudanças em `packaging/**`, `scripts/build-*`, `scripts/clean-install-check.sh`, `CMakeLists.txt`, `third_party/**` ou `release.yml`; e `workflow_dispatch` | Build do RPM em container Fedora 44 e do DEB em container Ubuntu 24.04; `scripts/clean-install-check.sh --skip-build` cobre instalação do RPM/helper, binários, units systemd, polkit, metainfo/AppStream, socket 0600, `podstack status` e `podstack doctor`. Não cobre GUI, KVM nem polkit reais. |
 
 As assinaturas usam os secrets `GPG_PRIVATE_KEY`, `GPG_KEY_ID`,
 `PODSTACK_UPDATE_PUBLIC_KEY` e `MINISIGN_PRIVATE_KEY`. Sem eles, a release é

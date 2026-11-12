@@ -1,4 +1,4 @@
-# CLI `podstack` — referência (0.1.1)
+# CLI `podstack` — referência (0.1.2)
 
 O pacote instala o CLI `podstack`, o daemon `podstackd` e a GUI `podstack-gui`. O CLI conversa com o
 daemon pelo socket Unix do usuário; o daemon sobe sob demanda quando `podstack.socket` está ativo.
@@ -12,7 +12,7 @@ podstack version
 ## Convenções
 
 - `<id|nome>` aceita o ID ou o nome do recurso.
-- O CLI 0.1.1 **não** tem flags globais como `--machine` ou `--format`; cada comando tem as suas.
+- O CLI 0.1.2 **não** tem flags globais como `--machine` ou `--format`; cada comando tem as suas.
 - Saída humana é o padrão. Onde há `--json`, a saída é JSON; alguns comandos incluem `"api": 1` e
   outros devolvem o objeto do RPC. A lista de comandos com JSON está no fim deste documento. Os
   exemplos que usam `jq` exigem o `jq` instalado.
@@ -25,7 +25,7 @@ podstack version
 
 | Comando | O que faz |
 |---|---|
-| `podstack version` | Mostra `PodStack 0.1.1`. |
+| `podstack version` | Mostra `PodStack 0.1.2`. |
 | `podstack status` | Estado do daemon e do Podman. Exit 7 quando o daemon não responde; exit 1 quando o status contém erro (por exemplo, engine indisponível). |
 | `podstack doctor` | Diagnóstico rápido: socket do daemon e socket do Podman. Exit 1 se algum check falhar. |
 | `podstack report [--include-logs] [--json]` | Gera um relatório redigido em `~/.local/state/podstack/reports/` (0600), com caminho e SHA-256. Revise antes de compartilhar. |
@@ -148,7 +148,7 @@ para o socket do Podman. `PODSTACK_COMPOSE_PROVIDER` força um binário.
 | Comando | Flags | Notas |
 |---|---|---|
 | `podstack compose ls` / `list` | — | Projetos agrupados por labels. |
-| `podstack compose up <diretório> [serviço]` | — | Sempre destaca (`detach`); não há `-d` nem `--file` no CLI 0.1.1. |
+| `podstack compose up <diretório> [serviço]` | — | Sempre destaca (`detach`); não há `-d` nem `--file` no CLI 0.1.2. |
 | `podstack compose down <diretório> [serviço]` | `--volumes` | Sem `--volumes`, os volumes são preservados. |
 | `podstack compose restart <diretório> [serviço]` | — | |
 | `podstack compose stop <diretório> [serviço]` | — | |
@@ -171,7 +171,7 @@ podstack compose down --volumes ~/projetos/app
 | `podstack builds rm <id>` | — |
 
 ```bash
-podstack build ./app -t local/app:dev --build-arg VERSION=0.1.1
+podstack build ./app -t local/app:dev --build-arg VERSION=0.1.2
 podstack builds
 podstack builds rm 01a1c24e-44d9-76df-8db5-3185e34087b7
 ```
@@ -200,7 +200,7 @@ do Podman. Arquiteturas estrangeiras exigem `binfmt_misc` no host.
 | `podstack machine default [<id\|nome>]` | `--json` |
 | `podstack machine distros` | `--json` |
 
-- Distros disponíveis em 0.1.1: `ubuntu:24.04`, `debian:12` e `fedora:44` (amd64).
+- Distros disponíveis em 0.1.2: `ubuntu:24.04`, `debian:12` e `fedora:44` (amd64).
 - Defaults: 2 CPUs, 4 GiB de memória, 20 GiB de disco, usuário `podstack`.
 - `machine create` não tem flags de mount no CLI (T4-07); mounts são configurados na GUI/RPC.
 - `machine update` exige ao menos um recurso ou o agent. CPUs/memória valem no próximo boot; o disco
@@ -302,7 +302,7 @@ podstack kube context
 podstack kube context use podstack-default
 ```
 
-Não há NodePort/LoadBalancer nativos nem `k8s.podstack.local` em 0.1.1 (T5-07 parcial). A troca de
+Não há NodePort/LoadBalancer nativos nem `k8s.podstack.local` em 0.1.2 (T5-07 parcial). A troca de
 contexto automática por projeto também não existe (T5-08 parcial).
 
 ## Sistema

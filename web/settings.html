@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Configurações · PodStack 0.1.1</title>
+  <title>Configurações · PodStack 0.1.2</title>
   <meta name="description" content="Categorias reais de Configurações, chaves visíveis, tema, tray, proxy, portas, machines, retenção e diagnóstico.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
@@ -94,7 +94,7 @@
       <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
       <span>
         <span class="brand-name">PodStack</span>
-        <span class="brand-sub">Documentação 0.1.1</span>
+        <span class="brand-sub">Documentação 0.1.2</span>
       </span>
     </a>
     <nav class="nav" aria-label="Seções da documentação">
@@ -105,7 +105,7 @@
 <div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
     </nav>
     <div class="sidebar-foot">
-      <p>Versão 0.1.1 · GPL-3.0-or-later</p>
+      <p>Versão 0.1.2 · GPL-3.0-or-later</p>
       <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
     </div>
   </aside>
@@ -121,7 +121,7 @@
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg> PodStack Docs</div>
       <h1>Configurações</h1>
 <p class="lede">Todas as preferências vivem no daemon, com um schema validado de 86 chaves. A GUI e a CLI leem e escrevem os mesmos valores; nada é gravado direto no arquivo pela interface.</p>
-<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.1</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.2</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
 <p>Abra <strong>Configurações</strong> pelo item <strong>Settings</strong> na barra lateral ou com
 <kbd>Ctrl</kbd>+<kbd>,</kbd>. O diálogo é dirigido pelo schema do daemon
 (<code>settings.schema</code>) e mostra uma categoria por vez, com a chave, a descrição, o valor
@@ -226,7 +226,7 @@ não para mudar o comportamento em runtime.</p>
 </tr>
 </tbody></table></div>
 <p>Como todas as chaves <code>docker.*</code> estão marcadas como <code>hidden</code>, a categoria
-<strong>Docker</strong> aparece sem linhas no diálogo. Elas não têm efeito no app 0.1.1; use
+<strong>Docker</strong> aparece sem linhas no diálogo. Elas não têm efeito no app 0.1.2; use
 <code>podstack config get docker.&lt;chave&gt;</code> ou o schema apenas para inspeção.</p>
 <h3 id="updates">Atualizações ficam em Geral</h3>
 <p>Não existe aba <strong>Updates</strong>. O bloco <strong>Atualizações do PodStack</strong> fica no
@@ -279,7 +279,7 @@ As chaves <code>machines.forwardPorts</code>, <code>machines.exposePortsToLan</c
 <code>ssh.*</code> estão ocultos na GUI e disponíveis no schema/CLI.</p>
 <p>A retenção de jobs e logs de build é representada por
 <code>advanced.jobRetentionDays</code> (7) e <code>advanced.buildLogRetentionDays</code> (30),
-também ocultas na GUI e sem efeito no app 0.1.1. O cache de imagens cloud usa
+também ocultas na GUI e sem efeito no app 0.1.2. O cache de imagens cloud usa
 <code>advanced.cloudImageCacheBytes</code> (20 GiB). Consulte os valores com
 <code>podstack config get</code>; não conte com eles para mudar a retenção nesta versão.</p>
 <div class="table-wrap">
@@ -384,7 +384,7 @@ podstack config reset --all --yes</code></pre><h2 id="referencia-rapida">Referê
 <ul>
   <li>A categoria <strong>Docker</strong> aparece vazia na GUI porque todas as chaves <code>docker.*</code> estão ocultas; use a CLI/schema.</li>
   <li>Não existe aba <strong>Updates</strong>; o controle está em <strong>Geral</strong> e as chaves <code>updates.*</code> são internas/CLI.</li>
-  <li>Chaves ocultas (retenção, log level, subnet, IPv6, SSH, telemetria etc.) aparecem no schema/CLI, mas não têm efeito no app 0.1.1.</li>
+  <li>Chaves ocultas (retenção, log level, subnet, IPv6, SSH, telemetria etc.) aparecem no schema/CLI, mas não têm efeito no app 0.1.2.</li>
   <li>Chaves com <code>restartRequired</code> só valem depois de reiniciar o PodStack.</li>
   <li>O reset total não está na GUI; use a CLI e revise o que será preservado (<code>setup.*</code>).</li>
 </ul>
@@ -397,7 +397,7 @@ podstack config reset --all --yes</code></pre><h2 id="referencia-rapida">Referê
       </nav>
 
       <footer class="site-footer">
-        <p>PodStack 0.1.1 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <p>PodStack 0.1.2 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
         <div class="footer-links">
           <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Builds · PodStack 0.1.1</title>
+  <title>Builds · PodStack 0.1.2</title>
   <meta name="description" content="Build por contexto e Dockerfile, build args, múltiplas plataformas, progresso, logs e histórico em SQLite.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
@@ -94,7 +94,7 @@
       <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
       <span>
         <span class="brand-name">PodStack</span>
-        <span class="brand-sub">Documentação 0.1.1</span>
+        <span class="brand-sub">Documentação 0.1.2</span>
       </span>
     </a>
     <nav class="nav" aria-label="Seções da documentação">
@@ -105,7 +105,7 @@
 <div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
     </nav>
     <div class="sidebar-foot">
-      <p>Versão 0.1.1 · GPL-3.0-or-later</p>
+      <p>Versão 0.1.2 · GPL-3.0-or-later</p>
       <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
     </div>
   </aside>
@@ -121,7 +121,7 @@
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-hammer"></use></svg> PodStack Docs</div>
       <h1>Builds</h1>
 <p class="lede">Construa imagens a partir de um contexto e Dockerfile, acompanhe steps e logs e consulte o histórico persistido em SQLite.</p>
-<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.1</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.2</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
 <p>A seção <strong>Builds</strong> inicia builds de imagem pelo Libpod e mantém um histórico com
 imagem, status, duração, origem e plataformas. Com uma plataforma (ou nenhuma), o build usa o
 Libpod. Com duas ou mais, o daemon cria uma <strong>manifest list</strong> pelo CLI do Podman.</p>
@@ -160,7 +160,7 @@ processo de manifest list.</p>
 <td>—</td>
 <td>Remove um registro do histórico; não remove a imagem.</td>
 </tr>
-</tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack build ./app -t local/app:dev --build-arg VERSION=0.1.1
+</tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack build ./app -t local/app:dev --build-arg VERSION=0.1.2
 podstack build ./app -t local/app:dev -f Dockerfile.prod
 podstack build ./app -t local/app:multi --platform linux/amd64,linux/arm64
 podstack builds
@@ -232,7 +232,7 @@ plataforma usa o Libpod; com duas ou mais, o daemon executa o Podman sem shell, 
       </nav>
 
       <footer class="site-footer">
-        <p>PodStack 0.1.1 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <p>PodStack 0.1.2 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
         <div class="footer-links">
           <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>

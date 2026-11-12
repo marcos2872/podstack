@@ -23,7 +23,7 @@
 
 > **Status:** **M4 validado em VM real e M5 concluído no código** — machines QEMU/KVM (ciclo de vida, SSH/arquivos, virtiofs, export/import, clone/rename/default, recursos, portas, agent forwarding, modo isolado, console serial e snapshots), sobre o M3 (Compose e builds), o M2 (imagens, volumes, redes e pods) e o M1 (containers, logs, stats, files, terminal, batch, health e rootful). **Pré-M5** entregue com multi-seleção em todas as listas, testes QML reais e gates de `clang-format`/`clang-tidy`. **15 testes**, cobertura **~80%** com gate bloqueante de **80%** (ver [`docs/testing.md`](docs/testing.md)). **M5 (Kubernetes/k3s) concluído no código** (VM dedicada, kubeconfig isolado, Pods/Services, logs, port-forward, enable/disable/reset e contexto). **M6 iniciado** com a T6-01: `*.localhost` via proxy HTTP do daemon em loopback (`network.httpPort`), sem root e sem `/etc/hosts`.
 > **Ressalvas:** console serial sem VNC; export/clone não preservam snapshots internos do qcow2; a instalação limpa tem smoke automatizado em container Fedora 44 (`scripts/clean-install-check.sh`), mas a validação da GUI, do KVM e do polkit em máquina limpa segue manual (T7-07/T7-14). Histórico de versões em [`CHANGELOG.md`](CHANGELOG.md) e guias em [`docs/user/`](docs/user/README.md).
-> **Plataforma:** Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10.
+> **Plataforma:** Linux desktop — Fedora 43+ (Podman ≥ 5.8, Qt ≥ 6.10) e Ubuntu 24.04+ (Podman ≥ 4.9, Qt ≥ 6.4; DEB), Wayland/X11.
 > **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).
 
 ---
@@ -65,7 +65,7 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 
 | Documento | O que responde |
 |---|---|
-| [`docs/user/README.md`](docs/user/README.md) | Índice da documentação de usuário e limitações conhecidas do 0.1.1 |
+| [`docs/user/README.md`](docs/user/README.md) | Índice da documentação de usuário e limitações conhecidas do 0.1.2 |
 | [`docs/user/install.md`](docs/user/install.md) | Requisitos, instalação por RPM/DEB, build do fonte, primeiro start, setup, helper/polkit e desinstalação |
 | [`docs/user/quickstart.md`](docs/user/quickstart.md) | Primeiro container, machine com SSH, Kubernetes, domínios `*.localhost`, HTTPS/CA, bandeja e atalhos |
 | [`docs/user/cli.md`](docs/user/cli.md) | Comandos e flags reais do `podstack`, saída JSON, exit codes e exemplos |
@@ -85,7 +85,7 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 | [`docs/security.md`](docs/security.md) | Threat model, helper/polkit, socket, segredos e SELinux |
 | [`docs/packaging.md`](docs/packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
 | [`docs/roadmap.md`](docs/roadmap.md) | Marcos, estimativas, caminho crítico e versões |
-| [`CHANGELOG.md`](CHANGELOG.md) | Histórico de versões, mudanças e limitações conhecidas do 0.1.1 |
+| [`CHANGELOG.md`](CHANGELOG.md) | Histórico de versões, mudanças e limitações conhecidas do 0.1.2 |
 
 ### Decisões arquiteturais (ADRs)
 

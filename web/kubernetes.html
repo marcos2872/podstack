@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kubernetes · PodStack 0.1.1</title>
+  <title>Kubernetes · PodStack 0.1.2</title>
   <meta name="description" content="Cluster k3s em VM dedicada, kubeconfig isolado, contexto, Pods, Services, logs e port-forward.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
@@ -94,7 +94,7 @@
       <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
       <span>
         <span class="brand-name">PodStack</span>
-        <span class="brand-sub">Documentação 0.1.1</span>
+        <span class="brand-sub">Documentação 0.1.2</span>
       </span>
     </a>
     <nav class="nav" aria-label="Seções da documentação">
@@ -105,7 +105,7 @@
 <div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
     </nav>
     <div class="sidebar-foot">
-      <p>Versão 0.1.1 · GPL-3.0-or-later</p>
+      <p>Versão 0.1.2 · GPL-3.0-or-later</p>
       <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
     </div>
   </aside>
@@ -121,7 +121,7 @@
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg> PodStack Docs</div>
       <h1>Kubernetes</h1>
 <p class="lede">Habilite um cluster k3s local em uma VM dedicada, use um kubeconfig isolado e acompanhe Pods, Services, logs e port-forward sem sair do PodStack.</p>
-<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.1</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.2</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
 <p>O Kubernetes do PodStack roda em uma <strong>VM dedicada com k3s</strong>. O k3s não é instalado
 no host e o PodStack não usa kind no v1. O <code>kubectl</code> precisa estar instalado no host para
 você operar o cluster; o PodStack não instala o cliente.</p>
@@ -203,7 +203,7 @@ e <code>kubernetes.tlsSan</code> (SANs extras do API server). Alterações nesse
 reiniciar o PodStack.</p>
 <p><code>kubernetes.exposeServices=true</code> faz o port-forward de Service usar
 <code>0.0.0.0</code> (LAN) em vez de loopback. O firewall do host ainda precisa ser liberado
-separadamente. Não há NodePort/LoadBalancer nativos em 0.1.1.</p>
+separadamente. Não há NodePort/LoadBalancer nativos em 0.1.2.</p>
 <div class="callout limit" role="note"><svg class="icon" aria-hidden="true"><use href="#i-ban"></use></svg><div class="callout-body"><p class="callout-title">TLS SANs</p><p>Se você acessa a API por um nome ou IP diferente, adicione o SAN em <code>kubernetes.tlsSan</code> antes de habilitar/reiniciar o cluster. O kubeconfig aponta para <code>127.0.0.1</code>; use <code>podstack kube env</code> para apontar o <code>kubectl</code> ao arquivo correto.</p></div></div><h2 id="referencia-rapida">Referência rápida</h2><div class="table-wrap">
 <table>
 <thead><tr>
@@ -274,7 +274,7 @@ separadamente. Não há NodePort/LoadBalancer nativos em 0.1.1.</p>
       </nav>
 
       <footer class="site-footer">
-        <p>PodStack 0.1.1 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <p>PodStack 0.1.2 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
         <div class="footer-links">
           <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>
