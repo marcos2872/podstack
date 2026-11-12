@@ -245,18 +245,37 @@ qemu-system-x86_64 \
   vhost-user-fs-pci,chardev=vfs<N>,tag=<tag>`. Limite de 8 mounts e tags
   `[a-z0-9-]{1,32}` únicas (default `host<N>`).
 - Controle por QMP: `system_powerdown`, `quit`, `query-status`, `human-monitor-command`.
+- Windows (M9 — Fase 1): `-M q35,smm=on`, `-global driver=cfi.pflash01,property=secure,value=on`,
+  NVRAM `nvram.fd`, SPICE em socket Unix, `virtio-vga`/`usb-tablet` e `-tpmdev`/`tpm-tis` com
+  `swtpm` por machine. O modelo completo está em
+  [`docs/specs/001-apps-remotos-vm/plan.md`](../specs/001-apps-remotos-vm/plan.md) §3.
 
 ### 7.2 Estado e metadados
 
-- `~/.local/share/podstack/machines/<id>/`: `disk.qcow2`, `seed.iso`, `meta.json`, `console.log`, `qmp.sock`, `id_ed25519`.
-- `meta.json`: distro, versão, arch, recursos, portas, mounts, isolamento, criação, último boot.
+- `~/.local/share/podstack/machines/<id>/`: `disk.qcow2`, `seed.iso`, `meta.json`, `console.log`, `qmp.sock`, `id_ed25519`; em Windows, também `nvram.fd`, `spice.sock`, `swtpm.sock` e `tpm/`.
+- `meta.json`: provisioner (`linux`/`windows`), distro, versão, arch, recursos, portas, mounts, isolamento, criação, último boot.
 - SQLite indexa para listagem rápida; `meta.json` é a fonte de verdade recuperável.
 
-### 7.3 Limitações
+### 7.3 Guest Windows (M9 — Fase 1)
+
+- `provisioner` é persistido em `meta.json` e no índice SQLite (`provisioner TEXT NOT NULL
+  DEFAULT 'linux'`; migração aditiva por `PRAGMA table_info` + `ALTER TABLE`). A criação
+  Windows (`installerIso`/`autounattend`/mínimos) fica para a T9-04.
+- Secure Boot: NVRAM por machine em `nvram.fd` (`0600`), CODE/VARS `secboot` descobertos por
+  candidatos Fedora/Ubuntu; Linux mantém `OVMF_VARS.fd`. Par incompatível retorna
+  `PODSTACK_VALIDATION`.
+- Console SPICE em socket Unix por machine; `machines.console.spice` devolve o spec e a GUI
+  lança o `remote-viewer` (sem `spice-gtk` no build).
+- TPM 2.0: `SwtpmProcess` (mesmo modelo do `VirtiofsdProcess`) sobe antes do QEMU, é adotado
+  por `cmdline` após restart do daemon e encerrado no stop/delete. `tpm/` é `0700` e os
+  arquivos de estado são `0600`.
+
+### 7.4 Limitações
 
 - Sem `/dev/kvm`: TCG lento (avisar; permitir desabilitar).
 - Sem snapshot no v1 (P2).
-- Sem console gráfico no v1 (serial/VNC P2).
+- Console gráfico apenas para Windows via SPICE (`remote-viewer`); Linux usa o console
+  serial. VNC não é suportado.
 
 ---
 

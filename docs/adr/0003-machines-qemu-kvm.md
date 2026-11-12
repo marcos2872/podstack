@@ -47,7 +47,19 @@ Usar **QEMU/KVM diretamente**:
 - Muito código de orquestração (QMP, seed, SSH, limpeza).
 - virtiofs/SELinux exigem testes.
 - Sem `/dev/kvm`, performance cai (TCG).
-- Console gráfico/VNC fica para P2.
+
+## Atualização M9 — guest Windows (2026-11-12)
+
+O adiamento do console gráfico para P2 foi **revertido**: a T9-01 entrega o console SPICE em
+socket Unix por machine, com o `remote-viewer` lançado pela GUI (o daemon só devolve o spec).
+SPICE não usa TCP e o socket fica no `machineDir` (`0700`/`0600`); não há `spice-gtk` como
+dependência de build.
+
+O escopo de machines passa a incluir **guest Windows** com `provisioner: "windows"` (M9):
+OVMF Secure Boot com NVRAM própria (`nvram.fd`, `0600`), TPM 2.0 via `swtpm` (estado `0600`,
+diretório `0700`) e, nas fases seguintes, provisionamento por `installerIso`/`autounattend`.
+A criação Windows depende das T9-04…T9-08 e é P1 (v1.x), sem bloquear o v1.0. Machines Linux
+mantêm o fluxo cloud-init, o `OVMF_VARS.fd` e o console serial.
 
 ## Implementação
 

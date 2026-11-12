@@ -240,6 +240,16 @@ RPM/DEB/Flatpak, CRIU e emulação binfmt/FEX).
 
 ---
 
+### M9 — Guest Windows (P1, v1.x)
+
+**Status:** Fase 1 (T9-01/T9-02/T9-03) implementada em código em 2026-11-12 — console SPICE,
+OVMF Secure Boot e TPM 2.0, com testes de argv/estado. A criação Windows (T9-04) e o agente
+(T9-05) seguem; o E2E com Windows real depende da T9-04. Escopo completo em
+[`../specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/spec.md). M9 não bloqueia o
+v1.0; RAIL (M10) depende de T9-05.
+
+---
+
 ## 3. Versões
 
 | Versão | Conteúdo | Critério |

@@ -147,7 +147,9 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   em overlay integrado (seção 5.7). O card lateral mostra somente **Info** e **Ações**.
 - Machines: o botão **Expandir** abre o overlay da machine (seção 5.8); o botão **SSH**
   do card lateral abre o mesmo overlay já na aba **Terminal**. **Portas** abre o diálogo de
-  port forwarding da machine.
+  port forwarding da machine. Machines com `provisioner = "windows"` mostram o botão
+  **Console**, que chama `machines.console.spice` e lança o `remote-viewer` em janela
+  própria (habilitado apenas com a machine `running`; viewer ausente exibe o erro no toast).
 - Grid de metadados: ID, portas publicadas, estado, criado e saúde.
 - Ações: abrir no navegador, copiar ID, revelar no gerenciador.
 - **Exposição LAN (T2-15):** na célula de portas, o botão alterna **“Expor na LAN”** /

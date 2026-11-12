@@ -272,15 +272,16 @@ Implementados na T4-03 (M4), T4-06, T4-07, T4-08, T4-10, T4-11, T4-12, T4-13 e
 T4-14: registry, listagem, inspeção, criação assíncrona, logs do console, ciclo de vida,
 mounts virtiofs, arquivos, clone/rename, limites de CPU/memória/disco, port forwarding,
 SSH agent e o modo isolado. A T4-04 adiciona `machines.ssh` (chave ed25519 e bloco
-gerenciado no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas
-seguintes.
+gerenciado no `~/.ssh/config`). O M9 (Fase 1) adiciona `provisioner`, Secure Boot, TPM 2.0
+e `machines.console.spice` para guests Windows. Os demais métodos continuam planejados para
+as tarefas seguintes.
 
 | Método | Params | Result |
 |---|---|---|
 | `machines.distros` | `{}` | `{items: DistroImage[]}` |
 | `machines.list` | `{}` | `{items: Machine[]}` |
 | `machines.get` | `{id}` | `Machine` (aceita ID ou nome) |
-| `machines.create` | `{name, distro, version?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, isolateNetwork?, forwardSshAgent?, mounts?, isolated?}` | `{jobId, subscriptionId}` (`JobRef` + `Subscription`) |
+| `machines.create` | `{name, distro, version?, provisioner?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, isolateNetwork?, forwardSshAgent?, mounts?, isolated?}` | `{jobId, subscriptionId}` (`JobRef` + `Subscription`) |
 | `machines.cancel` | `{jobId}` | `{jobId, cancelled:true}` |
 | `machines.start` | `{id}` | `Machine` |
 | `machines.stop` | `{id, force?}` | `Machine` |
@@ -308,6 +309,7 @@ seguintes.
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 | `machines.console.read` | `{id, tailBytes?}` | `{id, data}` (one-shot, UTF-8 aproximado) |
 | `machines.console` | `{id, tailBytes?}` | `{subscriptionId, id}` (stream serial) |
+| `machines.console.spice` | `{id}` | `{program, args, socket}` (spec do console gráfico Windows; a GUI lança o viewer) |
 | `machines.console.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile, forwardAgent}` |
 | `machines.files.list` | `{id, path?}` | `{path, items: MachineFile[]}` |
@@ -324,6 +326,7 @@ Snapshots de disco internos usam `machines.snapshots.*` (T4-16); o console seria
 interface Machine {
   id: string; name: string;
   distro: string; distroVersion: string; arch: "amd64"|"arm64";
+  provisioner: "linux"|"windows";
   cpus: number; memoryBytes: number; diskBytes: number;
   diskPath: string; seedPath: string; sshKeyPath: string;
   sshPort: number; sshUser: string;
@@ -339,7 +342,8 @@ interface MachineSnapshot { id: string; name: string; sizeBytes: number; date: s
 
 **Criação assíncrona.** `machines.create` valida os parâmetros de forma síncrona (nome RFC
 1123, CPUs 1..256, memória/disco ≥ 1 GiB, arquitetura e distro) e só então inicia o job.
-Progresso e resultado chegam como notificações:
+`provisioner` aceita `linux` (default) e `windows`; nesta versão a criação Windows ainda
+retorna `PODSTACK_UNSUPPORTED` (T9-04). Progresso e resultado chegam como notificações:
 
 - `machines.delta {jobId, stage, progress}` — `stage` é `image`, `disk`, `seed`, `starting`
   ou `running`; `progress` vai de 0 a 100.
@@ -511,6 +515,15 @@ respeita `machines.console.unsubscribe {subscriptionId}` como as demais subscrip
 Erros: `PODSTACK_NOT_FOUND` (machine inexistente) e `PODSTACK_IO_ERROR` (symlink, arquivo
 não regular, fora do diretório ou ilegível). Uma machine sem `console.log` é válida: o
 read devolve `data:""` e o subscribe começa com um delta vazio.
+
+**Console SPICE (T9-01).** `machines.console.spice {id}` atende apenas machines com
+`provisioner:"windows"` e estado `running`; devolve
+`{program:"remote-viewer", args:["spice+unix://<machineDir>/spice.sock"], socket:"<machineDir>/spice.sock"}`
+para a **GUI** lançar o viewer (o daemon nunca executa processos gráficos). O socket é Unix,
+`0600`, fica no `machineDir` (`0700`) e não há SPICE em TCP. Erros: `PODSTACK_UNSUPPORTED`
+(machine Linux/sem console), `PODSTACK_CONFLICT` (machine parada ou socket ainda ausente) e
+`PODSTACK_DEPENDENCY_MISSING` com `reason:"backend_missing"` quando o `remote-viewer` não está
+instalado (`PODSTACK_REMOTE_VIEWER` sobrescreve o binário em dev/teste).
 
 **SSH.** `machines.ssh` resolve ID ou nome, exige que a chave privada da machine exista
 (`0600`, reparada se necessário), garante o bloco gerenciado em `~/.ssh/config` e devolve
@@ -921,6 +934,7 @@ Todas usam `method: "<canal>.delta"` e `params.subscriptionId`.
 | -32009 | `PODSTACK_HELPER_REQUIRED` | 409 | operação exige helper |
 | -32010 | `PODSTACK_UNSUPPORTED` | 501 | recurso não suportado no ambiente |
 | -32011 | `PODSTACK_CONSENT_REQUIRED` | 409 | ação destrutiva exige confirmação explícita |
+| -32012 | `PODSTACK_DEPENDENCY_MISSING` | 424 | binário/pacote/backend ausente; `data.reason` classifica (ex.: `backend_missing`) |
 
 Regras:
 

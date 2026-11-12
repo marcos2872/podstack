@@ -364,7 +364,7 @@ Formato único:
 
 ---
 
-## 7. Machines (VMs Linux)
+## 7. Machines (VMs Linux e Windows)
 
 ### 7.1 Criar máquina
 
@@ -429,7 +429,8 @@ Estados: `provisioning → running → stopping → stopped → starting → run
 - As validações são as mesmas de `machines.logs`: arquivo regular, sem symlink, caminho
   canônico confinado ao diretório da machine e path nunca exposto na resposta.
 - Os bytes são convertidos com `QString::fromUtf8` (lossy); o console é tratado como texto
-  UTF-8 aproximado, não como terminal interativo. Não há VNC nesta tarefa.
+  UTF-8 aproximado, não como terminal interativo. O console serial continua sendo o padrão
+  das machines Linux; machines Windows usam o console gráfico SPICE descrito em §7.9.
 - CLI: `machine console <id|nome> [--tail BYTES] [--no-follow]`; sem `--no-follow` usa o
   stream até Ctrl+C/erro, com `--no-follow` imprime o tail one-shot. GUI: a aba **Logs** do
   inspetor tem **Seguir console**, que concatena os deltas em um buffer de até ~512 KiB,
@@ -528,6 +529,9 @@ Host <name>.podstack <name>
   estado anterior da máquina exportada.
 - Snapshots internos do qcow2 não são preservados: o `qemu-img convert` produz um disco
   autocontido sem os snapshots, e o import/export `.tar.zst` também não os leva (§7.8).
+- NVRAM (`nvram.fd`), estado do TPM (`tpm/`) e `autounattend.xml` **não** entram no export;
+  o import cria uma NVRAM e um TPM vazios. O `provisioner` só será levado no manifesto quando
+  a criação Windows (T9-04) for implementada.
 
 ### 7.6 Limites e recursos
 
@@ -572,6 +576,44 @@ Host <name>.podstack <name>
 - Limitações: `qemu-img convert` (export e clone) não preserva snapshots internos, e o
   export/import `.tar.zst` também não os leva. O snapshot referencia o disco overlay (com
   backing da imagem cloud); manter o backing disponível é responsabilidade do cache de imagens.
+
+### 7.9 Guest Windows (M9 — Fase 1)
+
+O M9 usa `provisioner: "windows"` no metadado (`linux` é o default). Nesta fase o código
+entrega console, firmware e TPM; a criação Windows (installerIso/autounattend) chega na
+T9-04 e **ainda não é aceita** por `machines.create` (retorna `PODSTACK_UNSUPPORTED`).
+
+- **Console SPICE (T9-01).** Machines Windows sobem com
+  `-spice unix=on,addr=<machineDir>/spice.sock,disable-ticketing=on`, `virtio-vga`,
+  `qemu-xhci,id=usbconsole` e `usb-tablet,bus=usbconsole.0`, mantendo `-display none`.
+  O socket fica em `machineDir` (`0700`), é `0600` e nunca é exposto em TCP.
+  `machines.console.spice {id}` devolve `{program, args, socket}` para a **GUI** lançar o
+  `remote-viewer`; o daemon nunca executa o viewer. Viewer ausente →
+  `PODSTACK_DEPENDENCY_MISSING` (`reason=backend_missing`); machine Linux →
+  `PODSTACK_UNSUPPORTED`; machine parada ou socket ausente → `PODSTACK_CONFLICT`.
+- **OVMF Secure Boot (T9-02).** `-M q35,smm=on` +
+  `-global driver=cfi.pflash01,property=secure,value=on`; CODE read-only e NVRAM própria em
+  `<machineDir>/nvram.fd` (`0600`), copiada do template VARS na criação. Candidatos:
+  `/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd` + `OVMF_VARS.secboot.fd` (Fedora) e
+  `/usr/share/OVMF/OVMF_CODE_4M.secboot.fd` + `OVMF_VARS_4M.ms.fd` (Ubuntu). Par incompatível
+  → `PODSTACK_VALIDATION`; arquivo ausente → `PODSTACK_DEPENDENCY_MISSING`. Machines Linux
+  continuam com `OVMF_VARS.fd`.
+- **TPM 2.0 (T9-03).** `swtpm socket --tpm2 --tpmstate dir=<machineDir>/tpm,mode=0600
+  --ctrl type=unixio,path=<machineDir>/swtpm.sock,mode=0600` sobe antes do QEMU; o argv recebe
+  `-chardev socket,id=chrtpm,...`, `-tpmdev emulator,id=tpm0,chardev=chrtpm` e
+  `-device tpm-tis`. O diretório `tpm/` é `0700`, os arquivos de estado são `0600` e o estado
+  sobrevive a stop/start. No restart do daemon o processo é adotado/reconciliado pelo socket;
+  no stop/delete é encerrado. Clone cria TPM novo; export/import não transporta o estado.
+  `swtpm` ausente → `PODSTACK_DEPENDENCY_MISSING` com remediação.
+- O caminho do binário `swtpm` pode ser sobrescrito por `PODSTACK_SWTPM_BINARY` (dev/teste).
+
+**Critérios (Fase 1):**
+
+- [x] argv Windows vs. Linux testado (Secure Boot, SPICE, TPM) e `-display none` preservado.
+- [x] `nvram.fd` e diretório `tpm/` com permissões restritas; estado do TPM sobrevive a restart.
+- [x] `machines.console.spice` valida provisioner/estado/socket e resolver do viewer.
+- [ ] E2E com Windows 11 real (Secure Boot ativo, TPM 2.0 visível) — depende da T9-04.
+
 
 ---
 

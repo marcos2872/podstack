@@ -94,8 +94,9 @@ Não persistido. Cache em memória reconstruído por eventos.
 |---|---|---|
 | `id` | UUIDv7 | PK |
 | `name` | string | único |
-| `distro` | string | `ubuntu`, `debian`, ... |
+| `distro` | string | `ubuntu`, `debian`, ...; `windows` no provisioner Windows |
 | `distroVersion` | string? | `24.04`, `noble`, ... |
+| `provisioner` | enum | `linux` (default), `windows` |
 | `arch` | enum | `amd64`, `arm64` |
 | `cpus` | int | 1..N |
 | `memoryBytes` | int64 | ≥ 1 GiB |
@@ -115,6 +116,11 @@ Não persistido. Cache em memória reconstruído por eventos.
 | `error` | string? | último erro |
 
 > `httpPort`/`httpsPort` são colunas reservadas no esquema SQLite; o `meta.json` atual não as grava.
+>
+> O `provisioner` foi adicionado no M9. Bancos anteriores recebem a coluna por migração
+> aditiva (`PRAGMA table_info` + `ALTER TABLE ... DEFAULT 'linux'`). Machines Windows também
+> têm `nvram.fd` (NVRAM Secure Boot, `0600`) e o diretório `tpm/` (`0700`, arquivos `0600`);
+> ambos ficam fora do export `.tar.zst`.
 
 ### 2.7 MachinePort / MachineMount
 
@@ -224,6 +230,7 @@ CREATE TABLE machines (
   name TEXT NOT NULL UNIQUE,
   distro TEXT NOT NULL,
   distro_version TEXT,
+  provisioner TEXT NOT NULL DEFAULT 'linux',
   arch TEXT NOT NULL,
   cpus INTEGER NOT NULL,
   memory_bytes INTEGER NOT NULL,

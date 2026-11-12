@@ -235,6 +235,10 @@ fechamento após o envio como sucesso, desde que nenhum erro tenha sido
 recebido. A montagem da linha de comando fica em `QemuCommand`
 (`src/machines/QemuCommand.{h,cpp}`), que valida arquitetura, CPUs, memória,
 caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
+Para guests Windows (M9), o mesmo construtor emite `-machine q35,smm=on` +
+`-global cfi.pflash01.secure=on`, o `-spice unix=on,...` com `virtio-vga`/`usb-tablet`
+e o trio `-chardev chrtpm`/`-tpmdev emulator`/`-device tpm-tis`; `-display none`
+permanece.
 
 #### Runtime e ciclo de vida
 
@@ -258,7 +262,11 @@ processo, marca `stopped` quem está em `running`/`starting`/`stopping` sem
 processo e encerra processos com `podstack:<id>` sem machine no store, desde
 que pertençam ao `machinesRoot` desta instalação (SIGTERM, espera curta,
 SIGKILL). O filtro por uid e diretório impede que um daemon de teste ou outra
-instalação do usuário mate QEMUs alheios.
+instalação do usuário mate QEMUs alheios. O `SwtpmProcess` segue o mesmo modelo
+do `VirtiofsdProcess`: sobe antes do QEMU, é confirmado pelo `cmdline`
+(`type=unixio,path=<machineDir>/swtpm.sock`), é adotado por socket quando o
+daemon reinicia e é encerrado no stop/delete; machines paradas têm swtpm órfão
+finalizado na reconciliação.
 
 O `MachineManager` (`src/machines/MachineManager.{h,cpp}`) orquestra o
 provisionamento: valida nome RFC 1123 (1..63, `[a-z0-9-]`), CPUs (1..256),

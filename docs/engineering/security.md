@@ -160,6 +160,8 @@ encerra a janela da instância já em execução.
 | Kubeconfig do cluster | `kubernetes.kubeconfigPath/<cluster>.yaml` (0600; dir 0700) | daemon, `kubectl` |
 | Tokens de update | keyring | daemon |
 | Senhas de máquina | cloud-init seed (`seed.iso` e arquivos internos `0600`, senha só como hash SHA-512 crypt; apagada após o boot) / keyring | daemon |
+| Estado do TPM 2.0 (M9) | `machines/<id>/tpm/` (0700; arquivos `0600`) e `swtpm.sock` (0600) | daemon, `swtpm` |
+| NVRAM Secure Boot (M9) | `machines/<id>/nvram.fd` (0600) | daemon, QEMU |
 
 - Nunca em `config.json`, logs, relatório ou argv (visível em `ps`).
 - `machines.create` aceita `password` apenas no corpo JSON-RPC; o daemon não devolve o campo,
@@ -188,6 +190,14 @@ encerra a janela da instância já em execução.
   `IdentitiesOnly=yes`, `StrictHostKeyChecking=accept-new` e `ConnectTimeout=3`. A saída
   bruta e os caminhos internos não são registrados em log; erros expõem apenas stderr
   truncado e o id da machine.
+- Console SPICE (M9): o QEMU escuta **somente** em socket Unix dentro do `machineDir`
+  (`0700`, socket `0600`) e usa `disable-ticketing=on`; não há SPICE em TCP nem exposição na
+  LAN. `machines.console.spice` apenas devolve o spec ao cliente e a **GUI** lança o
+  `remote-viewer`; o daemon nunca executa o viewer.
+- TPM 2.0 (M9): o daemon inicia o `swtpm` com `--tpmstate dir=...` e
+  `--ctrl type=unixio,path=...`, ambos em `machineDir`; o diretório `tpm/` é `0700` e os
+  arquivos de estado são `0600`. O estado do TPM e a NVRAM Secure Boot não entram no export
+  `.tar.zst` (um import cria TPM/NVRAM vazios) e não são expostos em log/RPC.
 - Proxy: a URL de `network.proxy` pode conter usuário/senha. Ela **nunca** é registrada em
   log, ecoada em erro de validação ou incluída em diagnóstico; os erros são genéricos. O
   `config.json` é `0600`, e as variáveis vão ao container/machine pelo ambiente/cloud-init,

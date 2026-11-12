@@ -250,6 +250,28 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 ---
 
+## M9 — Guest Windows (P1, v1.x)
+
+> **Status (2026-11-12): Fase 1 implementada em código (T9-01/T9-02/T9-03), com testes; E2E com Windows real pendente da T9-04.** Delta completo (requisitos, desenho e critérios): [`docs/specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/tasks.md). Requisitos: FR-MAC-111…116 e NFR-MAC-006…008. M9 não bloqueia o v1.0; bloqueia apenas a parte RAIL de T10-03.
+
+| ID | P | Tarefa | Dep | Conclusão |
+|---|---|---|---|---|
+| T9-01 | P1 | Console gráfico SPICE em socket Unix (`-spice unix=on,addr=<machineDir>/spice.sock`) + viewer `remote-viewer` lançado pela GUI a partir de `machines.console.spice`; `-display none` quando off; viewer ausente → `DEPENDENCY_MISSING/backend_missing`; ADR-0003/spec/plan/api-rpc atualizados (FR-MAC-111). | T4-03, T4-05 | ✅ código — argv/SPICE, RPC e erros testados (`qemuCommandSpice`, `machineManagerSpiceConsole`, `test_rpc/machineConsole`); E2E gráfico pendente da T9-04 |
+| T9-02 | P1 | OVMF Secure Boot: `OVMF_CODE/VARS.secboot` por VM, `-machine q35,smm=on`, `-global driver=cfi.pflash01,property=secure,value=on`; NVRAM em `<state>/machines/<id>/nvram.fd` (`0600`); candidatos por distro (spec §11.1); Linux preserva `OVMF_VARS.fd` (FR-MAC-112). | T4-03, T4-05 | ✅ código — candidatos/par, `nvram.fd` 0600 e Linux inalterado testados; E2E `Confirm-SecureBootUEFI` pendente da T9-04 |
+| T9-03 | P1 | `swtpm` por VM: chardev socket em `machineDir`, estado persistido `0600` (diretório `0700`), `-tpmdev emulator` + `tpm-tis`; política de clone/export (FR-MAC-113). | T4-03, T4-05 | ✅ código — `SwtpmProcess`, permissões, restart e argv testados; E2E TPM 2.0 e clone/export pendentes da T9-04/T9-05 |
+| T9-04 | P1 | Provisioner Windows (backend): `provisioner: windows`, `distro` opcional/ausente (ou `"windows"`), `installerIso`, `answerFile?`, `windowsSsh?`, `-cdrom`, `-boot once=d`, `autounattend.xml` (`0600`, removido após uso e fora do export), `DriverPaths` para `virtio-win.iso`, mínimos ≥ 2 vCPU/4 GiB/64 GiB, enlightenments `hv_*`; sem cloud-init/seed; senha só no XML (FR-MAC-114). | T9-02, T9-03, T9-08 | instalação unattended até o desktop; XML/senha não vazam; `windowsSsh` instala OpenSSH |
+| T9-04a | P1 | UI/CLI de criação Windows: diálogo (ISO, senha/gerar, vCPU/RAM/disco, `answerFile`, `windowsSsh`, aviso de licença) e `podstack machine create <name> --provisioner windows --iso <arquivo> [--answer-file <xml>] [--windows-ssh]`; validação inline; docs `api-rpc`/`cli-parity`/`ui-map` (FR-MAC-114). | T9-04 | criar Windows pela GUI e CLI com `distro` ausente; mínimos rejeitados com erro claro |
+| T9-05 | P1 | Drivers + agente: vioscsi/viostor, NetKVM, viogpudo, `virtio-win-guest-tools` e `qemu-guest-agent` via `autounattend`; `windowsSsh` instala OpenSSH; `provisioning` → `running` dirigido por `guest-ping` no canal `agent`, timeout de 10 min → `error`; `guest-get-osinfo` grava `guestOs` e detecta Home/Pro (FR-MAC-115/120). | T9-04, T10-01 | disco/rede virtio sem `!`; `guest-ping` responde; timeout e Home/Pro testados |
+| T9-06 | P1 | Áudio Windows: validar `intel-hda` duplex (saída + microfone), nó PipeWire nomeado por VM; `machines.audio.set` vale para Windows (FR-MAC-116). | T9-04 | playback e microfone funcionam; stream identificável no mixer |
+| T9-07 | P1 | Dependências de host no empacotamento: `Requires`/`Depends` para QEMU x86/arm, utils, virtiofsd, OVMF, módulos SPICE, áudio e swtpm; backends gráficos em `Recommends`/`Suggests` (xpra nunca em `Depends`); checks no `SetupManager` + `test_setup`; estender `scripts/clean-install-check.sh` para DEB e corrigir `qemuPackagesForManager()` (NFR-MAC-006/007). | — | instalação limpa em Fedora 44 e Ubuntu 24.04/26.04 sem check obrigatório em `missing` |
+| T9-08 | P1 | ISO virtio-win: download por manifest com URL e SHA-256, job com progresso/cancelamento, cache `0600` em `~/.local/share/podstack/virtio-win/`, verificação de hash, falha offline com instrução de arquivo local e limpeza de cache antigo (NFR-MAC-007). | — | download/verificação/cache testados; hash inválido não é usado |
+
+**Bloqueios duros:** Windows Home não habilita RAIL; GPU/3D exige VFIO (fora); Windows ARM e host aarch64 fora (M9/RAIL são x86_64-only, NFR-MAC-008).
+
+**Ordem:** T9-01/T9-02/T9-03/T9-08 em paralelo; T9-04 → T9-04a → T9-05 → T9-06; T9-07 em paralelo.
+
+---
+
 ## Transversais
 
 | ID | P | Tarefa | Conclusão |
@@ -282,6 +304,8 @@ flowchart LR
   M4 --> M7
   M6 --> M7
   M7 --> M8
+  M4 --> M9
+  M8 --> M9
 ```
 
 ## Definição de pronto (por tarefa)
