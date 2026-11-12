@@ -9,7 +9,7 @@ Rules-Requires-Root: no
 
 Package: podstack
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, podman (>= 5.8), systemd, openssh-client, qtermwidget
+Depends: ${shlibs:Depends}, ${misc:Depends}, podman (>= 5.8), systemd, polkitd, openssh-client, qtermwidget
 Recommends: qemu-kvm, qemu-utils, virtiofsd, caddy, docker-compose-v2 | docker-compose
 Description: Native desktop for Podman containers, VMs and Kubernetes
  PodStack provides containers, images, volumes, networks, Compose projects,

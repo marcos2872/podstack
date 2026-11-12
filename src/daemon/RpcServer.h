@@ -20,6 +20,8 @@ public:
     bool listen(const QString &socketPath, Error *error);
 
 private:
+    /// fd 3 quando o systemd usa socket activation (LISTEN_FDS/LISTEN_PID).
+    static bool systemdListenFd(qintptr *descriptor);
     void onNewConnection();
     void onReadyRead();
     void onDisconnected();

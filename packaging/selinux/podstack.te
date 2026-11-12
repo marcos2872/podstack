@@ -1,4 +1,4 @@
-policy_module(podstack, 0.1.0)
+policy_module(podstack, 0.1.1)
 
 ########################################
 #
@@ -9,11 +9,13 @@ policy_module(podstack, 0.1.0)
 # systemd-socket-proxyd NÃO têm domínio dedicado neste módulo: rodam sob a
 # política padrão do sistema (unconfined/init/container).
 #
-# Também não cobre o fluxo completo de dnf/rpm_t/rpm_script_t nem a
-# comunicação D-Bus com o firewalld; ambos exigiriam regras adicionais.
+# Cobre a execução de dnf/rpm (dnf5 é rpm_exec_t no Fedora) e dos scriptlets
+# em rpm_script_t. A comunicação D-Bus com o firewalld ainda exigiria regras
+# adicionais.
 #
-# Este módulo NÃO foi validado em SELinux enforcing no 0.1.0. Use como base
-# e valide com `ausearch -m avc -ts recent` antes de promover a enforcing.
+# Este módulo foi validado em SELinux enforcing no Fedora 44 durante o
+# desenvolvimento da 0.1.1; revalide com `ausearch -m avc -ts recent` após
+# mudanças no helper.
 #
 # Observação: a interface `admin_domain()` citada em alguns rascunhos não
 # existe em refpolicy nem em selinux-policy Fedora; por isso as permissões
@@ -83,6 +85,11 @@ allow podstack_helper_t systemd_resolved_unit_file_t:service reload;
 # ferramentas auxiliares no próprio domínio do helper.
 corecmd_exec_bin(podstack_helper_t)
 corecmd_exec_shell(podstack_helper_t)
+
+# dnf5 tem tipo rpm_exec_t (não bin_t). As macros liberam getattr/read/execute
+# e a transição para rpm_t; os scriptlets de pacote rodam em rpm_script_t.
+rpm_domtrans(podstack_helper_t)
+rpm_domtrans_script(podstack_helper_t)
 
 # Leitura básica de /etc e /usr (configurações e binários auxiliares).
 files_read_etc_files(podstack_helper_t)

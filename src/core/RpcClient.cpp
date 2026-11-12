@@ -3,13 +3,35 @@
 #include "core/Paths.h"
 
 #include <QElapsedTimer>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QLocalSocket>
+#include <QProcess>
 
 #include <utility>
 
 namespace PodStack {
+namespace {
+
+bool daemonUnitInstalled()
+{
+    return QFileInfo::exists(QStringLiteral("/usr/lib/systemd/user/podstack.socket")) ||
+           QFileInfo::exists(QStringLiteral("/usr/share/systemd/user/podstack.socket"));
+}
+
+void tryStartDaemonSocket()
+{
+    QProcess process;
+    process.start(QStringLiteral("systemctl"),
+                  {QStringLiteral("--user"), QStringLiteral("daemon-reload")});
+    (void) process.waitForFinished(3000);
+    process.start(QStringLiteral("systemctl"), {QStringLiteral("--user"), QStringLiteral("start"),
+                                                QStringLiteral("podstack.socket")});
+    (void) process.waitForFinished(3000);
+}
+
+} // namespace
 
 RpcClient::RpcClient(QString socketPath)
     : m_socketPath(socketPath.isEmpty() ? Paths::controlSocket() : std::move(socketPath))
@@ -25,7 +47,21 @@ QJsonObject RpcClient::call(const QString &method, const QJsonObject &params, Er
 
     QLocalSocket socket;
     socket.connectToServer(m_socketPath, QIODevice::ReadWrite);
-    if (!socket.waitForConnected(timeoutMs)) {
+    bool connected = socket.waitForConnected(timeoutMs);
+    if (!connected && qEnvironmentVariableIsEmpty("PODSTACK_CONTROL_SOCKET") &&
+        daemonUnitInstalled()) {
+        // Primeira conexão depois de instalar/atualizar o RPM: a unit pode
+        // ainda não ter sido carregada pelo user manager. Ativa uma vez.
+        static bool autostartAttempted = false;
+        if (!autostartAttempted) {
+            autostartAttempted = true;
+            tryStartDaemonSocket();
+        }
+        socket.abort();
+        socket.connectToServer(m_socketPath, QIODevice::ReadWrite);
+        connected = socket.waitForConnected(timeoutMs);
+    }
+    if (!connected) {
         if (error) {
             *error = Error::make(
                 QStringLiteral("PODSTACK_DAEMON_UNAVAILABLE"),

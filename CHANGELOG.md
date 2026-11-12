@@ -5,6 +5,27 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.1.1] - 2026-11-12
+
+Release de correção da instalação e do daemon.
+
+### Corrigido
+
+- RPM: o `podstack-helper` deixa de ser um subpacote e passa a fazer parte do
+  `podstack`; o pacote antigo é obsoleto no upgrade e o serviço é habilitado e
+  iniciado no `%post`. O `.deb` também habilita/desabilita o helper no
+  `postinst`/`prerm` e declara `polkitd`.
+- systemd: o `podstackd` usa o fd entregue pelo socket unit (`LISTEN_FDS`) em
+  vez de remover e recriar o socket; a unit cria os diretórios com
+  `StateDirectory`/`CacheDirectory`/`ConfigurationDirectory`, evitando
+  `226/NAMESPACE` no primeiro start.
+- Sandbox do daemon: removidos `NoNewPrivileges` e `SystemCallFilter`, que
+  impediam a transição SELinux para `container_runtime_t` e bloqueavam
+  `fsopen` no Podman filho (gerava avisos do setroubleshoot). As famílias de
+  socket incluem `AF_NETLINK`/`AF_PACKET`.
+- Cliente: ao falhar a primeira conexão, tenta `systemctl --user
+  daemon-reload` + `start podstack.socket` antes de mostrar o erro.
+
 ## [0.1.0] - 2026-11-11
 
 Primeira release do PodStack, alternativa Linux ao OrbStack sobre o Podman Engine

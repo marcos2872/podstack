@@ -36,3 +36,7 @@ opencode.jsonc
 /coverage.xml
 /coverage-summary.txt
 /coverage-gate.txt
+
+# SELinux build artifacts
+packaging/selinux/*.pp
+packaging/selinux/tmp/

@@ -1,5 +1,5 @@
 Name:           podstack
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Native desktop for Podman containers, VMs and Kubernetes
 License:        GPL-3.0-or-later
@@ -29,6 +29,13 @@ Requires:       systemd >= 257
 Requires:       qtermwidget
 Requires:       qt6-qtsvg
 Requires:       openssh-clients
+Requires:       polkit
+Requires(post): policycoreutils
+Requires(postun): policycoreutils
+# A partir de 0.1.1 o helper é parte do pacote principal; substitui o
+# subpacote antigo para que o upgrade remova a instalação separada.
+Obsoletes:      podstack-helper < %{version}-%{release}
+Provides:       podstack-helper = %{version}-%{release}
 
 %description
 PodStack is a native Linux desktop for Podman: containers, images, volumes,
@@ -36,19 +43,6 @@ networks, Compose projects, QEMU/KVM machines, Kubernetes and local HTTPS
 domains in one application. The GUI/CLI talk to a per-user daemon over a
 0600 Unix socket; privileged setup actions use an allowlisted helper with
 polkit.
-
-%package helper
-Summary:        Privileged allowlisted helper for PodStack setup
-Requires:       systemd
-Requires:       polkit
-Requires:       podstack = %{version}-%{release}
-Requires(post):  policycoreutils
-Requires(postun): policycoreutils
-
-%description helper
-System service and polkit policy used by PodStack to install/remove
-allowlisted packages, configure the local DNS zone, bind ports 80/443 and
-trust the local CA. No shell or arbitrary command execution is exposed.
 
 %prep
 %autosetup -n %{name}-%{version}
@@ -68,17 +62,17 @@ install -D -m 0644 packaging/selinux/podstack.pp \
 %post
 # O socket do usuário sobe sob demanda na primeira conexão da GUI/CLI.
 systemctl --global enable podstack.socket >/dev/null 2>&1 || :
-
-%post helper
 # Tolerante a sistemas sem SELinux/semodule: o módulo é opcional em runtime.
 semodule -i %{_datadir}/selinux/packages/podstack.pp >/dev/null 2>&1 || :
 # Aplica os contextos do .fc ao binário já instalado (sem restorecon o tipo
 # podstack_helper_exec_t não entra em vigor e a transição de domínio não ocorre).
 restorecon -R /usr/libexec/podstack/podstack-helper /run/podstack >/dev/null 2>&1 || :
+# Sem enable --now o app não encontra o nome D-Bus dev.podstack.Helper1.
+systemctl enable --now podstack-helper.service >/dev/null 2>&1 || :
 
-%preun helper
+%preun
 if [ "$1" -eq 0 ]; then
-    systemctl stop podstack-helper.service >/dev/null 2>&1 || :
+    systemctl disable --now podstack-helper.service >/dev/null 2>&1 || :
     semodule -r podstack >/dev/null 2>&1 || :
 fi
 
@@ -100,8 +94,6 @@ fi
 %{_datadir}/icons/hicolor/128x128/apps/dev.podstack.PodStack.png
 %{_datadir}/icons/hicolor/256x256/apps/dev.podstack.PodStack.png
 %{_datadir}/icons/hicolor/512x512/apps/dev.podstack.PodStack.png
-
-%files helper
 %{_libexecdir}/podstack/podstack-helper
 %{_unitdir}/podstack-helper.service
 %{_datadir}/polkit-1/actions/dev.podstack.helper.policy
@@ -109,5 +101,10 @@ fi
 %{_datadir}/selinux/packages/podstack.pp
 
 %changelog
+* Thu Nov 12 2026 PodStack contributors <dev@podstack.dev> - 0.1.1-1
+- Merge the allowlisted helper into the main podstack RPM.
+- Enable/start podstack-helper.service and create the user dirs in %post.
+- Use the systemd socket activation fd and allow Podman child processes.
+
 * Wed Nov 11 2026 PodStack contributors <dev@podstack.dev> - 0.1.0-1
 - Initial RPM packaging for the 0.1.0 release.

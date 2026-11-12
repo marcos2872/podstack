@@ -65,7 +65,7 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 
 | Documento | O que responde |
 |---|---|
-| [`docs/user/README.md`](docs/user/README.md) | Índice da documentação de usuário e limitações conhecidas do 0.1.0 |
+| [`docs/user/README.md`](docs/user/README.md) | Índice da documentação de usuário e limitações conhecidas do 0.1.1 |
 | [`docs/user/install.md`](docs/user/install.md) | Requisitos, instalação por RPM/DEB, build do fonte, primeiro start, setup, helper/polkit e desinstalação |
 | [`docs/user/quickstart.md`](docs/user/quickstart.md) | Primeiro container, machine com SSH, Kubernetes, domínios `*.localhost`, HTTPS/CA, bandeja e atalhos |
 | [`docs/user/cli.md`](docs/user/cli.md) | Comandos e flags reais do `podstack`, saída JSON, exit codes e exemplos |
@@ -85,7 +85,7 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 | [`docs/security.md`](docs/security.md) | Threat model, helper/polkit, socket, segredos e SELinux |
 | [`docs/packaging.md`](docs/packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
 | [`docs/roadmap.md`](docs/roadmap.md) | Marcos, estimativas, caminho crítico e versões |
-| [`CHANGELOG.md`](CHANGELOG.md) | Histórico de versões, mudanças e limitações conhecidas do 0.1.0 |
+| [`CHANGELOG.md`](CHANGELOG.md) | Histórico de versões, mudanças e limitações conhecidas do 0.1.1 |
 
 ### Decisões arquiteturais (ADRs)
 
