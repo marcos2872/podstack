@@ -84,6 +84,7 @@ SettingDef makeString(const QString &key, const QJsonValue &value, const QString
     definition.key = key;
     definition.type = QStringLiteral("string");
     definition.defaultValue = value;
+    definition.nullable = value.isNull();
     definition.category = category;
     definition.description = description;
     definition.restartRequired = restart;
@@ -125,6 +126,7 @@ SettingDef makeTimestamp(const QString &key, const QString &category,
     definition.key = key;
     definition.type = QStringLiteral("timestamp");
     definition.defaultValue = QJsonValue::Null;
+    definition.nullable = true;
     definition.category = category;
     definition.description = description;
     return definition;
@@ -437,11 +439,15 @@ const QVector<SettingDef> &definitions()
                            "podstack-update.json"),
             QStringLiteral("Updates"),
             QStringLiteral("URL do manifesto assinado de updates (https; http só em loopback).")));
-        list.append(makeString(
+        SettingDef updatePublicKey = makeString(
             QStringLiteral("updates.publicKey"), embeddedUpdatePublicKey(),
             QStringLiteral("Updates"),
             QStringLiteral("Chave pública Ed25519 (base64/minisign) usada para validar o feed; "
-                           "null usa a chave embutida.")));
+                           "null desativa a verificação."));
+        // O build de release embute a chave; ainda assim o usuário pode
+        // limpar o valor para desligar a checagem.
+        updatePublicKey.nullable = true;
+        list.append(updatePublicKey);
         list.append(makeBool(QStringLiteral("diagnostics.includeLogs"), true,
                              QStringLiteral("Avançado"), QStringLiteral("Inclui logs no report.")));
         list.append(makeBool(QStringLiteral("diagnostics.redact"), true, QStringLiteral("Avançado"),
@@ -618,7 +624,7 @@ QJsonObject schemaJson()
             item.insert(QStringLiteral("min"), definition.min);
             item.insert(QStringLiteral("max"), definition.max);
         }
-        item.insert(QStringLiteral("nullable"), definition.defaultValue.isNull());
+        item.insert(QStringLiteral("nullable"), definition.nullable);
         schema.append(item);
     }
     return QJsonObject{{QStringLiteral("schema"), schema}};
@@ -722,7 +728,7 @@ bool validate(const SettingDef &definition, const QJsonValue &value, Error *erro
 
     if (definition.type == QStringLiteral("string")) {
         if (value.isNull()) {
-            if (definition.defaultValue.isNull()) {
+            if (definition.nullable) {
                 return true;
             }
             return fail(QStringLiteral("valor nulo não é permitido."),
