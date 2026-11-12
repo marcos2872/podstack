@@ -123,6 +123,7 @@ private:
     QJsonObject machineDelete(const QJsonObject &params, Error *error);
     QJsonObject machineLogs(const QJsonObject &params, Error *error);
     QJsonObject machineConsoleRead(const QJsonObject &params, Error *error);
+    QJsonObject machineConsoleSpice(const QJsonObject &params, Error *error);
     QJsonObject subscribeMachineConsole(const QJsonObject &params, const Notify &notify,
                                         Error *error);
     QJsonObject machineSsh(const QJsonObject &params, Error *error);

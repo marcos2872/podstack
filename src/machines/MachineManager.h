@@ -9,6 +9,7 @@
 #include "machines/MachineStore.h"
 #include "machines/QemuRuntime.h"
 #include "machines/SshConfig.h"
+#include "machines/SwtpmProcess.h"
 #include "machines/VirtiofsdProcess.h"
 
 #include <QByteArray>
@@ -29,6 +30,7 @@ struct CreateMachineRequest {
     QString name;
     QString distro;
     QString version;
+    QString provisioner = QStringLiteral("linux"); // linux|windows
     QString arch;
     QString user;
     QString password;
@@ -49,6 +51,13 @@ struct SshInfo {
     QString user;
     QString identityFile;
     bool forwardAgent = false;
+};
+
+/// Spec do console gráfico devolvido à GUI; o viewer nunca é lançado pelo daemon.
+struct SpiceConsoleSpec {
+    QString program;
+    QStringList args;
+    QString socket;
 };
 
 /// Recursos editáveis de uma machine já criada (campos ausentes não mudam).
@@ -72,6 +81,9 @@ public:
         QString sshConfigPath;   // vazio = PODSTACK_SSH_CONFIG ou ~/.ssh/config
         QString ovmfCodePath;   // vazio = autodetectar
         QString ovmfVarsPath;
+        QString ovmfSecbootCodePath; // vazio = autodetectar (provisioner windows)
+        QString ovmfSecbootVarsPath;
+        QString swtpmBinary; // vazio = PODSTACK_SWTPM_BINARY/QStandardPaths
         int sshPortStart = 32222;
         std::unique_ptr<QemuRuntime> runtime; // vazio = QemuProcessRuntime
         std::function<DistroImage(const QString &spec, const QString &arch, Error *)>
@@ -84,6 +96,8 @@ public:
 
     static QStringList ovmfCodeCandidates();
     static QStringList ovmfVarsCandidates();
+    static QStringList ovmfSecbootCodeCandidates();
+    static QStringList ovmfSecbootVarsCandidates();
     static bool resolveOvmfPaths(QString *code, QString *vars,
                                  const QStringList &codeCandidates = {},
                                  const QStringList &varCandidates = {});
@@ -116,6 +130,8 @@ public:
     MachineMeta setAudioEnabled(const QString &idOrName, bool enabled, Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
     bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
+    /// Spec do console SPICE para machines Windows iniciadas; o daemon nunca lança o viewer.
+    bool spiceConsole(const QString &idOrName, SpiceConsoleSpec *spec, Error *error = nullptr);
     /// Renomeia a machine, atualiza o bloco SSH e a máquina default do Config.
     MachineMeta rename(const QString &idOrName, const QString &newName, Error *error = nullptr);
     /// Cria uma cópia independente (disco próprio, chave/seed copiados e nova porta).
@@ -166,9 +182,12 @@ private:
                         QVector<MachinePort> *normalized, Error *error) const;
     bool startVirtiofs(const MachineMeta &meta, Error *error);
     bool stopVirtiofs(const QString &machineId, Error *error = nullptr);
+    bool startSwtpm(const MachineMeta &meta, Error *error);
+    bool stopSwtpm(const QString &machineId, Error *error = nullptr);
+    void reconcileSwtpm(const QVector<MachineMeta> &machines);
     QemuSpec specFor(const MachineMeta &meta, bool forStart, Error *error);
-    bool resolveFirmware(const QString &arch, const QString &machineDir, QString *codePath,
-                         QString *varsPath, Error *error);
+    bool resolveFirmware(const QString &arch, bool secureBoot, const QString &machineDir,
+                         QString *codePath, QString *varsPath, Error *error);
     bool createDisk(const QString &diskPath, const QString &backingPath, qint64 diskBytes,
                     Error *error);
     bool flattenDisk(const QString &diskPath, const QString &targetPath,
@@ -199,6 +218,8 @@ private:
     SshConfig m_sshConfig;
     std::recursive_mutex m_virtiofsMutex;
     std::map<QString, std::map<QString, std::unique_ptr<VirtiofsdProcess>>> m_virtiofs;
+    std::recursive_mutex m_swtpmMutex;
+    std::map<QString, std::unique_ptr<SwtpmProcess>> m_swtpm;
     std::mutex m_machineLocksMutex;
     QHash<QString, std::shared_ptr<std::recursive_mutex>> m_machineLocks;
     std::mutex m_archiveMutex;

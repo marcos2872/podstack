@@ -135,6 +135,7 @@ QJsonObject MachineMeta::toJson() const
     object.insert(QStringLiteral("name"), name);
     object.insert(QStringLiteral("distro"), distro);
     object.insert(QStringLiteral("distroVersion"), distroVersion);
+    object.insert(QStringLiteral("provisioner"), provisioner);
     object.insert(QStringLiteral("arch"), arch);
     object.insert(QStringLiteral("cpus"), cpus);
     object.insert(QStringLiteral("memoryBytes"), memoryBytes);
@@ -187,6 +188,10 @@ MachineMeta MachineMeta::fromJson(const QJsonObject &object)
     meta.name = object.value(QStringLiteral("name")).toString();
     meta.distro = object.value(QStringLiteral("distro")).toString();
     meta.distroVersion = object.value(QStringLiteral("distroVersion")).toString();
+    meta.provisioner = object.value(QStringLiteral("provisioner")).toString();
+    if (meta.provisioner.isEmpty()) {
+        meta.provisioner = QStringLiteral("linux");
+    }
     meta.arch = object.value(QStringLiteral("arch")).toString();
     meta.cpus = object.value(QStringLiteral("cpus")).toInt(2);
     meta.memoryBytes = object.value(QStringLiteral("memoryBytes")).toInteger();

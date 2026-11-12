@@ -4,6 +4,7 @@
 
 #include "core/Paths.h"
 
+#include <QByteArray>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -73,29 +74,33 @@ MachineMeta metaFromRow(sqlite3_stmt *statement)
     meta.name = columnText(statement, 1);
     meta.distro = columnText(statement, 2);
     meta.distroVersion = columnText(statement, 3);
-    meta.arch = columnText(statement, 4);
-    meta.cpus = sqlite3_column_int(statement, 5);
-    meta.memoryBytes = sqlite3_column_int64(statement, 6);
-    meta.diskBytes = sqlite3_column_int64(statement, 7);
-    meta.diskPath = columnText(statement, 8);
-    meta.seedPath = columnText(statement, 9);
-    meta.sshPort = sqlite3_column_int(statement, 10);
-    meta.sshUser = columnText(statement, 11);
-    meta.sshKeyPath = columnText(statement, 12);
-    meta.state = columnText(statement, 13);
-    meta.isolated = sqlite3_column_int(statement, 14) != 0;
-    meta.isolateNetwork = sqlite3_column_int(statement, 15) != 0;
-    meta.forwardSshAgent = sqlite3_column_int(statement, 16) != 0;
-    meta.lastBootAt = columnText(statement, 17);
-    meta.createdAt = columnText(statement, 18);
-    meta.updatedAt = columnText(statement, 19);
-    meta.error = columnText(statement, 20);
+    meta.provisioner = columnText(statement, 4);
+    if (meta.provisioner.isEmpty()) {
+        meta.provisioner = QStringLiteral("linux");
+    }
+    meta.arch = columnText(statement, 5);
+    meta.cpus = sqlite3_column_int(statement, 6);
+    meta.memoryBytes = sqlite3_column_int64(statement, 7);
+    meta.diskBytes = sqlite3_column_int64(statement, 8);
+    meta.diskPath = columnText(statement, 9);
+    meta.seedPath = columnText(statement, 10);
+    meta.sshPort = sqlite3_column_int(statement, 11);
+    meta.sshUser = columnText(statement, 12);
+    meta.sshKeyPath = columnText(statement, 13);
+    meta.state = columnText(statement, 14);
+    meta.isolated = sqlite3_column_int(statement, 15) != 0;
+    meta.isolateNetwork = sqlite3_column_int(statement, 16) != 0;
+    meta.forwardSshAgent = sqlite3_column_int(statement, 17) != 0;
+    meta.lastBootAt = columnText(statement, 18);
+    meta.createdAt = columnText(statement, 19);
+    meta.updatedAt = columnText(statement, 20);
+    meta.error = columnText(statement, 21);
     return meta;
 }
 
 const char *kMachineColumns = R"SQL(
-SELECT id, name, distro, distro_version, arch, cpus, memory_bytes, disk_bytes, disk_path,
-       seed_path, ssh_port, ssh_user, ssh_key_path, state, isolated, isolate_network,
+SELECT id, name, distro, distro_version, provisioner, arch, cpus, memory_bytes, disk_bytes,
+       disk_path, seed_path, ssh_port, ssh_user, ssh_key_path, state, isolated, isolate_network,
        forward_ssh_agent, last_boot_at, created_at, updated_at, error
 FROM machines
 )SQL";
@@ -220,6 +225,7 @@ CREATE TABLE IF NOT EXISTS machines (
   name TEXT NOT NULL UNIQUE,
   distro TEXT NOT NULL,
   distro_version TEXT,
+  provisioner TEXT NOT NULL DEFAULT 'linux',
   arch TEXT NOT NULL,
   cpus INTEGER NOT NULL,
   memory_bytes INTEGER NOT NULL,
@@ -286,6 +292,37 @@ CREATE INDEX IF NOT EXISTS idx_machines_state ON machines(state);
         }
         return false;
     }
+
+    // Migração aditiva: bancos criados antes do M9 não têm `provisioner`.
+    bool hasProvisioner = false;
+    sqlite3_stmt *columns = nullptr;
+    if (sqlite3_prepare_v2(m_db, "PRAGMA table_info(machines);", -1, &columns, nullptr) !=
+        SQLITE_OK) {
+        return fail(QStringLiteral("Falha ao inspecionar o schema de machines."), error);
+    }
+    while (sqlite3_step(columns) == SQLITE_ROW) {
+        const auto *name = sqlite3_column_text(columns, 1);
+        if (name &&
+            QByteArray(reinterpret_cast<const char *>(name)) == QByteArrayLiteral("provisioner")) {
+            hasProvisioner = true;
+            break;
+        }
+    }
+    sqlite3_finalize(columns);
+
+    if (!hasProvisioner) {
+        if (!execSql(m_db,
+                     "ALTER TABLE machines ADD COLUMN provisioner TEXT NOT NULL "
+                     "DEFAULT 'linux';",
+                     &sqlError)) {
+            if (error) {
+                *error =
+                    Error::make(QStringLiteral("PODSTACK_DB_ERROR"),
+                                QStringLiteral("Falha ao migrar o schema de machines."), sqlError);
+            }
+            return false;
+        }
+    }
     return true;
 }
 
@@ -323,14 +360,15 @@ bool MachineStore::upsert(const MachineMeta &meta, Error *error)
 
     const char *machineSql = R"SQL(
 INSERT INTO machines
-(id, name, distro, distro_version, arch, cpus, memory_bytes, disk_bytes, disk_path,
+(id, name, distro, distro_version, provisioner, arch, cpus, memory_bytes, disk_bytes, disk_path,
  seed_path, ssh_port, ssh_user, ssh_key_path, state, isolated, isolate_network,
  forward_ssh_agent, last_boot_at, created_at, updated_at, error)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
   distro = excluded.distro,
   distro_version = excluded.distro_version,
+  provisioner = excluded.provisioner,
   arch = excluded.arch,
   cpus = excluded.cpus,
   memory_bytes = excluded.memory_bytes,
@@ -360,23 +398,24 @@ ON CONFLICT(id) DO UPDATE SET
     bindText(machine.get(), 2, meta.name);
     bindText(machine.get(), 3, meta.distro);
     bindText(machine.get(), 4, meta.distroVersion);
-    bindText(machine.get(), 5, meta.arch);
-    sqlite3_bind_int(machine.get(), 6, meta.cpus);
-    sqlite3_bind_int64(machine.get(), 7, meta.memoryBytes);
-    sqlite3_bind_int64(machine.get(), 8, meta.diskBytes);
-    bindText(machine.get(), 9, meta.diskPath);
-    bindText(machine.get(), 10, meta.seedPath);
-    sqlite3_bind_int(machine.get(), 11, meta.sshPort);
-    bindText(machine.get(), 12, meta.sshUser);
-    bindText(machine.get(), 13, meta.sshKeyPath);
-    bindText(machine.get(), 14, meta.state);
-    sqlite3_bind_int(machine.get(), 15, meta.isolated ? 1 : 0);
-    sqlite3_bind_int(machine.get(), 16, meta.isolateNetwork ? 1 : 0);
-    sqlite3_bind_int(machine.get(), 17, meta.forwardSshAgent ? 1 : 0);
-    bindText(machine.get(), 18, meta.lastBootAt);
-    bindText(machine.get(), 19, meta.createdAt);
-    bindText(machine.get(), 20, meta.updatedAt);
-    bindText(machine.get(), 21, meta.error);
+    bindText(machine.get(), 5, meta.provisioner);
+    bindText(machine.get(), 6, meta.arch);
+    sqlite3_bind_int(machine.get(), 7, meta.cpus);
+    sqlite3_bind_int64(machine.get(), 8, meta.memoryBytes);
+    sqlite3_bind_int64(machine.get(), 9, meta.diskBytes);
+    bindText(machine.get(), 10, meta.diskPath);
+    bindText(machine.get(), 11, meta.seedPath);
+    sqlite3_bind_int(machine.get(), 12, meta.sshPort);
+    bindText(machine.get(), 13, meta.sshUser);
+    bindText(machine.get(), 14, meta.sshKeyPath);
+    bindText(machine.get(), 15, meta.state);
+    sqlite3_bind_int(machine.get(), 16, meta.isolated ? 1 : 0);
+    sqlite3_bind_int(machine.get(), 17, meta.isolateNetwork ? 1 : 0);
+    sqlite3_bind_int(machine.get(), 18, meta.forwardSshAgent ? 1 : 0);
+    bindText(machine.get(), 19, meta.lastBootAt);
+    bindText(machine.get(), 20, meta.createdAt);
+    bindText(machine.get(), 21, meta.updatedAt);
+    bindText(machine.get(), 22, meta.error);
 
     if (sqlite3_step(machine.get()) != SQLITE_DONE) {
         return abort(QStringLiteral("Falha ao gravar a machine."));

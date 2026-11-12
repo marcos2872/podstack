@@ -56,6 +56,7 @@ struct MachineMeta {
     QString name;
     QString distro;
     QString distroVersion;
+    QString provisioner = QStringLiteral("linux"); // linux|windows
     QString arch;
     int cpus = 2;
     qint64 memoryBytes = 0;

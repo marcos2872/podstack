@@ -192,7 +192,20 @@ void cleanupRuntimeFiles(const QString &directory, const MachineMeta &meta)
     }
     if (!directory.isEmpty()) {
         QFile::remove(directory + QStringLiteral("/OVMF_VARS.fd"));
+        QFile::remove(directory + QStringLiteral("/nvram.fd"));
+        QFile::remove(directory + QStringLiteral("/spice.sock"));
+        QFile::remove(directory + QStringLiteral("/swtpm.sock"));
     }
+}
+
+/// O socket do SPICE é criado pelo QEMU com o umask do processo; restringe a 0600
+/// depois que o runtime sobe (o diretório da machine já é 0700).
+void restrictSpiceSocket(const QemuSpec &spec)
+{
+    if (spec.spiceSocketPath.isEmpty() || !QFileInfo(spec.spiceSocketPath).exists()) {
+        return;
+    }
+    QFile::setPermissions(spec.spiceSocketPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 }
 
 /// Um órfão pertence a esta instalação quando o cmdline referencia um caminho
@@ -221,6 +234,23 @@ bool processReferencesPath(qint64 pid, const QString &root)
         }
     }
     return false;
+}
+
+/// Par OVMF compatível: o sufixo `_4M` precisa combinar e o CODE com
+/// `secboot` exige VARS `secboot` (Fedora) ou `ms` (Ubuntu).
+bool firmwarePairCompatible(const QString &code, const QString &vars)
+{
+    const QString codeName = QFileInfo(code).fileName();
+    const QString varsName = QFileInfo(vars).fileName();
+    if (codeName.contains(QStringLiteral("_4M")) != varsName.contains(QStringLiteral("_4M"))) {
+        return false;
+    }
+    if (codeName.contains(QStringLiteral("secboot")) &&
+        !varsName.contains(QStringLiteral("secboot")) &&
+        !varsName.contains(QStringLiteral(".ms."))) {
+        return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -319,6 +349,21 @@ bool MachineManager::validate(const CreateMachineRequest &request, Error *error)
     if (arch != QStringLiteral("amd64") && arch != QStringLiteral("arm64")) {
         return fails(error, invalidParams(QStringLiteral("Arquitetura inválida para a machine."),
                                           arch));
+    }
+    const QString provisioner = request.provisioner.trimmed().toLower();
+    if (provisioner != QStringLiteral("linux") && provisioner != QStringLiteral("windows")) {
+        return fails(error, invalidParams(QStringLiteral("Provisioner inválido para a machine."),
+                                          request.provisioner,
+                                          QStringLiteral("Use 'linux' ou 'windows'.")));
+    }
+    if (provisioner == QStringLiteral("windows")) {
+        // A criação Windows (installerIso/autounattend) é entregue na T9-04.
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                                 QStringLiteral("A criação de machines Windows ainda não está "
+                                                "disponível."),
+                                 QStringLiteral("provisioner=windows"),
+                                 QStringLiteral("Use uma distro Linux por enquanto.")));
     }
     if (request.distro.trimmed().isEmpty()) {
         return fails(error, invalidParams(QStringLiteral("Informe a distro da machine.")));
@@ -765,6 +810,106 @@ bool MachineManager::stopVirtiofs(const QString &machineId, Error *error)
     return ok;
 }
 
+bool MachineManager::startSwtpm(const MachineMeta &meta, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    std::lock_guard<std::recursive_mutex> lock(m_swtpmMutex);
+    stopSwtpm(meta.id);
+    if (meta.provisioner != QStringLiteral("windows")) {
+        return true;
+    }
+
+    const QString directory = machineDirFor(meta.id);
+    if (directory.isEmpty()) {
+        return fails(error,
+                     invalidParams(QStringLiteral("Identificador de machine inválido."), meta.id));
+    }
+
+    auto process = std::make_unique<SwtpmProcess>();
+    Error startError;
+    if (!process->start(m_options.swtpmBinary, SwtpmProcess::stateDirFor(directory),
+                        SwtpmProcess::socketPathFor(directory), &startError)) {
+        qCWarning(lcCore) << "Falha ao iniciar o swtpm da machine" << meta.name << ":"
+                          << startError.code << startError.detail;
+        if (error) {
+            *error = startError;
+        }
+        return false;
+    }
+    m_swtpm[meta.id] = std::move(process);
+    return true;
+}
+
+bool MachineManager::stopSwtpm(const QString &machineId, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    std::lock_guard<std::recursive_mutex> lock(m_swtpmMutex);
+
+    const QString directory = machineDirFor(machineId);
+    const QString socketPath =
+        directory.isEmpty() ? QString() : SwtpmProcess::socketPathFor(directory);
+    const auto it = m_swtpm.find(machineId);
+    if (it == m_swtpm.end()) {
+        // Após restart do daemon o swtpm é destacado e precisa ser adotado pelo socket.
+        if (!socketPath.isEmpty()) {
+            SwtpmProcess orphan;
+            if (orphan.adopt(socketPath)) {
+                Error stopError;
+                if (!orphan.stop(&stopError)) {
+                    if (error) {
+                        *error = stopError;
+                    }
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    Error stopError;
+    const bool ok = it->second->stop(&stopError);
+    m_swtpm.erase(it);
+    if (!ok) {
+        qCWarning(lcCore) << "Falha ao encerrar o swtpm da machine" << machineId << ":"
+                          << stopError.code;
+        if (error) {
+            *error = stopError;
+        }
+    }
+    return ok;
+}
+
+void MachineManager::reconcileSwtpm(const QVector<MachineMeta> &machines)
+{
+    const QHash<QString, qint64> running = m_runtime->runningMachines();
+    for (const MachineMeta &meta : machines) {
+        if (meta.provisioner != QStringLiteral("windows")) {
+            continue;
+        }
+        if (!running.contains(meta.id)) {
+            stopSwtpm(meta.id);
+            continue;
+        }
+
+        const QString directory = machineDirFor(meta.id);
+        if (directory.isEmpty()) {
+            continue;
+        }
+        auto process = std::make_unique<SwtpmProcess>();
+        if (process->adopt(SwtpmProcess::socketPathFor(directory))) {
+            std::lock_guard<std::recursive_mutex> lock(m_swtpmMutex);
+            m_swtpm[meta.id] = std::move(process);
+        } else {
+            qCWarning(lcCore) << "Machine" << meta.name
+                              << "está running sem swtpm; o TPM pode ficar indisponível";
+        }
+    }
+}
+
 MachineMeta MachineManager::load(const QString &idOrName, Error *error)
 {
     Error lookup;
@@ -881,6 +1026,8 @@ void MachineManager::reconcile(Error *error)
         }
     }
 
+    reconcileSwtpm(machines);
+
     for (auto it = processes.constBegin(); it != processes.constEnd(); ++it) {
         if (knownIds.contains(it.key())) {
             continue;
@@ -965,6 +1112,22 @@ QStringList MachineManager::ovmfVarsCandidates()
     };
 }
 
+QStringList MachineManager::ovmfSecbootCodeCandidates()
+{
+    return {
+        QStringLiteral("/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_CODE_4M.secboot.fd"),
+    };
+}
+
+QStringList MachineManager::ovmfSecbootVarsCandidates()
+{
+    return {
+        QStringLiteral("/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_VARS_4M.ms.fd"),
+    };
+}
+
 bool MachineManager::resolveOvmfPaths(QString *code, QString *vars,
                                       const QStringList &codeCandidates,
                                       const QStringList &varCandidates)
@@ -991,21 +1154,36 @@ bool MachineManager::resolveOvmfPaths(QString *code, QString *vars,
     return false;
 }
 
-bool MachineManager::resolveFirmware(const QString &arch, const QString &machineDir,
-                                     QString *codePath, QString *varsPath, Error *error)
+bool MachineManager::resolveFirmware(const QString &arch, bool secureBoot,
+                                     const QString &machineDir, QString *codePath,
+                                     QString *varsPath, Error *error)
 {
-    QString code = m_options.ovmfCodePath;
-    QString vars = m_options.ovmfVarsPath;
+    QString code = secureBoot ? m_options.ovmfSecbootCodePath : m_options.ovmfCodePath;
+    QString vars = secureBoot ? m_options.ovmfSecbootVarsPath : m_options.ovmfVarsPath;
 
     if (code.isEmpty() != vars.isEmpty()) {
         return fails(error,
-                     invalidParams(
-                         QStringLiteral("O firmware UEFI exige OVMF code e vars juntos.")));
+                     Error::make(QStringLiteral("PODSTACK_VALIDATION"),
+                                 QStringLiteral("O firmware UEFI exige OVMF code e vars juntos."),
+                                 QStringLiteral("code='%1', vars='%2'").arg(code, vars),
+                                 QStringLiteral("Informe o par CODE/VARS da mesma distribuição.")));
+    }
+
+    if (secureBoot && arch != QStringLiteral("amd64")) {
+        return fails(error, Error::make(QStringLiteral("PODSTACK_VALIDATION"),
+                                        QStringLiteral("Secure Boot é suportado apenas em machines "
+                                                       "amd64."),
+                                        arch));
     }
 
     if (code.isEmpty()) {
         if (arch == QStringLiteral("amd64")) {
-            (void) resolveOvmfPaths(&code, &vars);
+            if (secureBoot) {
+                (void) resolveOvmfPaths(&code, &vars, ovmfSecbootCodeCandidates(),
+                                        ovmfSecbootVarsCandidates());
+            } else {
+                (void) resolveOvmfPaths(&code, &vars);
+            }
         } else if (arch == QStringLiteral("arm64")) {
             code = kAavmfCodeArm64;
             vars = kAavmfVarsArm64;
@@ -1015,32 +1193,47 @@ bool MachineManager::resolveFirmware(const QString &arch, const QString &machine
         }
     }
 
-    const QFileInfo codeInfo(code);
-    if (!codeInfo.isFile() || !codeInfo.isReadable()) {
-        const QString remediation =
-            arch == QStringLiteral("arm64")
-                ? QStringLiteral("Instale edk2-aarch64 (Fedora) ou qemu-efi-aarch64 "
-                                 "(Debian/Ubuntu).")
-                : QStringLiteral("Instale edk2-ovmf (Fedora) ou ovmf (Debian/Ubuntu).");
+    if (!firmwarePairCompatible(code, vars)) {
         return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
-                                 QStringLiteral("Firmware UEFI (OVMF) não encontrado."), code,
-                                 remediation));
+                     Error::make(QStringLiteral("PODSTACK_VALIDATION"),
+                                 QStringLiteral("O par de firmware OVMF é incompatível."),
+                                 QStringLiteral("code='%1', vars='%2'").arg(code, vars),
+                                 QStringLiteral("Use OVMF_CODE.secboot.fd + OVMF_VARS.secboot.fd "
+                                                "(Fedora) ou OVMF_CODE_4M.secboot.fd + "
+                                                "OVMF_VARS_4M.ms.fd (Ubuntu).")));
     }
 
-    const QString target = machineDir + QStringLiteral("/OVMF_VARS.fd");
+    const QString remediation =
+        arch == QStringLiteral("arm64")
+            ? QStringLiteral("Instale edk2-aarch64 (Fedora) ou qemu-efi-aarch64 "
+                             "(Debian/Ubuntu).")
+        : secureBoot ? QStringLiteral("Instale edk2-ovmf (Fedora) ou ovmf (Debian/Ubuntu); o "
+                                      "pacote inclui os arquivos com Secure Boot.")
+                     : QStringLiteral("Instale edk2-ovmf (Fedora) ou ovmf (Debian/Ubuntu).");
+
+    const QFileInfo codeInfo(code);
+    if (!codeInfo.isFile() || !codeInfo.isReadable()) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_DEPENDENCY_MISSING"),
+                                 secureBoot
+                                     ? QStringLiteral("Firmware UEFI com Secure Boot (OVMF) não "
+                                                      "encontrado.")
+                                     : QStringLiteral("Firmware UEFI (OVMF) não encontrado."),
+                                 code, remediation));
+    }
+
+    const QString target =
+        machineDir + (secureBoot ? QStringLiteral("/nvram.fd") : QStringLiteral("/OVMF_VARS.fd"));
     if (!QFileInfo(target).isFile()) {
         const QFileInfo varsInfo(vars);
         if (!varsInfo.isFile() || !varsInfo.isReadable()) {
-            const QString remediation =
-                arch == QStringLiteral("arm64")
-                    ? QStringLiteral("Instale edk2-aarch64 (Fedora) ou qemu-efi-aarch64 "
-                                     "(Debian/Ubuntu).")
-                    : QStringLiteral("Instale edk2-ovmf (Fedora) ou ovmf (Debian/Ubuntu).");
             return fails(error,
-                         Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
-                                     QStringLiteral("Template OVMF_VARS não encontrado."), vars,
-                                     remediation));
+                         Error::make(QStringLiteral("PODSTACK_DEPENDENCY_MISSING"),
+                                     secureBoot
+                                         ? QStringLiteral("Template OVMF_VARS com Secure Boot não "
+                                                          "encontrado.")
+                                         : QStringLiteral("Template OVMF_VARS não encontrado."),
+                                     vars, remediation));
         }
         if (!QFile::copy(vars, target)) {
             return fails(error,
@@ -1876,6 +2069,8 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
     spec.isolateNetwork = meta.isolateNetwork;
     spec.serialPorts = meta.serialPorts;
     spec.audioEnabled = meta.audioEnabled;
+    const bool windows = meta.provisioner == QStringLiteral("windows");
+    spec.secureBoot = windows;
     for (const MachineUsbDevice &device : meta.usbDevices) {
         spec.usbDevices.append(QemuUsbDevice{device.bus, device.address});
     }
@@ -1889,6 +2084,10 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
     spec.qmpSocketPath = directory + QStringLiteral("/qmp.sock");
     spec.consoleLogPath = directory + QStringLiteral("/console.log");
     spec.pidFile = directory + QStringLiteral("/qemu.pid");
+    if (windows) {
+        spec.spiceSocketPath = directory + QStringLiteral("/spice.sock");
+        spec.tpmSocketPath = SwtpmProcess::socketPathFor(directory);
+    }
 
     for (const MachineMount &mount : meta.mounts) {
         const QString socketPath = virtiofsSocketPath(meta.id, mount.tag);
@@ -1931,7 +2130,8 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
         return {};
     }
 
-    if (!resolveFirmware(meta.arch, directory, &spec.ovmfCodePath, &spec.ovmfVarsPath, error)) {
+    if (!resolveFirmware(meta.arch, windows, directory, &spec.ovmfCodePath, &spec.ovmfVarsPath,
+                         error)) {
         return {};
     }
     return spec;
@@ -2045,7 +2245,8 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     setOwnerOnly(m_options.machinesRoot, true);
     setOwnerOnly(directory, true);
 
-    if (!resolveFirmware(arch, directory, nullptr, nullptr, error)) {
+    if (!resolveFirmware(arch, request.provisioner.trimmed().toLower() == QStringLiteral("windows"),
+                         directory, nullptr, nullptr, error)) {
         cleanupDirectory(directory);
         return {};
     }
@@ -2104,6 +2305,7 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     meta.name = request.name;
     meta.distro = image.distro;
     meta.distroVersion = image.version;
+    meta.provisioner = request.provisioner.trimmed().toLower();
     meta.arch = arch;
     meta.cpus = request.cpus;
     meta.memoryBytes = request.memoryBytes;
@@ -2172,7 +2374,20 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     }
 
     Error startError;
+    Error swtpmError;
+    if (!startSwtpm(meta, &swtpmError)) {
+        stopVirtiofs(meta.id);
+        meta.state = QStringLiteral("error");
+        meta.error = errorText(swtpmError);
+        persist(meta, nullptr);
+        cleanupRuntimeFiles(directory, meta);
+        if (error) {
+            *error = swtpmError;
+        }
+        return meta;
+    }
     if (!m_runtime->start(spec, &startError)) {
+        stopSwtpm(meta.id);
         stopVirtiofs(meta.id);
         meta.state = QStringLiteral("error");
         meta.error = errorText(startError);
@@ -2183,12 +2398,14 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         }
         return meta;
     }
+    restrictSpiceSocket(spec);
 
     meta.state = QStringLiteral("running");
     meta.error.clear();
     meta.lastBootAt = nowIso();
     if (!persist(meta, error)) {
         m_runtime->stop(spec, true, nullptr);
+        stopSwtpm(meta.id);
         stopVirtiofs(meta.id);
         return meta;
     }
@@ -2283,7 +2500,19 @@ MachineMeta MachineManager::start(const QString &idOrName, Error *error)
     }
 
     Error startError;
+    Error swtpmError;
+    if (!startSwtpm(meta, &swtpmError)) {
+        stopVirtiofs(meta.id);
+        meta.state = QStringLiteral("error");
+        meta.error = errorText(swtpmError);
+        persist(meta, nullptr);
+        if (error) {
+            *error = swtpmError;
+        }
+        return meta;
+    }
     if (!m_runtime->start(spec, &startError)) {
+        stopSwtpm(meta.id);
         stopVirtiofs(meta.id);
         meta.state = QStringLiteral("error");
         meta.error = errorText(startError);
@@ -2293,12 +2522,14 @@ MachineMeta MachineManager::start(const QString &idOrName, Error *error)
         }
         return meta;
     }
+    restrictSpiceSocket(spec);
 
     meta.state = QStringLiteral("running");
     meta.error.clear();
     meta.lastBootAt = nowIso();
     if (!persist(meta, error)) {
         m_runtime->stop(spec, true, nullptr);
+        stopSwtpm(meta.id);
         stopVirtiofs(meta.id);
         return meta;
     }
@@ -2337,7 +2568,11 @@ MachineMeta MachineManager::stop(const QString &idOrName, bool force, Error *err
 
     if (meta.state == QStringLiteral("stopped")
         && !m_runtime->isRunning(spec, nullptr)) {
+        stopSwtpm(meta.id);
         stopVirtiofs(meta.id);
+        if (!spec.spiceSocketPath.isEmpty()) {
+            QFile::remove(spec.spiceSocketPath);
+        }
         for (const MachineMount &mount : meta.mounts) {
             QFile::remove(virtiofsSocketPath(meta.id, mount.tag));
         }
@@ -2360,10 +2595,24 @@ MachineMeta MachineManager::stop(const QString &idOrName, bool force, Error *err
         return meta;
     }
 
+    Error swtpmError;
+    stopSwtpm(meta.id, &swtpmError);
     Error virtiofsError;
     stopVirtiofs(meta.id, &virtiofsError);
+    if (!spec.spiceSocketPath.isEmpty()) {
+        QFile::remove(spec.spiceSocketPath);
+    }
     for (const MachineMount &mount : meta.mounts) {
         QFile::remove(virtiofsSocketPath(meta.id, mount.tag));
+    }
+    if (!swtpmError.isEmpty()) {
+        meta.state = QStringLiteral("error");
+        meta.error = errorText(swtpmError);
+        persist(meta, nullptr);
+        if (error) {
+            *error = swtpmError;
+        }
+        return meta;
     }
     if (!virtiofsError.isEmpty()) {
         meta.state = QStringLiteral("error");
@@ -3168,6 +3417,7 @@ bool MachineManager::remove(const QString &idOrName, bool force, Error *error)
     if (!stopError.isEmpty()) {
         // Remove forçado: mesmo com o QEMU resistindo, não deixe o virtiofsd
         // (e o socket) para trás ao apagar o diretório da machine.
+        stopSwtpm(meta.id);
         stopVirtiofs(meta.id);
         for (const MachineMount &mount : meta.mounts) {
             QFile::remove(virtiofsSocketPath(meta.id, mount.tag));
@@ -4038,6 +4288,7 @@ MachineMeta MachineManager::clone(
     meta.name = targetName;
     meta.distro = source.distro;
     meta.distroVersion = source.distroVersion;
+    meta.provisioner = source.provisioner;
     meta.arch = source.arch;
     meta.cpus = source.cpus;
     meta.memoryBytes = source.memoryBytes;
@@ -4125,6 +4376,70 @@ bool MachineManager::setDefaultMachine(const QString &idOrName, Error *error)
                           QStringLiteral("Verifique as permissões de ~/.config/podstack.")));
         return false;
     }
+    return true;
+}
+
+bool MachineManager::spiceConsole(const QString &idOrName, SpiceConsoleSpec *spec, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!spec) {
+        return fails(error, invalidParams(QStringLiteral("Spec do console inválido.")));
+    }
+    *spec = {};
+
+    const MachineMeta meta = load(idOrName, error);
+    if (meta.id.isEmpty()) {
+        return false;
+    }
+    if (meta.provisioner != QStringLiteral("windows")) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                                 QStringLiteral("O console SPICE não está disponível para esta "
+                                                "machine."),
+                                 QStringLiteral("provisioner=%1").arg(meta.provisioner),
+                                 QStringLiteral("O console gráfico atende apenas machines "
+                                                "Windows.")));
+    }
+    if (meta.state != QStringLiteral("running")) {
+        return fails(
+            error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                               QStringLiteral("A machine precisa estar iniciada para abrir o "
+                                              "console."),
+                               meta.state, QStringLiteral("Inicie a machine e tente novamente.")));
+    }
+
+    const QString directory = machineDirFor(meta.id);
+    const QString socketPath =
+        directory.isEmpty() ? QString() : directory + QStringLiteral("/spice.sock");
+    if (socketPath.isEmpty() || !QFileInfo(socketPath).exists()) {
+        return fails(error,
+                     Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("O console SPICE ainda não está disponível."),
+                                 socketPath,
+                                 QStringLiteral("Reinicie a machine para recriar o socket do "
+                                                "console.")));
+    }
+
+    QString program = qEnvironmentVariable("PODSTACK_REMOTE_VIEWER").trimmed();
+    if (program.isEmpty()) {
+        if (QStandardPaths::findExecutable(QStringLiteral("remote-viewer")).isEmpty()) {
+            Error missing = Error::make(
+                QStringLiteral("PODSTACK_DEPENDENCY_MISSING"),
+                QStringLiteral("O visualizador remote-viewer não foi encontrado."),
+                QStringLiteral("remote-viewer"),
+                QStringLiteral("Instale o virt-viewer (Fedora) ou virt-viewer (Debian/Ubuntu) "
+                               "ou defina PODSTACK_REMOTE_VIEWER."));
+            missing.reason = QStringLiteral("backend_missing");
+            return fails(error, missing);
+        }
+        program = QStringLiteral("remote-viewer");
+    }
+
+    spec->program = program;
+    spec->args = {QStringLiteral("spice+unix://%1").arg(socketPath)};
+    spec->socket = socketPath;
     return true;
 }
 

@@ -158,6 +158,26 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
             return {};
         }
     }
+    if (spec.secureBoot) {
+        if (spec.arch != QStringLiteral("amd64")) {
+            invalid(error, QStringLiteral("Secure Boot é suportado apenas em machines amd64."),
+                    spec.arch);
+            return {};
+        }
+        if (!hasOvmfCode) {
+            invalid(error, QStringLiteral("Secure Boot exige firmware OVMF."));
+            return {};
+        }
+    }
+    if (!spec.spiceSocketPath.isEmpty() && !absolutePath(spec.spiceSocketPath)) {
+        invalid(error, QStringLiteral("O socket do SPICE deve ser absoluto."),
+                spec.spiceSocketPath);
+        return {};
+    }
+    if (!spec.tpmSocketPath.isEmpty() && !absolutePath(spec.tpmSocketPath)) {
+        invalid(error, QStringLiteral("O socket do TPM deve ser absoluto."), spec.tpmSocketPath);
+        return {};
+    }
 
     if (spec.mounts.size() > kMaximumMounts) {
         invalid(error, QStringLiteral("Número de mounts acima do limite (8)."),
@@ -184,9 +204,16 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
     }
 
     QStringList args;
-    args << QStringLiteral("-M")
-         << (spec.arch == QStringLiteral("amd64") ? QStringLiteral("q35")
-                                                  : QStringLiteral("virt"));
+    QString machine =
+        spec.arch == QStringLiteral("amd64") ? QStringLiteral("q35") : QStringLiteral("virt");
+    if (spec.secureBoot) {
+        machine += QStringLiteral(",smm=on");
+    }
+    args << QStringLiteral("-M") << machine;
+    if (spec.secureBoot) {
+        args << QStringLiteral("-global")
+             << QStringLiteral("driver=cfi.pflash01,property=secure,value=on");
+    }
     args << QStringLiteral("-accel")
          << (spec.kvm ? QStringLiteral("kvm") : QStringLiteral("tcg"));
     args << QStringLiteral("-cpu") << (spec.kvm ? QStringLiteral("host") : QStringLiteral("max"));
@@ -227,6 +254,13 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
     args << QStringLiteral("-mon") << QStringLiteral("chardev=qmp,mode=control");
     args << QStringLiteral("-monitor") << QStringLiteral("none");
     args << QStringLiteral("-display") << QStringLiteral("none");
+    if (!spec.spiceSocketPath.isEmpty()) {
+        args << QStringLiteral("-spice")
+             << QStringLiteral("unix=on,addr=%1,disable-ticketing=on").arg(spec.spiceSocketPath);
+        args << QStringLiteral("-device") << QStringLiteral("virtio-vga");
+        args << QStringLiteral("-device") << QStringLiteral("qemu-xhci,id=usbconsole");
+        args << QStringLiteral("-device") << QStringLiteral("usb-tablet,bus=usbconsole.0");
+    }
     args << QStringLiteral("-serial") << QStringLiteral("file:%1").arg(spec.consoleLogPath);
     for (const QString &serialPort : spec.serialPorts) {
         args << QStringLiteral("-serial") << serialPort;
@@ -243,6 +277,12 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
         args << QStringLiteral("-audiodev") << QStringLiteral("pipewire,id=audio0");
         args << QStringLiteral("-device") << QStringLiteral("intel-hda");
         args << QStringLiteral("-device") << QStringLiteral("hda-duplex,audiodev=audio0");
+    }
+    if (!spec.tpmSocketPath.isEmpty()) {
+        args << QStringLiteral("-chardev")
+             << QStringLiteral("socket,id=chrtpm,path=%1").arg(spec.tpmSocketPath);
+        args << QStringLiteral("-tpmdev") << QStringLiteral("emulator,id=tpm0,chardev=chrtpm");
+        args << QStringLiteral("-device") << QStringLiteral("tpm-tis");
     }
     args << QStringLiteral("-daemonize");
     args << QStringLiteral("-pidfile") << spec.pidFile;

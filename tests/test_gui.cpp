@@ -780,6 +780,12 @@ void GuiTest::backendMachines()
     QTRY_VERIFY_WITH_TIMEOUT(backend.lastError().contains(QStringLiteral("não encontrada")),
                              5000);
 
+    backend.openMachineConsole(QString());
+    QCOMPARE(backend.lastError(), QStringLiteral("Machine inválida."));
+    errorsBefore = errorSpy.count();
+    backend.openMachineConsole(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
+
     backend.createMachine({});
     QVERIFY(!backend.machineCreateActive());
     QVERIFY(!backend.machineCreateError().isEmpty());

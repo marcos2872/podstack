@@ -2,6 +2,7 @@
 
 #include "core/DiskUsage.h"
 #include "core/Error.h"
+#include "core/Logging.h"
 #include "core/Proxy.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
@@ -21,11 +22,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaMethod>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStringList>
-#include <QUrl>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantMap>
 #include <QtConcurrent>
 
@@ -288,6 +290,40 @@ Backend::Backend(QObject *parent)
                     window->activateWindow();
                 }
             });
+
+    connect(&m_machineSpiceWatcher, &QFutureWatcher<QJsonObject>::finished, this, [this] {
+        const QJsonObject result = m_machineSpiceWatcher.result();
+        if (result.contains(QStringLiteral("error"))) {
+            const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+            m_lastError = errorObject.value(QStringLiteral("message")).toString();
+            if (m_lastError.isEmpty()) {
+                m_lastError = QStringLiteral("Falha ao abrir o console da machine.");
+            }
+            emit lastErrorChanged();
+            return;
+        }
+
+        const QString program = result.value(QStringLiteral("program")).toString();
+        const QJsonArray arguments = result.value(QStringLiteral("args")).toArray();
+        if (program.isEmpty()) {
+            m_lastError = QStringLiteral("Resposta inválida do console da machine.");
+            emit lastErrorChanged();
+            return;
+        }
+
+        QStringList viewerArguments;
+        viewerArguments.reserve(arguments.size());
+        for (const QJsonValue &value : arguments) {
+            viewerArguments.append(value.toString());
+        }
+
+        qint64 pid = 0;
+        if (!QProcess::startDetached(program, viewerArguments, QString(), &pid)) {
+            m_lastError = QStringLiteral("Não foi possível abrir o remote-viewer.");
+            emit lastErrorChanged();
+            qCWarning(lcCore) << "Falha ao abrir o console SPICE:" << program << viewerArguments;
+        }
+    });
 
     connect(&m_setupStream, &StreamClient::setupEvent, this,
             [this](const QJsonObject &event) { applySetupJob(event); });
@@ -2716,6 +2752,29 @@ void Backend::openMachineSsh(const QString &id)
         const QJsonObject result =
             client.call(QStringLiteral("machines.ssh"),
                         QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::openMachineConsole(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        return;
+    }
+    if (m_machineSpiceWatcher.isRunning()) {
+        return;
+    }
+
+    m_machineSpiceWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(QStringLiteral("machines.console.spice"),
+                                               QJsonObject{{QStringLiteral("id"), id}}, &error);
         if (!error.isEmpty()) {
             return QJsonObject{{QStringLiteral("error"), error.toJson()}};
         }

@@ -48,6 +48,9 @@ struct QemuSpec {
     bool isolateNetwork = false;
     QString ovmfCodePath;
     QString ovmfVarsPath;
+    bool secureBoot = false;
+    QString spiceSocketPath; // vazio = sem console SPICE
+    QString tpmSocketPath;   // vazio = sem TPM 2.0
     QVector<QemuMount> mounts;
     QVector<QemuPort> ports;
     QStringList serialPorts;

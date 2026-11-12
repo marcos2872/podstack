@@ -388,6 +388,31 @@ QString createVirtiofsdScript(const QString &root)
     return path;
 }
 
+QString createSwtpmScript(const QString &root)
+{
+    const QString path = root + QStringLiteral("/swtpm-fake.sh");
+    const QByteArray script = QByteArrayLiteral(
+        "#!/bin/sh\n"
+        "sock=''\n"
+        "for arg in \"$@\"; do\n"
+        "  if [ -n \"${PODSTACK_SWTPM_LOG:-}\" ]; then printf '%s\\n' \"$arg\" >> "
+        "\"$PODSTACK_SWTPM_LOG\"; fi\n"
+        "  case \"$arg\" in\n"
+        "    type=unixio,path=*) sock=\"${arg#type=unixio,path=}\"; sock=\"${sock%%,*}\";;\n"
+        "  esac\n"
+        "done\n"
+        "if [ -z \"$sock\" ]; then echo 'socket ausente' >&2; exit 2; fi\n"
+        "if [ -n \"${PODSTACK_SWTPM_FAIL:-}\" ]; then exit 1; fi\n"
+        "exec python3 -c 'import os,socket,sys,time; s=socket.socket(socket.AF_UNIX);"
+        " s.bind(sys.argv[1]); s.listen(1); open(sys.argv[1] + \".pid\", \"w\")"
+        ".write(str(os.getpid())); time.sleep(120)' \"$sock\"\n");
+    if (!writeTestFile(path, script,
+                       QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner)) {
+        return {};
+    }
+    return path;
+}
+
 qint64 readPidFile(const QString &path)
 {
     QFile file(path);
@@ -848,6 +873,7 @@ private slots:
     void pathsCacheDir();
     void pathsMachinesDir();
     void machineMetaRoundTrip();
+    void machineMetaProvisioner();
     void serialPortsListing();
     void serialPortsValidation();
     void usbDevicesListing();
@@ -857,6 +883,7 @@ private slots:
     void machineStoreCrud();
     void machineStoreErrors();
     void machineStoreLegacySchema();
+    void machineStoreProvisionerMigration();
     void machineStoreSharesDb();
     void downloadAndReuse();
     void downloadHttpError();
@@ -885,6 +912,9 @@ private slots:
     void qemuCommandSerialPorts();
     void qemuCommandUsbDevices();
     void qemuCommandAudio();
+    void qemuCommandSecureBoot();
+    void qemuCommandSpice();
+    void qemuCommandTpm();
     void qemuCommandInvalid();
     void qmpHandshake();
     void qmpQueryStatus();
@@ -962,6 +992,8 @@ private slots:
     void machineManagerSerialPorts();
     void machineManagerUsbDevices();
     void machineManagerAudio();
+    void machineManagerWindowsStart();
+    void machineManagerSpiceConsole();
     void machineManagerSnapshots();
     void qemuRuntimeFallback();
     void qemuRuntimePidFile();
@@ -1243,6 +1275,27 @@ void MachinesTest::machineMetaRoundTrip()
     QCOMPARE(reloaded.usbDevices.size(), 1);
     QCOMPARE(reloaded.usbDevices.at(0).description, QStringLiteral("SanDisk Cruzer Blade"));
     QCOMPARE(reloaded.audioEnabled, true);
+}
+
+void MachinesTest::machineMetaProvisioner()
+{
+    const QString directory = m_root + QStringLiteral("/meta-provisioner/machine");
+    QDir(directory).removeRecursively();
+    const QString path = directory + QStringLiteral("/meta.json");
+
+    MachineMeta meta = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000011"),
+                                   QStringLiteral("windows-dev"));
+    meta.distro = QStringLiteral("windows");
+    meta.provisioner = QStringLiteral("windows");
+
+    PodStack::Error error;
+    QVERIFY2(MachineMetaFile::write(path, meta, &error), qPrintable(error.message));
+    QCOMPARE(MachineMetaFile::read(path, &error).provisioner, QStringLiteral("windows"));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    QJsonObject legacy = meta.toJson();
+    legacy.remove(QStringLiteral("provisioner"));
+    QCOMPARE(MachineMeta::fromJson(legacy).provisioner, QStringLiteral("linux"));
 }
 
 void MachinesTest::serialPortsListing()
@@ -1670,6 +1723,61 @@ void MachinesTest::machineStoreLegacySchema()
     QVERIFY(
         !store.upsert(testMachine(QStringLiteral("legacy-id"), QStringLiteral("legacy")), &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_DB_ERROR"));
+}
+
+void MachinesTest::machineStoreProvisionerMigration()
+{
+    const QString directory = m_root + QStringLiteral("/store-provisioner-migration");
+    const QString dbPath = directory + QStringLiteral("/podstack.db");
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+
+    sqlite3 *db = nullptr;
+    QCOMPARE(sqlite3_open(dbPath.toUtf8().constData(), &db), SQLITE_OK);
+    const char *legacy = R"SQL(
+CREATE TABLE machines (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  distro TEXT NOT NULL,
+  distro_version TEXT,
+  arch TEXT NOT NULL,
+  cpus INTEGER NOT NULL,
+  memory_bytes INTEGER NOT NULL,
+  disk_bytes INTEGER NOT NULL,
+  disk_path TEXT NOT NULL,
+  seed_path TEXT,
+  ssh_port INTEGER NOT NULL,
+  ssh_user TEXT NOT NULL,
+  ssh_key_path TEXT NOT NULL,
+  state TEXT NOT NULL,
+  isolated INTEGER NOT NULL DEFAULT 0,
+  isolate_network INTEGER NOT NULL DEFAULT 0,
+  forward_ssh_agent INTEGER NOT NULL DEFAULT 0,
+  http_port INTEGER,
+  https_port INTEGER,
+  last_boot_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  error TEXT
+);
+)SQL";
+    QCOMPARE(sqlite3_exec(db, legacy, nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_close(db);
+
+    MachineStore store(dbPath);
+    PodStack::Error error;
+    QVERIFY2(store.open(&error), qPrintable(error.message));
+
+    MachineMeta meta = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000022"),
+                                   QStringLiteral("migrated"));
+    QVERIFY2(store.upsert(meta, &error), qPrintable(error.message));
+    QCOMPARE(store.get(meta.id, &error).provisioner, QStringLiteral("linux"));
+
+    meta.provisioner = QStringLiteral("windows");
+    QVERIFY2(store.upsert(meta, &error), qPrintable(error.message));
+    QCOMPARE(store.get(meta.id, &error).provisioner, QStringLiteral("windows"));
+    QCOMPARE(store.getByName(meta.name, &error).provisioner, QStringLiteral("windows"));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
 }
 
 void MachinesTest::machineStoreSharesDb()
@@ -2610,6 +2718,83 @@ void MachinesTest::qemuCommandAudio()
     const QStringList without = QemuCommand::arguments(spec, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(!without.contains(QStringLiteral("pipewire,id=audio0")));
+}
+
+void MachinesTest::qemuCommandSecureBoot()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.ovmfCodePath = m_root + QStringLiteral("/firmware/OVMF_CODE.secboot.fd");
+    spec.ovmfVarsPath = m_root + QStringLiteral("/firmware/nvram.fd");
+    spec.secureBoot = true;
+
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(valueAfter(args, QStringLiteral("-M")), QStringLiteral("q35,smm=on"));
+    QCOMPARE(valueAfter(args, QStringLiteral("-global")),
+             QStringLiteral("driver=cfi.pflash01,property=secure,value=on"));
+
+    spec.secureBoot = false;
+    const QStringList without = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(valueAfter(without, QStringLiteral("-M")), QStringLiteral("q35"));
+    QVERIFY(!without.contains(QStringLiteral("-global")));
+
+    QemuSpec arm = qemuSpec(m_root);
+    arm.arch = QStringLiteral("arm64");
+    arm.ovmfCodePath = m_root + QStringLiteral("/firmware/OVMF_CODE.secboot.fd");
+    arm.ovmfVarsPath = m_root + QStringLiteral("/firmware/nvram.fd");
+    arm.secureBoot = true;
+    error = {};
+    QVERIFY(QemuCommand::arguments(arm, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QemuSpec missingFirmware = qemuSpec(m_root);
+    missingFirmware.secureBoot = true;
+    error = {};
+    QVERIFY(QemuCommand::arguments(missingFirmware, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void MachinesTest::qemuCommandSpice()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.spiceSocketPath = m_root + QStringLiteral("/machines/spice.sock");
+
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(valueAfter(args, QStringLiteral("-spice")),
+             QStringLiteral("unix=on,addr=%1,disable-ticketing=on").arg(spec.spiceSocketPath));
+    QCOMPARE(valueAfter(args, QStringLiteral("-display")), QStringLiteral("none"));
+    QVERIFY(args.contains(QStringLiteral("virtio-vga")));
+    QVERIFY(args.contains(QStringLiteral("qemu-xhci,id=usbconsole")));
+    QVERIFY(args.contains(QStringLiteral("usb-tablet,bus=usbconsole.0")));
+
+    QemuSpec relative = spec;
+    relative.spiceSocketPath = QStringLiteral("spice.sock");
+    error = {};
+    QVERIFY(QemuCommand::arguments(relative, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void MachinesTest::qemuCommandTpm()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.tpmSocketPath = m_root + QStringLiteral("/machines/swtpm.sock");
+
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(args.contains(QStringLiteral("socket,id=chrtpm,path=%1").arg(spec.tpmSocketPath)));
+    QVERIFY(args.contains(QStringLiteral("emulator,id=tpm0,chardev=chrtpm")));
+    QVERIFY(args.contains(QStringLiteral("tpm-tis")));
+
+    QemuSpec relative = spec;
+    relative.tpmSocketPath = QStringLiteral("swtpm.sock");
+    error = {};
+    QVERIFY(QemuCommand::arguments(relative, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void MachinesTest::qemuCommandInvalid()
@@ -5423,6 +5608,192 @@ void MachinesTest::machineManagerAudio()
     (void) manager.setAudioEnabled(machine.id, true, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(manager.stop(machine.id, false, &error).state != QStringLiteral("running"));
+}
+
+void MachinesTest::machineManagerWindowsStart()
+{
+    const QString root = m_root + QStringLiteral("/manager-windows-start");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString secCode = root + QStringLiteral("/firmware/OVMF_CODE.secboot.fd");
+    const QString secVars = root + QStringLiteral("/firmware/OVMF_VARS.secboot.fd");
+    QVERIFY(writeTestFile(secCode, QByteArrayLiteral("fake-secboot-code")));
+    QVERIFY(writeTestFile(secVars, QByteArrayLiteral("fake-secboot-vars")));
+
+    const QString swtpm = createSwtpmScript(root);
+    QVERIFY(!swtpm.isEmpty());
+    const QString swtpmLog = root + QStringLiteral("/swtpm.log");
+    qputenv("PODSTACK_SWTPM_LOG", swtpmLog.toUtf8());
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+    const QString storePath = root + QStringLiteral("/podstack.db");
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = storePath;
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.ovmfSecbootCodePath = secCode;
+    options.ovmfSecbootVarsPath = secVars;
+    options.swtpmBinary = swtpm;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+
+    const QString machinesRoot = options.machinesRoot;
+    MachineManager manager(std::move(options));
+
+    MachineMeta meta = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000040"),
+                                   QStringLiteral("win-start"));
+    meta.distro = QStringLiteral("windows");
+    meta.distroVersion.clear();
+    meta.provisioner = QStringLiteral("windows");
+    meta.sshKeyPath.clear();
+    meta.state = QStringLiteral("stopped");
+    const QString directory = machinesRoot + QLatin1Char('/') + meta.id;
+    QVERIFY(QDir().mkpath(directory));
+    meta.diskPath = directory + QStringLiteral("/disk.qcow2");
+    meta.seedPath = directory + QStringLiteral("/seed.iso");
+    QVERIFY(writeTestFile(meta.diskPath, QByteArrayLiteral("fake-disk")));
+    QVERIFY(writeTestFile(meta.seedPath, QByteArrayLiteral("fake-seed")));
+    const QString spiceSocket = directory + QStringLiteral("/spice.sock");
+    QVERIFY(writeTestFile(spiceSocket, QByteArrayLiteral("fake-spice"),
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                              QFileDevice::ReadGroup | QFileDevice::ReadOther));
+    QVERIFY(seedMachine(storePath, machinesRoot, meta));
+
+    PodStack::Error error;
+    MachineMeta started = manager.start(meta.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(started.state, QStringLiteral("running"));
+    QVERIFY(fake->lastSpec.secureBoot);
+    QCOMPARE(fake->lastSpec.ovmfCodePath, secCode);
+    QCOMPARE(fake->lastSpec.ovmfVarsPath, directory + QStringLiteral("/nvram.fd"));
+    QCOMPARE(fake->lastSpec.spiceSocketPath, directory + QStringLiteral("/spice.sock"));
+    QCOMPARE(fake->lastSpec.tpmSocketPath, directory + QStringLiteral("/swtpm.sock"));
+    QVERIFY(ownerOnly(QFileInfo(directory + QStringLiteral("/nvram.fd")).permissions(), false));
+    QVERIFY(ownerOnly(QFileInfo(directory + QStringLiteral("/tpm")).permissions(), true));
+    QVERIFY(ownerOnly(QFileInfo(spiceSocket).permissions(), false));
+
+    const QString swtpmSocket = directory + QStringLiteral("/swtpm.sock");
+    QVERIFY(QFileInfo::exists(swtpmSocket));
+    const qint64 swtpmPid = readPidFile(swtpmSocket + QStringLiteral(".pid"));
+    QVERIFY(swtpmPid > 0);
+    QVERIFY(processAlive(swtpmPid));
+
+    QFile swtpmLogFile(swtpmLog);
+    QVERIFY(swtpmLogFile.open(QIODevice::ReadOnly));
+    const QByteArray swtpmArgs = swtpmLogFile.readAll();
+    QVERIFY(swtpmArgs.contains("--tpm2"));
+    QVERIFY(swtpmArgs.contains("--tpmstate"));
+    QVERIFY(swtpmArgs.contains("dir=" + directory.toUtf8() + "/tpm,mode=0600"));
+
+    error = {};
+    const MachineMeta stopped = manager.stop(meta.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stopped.state, QStringLiteral("stopped"));
+    QElapsedTimer swtpmExitTimer;
+    swtpmExitTimer.start();
+    while (processAlive(swtpmPid) && swtpmExitTimer.elapsed() < 3000) {
+        QTest::qWait(20);
+    }
+    QVERIFY(!processAlive(swtpmPid));
+    QVERIFY(!QFileInfo::exists(swtpmSocket));
+    QVERIFY(!QFileInfo::exists(spiceSocket));
+    QVERIFY(QFileInfo(directory + QStringLiteral("/tpm")).isDir());
+
+    // O estado do TPM sobrevive ao restart; o socket é recriado.
+    error = {};
+    started = manager.start(meta.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(started.state, QStringLiteral("running"));
+    QVERIFY(QFileInfo(directory + QStringLiteral("/tpm")).isDir());
+    QVERIFY(QFileInfo::exists(swtpmSocket));
+    error = {};
+    (void) manager.stop(meta.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    qunsetenv("PODSTACK_SWTPM_LOG");
+}
+
+void MachinesTest::machineManagerSpiceConsole()
+{
+    const QString root = m_root + QStringLiteral("/manager-spice-console");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    const QString storePath = root + QStringLiteral("/podstack.db");
+    MachineManager::Options options;
+    options.storePath = storePath;
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+
+    const QString machinesRoot = options.machinesRoot;
+    MachineManager manager(std::move(options));
+
+    MachineMeta linux = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000041"),
+                                    QStringLiteral("linux-console"));
+    linux.state = QStringLiteral("running");
+    QVERIFY(seedMachine(storePath, machinesRoot, linux));
+
+    PodStack::Error error;
+    PodStack::SpiceConsoleSpec spec;
+    QVERIFY(!manager.spiceConsole(linux.id, &spec, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    MachineMeta windows = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000042"),
+                                      QStringLiteral("win-console"));
+    windows.distro = QStringLiteral("windows");
+    windows.distroVersion.clear();
+    windows.provisioner = QStringLiteral("windows");
+    windows.state = QStringLiteral("running");
+    QVERIFY(seedMachine(storePath, machinesRoot, windows));
+
+    const QString directory = machinesRoot + QLatin1Char('/') + windows.id;
+    const QString socketPath = directory + QStringLiteral("/spice.sock");
+
+    // Socket ainda ausente: conflito de estado.
+    error = {};
+    QVERIFY(!manager.spiceConsole(windows.id, &spec, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    QVERIFY(writeTestFile(socketPath, QByteArrayLiteral("socket-fake")));
+    const QString viewer = root + QStringLiteral("/remote-viewer-fake");
+    qputenv("PODSTACK_REMOTE_VIEWER", viewer.toUtf8());
+
+    error = {};
+    QVERIFY2(manager.spiceConsole(windows.id, &spec, &error), qPrintable(error.message));
+    QCOMPARE(spec.program, viewer);
+    QCOMPARE(spec.socket, socketPath);
+    QCOMPARE(spec.args, QStringList{QStringLiteral("spice+unix://%1").arg(socketPath)});
+
+    // Machine parada: o console exige a machine iniciada.
+    windows.state = QStringLiteral("stopped");
+    QVERIFY(seedMachine(storePath, machinesRoot, windows));
+    error = {};
+    QVERIFY(!manager.spiceConsole(windows.id, &spec, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    windows.state = QStringLiteral("running");
+    QVERIFY(seedMachine(storePath, machinesRoot, windows));
+
+    // Viewer ausente: DEPENDENCY_MISSING/backend_missing.
+    const QByteArray oldPath = qgetenv("PATH");
+    const QString emptyPath = root + QStringLiteral("/empty-path");
+    QVERIFY(QDir().mkpath(emptyPath));
+    qputenv("PODSTACK_REMOTE_VIEWER", QByteArray());
+    qputenv("PATH", emptyPath.toUtf8());
+    error = {};
+    QVERIFY(!manager.spiceConsole(windows.id, &spec, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DEPENDENCY_MISSING"));
+    QCOMPARE(error.reason, QStringLiteral("backend_missing"));
+    QCOMPARE(error.toJson().value(QStringLiteral("reason")).toString(),
+             QStringLiteral("backend_missing"));
+    qputenv("PATH", oldPath);
+    qunsetenv("PODSTACK_REMOTE_VIEWER");
 }
 
 void MachinesTest::machineManagerUpdateRemoveErrors()

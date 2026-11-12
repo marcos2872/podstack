@@ -1559,6 +1559,11 @@ void RpcTest::machineConsole()
     QCOMPARE(tail.value(QStringLiteral("data")).toString(),
              QStringLiteral("boot 2\nboot 3\n"));
 
+    error = {};
+    client.call(QStringLiteral("machines.console.spice"),
+                QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
     QLocalSocket socket;
     socket.connectToServer(m_controlSocket, QIODevice::ReadWrite);
     QVERIFY(socket.waitForConnected(3000));

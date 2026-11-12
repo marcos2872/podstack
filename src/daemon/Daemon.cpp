@@ -618,6 +618,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.console")) {
         return subscribeMachineConsole(params, notify, error);
     }
+    if (method == QStringLiteral("machines.console.spice")) {
+        return machineConsoleSpice(params, error);
+    }
     if (method == QStringLiteral("machines.files.list")) {
         return machineFilesList(params, error);
     }
@@ -810,6 +813,8 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
     request.name = params.value(QStringLiteral("name")).toString().trimmed();
     request.distro = params.value(QStringLiteral("distro")).toString().trimmed();
     request.version = params.value(QStringLiteral("version")).toString().trimmed();
+    request.provisioner =
+        params.value(QStringLiteral("provisioner")).toString(QStringLiteral("linux"));
     request.arch = params.value(QStringLiteral("arch")).toString().trimmed();
     request.user = params.value(QStringLiteral("user")).toString();
     request.password = params.value(QStringLiteral("password")).toString();
@@ -2032,6 +2037,29 @@ QJsonObject Daemon::machineSsh(const QJsonObject &params, Error *error)
     result.insert(QStringLiteral("user"), info.user);
     result.insert(QStringLiteral("identityFile"), info.identityFile);
     result.insert(QStringLiteral("forwardAgent"), info.forwardAgent);
+    return result;
+}
+
+QJsonObject Daemon::machineConsoleSpice(const QJsonObject &params, Error *error)
+{
+    const QString id = requireMachineId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    SpiceConsoleSpec spec;
+    if (!m_machines.spiceConsole(id, &spec, error)) {
+        return {};
+    }
+
+    QJsonArray arguments;
+    for (const QString &argument : spec.args) {
+        arguments.append(argument);
+    }
+    QJsonObject result;
+    result.insert(QStringLiteral("program"), spec.program);
+    result.insert(QStringLiteral("args"), arguments);
+    result.insert(QStringLiteral("socket"), spec.socket);
     return result;
 }
 

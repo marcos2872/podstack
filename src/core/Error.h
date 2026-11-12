@@ -11,6 +11,7 @@ struct Error {
     QString message;
     QString detail;
     QString remediation;
+    QString reason; // classificação estável opcional (ex.: backend_missing)
     bool retryable = false;
 
     bool isEmpty() const { return code.isEmpty(); }

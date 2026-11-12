@@ -93,6 +93,7 @@ add_library(podstack_machines STATIC
     src/machines/QmpClient.cpp
     src/machines/QemuRuntime.cpp
     src/machines/VirtiofsdProcess.cpp
+    src/machines/SwtpmProcess.cpp
     src/machines/MachineManager.cpp
     src/machines/MachineArchive.cpp
     src/machines/MachineStats.cpp

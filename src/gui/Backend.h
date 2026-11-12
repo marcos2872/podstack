@@ -362,6 +362,7 @@ public:
                                        const QString &localPath);
     Q_INVOKABLE void copyMachineLogs();
     Q_INVOKABLE void openMachineSsh(const QString &id);
+    Q_INVOKABLE void openMachineConsole(const QString &id);
     Q_INVOKABLE void machineLifecycle(const QString &action, const QString &id,
                                       bool force = false);
     Q_INVOKABLE void removeMachine(const QString &id, bool force);
@@ -560,6 +561,7 @@ private:
     QFutureWatcher<QJsonObject> m_machineFilesWatcher;
     QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
+    QFutureWatcher<QJsonObject> m_machineSpiceWatcher;
     QFutureWatcher<QJsonObject> m_k8sStatusWatcher;
     QFutureWatcher<QJsonObject> m_k8sPodsWatcher;
     QFutureWatcher<QJsonObject> m_k8sServicesWatcher;

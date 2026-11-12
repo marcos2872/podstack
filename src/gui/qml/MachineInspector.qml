@@ -480,6 +480,19 @@ Rectangle {
                 onClicked: root.expandRequested(root.machineId, root.terminalTabIndex)
             }
 
+            // Console gráfico SPICE: apenas machines Windows e com o remote-viewer
+            // disponível no host. O viewer é lançado pela GUI, nunca pelo daemon.
+            ActionButton {
+                visible: root.machine.provisioner === "windows"
+                text: qsTr("Console")
+                iconName: "external"
+                size: "sm"
+                enabled: root.machineId.length > 0 && root.machineState === "running"
+                         && backend.actionActive === false
+                onClicked: backend.openMachineConsole(root.machineId)
+                Accessible.name: qsTr("Abrir o console gráfico da machine")
+            }
+
             ActionButton {
                 visible: !root.showTerminalTab
                 text: qsTr("Expandir")
