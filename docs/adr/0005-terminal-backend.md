@@ -101,3 +101,12 @@ O PodStack é licenciado sob **GPL-3.0-or-later**. Portanto:
 - Discussão de manutenção: https://github.com/lxqt/lxqt/discussions/2761
 - GPLv3: https://www.gnu.org/licenses/gpl-3.0.html
 - Compatibilidade GPLv2-or-later → GPLv3: https://www.gnu.org/licenses/gpl-faq.html#AllCompatibility
+
+## Atualização (2026-11-12)
+
+O `.deb` do Ubuntu 24.04 não tem `qtermwidget6` no archive. Para manter o terminal
+integrado sem depender de um PPA, o QTermWidget **2.0.0** foi vendorizado em
+`third_party/qtermwidget`, compilado como biblioteca estática e linkado em
+`podstack-gui`; os dados de runtime ficam em `/usr/share/podstack/qtermwidget6` e não
+colidem com o `libqtermwidget6-2` do Ubuntu 26.04. O RPM continua usando o QTermWidget
+do sistema. Ver [ADR-0010](0010-deb-ubuntu-qtermwidget-vendorizado.md).

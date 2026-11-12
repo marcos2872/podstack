@@ -92,3 +92,49 @@ jobs:
             coverage-summary.txt
             coverage-gate.txt
           if-no-files-found: warn
+
+  ubuntu-24-04:
+    name: Ubuntu 24.04 (Qt 6.4)
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+
+    steps:
+      - name: Instalar git (necessário para o checkout)
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Dependências
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            cmake ninja-build g++ pkg-config \
+            qt6-base-dev qt6-declarative-dev qt6-wayland-dev qt6-5compat-dev \
+            qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools \
+            libarchive-dev libcurl4-openssl-dev libcrypt-dev libsqlite3-dev libssl-dev \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts \
+            qml6-module-qtquick-templates qml6-module-qtquick-window \
+            qml6-module-qtqml qml6-module-qtqml-models \
+            qml6-module-qtqml-workerscript qml6-module-qtquick-dialogs \
+            qml6-module-qt5compat-graphicaleffects \
+            libqt6sql6-sqlite qt6-wayland
+
+      - name: Configurar (Qt 6.4 + qtermwidget vendorizado)
+        run: |
+          cmake -S . -B build/ubuntu -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DPODSTACK_USE_VENDORED_QTERMWIDGET=ON
+
+      - name: Compilar
+        run: cmake --build build/ubuntu -j"$(nproc)"
+
+      - name: Instalar dados de runtime para os testes
+        run: cmake --install build/ubuntu --prefix /usr --component Runtime
+
+      - name: Testes
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build/ubuntu --output-on-failure

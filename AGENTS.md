@@ -139,7 +139,8 @@ Para a área que você vai mexer, leia também:
 
 ## 6. Build e testes (previstos para o M0)
 
-Ambiente de referência: **Fedora 43/44**, Podman ≥ 5.8, Qt ≥ 6.10, `/dev/kvm` para machines.
+Ambiente de referência: **Fedora 43/44** (Podman ≥ 5.8, Qt ≥ 6.10) e **Ubuntu 24.04+**
+(Podman ≥ 4.9, Qt ≥ 6.4; o DEB usa o qtermwidget 2.0.0 vendorizado), `/dev/kvm` para machines.
 
 ```bash
 # dependências

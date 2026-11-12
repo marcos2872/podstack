@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Solução de problemas · PodStack 0.1.1</title>
+  <title>Solução de problemas · PodStack 0.1.2</title>
   <meta name="description" content="Diagnóstico de daemon, Podman, polkit, KVM, virtiofsd, SSH, X11, portas, CA, DNS, áudio, CRIU e report.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
@@ -94,7 +94,7 @@
       <img src="assets/podstack-capsule.svg" alt="" width="36" height="36">
       <span>
         <span class="brand-name">PodStack</span>
-        <span class="brand-sub">Documentação 0.1.1</span>
+        <span class="brand-sub">Documentação 0.1.2</span>
       </span>
     </a>
     <nav class="nav" aria-label="Seções da documentação">
@@ -105,7 +105,7 @@
 <div class="nav-section"><p class="nav-group">Ajuda</p><ul><li><a href="troubleshooting.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg><span>Solução de problemas</span></a></li></ul></div>
     </nav>
     <div class="sidebar-foot">
-      <p>Versão 0.1.1 · GPL-3.0-or-later</p>
+      <p>Versão 0.1.2 · GPL-3.0-or-later</p>
       <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
     </div>
   </aside>
@@ -121,7 +121,7 @@
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-wrench"></use></svg> PodStack Docs</div>
       <h1>Solução de problemas</h1>
 <p class="lede">Comece pelos diagnósticos que não alteram nada, confira socket, Podman, helper e KVM e gere um relatório redigido quando precisar de ajuda.</p>
-<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.1</span><span>Documentação de usuário</span></div><h2 id="primeiros-checks">Primeiros checks</h2><pre data-lang="bash" tabindex="0"><code>podstack status
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.2</span><span>Documentação de usuário</span></div><h2 id="primeiros-checks">Primeiros checks</h2><pre data-lang="bash" tabindex="0"><code>podstack status
 podstack doctor
 systemctl --user status podstack.socket podstack.service
 systemctl --user status podman.socket
@@ -160,8 +160,8 @@ podstack setup --apply socket
 podstack status</code></pre>
 <p>O PodStack usa o Podman rootless por padrão e espera o socket em
 <code>$XDG_RUNTIME_DIR/podman/podman.sock</code>. Se você usa outro caminho, ajuste
-<code>PODSTACK_PODMAN_SOCKET</code> ou <code>engine.socketPath</code>. O PodStack 0.1.1 espera
-Podman 5.8 ou mais novo.</p>
+<code>PODSTACK_PODMAN_SOCKET</code> ou <code>engine.socketPath</code>. No Fedora, o PodStack 0.1.2
+espera Podman 5.8+; no Ubuntu 24.04+, Podman 4.9+ (5.8 recomendado).</p>
 <p>No modo rootful (<code>engine.mode=rootful</code>), o socket é
 <code>/run/podman/podman.sock</code> e seu usuário precisa de acesso ao grupo correspondente.
 Rootful é opt-in explícito; a GUI mostra o badge e o aviso.</p>
@@ -172,7 +172,7 @@ que não instala pacotes e prompt de polkit que não aparece.</p>
 journalctl -u podstack-helper.service -n 100 --no-pager
 pkaction --action-id dev.podstack.helper.install-packages --verbose
 
-sudo dnf install ./podstack-helper-0.1.1-1.fc44.x86_64.rpm
+# O helper faz parte do pacote principal desde a 0.1.1.
 sudo systemctl enable --now podstack-helper.service</code></pre>
 <p>O helper usa D-Bus de sistema e polkit. Ele precisa de uma sessão ativa com agente de autenticação
 (GNOME/KDE/niri com polkit agent). Em SSH sem sessão gráfica, a autorização pode falhar; rode o setup
@@ -223,7 +223,7 @@ O PodStack gera a chave ed25519 e grava o bloco gerenciado em <code>~/.ssh/confi
 <p>O agent forwarding é desligado por padrão. Com <code>--forward-ssh-agent</code>/<code>ForwardAgent yes</code>,
 processos no guest podem usar as chaves do seu agent; ative só em machines confiáveis. A porta SSH
 administrativa é publicada em <code>127.0.0.1</code>; a chave <code>ssh.exposePort</code> existe no
-schema, mas está oculta e sem efeito no app 0.1.1.</p>
+schema, mas está oculta e sem efeito no app 0.1.2.</p>
 <h2 id="x11">X11</h2>
 <p>Use <code>podstack ssh dev --x11</code> (adiciona <code>-X</code>) ou
 <code>--x11-trusted</code> (adiciona <code>-Y</code>). O host precisa de <code>DISPLAY</code> e
@@ -258,7 +258,7 @@ sudo firewall-cmd --add-port=8443/tcp
 
 # ufw
 sudo ufw allow 8080/tcp
-sudo ufw allow 8443/tcp</code></pre><div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Portas 80/443</p><p>O helper tem a API de <code>BindPorts</code>, mas a GUI/CLI 0.1.1 não a aciona. Use 8080/8443. Se <code>network.bridge=false</code>, o proxy HTTP e o DNS ficam desligados.</p></div></div><h2 id="https-ca">HTTPS e CA</h2>
+sudo ufw allow 8443/tcp</code></pre><div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Portas 80/443</p><p>O helper tem a API de <code>BindPorts</code>, mas a GUI/CLI 0.1.2 não a aciona. Use 8080/8443. Se <code>network.bridge=false</code>, o proxy HTTP e o DNS ficam desligados.</p></div></div><h2 id="https-ca">HTTPS e CA</h2>
 <p>Sintomas: <code>https://nome.localhost:8443/</code> não abre, o navegador mostra certificado
 inválido ou o daemon registra que o HTTPS está indisponível.</p>
 <pre data-lang="bash" tabindex="0"><code>caddy version
@@ -291,7 +291,7 @@ responde. Se o certificado não corresponder ao nome, use um domínio coberto po
 <h2 id="dns">DNS e *.podstack.local</h2>
 <p><code>*.localhost</code> não precisa de configuração. Teste com
 <code>getent hosts web.localhost</code>. <code>*.podstack.local</code> usa o DNS userspace em
-<code>127.0.0.1:5353</code> e um drop-in do <code>systemd-resolved</code>. Em 0.1.1, a instalação
+<code>127.0.0.1:5353</code> e um drop-in do <code>systemd-resolved</code>. Em 0.1.2, a instalação
 desse drop-in ainda não está ligada à GUI/CLI; sem ele, o nome não resolve.</p>
 <pre data-lang="bash" tabindex="0"><code>getent hosts web.localhost
 curl -I http://web.localhost:8080/
@@ -505,7 +505,7 @@ sugerida.</p>
       </nav>
 
       <footer class="site-footer">
-        <p>PodStack 0.1.1 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <p>PodStack 0.1.2 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
         <div class="footer-links">
           <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>

@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(PodStack VERSION 0.1.1 LANGUAGES CXX)
+project(PodStack VERSION 0.1.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Qt6 6.10 REQUIRED COMPONENTS
+find_package(Qt6 6.4 REQUIRED COMPONENTS
     Core
     Gui
     Widgets
@@ -20,7 +20,13 @@ find_package(Qt6 6.10 REQUIRED COMPONENTS
     DBus
 )
 find_package(CURL REQUIRED)
-find_package(qtermwidget6 REQUIRED)
+option(PODSTACK_USE_VENDORED_QTERMWIDGET
+    "Compila o qtermwidget vendorizado (Ubuntu 24.04/Qt 6.4)" OFF)
+if(PODSTACK_USE_VENDORED_QTERMWIDGET)
+    add_subdirectory(third_party/qtermwidget)
+else()
+    find_package(qtermwidget6 REQUIRED)
+endif()
 find_package(LibArchive REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto)
@@ -31,7 +37,7 @@ if(NOT CRYPT_LIBRARY)
         "libcrypt não encontrada. Instale libxcrypt-devel (Fedora) ou libcrypt-dev (Debian/Ubuntu).")
 endif()
 
-qt_standard_project_setup(REQUIRES 6.10)
+qt_standard_project_setup(REQUIRES 6.4)
 
 # Chave pública Ed25519 embutida no updater. Vazia mantém o default null em
 # Settings.cpp e permite configurar updates.publicKey em runtime.
@@ -226,6 +232,7 @@ file(GLOB PODSTACK_TRAY_ICONS CONFIGURE_DEPENDS
 qt_add_qml_module(podstack_qml
     URI PodStack
     VERSION 1.0
+    RESOURCE_PREFIX "/qt/qml"
     QML_FILES
         src/gui/qml/Main.qml
         src/gui/qml/ActivityMonitorWindow.qml
@@ -335,6 +342,13 @@ install(FILES packaging/dev.podstack.PodStack.metainfo.xml
 
 install(FILES LICENSE NOTICE
     DESTINATION share/licenses/podstack
+)
+
+install(FILES
+    third_party/qtermwidget/LICENSE
+    third_party/qtermwidget/LICENSE.LGPL2+
+    third_party/qtermwidget/LICENSE.BSD-3-clause
+    DESTINATION share/licenses/podstack/qtermwidget
 )
 
 install(FILES assets/podstack-icon.svg

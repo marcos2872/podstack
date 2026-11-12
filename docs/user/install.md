@@ -1,19 +1,19 @@
-# Instalação e primeiro start — PodStack 0.1.1
+# Instalação e primeiro start — PodStack 0.1.2
 
-Este guia cobre a instalação do PodStack 0.1.1 em Fedora 43/44, o primeiro start, o setup em
-7 etapas, o helper privilegiado e a desinstalação. Para o fluxo de uso depois da instalação, veja
-[`quickstart.md`](quickstart.md).
+Este guia cobre a instalação do PodStack 0.1.2 em Fedora 43/44 e Ubuntu 24.04/26.04, o
+primeiro start, o setup em 7 etapas, o helper privilegiado e a desinstalação. Para o
+fluxo de uso depois da instalação, veja [`quickstart.md`](quickstart.md).
 
 ## 1. Requisitos
 
 | Item | Requisito | Observação |
 |---|---|---|
-| Sistema | Fedora 43 ou 44 | Wayland ou X11. Os pacotes de exemplo são `x86_64` e o registro de machines 0.1.1 usa imagens `amd64`. |
-| Podman | 5.8 ou mais novo, rootless | O PodStack usa o `podman.socket` do usuário; não reimplementa o runtime. |
-| systemd | 257 ou mais novo | Socket e serviço de usuário `podstack.socket`/`podstack.service`. |
+| Sistema | Fedora 43/44 ou Ubuntu 24.04+ | Wayland ou X11. O RPM é o caminho principal no Fedora; o DEB é construído no Ubuntu 24.04 e roda em 24.04–26.04. |
+| Podman | Fedora: 5.8+; Ubuntu: 4.9+ (5.8 recomendado) | O PodStack usa o `podman.socket` do usuário; não reimplementa o runtime. |
+| systemd | Fedora: 257+; Ubuntu: 255+ | Socket e serviço de usuário `podstack.socket`/`podstack.service`. |
 | Polkit | Agente de autenticação na sessão | Necessário para o `podstack-helper`; em sessão gráfica o prompt aparece normalmente. |
 | OpenSSH | Cliente `ssh` e `scp` | Usado pelas machines e pelo encaminhamento de chaves. |
-| Qt | Qt 6.10 em runtime | O pacote RPM/DEB puxa as bibliotecas; `qtermwidget` e `qt6-qtsvg` também são dependências. |
+| Qt | Qt 6.4+ em runtime | Fedora 43/44: 6.10/6.11; Ubuntu 24.04: 6.4.2. O DEB leva o qtermwidget 2.0.0 embutido (estático); no Fedora o RPM usa o qtermwidget do sistema. |
 | KVM | `/dev/kvm` legível e gravável | Opcional. Sem KVM, as machines usam TCG (muito mais lentas). |
 | QEMU/OVMF/virtiofsd | Instalados para machines | O setup pode instalar; o virtiofsd atende os mounts virtiofs. |
 | Caddy | Opcional | Necessário para HTTPS em `*.localhost`/`*.podstack.local`. |
@@ -33,28 +33,23 @@ podman info
 systemctl --user enable --now podman.socket
 ```
 
-## 2. Instalar por RPM (caminho principal)
+## 2. Instalar por RPM (Fedora)
 
 Com o RPM baixado ou gerado localmente:
 
 ```bash
-sudo dnf install ./podstack-0.1.1-1.fc44.x86_64.rpm
+sudo dnf install ./podstack-0.1.2-1.fc44.x86_64.rpm
 ```
 
 Ajuste `fc44`/`x86_64` para a release e a arquitetura do seu Fedora (por exemplo, `fc43`).
 
-O subpacote do helper é separado. Instale-o se quiser que o setup instale/remova pacotes e configure
-DNS, CA e portas privilegiadas:
+Desde a 0.1.1 o `podstack-helper` faz parte do pacote principal e é habilitado/iniciado pelo
+`%post`; não há mais um subpacote separado para instalar.
+
+Se você configurou um repositório do PodStack, o pacote pode ser instalado por nome:
 
 ```bash
-sudo dnf install ./podstack-helper-0.1.1-1.fc44.x86_64.rpm
-sudo systemctl enable --now podstack-helper.service
-```
-
-Se você configurou um repositório do PodStack, os mesmos pacotes podem ser instalados por nome:
-
-```bash
-sudo dnf install podstack podstack-helper
+sudo dnf install podstack
 ```
 
 O `%post` do pacote habilita `podstack.socket` globalmente para os usuários. O daemon continua
@@ -67,33 +62,36 @@ Para gerar o RPM a partir do código:
 # saída: build/rpm/RPMS/
 ```
 
-## 3. Instalar por DEB (quando disponível)
+## 3. Instalar por DEB (Ubuntu 24.04–26.04)
 
-O script de empacotamento gera o `.deb` a partir do build atual:
-
-```bash
-# Debian/Ubuntu
-sudo apt install dpkg-dev
-# Fedora: o script só precisa do dpkg-deb, fornecido pelo pacote dpkg
-sudo dnf install dpkg
-
-./scripts/build-deb.sh
-# saída: build/deb/podstack_0.1.1_amd64.deb
-```
-
-Instale o arquivo gerado (ou o `.deb` publicado para a sua arquitetura):
+O `.deb` é construído no **Ubuntu 24.04** (Qt 6.4) e roda em 24.04, 25.10 e 26.04. O qtermwidget
+2.0.0 vai embutido no binário (link estático), então não é necessário instalar `qtermwidget6`.
+Para gerar o pacote a partir do código, use um ambiente Ubuntu 24.04:
 
 ```bash
-sudo apt install ./build/deb/podstack_0.1.1_amd64.deb
+sudo apt install dpkg-dev cmake ninja-build g++ \
+  qt6-base-dev qt6-declarative-dev qt6-wayland-dev qt6-5compat-dev \
+  qt6-svg-dev qt6-tools-dev libarchive-dev libcurl4-openssl-dev \
+  libcrypt-dev libsqlite3-dev libssl-dev
+
+cmake -S . -B build/ubuntu -G Ninja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DPODSTACK_USE_VENDORED_QTERMWIDGET=ON
+cmake --build build/ubuntu
+PODSTACK_BUILD_DIR=build/ubuntu ./scripts/build-deb.sh
+# saída: build/deb/podstack_0.1.2_amd64.deb
 ```
 
-O pacote DEB inclui o binário e as units do helper. Habilite o serviço de sistema:
+Instale o arquivo publicado para a sua arquitetura:
 
 ```bash
-sudo systemctl enable --now podstack-helper.service
+sudo apt install ./podstack_0.1.2_amd64.deb
 ```
 
-O `postinst` habilita `podstack.socket` por usuário, mas não inicia o daemon: ele sobe sob demanda.
+O pacote inclui o binário, as units do helper e os dados do terminal em
+`/usr/share/podstack/qtermwidget6`. O `postinst` habilita `podstack.socket` por usuário e o
+`podstack-helper.service`; o daemon sobe sob demanda na primeira conexão da GUI/CLI.
 
 ## 4. Build a partir do código
 
@@ -253,7 +251,7 @@ sessão gráfica), a autorização falha; rode o setup a partir do desktop.
 
 | Verificação | Comando | Resultado esperado |
 |---|---|---|
-| Versão | `podstack version` | `PodStack 0.1.1` |
+| Versão | `podstack version` | `PodStack 0.1.2` |
 | Socket de usuário | `systemctl --user status podstack.socket` | `active (listening)` |
 | Daemon e engine | `podstack status` | `estado: ok` e `engine: running` |
 | Diagnóstico rápido | `podstack doctor` | checks `[ok]`; exit 0 |
@@ -333,7 +331,7 @@ rm -rf ~/.config/podstack ~/.local/share/podstack ~/.local/state/podstack ~/.cac
 
 - O Flatpak é um cliente: o daemon e o helper precisam estar instalados no host.
 - A validação de instalação limpa (T7-07/T7-14) ainda está em andamento; trate o checklist acima
-  como a verificação mínima da versão 0.1.1.
+  como a verificação mínima da versão 0.1.2.
 - Esta documentação não fixa uma URL de repositório; use o arquivo RPM/DEB gerado localmente ou o
   repositório que você configurou.
 

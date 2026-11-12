@@ -17,6 +17,7 @@
 #include <QDockWidget>
 #include <QGuiApplication>
 #include <QQmlContext>
+#include <QQmlEngine>
 #include <QQmlError>
 #include <QQuickItem>
 #include <QQuickWidget>
@@ -72,6 +73,9 @@ MainWindow::MainWindow(Backend *backend, TrayController *tray,
 void MainWindow::loadMainQml()
 {
     m_quickWidget = new QQuickWidget(this);
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    m_quickWidget->engine()->addImportPath(QStringLiteral("qrc:/qt/qml"));
+#endif
     m_quickWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
     m_quickWidget->setClearColor(palette().color(QPalette::Window));
 
@@ -99,7 +103,11 @@ void MainWindow::loadMainQml()
                          qUtf8Printable(message));
             });
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     m_quickWidget->loadFromModule(QStringLiteral("PodStack"), QStringLiteral("Main"));
+#else
+    m_quickWidget->setSource(QUrl(QStringLiteral("qrc:/qt/qml/PodStack/src/gui/qml/Main.qml")));
+#endif
     setCentralWidget(m_quickWidget);
 }
 

@@ -21,7 +21,7 @@
 | Camada | Tecnologia | Versão mínima | Observação |
 |---|---|---|---|
 | Linguagem | C++ | C++20 | GCC 14+/Clang 18+ |
-| UI | Qt Quick / QML + Qt Widgets (embed) | Qt 6.10 | Fedora 43: 6.10.3; F44: 6.11.2 |
+| UI | Qt Quick / QML + Qt Widgets (embed) | Qt 6.4 | Fedora 43: 6.10.3; F44: 6.11.2; Ubuntu 24.04: 6.4.2 |
 | Build | CMake + Ninja | 3.24 / 1.11 | `CMakePresets.json` |
 | HTTP/streams | libcurl | 8.x | Unix socket + hijack |
 | Updates (Ed25519) | OpenSSL (libcrypto) | 3.0 | verificação do manifesto/minisign; `openssl-devel` no build |
@@ -31,9 +31,9 @@
 | Kubernetes | k3s | 1.30+ | dentro de VM PodStack |
 | Proxy/HTTPS | Caddy | 2.10+ | CA interna, reverse proxy |
 | DNS | systemd-resolved + DNS userspace | systemd 257 | `*.localhost` no v1 |
-| Terminal | QTermWidget | 2.5 | GPL-2.0-or-later, compatível com GPL-3.0-or-later (ADR-0005) |
-| Tray | QSystemTrayIcon (SNI) | Qt 6.10 | KStatusNotifierItem opcional |
-| Empacotamento | RPM + systemd + polkit | Fedora 43+ | SELinux incluso |
+| Terminal | QTermWidget | 2.0.0 vendorizado (DEB) / 2.4+ (RPM) | GPL-2.0-or-later, compatível com GPL-3.0-or-later (ADR-0005/0010) |
+| Tray | QSystemTrayIcon (SNI) | Qt 6.4+ | KStatusNotifierItem opcional |
+| Empacotamento | RPM + DEB + systemd + polkit | Fedora 43+ / Ubuntu 24.04+ | SELinux no RPM; DEB com qtermwidget vendorizado |
 
 ---
 
@@ -317,7 +317,7 @@ qemu-system-x86_64 \
 - CMake presets: `dev`, `release`, `asan`, `tsan`.
 - `-Wall -Wextra -Werror` no CI; `clang-tidy` e `clang-format` check.
 - Testes: `ctest` com Qt Test; integração com Podman real; QML Test; golden tests de CLI.
-- CI em Fedora 43 e 44 (containers), rootless; job rootful opcional.
+- CI em Fedora 43/44 e Ubuntu 24.04 (containers), rootless; job rootful opcional.
 - Cache de ccache; artefatos RPM + AppImage.
 
 ---

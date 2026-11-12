@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Effects
+import Qt5Compat.GraphicalEffects
 
 // Ícone monocromático a partir de SVG (assets/icons), tingido pelo tema.
 Item {
@@ -23,11 +23,10 @@ Item {
         smooth: true
     }
 
-    MultiEffect {
+    ColorOverlay {
         anchors.fill: parent
         source: image
-        colorization: 1.0
-        colorizationColor: root.color
+        color: root.color
         visible: image.status === Image.Ready
     }
 }

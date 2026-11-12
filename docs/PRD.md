@@ -8,7 +8,7 @@
 | Data | 2026-11-08 |
 | Formato | SDD (Spec-Driven Development) |
 | Baseline funcional | OrbStack 2.2.5 (build 21124), análise estática |
-| Plataforma alvo | Linux desktop — Fedora 43+ (Wayland/X11), Podman ≥ 5.8, Qt ≥ 6.10 |
+| Plataforma alvo | Linux desktop — Fedora 43+ (Podman ≥ 5.8, Qt ≥ 6.10) e Ubuntu 24.04+ (Podman ≥ 4.9, Qt ≥ 6.4), Wayland/X11 |
 | Licença | **GPL-3.0-or-later** |
 | Documentos derivados | [`spec.md`](spec.md) · [`plan.md`](plan.md) · [`tasks.md`](tasks.md) |
 
@@ -50,7 +50,7 @@ Falta um produto Linux que una, em uma única experiência:
 ### 2.3 Por que agora
 
 - Podman 5.8+/6.x consolidou a API Libpod, rootless networking (pasta), Quadlet e Compose.
-- Qt 6.10+ e KDE Frameworks 6 estão maduros em Wayland, com tray via StatusNotifierItem.
+- Qt 6.4+ (6.10 no Fedora) e KDE Frameworks 6 estão maduros em Wayland, com tray via StatusNotifierItem.
 - QEMU/KVM + virtiofs + cloud-init estão disponíveis e estáveis em todas as distros relevantes.
 - O OrbStack provou que a categoria "app integrado de dev environments" tem demanda, mas segue exclusivo do macOS.
 
@@ -471,10 +471,10 @@ O concorrente direto é o **Podman Desktop**; a referência de polimento é o Or
 
 | ID | Requisito |
 |---|---|
-| NFR-COMP-001 | Fedora 43+; Podman ≥ 5.8; Qt ≥ 6.10; systemd ≥ 257. |
+| NFR-COMP-001 | Fedora 43+ (Podman ≥ 5.8, Qt ≥ 6.10, systemd ≥ 257); Ubuntu 24.04+ (Podman ≥ 4.9, Qt ≥ 6.4, systemd ≥ 255). |
 | NFR-COMP-002 | Wayland e X11; GNOME, KDE, niri/Noctalia, wlroots. |
 | NFR-COMP-003 | Rootless e rootful; cgroup v2. |
-| NFR-COMP-004 | Podman 5.8–6.x (API descoberta em runtime). |
+| NFR-COMP-004 | Podman 4.9–6.x no DEB/Ubuntu e 5.8–6.x no RPM/Fedora (API descoberta em runtime). |
 | NFR-COMP-005 | Arquiteturas x86_64 e aarch64. |
 
 ### 8.5 Acessibilidade e i18n (`NFR-A11Y`)
@@ -551,13 +551,13 @@ Design tokens e componentes em [`ui-map.md`](ui-map.md).
 
 ### 12.1 Runtime
 
-- Podman ≥ 5.8 (`podman.socket`), crun/runc, pasta/slirp4netns, aardvark-dns.
-- systemd ≥ 257, polkit, dbus.
+- Podman ≥ 5.8 no Fedora e ≥ 4.9 no Ubuntu 24.04 (`podman.socket`; 5.8 recomendado), crun/runc, pasta/slirp4netns, aardvark-dns.
+- systemd ≥ 257 no Fedora e ≥ 255 no Ubuntu 24.04, polkit, dbus.
 - QEMU/KVM, `qemu-img`, `cloud-init`/`cloud-localds`, `virtiofsd` (Machines).
 - k3s (Kubernetes).
 - Caddy 2.10 (proxy/HTTPS) — decisão ADR-0004.
-- Qt 6.10+ (Core, Gui, Widgets, Quick, QuickControls2, Network, DBus).
-- QTermWidget 2.5+ (GPL-2.0-or-later, compatível com GPL-3.0-or-later).
+- Qt 6.4+ (Core, Gui, Widgets, Quick, QuickControls2, Network, DBus); 6.10 no Fedora 43/44.
+- QTermWidget 2.0.0 vendorizado no DEB (estático) / 2.4+ no RPM (GPL-2.0-or-later).
 - libcurl (hijack/streams), SQLite (metadados), OpenSSL/GnuTLS.
 
 ### 12.2 Build

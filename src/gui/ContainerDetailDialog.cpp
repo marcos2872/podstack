@@ -13,6 +13,7 @@
 #include <QMessageBox>
 #include <QPalette>
 #include <QQmlContext>
+#include <QQmlEngine>
 #include <QQmlError>
 #include <QQuickItem>
 #include <QQuickWidget>
@@ -83,6 +84,9 @@ void ContainerDetailDialog::setupInterface(bool loadQml)
 
     if (loadQml) {
         m_quickWidget = new QQuickWidget(m_card);
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+        m_quickWidget->engine()->addImportPath(QStringLiteral("qrc:/qt/qml"));
+#endif
         m_quickWidget->setObjectName(QStringLiteral("containerDetailQuickWidget"));
         m_quickWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
         m_quickWidget->setClearColor(palette().color(QPalette::Window));
@@ -98,8 +102,13 @@ void ContainerDetailDialog::setupInterface(bool loadQml)
                         connectQmlSignals();
                     }
                 });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
         m_quickWidget->loadFromModule(QStringLiteral("PodStack"),
                                       QStringLiteral("ContainerDetail"));
+#else
+        m_quickWidget->setSource(
+            QUrl(QStringLiteral("qrc:/qt/qml/PodStack/src/gui/qml/ContainerDetail.qml")));
+#endif
         connectQmlSignals();
         cardLayout->addWidget(m_quickWidget);
     } else {

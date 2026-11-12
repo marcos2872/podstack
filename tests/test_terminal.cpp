@@ -435,7 +435,11 @@ void TerminalTest::selectionState()
 {
     QQmlEngine engine;
     QQmlComponent component(&engine);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     component.loadFromModule(QStringLiteral("PodStack"), QStringLiteral("SelectionState"));
+#else
+    component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/PodStack/src/gui/qml/SelectionState.qml")));
+#endif
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
     QScopedPointer<QObject> state(component.create());
     QVERIFY(state);
@@ -944,6 +948,9 @@ void TerminalTest::translationCatalog()
 void TerminalTest::appSelectKeepsSelectionWhenOpened()
 {
     QQmlApplicationEngine engine;
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    engine.addImportPath(QStringLiteral("qrc:/qt/qml"));
+#endif
     const QByteArray qml = R"(
 import QtQuick
 import QtQuick.Window

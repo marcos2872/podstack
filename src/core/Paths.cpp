@@ -55,7 +55,14 @@ QString dataDir()
 
 QString stateDir()
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     QString state = baseLocation(QStandardPaths::GenericStateLocation);
+#else
+    QString state = qEnvironmentVariable("XDG_STATE_HOME");
+    if (state.isEmpty()) {
+        state = QDir::homePath() + QStringLiteral("/.local/state");
+    }
+#endif
     if (state.isEmpty()) {
         state = baseLocation(QStandardPaths::GenericDataLocation);
     }

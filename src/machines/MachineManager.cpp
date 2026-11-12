@@ -43,6 +43,15 @@ constexpr int kQemuImgTimeoutMs = 60000;
 constexpr int kSshKeygenStartTimeoutMs = 5000;
 constexpr int kSshKeygenTimeoutMs = 30000;
 constexpr int kMaxProcessOutput = 4096;
+
+QTimeZone utcTimeZone()
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    return QTimeZone::UTC;
+#else
+    return QTimeZone(Qt::UTC);
+#endif
+}
 constexpr qint64 kMaxPublicKeyBytes = 64LL * 1024;
 
 // NOLINTBEGIN(bugprone-throwing-static-initialization)
@@ -1123,8 +1132,7 @@ QVector<MachineSnapshot> MachineManager::parseSnapshots(const MachineMeta &meta,
             if (nanosecondsValue.isDouble()) {
                 milliseconds = nanosecondsValue.toInteger() / 1000000;
             }
-            snapshot.date = QDateTime::fromSecsSinceEpoch(secondsValue.toInteger(),
-                                                          QTimeZone::UTC)
+            snapshot.date = QDateTime::fromSecsSinceEpoch(secondsValue.toInteger(), utcTimeZone())
                                 .addMSecs(milliseconds)
                                 .toString(Qt::ISODateWithMs);
         }

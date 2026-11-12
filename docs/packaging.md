@@ -10,7 +10,7 @@
 
 | Pacote | Conteúdo | Dependências |
 |---|---|---|
-| `podstack` | GUI, CLI, daemon, QML, ícones, `.desktop`, AppStream | Qt 6.10+, libcurl, libarchive, libxcrypt, sqlite, podman, openssh-clients |
+| `podstack` | GUI, CLI, daemon, QML, ícones, `.desktop`, AppStream | Qt 6.4+ (6.10 no Fedora 43+; 6.4 no Ubuntu 24.04), qtermwidget 2.0.0 vendorizado no DEB, libcurl, libarchive, libxcrypt, sqlite, podman ≥ 4.9 (5.8 recomendado), openssh-clients |
 | `podstack-helper` | helper root, unit system, polkit, módulo SELinux | systemd, polkit, policycoreutils |
 | `podstack-devel` (opcional) | headers/libs para plugins | — |
 
@@ -216,7 +216,7 @@ Ações separadas por método; nunca uma ação "root genérica".
 ## 6. SELinux
 
 O módulo mínimo está em [`packaging/selinux/`](../packaging/selinux/):
-`podstack.te`, `podstack.fc` e `podstack.if` (`policy_module(podstack, 0.1.1)`,
+`podstack.te`, `podstack.fc` e `podstack.if` (`policy_module(podstack, 0.1.2)`,
 refpolicy/Fedora).
 
 **Escopo:** apenas o helper privilegiado. O daemon do usuário, os containers, o
@@ -297,7 +297,7 @@ ausearch -m avc -ts recent        # negações do domínio podstack_helper_t
 Se aparecer AVC, ajuste `podstack.te` e recarregue com `semodule -i`. Use
 `audit2allow -w -a` apenas como diagnóstico, não como política final.
 
-> **Ressalva:** módulo mínimo, **não validado em SELinux enforcing no 0.1.1**.
+> **Ressalva:** módulo mínimo, **não validado em SELinux enforcing no 0.1.2**.
 > A validação real depende de um build em Fedora com `selinux-policy-devel`
 > (COPR/CI) e de um ciclo de setup com `enforcing` + `ausearch`. Em
 > `permissive`, o módulo apenas registra negações.
@@ -323,7 +323,7 @@ globalmente (`systemctl --global enable`).
 
 ```spec
 Name:           podstack
-Version:        0.1.1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        Fast, light desktop for Podman containers, VMs and Kubernetes
 License:        GPL-3.0-or-later
@@ -432,19 +432,35 @@ rpmbuild -ba podstack.spec
 
 ---
 
-## 8. DEB (Debian/Ubuntu)
+## 8. DEB (Ubuntu 24.04–26.04)
 
-- Metadados em [`packaging/deb/control`](../packaging/deb/control); build local:
+- Metadados em [`packaging/deb/control`](../packaging/deb/control); build local em Ubuntu 24.04:
   ```bash
-  ./scripts/build-deb.sh
+  cmake -S . -B build/ubuntu -G Ninja \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DPODSTACK_USE_VENDORED_QTERMWIDGET=ON
+  cmake --build build/ubuntu
+  PODSTACK_BUILD_DIR=build/ubuntu ./scripts/build-deb.sh
   # saída: build/deb/podstack_<versão>_<arch>.deb
   ```
-- O script usa `cmake --install` em uma árvore staging com `DESTDIR` e fecha o pacote com
-  `dpkg-deb --root-owner-group`; requer `dpkg-dev`.
-- Dependências de runtime declaradas em `control` (`podman`, `systemd`, `openssh-client`,
-  Qt 6, qtermwidget, libcurl/archive/crypt/sqlite/ssl). Recomenda QEMU/KVM, virtiofsd, Caddy
-  e o provider Compose.
-- O `postinst` habilita `podstack.socket` por usuário (`systemctl --global enable`).
+- O `.deb` é construído no **Ubuntu 24.04** (Qt 6.4.2) e roda em 24.04, 25.10 e 26.04; o RPM
+  continua em Fedora 44 (Qt 6.10). O script usa `cmake --install` em uma árvore staging com
+  `DESTDIR`, `--strip` e `dpkg-deb --root-owner-group`; requer `dpkg-dev`.
+- O qtermwidget **2.0.0** é vendorizado em [`third_party/qtermwidget`](../third_party/qtermwidget)
+  e linkado estaticamente no `podstack-gui`; não há `libqtermwidget6.so` em runtime. Os color
+  schemes/keytabs vão para `/usr/share/podstack/qtermwidget6`, sem colidir com o
+  `libqtermwidget6-2` do Ubuntu 26.04.
+- `Depends`: Podman ≥ 4.9 (5.8 recomendado), Qt 6 (base/declarative/widgets/quick), com
+  alternativas `t64` para o 24.04 e sem `t64` para o 26.04; `libqt6sql6-sqlite`, `qt6-qpa-plugins`,
+  `qt6-wayland`, módulos QML (`qml6-module-qtquick*`, `qml6-module-qtqml*`,
+  `qml6-module-qt5compat-graphicaleffects`), `libcurl4t64` + `libcurl3t64-gnutls`,
+  `libarchive13t64`, `libssl3t64` e `libcrypt1`. Recomenda QEMU/KVM, virtiofsd, Caddy e o
+  provider Compose.
+- Instalação: `sudo apt install ./podstack_<versão>_amd64.deb`. O binário exige glibc 2.39
+  (Ubuntu 24.04+); Debian 12 não é suportado por este pacote.
+- O `postinst` habilita `podstack.socket` por usuário (`systemctl --global enable`) e o
+  `podstack-helper.service`.
 - Para publicar em repositório APT, gerar `Packages`/`Release` assinados no CI (não incluído).
 
 ---
@@ -489,21 +505,22 @@ rpmbuild -ba podstack.spec
 ### 11.1 Pipeline de release (`release.yml`)
 
 O workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) roda em
-push de tag `v*` e em `workflow_dispatch`, em container `fedora:44`:
+push de tag `v*` e em `workflow_dispatch`, em três jobs:
 
-1. valida o AppStream;
-2. configura e compila o preset `release` e roda `ctest`;
-3. gera o RPM (`scripts/build-rpm.sh`) e o DEB (`scripts/build-deb.sh`);
-4. assina os RPMs com GPG (opcional) e gera `SHA256SUMS` dos `.rpm`/`.deb`;
-5. assina `SHA256SUMS` com GPG (opcional, gera `SHA256SUMS.asc`);
-6. gera o SBOM CycloneDX (`scripts/generate-sbom.sh`);
-7. confere se a tag `vX.Y.Z` corresponde à versão de `CMakeLists.txt` (falha se
-   divergir), extrai as notas da seção da versão no
+1. `rpm` (Fedora 44): valida o AppStream, configura/compila o preset `release`, roda
+   `ctest`, gera o RPM (`scripts/build-rpm.sh`), assina os RPMs com GPG (opcional) e gera
+   o SBOM CycloneDX (`scripts/generate-sbom.sh`);
+2. `deb` (Ubuntu 24.04): valida o AppStream, configura com
+   `-DCMAKE_INSTALL_PREFIX=/usr -DPODSTACK_USE_VENDORED_QTERMWIDGET=ON`, compila, instala
+   os dados de runtime do qtermwidget, roda `ctest` e empacota o DEB
+   (`scripts/build-deb.sh`);
+3. `publish`: baixa os artefatos dos dois jobs, gera `SHA256SUMS` dos `.rpm`/`.deb`, assina
+   com GPG (opcional), extrai as notas da seção da versão no
    [`CHANGELOG.md`](../CHANGELOG.md) e gera `podstack-update.json`
-   (`scripts/generate-update-manifest.sh`), com a URL base das releases do
-   GitHub e o canal de `PODSTACK_UPDATE_CHANNEL` (variável do repositório);
-8. assina o manifesto com minisign (opcional, gera `podstack-update.json.minisig`);
-9. publica os artefatos na release (`gh release create` ou `gh release upload --clobber`).
+   (`scripts/generate-update-manifest.sh`) com a URL base das releases do GitHub e o canal
+   de `PODSTACK_UPDATE_CHANNEL` (variável do repositório), assina o manifesto com minisign
+   (opcional) e publica os artefatos (`gh release create` ou `gh release upload --clobber`).
+   A tag `vX.Y.Z` é conferida contra a versão de `CMakeLists.txt` antes da publicação.
 
 Artefatos publicados: `*.rpm`, `*.deb`, `SHA256SUMS`, `SHA256SUMS.asc` (se assinado),
 `*.cdx.json`, `podstack-update.json` e `podstack-update.json.minisig` (se assinado).
@@ -535,14 +552,15 @@ obrigatória). Para habilitar updates, importe a chave privada minisign, publiqu
 em container Fedora 44 descartável (via Podman) e cobre instalação do RPM principal e do
 `podstack-helper`; presença de binários, units systemd de usuário, unit/polkit do helper e
 módulo SELinux; metainfo + `appstreamcli validate`; daemon com socket `0600`; `podstack
-status` e `podstack doctor`. O [`packaging.yml`](../.github/workflows/packaging.yml) executa
-o script em PRs que alteram `packaging/**`, `scripts/build-*`,
-`scripts/clean-install-check.sh`, `CMakeLists.txt` ou `release.yml`.
+status` e `podstack doctor`. O [`packaging.yml`](../.github/workflows/packaging.yml) executa o build do RPM em container
+Fedora 44 e o build do DEB em container Ubuntu 24.04 em PRs que alteram `packaging/**`,
+`scripts/build-*`, `scripts/clean-install-check.sh`, `CMakeLists.txt`, `third_party/**` ou
+`release.yml`.
 
 **Manual (máquina/VM de referência):** GUI em sessão gráfica real, KVM (`/dev/kvm`) e
 machines com SSH, polkit real com systemd como PID 1, coexistência/remoção do Docker,
 upgrade a partir de versão anterior, desinstalação e as demais combinações da matriz de
-compatibilidade (Fedora 43, X11, GNOME, KDE Plasma, rootful).
+compatibilidade (Fedora 43/44, Ubuntu 24.04/26.04, Wayland/X11, GNOME, KDE Plasma, rootful).
 
 1. `dnf install podstack` em Fedora 43 limpo.
 2. `systemctl --user status podstack.socket` ativo.
@@ -550,6 +568,8 @@ compatibilidade (Fedora 43, X11, GNOME, KDE Plasma, rootful).
 4. Repetir em máquina com Docker instalado; confirmar coexistência e que a remoção é opt-in.
 5. Criar container → acessar.
 6. Criar máquina → SSH.
+7. `apt install ./podstack_0.1.2_amd64.deb` em Ubuntu 24.04 e 26.04 limpos; abrir a GUI sob
+   Xvfb; validar o `podstack-helper` no D-Bus e `podstack status` com Podman 4.9/5.7.
 7. `podstack doctor` verde.
 8. Desinstalar → `dnf remove podstack` remove units; dados do usuário preservados (documentar).
 

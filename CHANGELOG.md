@@ -5,6 +5,30 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.1.2] - 2026-11-12
+
+Release de compatibilidade do pacote `.deb` com Ubuntu 24.04 LTS e versões
+posteriores.
+
+### Corrigido
+
+- **Qt 6.4 (Ubuntu 24.04):** removido o requisito de Qt 6.10; o código usa
+  fallbacks para APIs introduzidas no Qt 6.5 (`Qt.styleHints.colorScheme`,
+  `QQuickWidget::loadFromModule`, `QTimeZone::UTC`) e o QML deixou de usar
+  `MultiEffect` e cantos individuais de `Rectangle`.
+- **QTermWidget:** o Ubuntu 24.04/25.10 não empacota `qtermwidget6`; a versão
+  2.0.0 foi vendorizada em `third_party/qtermwidget`, compilada como
+  biblioteca estática e vinculada ao `podstack-gui` (sem dependência de
+  `libqtermwidget6.so.2` em runtime).
+- **Pacote `.deb`:** dependências corrigidas para os nomes `t64` do Ubuntu
+  24.04, inclusão dos módulos QML e do plugin de plataforma Qt, `strip` dos
+  binários (30 MB → 2,5 MB) e `libcurl3t64-gnutls` declarada para CLI/helper.
+- **Pipeline:** o DEB passou a ser construído em Ubuntu 24.04 (Qt 6.4) e o RPM
+  continua em Fedora 44; a publicação baixa os dois artefatos antes de gerar
+  `SHA256SUMS`, SBOM e manifesto.
+- **Podman:** o `.deb` aceita Podman ≥ 4.9 (o do Ubuntu 24.04); Podman ≥ 5.8
+  segue recomendado e é o requisito do RPM/Fedora.
+
 ## [0.1.1] - 2026-11-12
 
 Release de correção da instalação e do daemon.

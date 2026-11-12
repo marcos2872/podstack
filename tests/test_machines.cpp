@@ -7083,10 +7083,14 @@ void MachinesTest::machineManagerSnapshots()
     QCOMPARE(listed.at(0).id, QStringLiteral("1"));
     QCOMPARE(listed.at(0).name, QStringLiteral("clean"));
     QCOMPARE(listed.at(0).sizeBytes, 1048576LL);
-    QCOMPARE(listed.at(0).date,
-             QDateTime::fromSecsSinceEpoch(1700000000, QTimeZone::UTC)
-                 .addMSecs(123)
-                 .toString(Qt::ISODateWithMs));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    const QTimeZone utc = QTimeZone::UTC;
+#else
+    const QTimeZone utc = QTimeZone(Qt::UTC);
+#endif
+    QCOMPARE(
+        listed.at(0).date,
+        QDateTime::fromSecsSinceEpoch(1700000000, utc).addMSecs(123).toString(Qt::ISODateWithMs));
     QCOMPARE(listed.at(1).name, QStringLiteral("before-upgrade"));
     QCOMPARE(listed.at(1).sizeBytes, 0LL);
     QVERIFY(logText().contains(QStringLiteral("info\n-U\n--output=json\n") + created.diskPath));

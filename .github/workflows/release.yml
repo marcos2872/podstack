@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  package:
-    name: Empacotar e publicar
+  rpm:
+    name: RPM (Fedora 44)
     runs-on: ubuntu-latest
     container: fedora:44
 
@@ -34,7 +34,7 @@ jobs:
             qt6-qt5compat-devel kf6-kstatusnotifieritem-devel \
             qtermwidget-devel libarchive-devel libcurl-devel sqlite-devel \
             libxcrypt-devel openssh-clients \
-            rpm-build rpm-sign dpkg appstream minisign gnupg2 jq curl zip gh \
+            rpm-build rpm-sign appstream gnupg2 \
             make selinux-policy-devel policycoreutils
 
       - name: AppStream (validação)
@@ -65,17 +65,6 @@ jobs:
           PODSTACK_UPDATE_PUBLIC_KEY: ${{ secrets.PODSTACK_UPDATE_PUBLIC_KEY }}
         run: scripts/build-rpm.sh
 
-      - name: Empacotar DEB
-        run: PODSTACK_BUILD_DIR=build/release scripts/build-deb.sh
-
-      - name: Reunir pacotes
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          cp build/rpm/RPMS/*/*.rpm dist/
-          cp build/deb/*.deb dist/
-          ls -l dist/
-
       - name: Assinar RPMs com GPG (opcional)
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
@@ -87,9 +76,123 @@ jobs:
             exit 0
           fi
           printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
-          for rpm in dist/*.rpm; do
+          for rpm in build/rpm/RPMS/*/*.rpm; do
             rpm --define "_gpg_name ${GPG_KEY_ID}" --addsign "$rpm"
           done
+
+      - name: Gerar SBOM (CycloneDX)
+        run: |
+          set -euo pipefail
+          scripts/generate-sbom.sh
+          mkdir -p dist-rpm
+          cp build/rpm/RPMS/*/*.rpm dist-rpm/
+          cp build/sbom/podstack-*.cdx.json dist-rpm/
+          ls -l dist-rpm/
+
+      - name: Upload dos RPMs e do SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: dist-rpm/
+          if-no-files-found: error
+
+  deb:
+    name: DEB (Ubuntu 24.04)
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+
+    steps:
+      - name: Instalar git (necessário para o checkout)
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dependências
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            cmake ninja-build g++ pkg-config \
+            qt6-base-dev qt6-declarative-dev qt6-wayland-dev qt6-5compat-dev \
+            qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools \
+            libarchive-dev libcurl4-openssl-dev libcrypt-dev libsqlite3-dev libssl-dev \
+            appstream dpkg-dev \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts \
+            qml6-module-qtquick-templates qml6-module-qtquick-window \
+            qml6-module-qtqml qml6-module-qtqml-models \
+            qml6-module-qtqml-workerscript qml6-module-qtquick-dialogs \
+            qml6-module-qt5compat-graphicaleffects \
+            libqt6sql6-sqlite qt6-wayland
+
+      - name: AppStream (validação)
+        run: appstreamcli validate --no-net packaging/dev.podstack.PodStack.metainfo.xml
+
+      - name: Configurar (release, qtermwidget vendorizado)
+        shell: bash
+        env:
+          UPDATE_PUBLIC_KEY: ${{ secrets.PODSTACK_UPDATE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          args=("-DCMAKE_INSTALL_PREFIX=/usr" "-DPODSTACK_USE_VENDORED_QTERMWIDGET=ON")
+          if [ -n "${UPDATE_PUBLIC_KEY:-}" ]; then
+            args+=("-DPODSTACK_UPDATE_PUBLIC_KEY=${UPDATE_PUBLIC_KEY}")
+            echo "Chave pública de updates embutida no build."
+          else
+            echo "PODSTACK_UPDATE_PUBLIC_KEY ausente; o updater usará updates.publicKey em runtime."
+          fi
+          cmake --preset release "${args[@]}"
+
+      - name: Compilar
+        run: cmake --build --preset release
+
+      - name: Instalar dados de runtime para os testes
+        run: cmake --install build/release --prefix /usr --component Runtime
+
+      - name: Testes
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build/release --output-on-failure
+
+      - name: Empacotar DEB
+        run: PODSTACK_BUILD_DIR=build/release scripts/build-deb.sh
+
+      - name: Upload do DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: build/deb/*.deb
+          if-no-files-found: error
+
+  publish:
+    name: Notas, assinaturas e publicação
+    needs: [rpm, deb]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ferramentas
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gpg minisign jq curl
+          command -v gh >/dev/null 2>&1 || sudo apt-get install -y gh
+
+      - name: Baixar RPMs e SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: rpm
+          path: dist
+
+      - name: Baixar DEB
+        uses: actions/download-artifact@v4
+        with:
+          name: deb
+          path: dist
 
       - name: Gerar SHA256SUMS
         run: |
@@ -115,17 +218,12 @@ jobs:
           fi
           gpg "${gpg_args[@]}" dist/SHA256SUMS
 
-      - name: Gerar SBOM (CycloneDX)
-        run: |
-          set -euo pipefail
-          scripts/generate-sbom.sh
-          cp build/sbom/podstack-*.cdx.json dist/
-
       - name: Notas e manifesto de updates
         env:
           CHANNEL: ${{ vars.PODSTACK_UPDATE_CHANNEL }}
         run: |
           set -euo pipefail
+          mkdir -p build
           version="$(sed -n 's/^project(PodStack VERSION \([^ ]*\).*/\1/p' CMakeLists.txt | head -1)"
           tag="${GITHUB_REF_NAME}"
           if [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then

@@ -1,4 +1,4 @@
-find_package(Qt6 6.10 REQUIRED COMPONENTS Test)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
 
 qt_add_executable(test_core test_core.cpp ../src/daemon/BuildStore.cpp
     ../src/daemon/ManifestBuilder.cpp)
