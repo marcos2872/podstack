@@ -1,7 +1,7 @@
 # Plano técnico — 001 Apps remotos da VM
 
-> Derivado de [`spec.md`](spec.md). Este documento **não** altera `docs/sdd/plan.md`; é o delta proposto.
-> Escopo: M9 (T9-01…T9-03) + pré-requisito M10 (Anexo A).
+> Derivado de [`spec.md`](spec.md) (rev. 2). Não altera `docs/sdd/plan.md`; é o delta proposto.
+> Escopo: **M9** (guest Windows, pré-requisito) e **M10** (apps remotos, 3 tarefas).
 
 ---
 
@@ -9,59 +9,64 @@
 
 ```mermaid
 flowchart LR
-  subgraph Host
-    GUI[GUI/CLI] --> RPC[podstackd JSON-RPC]
-    RPC --> MM[MachineManager]
-    MM --> AB{AppBackend}
-    AB -->|Linux X11| XP[xpra process]
-    AB -->|Windows| RD[FreeRDP RAIL process]
-    MM --> GC{GuestChannel}
-    GC -->|Linux| SSH[ssh/scp]
-    GC -->|Windows / sem rede| QGA[qemu-ga client]
+  subgraph Sessão gráfica do usuário
+    GUI[GUI + AppHost] -->|spawna| XP[xpra client]
+    GUI -->|spawna| RD[FreeRDP RAIL]
   end
+  subgraph Daemon
+    RPC[podstackd JSON-RPC] --> MM[MachineManager]
+    MM --> GC{GuestChannel}
+    MM -->|LaunchSpec| GUI
+  end
+  GC -->|Linux| SSH[ssh/scp]
+  GC -->|Windows / sem rede| QGA[qemu-ga client]
   XP -->|ssh://| VM[(QEMU/KVM guest)]
-  RD -->|127.0.0.1:port| VM
+  RD -->|127.0.0.1:porta| VM
   SSH --> VM
   QGA -->|virtio-serial qga.sock| VM
 ```
 
-Duas abstrações novas, ambas resolvidas por **capability** da machine:
+**Correção estrutural:** o daemon **não** lança clientes gráficos. `packaging/systemd/podstack.service:16-18` tem `PrivateTmp=yes`, `ProtectSystem=strict` e `ProtectHome=read-only`, e a unit não importa `DISPLAY`/`WAYLAND_DISPLAY` — o daemon não enxerga `/tmp/.X11-unix`, `~/.ssh` nem `~/.Xauthority`.
+
+| Componente | Onde roda | Responsabilidade |
+|---|---|---|
+| `GuestChannel` | daemon | ping, osinfo, exec, arquivos pequenos, IP |
+| `MachineManager` | daemon | estado, portas, credenciais, catálogo em cache, `LaunchSpec` |
+| `AppHost` | GUI (processo com sessão gráfica) | spawn/supervisão de xpra e FreeRDP, env de display, kill no stop |
+| CLI | terminal do usuário | delega o launch à GUI via instância única; sem GUI → `PODSTACK_GUI_REQUIRED` |
+
+`AppHost` recebe do daemon um `LaunchSpec` (argv + env + segredo por fd/arquivo), nunca abre display sozinho. Precedente: `ExternalTerminal` já lança processos na sessão do usuário a partir da GUI.
 
 ```cpp
-// src/machines/GuestChannel.h
+// src/machines/GuestChannel.h (daemon)
 class GuestChannel {
 public:
   virtual ~GuestChannel() = default;
   virtual QString name() const = 0;                    // "ssh" | "agent"
-  virtual bool ping() = 0;                              // liveness
+  virtual bool ping() = 0;
   virtual GuestOsInfo osInfo() = 0;
   virtual GuestExecResult exec(const QStringList &argv, int timeoutMs) = 0;
   virtual QByteArray readSmallFile(const QString &path, int maxBytes) = 0;  // <= 1 MiB
   virtual void writeSmallFile(const QString &path, const QByteArray &data) = 0;
   virtual QString primaryIp() = 0;
 };
-```
 
-```cpp
-// src/machines/AppBackend.h
-class AppBackend {
+// src/gui/AppHost.h (sessão gráfica)
+struct LaunchSpec { QString program; QStringList args; QProcessEnvironment env; int secretFd; };
+class AppHost {
 public:
-  virtual ~AppBackend() = default;
-  virtual QString name() const = 0;                     // "x11" | "xpra" | "rail"
-  virtual bool available(QString *reason) const = 0;
-  virtual QList<AppEntry> list() = 0;
-  virtual AppSession launch(const QString &app, const QStringList &args) = 0;
-  virtual void stop(const AppSession &session) = 0;
+  virtual ~AppHost() = default;
+  virtual AppSession launch(const LaunchSpec &spec) = 0;
+  virtual void stop(const QString &sessionId) = 0;
+  virtual QList<AppSession> sessions() const = 0;
 };
 ```
 
-Regra de ouro: **nenhum cliente remoto é embutido no QML**. xpra e FreeRDP criam janelas nativas; o PodStack supervisiona o processo, como já faz com `ExternalTerminal`.
+Regra: **nenhum cliente remoto é embutido no QML**; xpra e FreeRDP criam janelas nativas e são supervisionados pelo `AppHost`.
 
-## 2. Canal de guest — qemu-ga (T9-01)
+## 2. Canal de guest — qemu-ga (T10-01)
 
 ### 2.1 QEMU
-
-Adicionar ao argv, apenas quando `guestChannel` inclui `agent`:
 
 ```
 -device virtio-serial-pci,id=virtserial0
@@ -69,230 +74,193 @@ Adicionar ao argv, apenas quando `guestChannel` inclui `agent`:
 -device virtserialport,chardev=qga,name=org.qemu.guest_agent.0
 ```
 
-- `qga.sock` fica em `machineDir` (já `0700`); aplicar `0600` após criar.
-- Nome do port **precisa** ser `org.qemu.guest_agent.0` (default do MSI do Windows e do `qemu-ga` no Linux).
-- Sem vsock no v1: o suporte do `qemu-ga` no Windows a `vsock-listen` não é garantido; virtio-serial é o denominador comum.
+- `machineDir` já é `0700` (`MachineManager.cpp:170-177,2045`); é esse o limite de proteção. **Não prometer `chmod 0600` atômico** — a criação do socket pelo QEMU não é interceptável; o teste verifica diretório e dono.
+- Nome do port `org.qemu.guest_agent.0` (default do MSI Windows e do `qemu-ga` Linux) — confirmar no spike com o MSI real.
+- Sem vsock no v1: suporte do `qemu-ga` Windows a `vsock-listen` não é garantido.
 
 ### 2.2 Cliente
 
-`GuestAgentClient` em `src/machines/`, protocolo JSON delimitado por `\n`, com `guest-sync-delimited` (prefixo `0xFF`) na reconexão para descartar lixo de buffer.
-
-Operações usadas (e só elas):
+`GuestAgentClient` em `src/machines/`, JSON delimitado por `\n`, `guest-sync-delimited` (prefixo `0xFF`) na reconexão.
 
 | Operação | Uso |
 |---|---|
-| `guest-ping` | liveness; usado no estado `installing` |
-| `guest-get-osinfo` | detectar Windows/Linux e versão → capability |
-| `guest-info` | confirmar `guest-exec` disponível |
-| `guest-exec` / `guest-exec-status` | scripts de setup, consultas de catálogo |
+| `guest-ping` | liveness; dirige `provisioning` → `running` |
+| `guest-get-osinfo` | detectar Windows/Linux e versão |
+| `guest-info` | confirmar `guest-exec` |
+| `guest-exec` / `guest-exec-status` | scripts de setup e consultas |
 | `guest-network-get-interfaces` | IP sem SSH |
-| `guest-file-open/read/write/close` | **≤ 1 MiB**: scripts, JSON de catálogo, `.ico` |
+| `guest-file-open/read/write/close` | **≤ 1 MiB** |
 
-Transferência de usuário **não** passa por aqui: no Linux continua `scp`; no Windows, virtiofs (WinFsp) ou o backend de arquivos fica desabilitado até lá. Motivo: o protocolo usa chunks base64 em JSON e perde uma ordem de grandeza em throughput.
+Transferência de usuário continua em `scp` (Linux) e virtiofs/WinFsp (Windows). O protocolo de arquivo do qemu-ga usa chunks base64 em JSON e perde uma ordem de grandeza — usá-lo para transferência seria regressão.
 
-### 2.3 Ciclo de vida e reconexão
+### 2.3 Reconexão
 
-- O daemon mantém **uma** conexão por machine, com backoff exponencial (1 s → 30 s).
-- **Critério de aceite:** derrubar o daemon e subir de novo reconecta ao mesmo socket sem reiniciar a VM. Se o chardev do QEMU não reaceitar conexão (comportamento a validar no spike), a mitigação é reiniciar apenas o processo QEMU? **Não** — a mitigação aceitável é reabrir o `chardev` via QMP (`chardev-add`/`chardev-remove`) mantendo a VM viva. Validar antes de fechar o desenho.
-- Falha do canal → `capabilities.guestChannel.agent = false`, fallback para SSH classificado, sem exceção atravessando a UI.
+1. Reconectar ao socket com backoff (1 s → 30 s).
+2. Se o chardev morreu: `device_del` do `virtserialport` → `chardev-remove` → `chardev-add` → `device_add`, **nesta ordem** (só `chardev-remove` falha com device em uso).
+3. Falha persistente → `guestChannel.agent=false`, fallback classificado, sem exceção atravessando a UI.
+
+Sequência validada no spike de T10-01 com QEMU real (`PODSTACK_QEMU_INTEGRATION`).
 
 ### 2.4 Segurança
 
-- `guest-exec` é execução arbitrária no guest. Só é exposto via RPC no mesmo socket `0600` + `SO_PEERCRED` do daemon; nunca por TCP.
-- Saída de comandos passa pelo redaction existente; nada de senha em argv (usar `guest-file-write` de um script temporário e apagar).
-- Timeout duro por chamada (default 30 s, `guest-exec-status` em polling curto).
+`guest-exec` é execução arbitrária no guest: exposto só pelo socket `0600` + `SO_PEERCRED` do daemon, nunca por TCP; timeout duro (30 s); saída passa pelo redaction; scripts temporários apagados após uso.
 
-## 3. Apps Linux — xpra (T9-02)
+## 3. Apps Linux — xpra (T10-02)
 
-### 3.1 Modelo de sessão
+### 3.1 Pré-requisitos de host e guest
 
-Uma sessão por app, processo supervisionado:
+| Lado | Requisito | Checagem |
+|---|---|---|
+| Host | binário `xpra` (cliente) | `SetupManager` + override `PODSTACK_XPRA_BINARY`; ausência → `PODSTACK_DEPENDENCY_MISSING` |
+| Guest | pacote `xpra` | instalação sob demanda com consentimento |
+
+| Distro | Comando | Observação |
+|---|---|---|
+| Ubuntu/Debian | `sudo apt-get install -y xpra` | `universe` nas imagens cloud |
+| Fedora | `sudo dnf install -y xpra` | **validar disponibilidade**; se ausente, repo oficial do projeto |
+| Arch/Alpine | fora do v1 | `reason=backend_missing` com instrução |
+
+### 3.2 Sessão
 
 ```
 xpra seamless ssh://<user>@<host>:<port>/ \
   --ssh="ssh -i <key> -o IdentitiesOnly=yes -o UserKnownHostsFile=<known_hosts>" \
-  --start-child="<exec>" \
-  --exit-with-children \
-  --clipboard=yes \
-  --notifications=yes \
-  --audio=no
+  --start-child="<exec>" --exit-with-children \
+  --clipboard=yes --notifications=yes --audio=no
 ```
 
-- `seamless` = janelas nativas, sem desktop remoto; `--exit-with-children` garante que fechar a janela encerra o processo no guest.
-- Transporte: SSH já existente (chave por machine, `known_hosts` isolado). Não há transporte novo.
-- `--audio=yes` fica atrás de setting (D3): o áudio atual da VM é HDA→PipeWire, por VM; xpra daria áudio por app a custo de latência.
-
-### 3.2 Pré-requisito no guest
-
-`xpra` não está nas imagens base. Instalação sob demanda, com consentimento explícito:
-
-| Distro | Comando | Observação |
-|---|---|---|
-| Ubuntu/Debian | `sudo apt-get install -y xpra` | `universe` habilitado nas imagens cloud |
-| Fedora | `sudo dnf install -y xpra` | validar disponibilidade no repo oficial; se ausente, usar repo do projeto |
-| Arch/Alpine | fora do v1 | erro `backend_missing` com instrução |
-
-Fluxo: `machines.apps.ensureBackend` → mostra comando e tamanho estimado → usuário confirma → executa via canal (SSH ou agente) → revalida com `xpra --version`.
+- Uma sessão por app; `--exit-with-children` encerra o servidor quando o filho sai.
+- **Limpeza (FR-MAC-124):** se o cliente morrer (crash do daemon/GUI), o `AppHost` roda `xpra stop ssh://…` e aplica TTL na sessão remota; stop/delete da machine encerra todas.
+- Transporte: SSH existente (chave e `known_hosts` por machine).
+- `--audio=yes` atrás de setting (D3); default mantém HDA→PipeWire.
 
 ### 3.3 Catálogo
 
-Ler `.desktop` em `/usr/share/applications` e `~/.local/share/applications` via canal; filtrar `NoDisplay=true`, `Terminal=true`; usar `Name`, `Exec` (removendo `%`-codes) e `Icon`. Ícone: tentar tema do host pelo nome; fallback ícone genérico. Cache por machine com invalidação manual.
+`.desktop` em `/usr/share/applications` e `~/.local/share/applications` via canal; ignorar `NoDisplay=true`/`Terminal=true`; `Name`, `Exec` sem `%`-codes, `Icon`; ícone do tema do host ou genérico; cache por machine.
 
 ### 3.4 RPC e UI
 
-- `machines.apps.list` → `[{id, name, exec, icon, backend}]`
-- `machines.apps.launch` `{machine, app, args?}` → `{sessionId, pid}`
-- `machines.apps.stop` `{machine, sessionId}`
-- UI: botão "Abrir app da VM" no inspetor, lista com busca; badge do backend usado.
+`machines.apps.list` → `{backend, items[], total?}`; `launch` → `{sessionId}`; `stop` → `{ok}`. UI: botão "Abrir app da VM", busca, badge do backend.
 
 ### 3.5 X11 legado
 
-`machine ssh --x11` e o RPC atual **não mudam**. A doc passa a marcar como legado, com ponteiro para xpra. Nenhum teste removido.
+`machine ssh --x11` e o RPC atual não mudam; doc marca como legado com ponteiro para xpra. Nenhum teste removido.
 
-## 4. Apps Windows — RAIL (T9-03)
+## 4. Apps Windows — RAIL (T10-03)
 
-**Bloqueado por M10** (Anexo A). Sem console gráfico e provisionamento Windows não há guest para conectar.
+Bloqueado por **M9**. Sem guest Windows com agente e RDP não há o que conectar.
 
-### 4.1 Habilitar RDP no guest (via qemu-ga)
+### 4.1 Habilitar RDP (via `guest-exec`)
 
 ```powershell
 Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -Value 0
 Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name UserAuthentication -Value 1
-New-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name SecurityLayer -Value 2 -PropertyType DWord -Force
 Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
 New-LocalUser -Name 'PodStack' -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -PasswordNeverExpires
 Add-LocalGroupMember -Group 'Remote Desktop Users' -Member 'PodStack'
 ```
 
-Senha aleatória por machine, gravada em `machineDir/rdp.secret` (`0600`); nunca em argv, log ou `meta.json`. O script recebe a senha via arquivo temporário escrito com `guest-file-write` e apagado em seguida.
+Senha aleatória em `machineDir/rdp.secret` (`0600`), passada por arquivo escrito com `guest-file-write` e apagada depois. Nunca em argv/log/`meta.json`.
 
-### 4.2 Transporte e confiança
+### 4.2 Porta e confiança
 
-- `-netdev user,...,hostfwd=tcp:127.0.0.1:<porta>-:3389` — endereço explícito, nunca `0.0.0.0`.
-- RDP usa certificado autoassinado do Windows. Estratégia **TOFU**: na primeira conexão, capturar SHA-256 via `xfreerdp /cert:tofu` e gravar em `MachineMeta.rdpCertFingerprint`; nas seguintes, exigir match. `/cert:ignore` é proibido.
-- NLA obrigatório (`UserAuthentication=1`). Sem NLA, RDP falha e o erro é classificado.
+- **Porta como `MachinePort`** (`MachineMeta.h:14`), alocada por `findFreePort` (`MachineManager.cpp:399`) e concatenada ao **mesmo** `-netdev user,hostfwd=…` de `QemuCommand.cpp:204-213`; `exposeLan=false` obrigatório, entrada marcada `internal` para não vazar na UI/CLI de portas.
+- `hostfwd=tcp:127.0.0.1:<porta>-:3389` — endereço explícito, nunca `0.0.0.0`.
+- TOFU: SHA-256 em `MachineMeta.rdpCertFingerprint`; `/cert:ignore` proibido; NLA obrigatório.
+- **Senha fora de argv:** `xfreerdp /from-stdin` (validar no spike) ou helper com `--password-file`. O caminho nunca usa `/p:`.
 
-### 4.3 Sessão única (o ponto crítico)
+### 4.3 Sessão única
 
-Windows client (10/11 Pro) aceita **uma** sessão interativa. Duas invocações `xfreerdp /app:...` colidem — a segunda derruba a primeira. Portanto o desenho exige um broker:
+Windows client aceita **uma** sessão interativa: duas invocações `/app:` colidem. Broker obrigatório:
 
-- **Spike T9-03a:** validar se `xfreerdp` 3.x mantém uma sessão RAIL e permite lançar apps adicionais nela (canal `rail`, `RAIL_EXEC`) sem reconectar. Se não permitir, implementar helper próprio com `libfreerdp-client` (`freerdp_client_context_new`, canal `rail`, `RAIL_EXEC`), empacotado como binário interno `podstack-rail`.
-- Contrato do helper: `podstack-rail --server 127.0.0.1:<porta> --user ... --password-file ... --trust-fingerprint <sha256>` emite eventos em JSON (janela aberta/fechada) e aceita comandos por stdin (`launch <app>`, `quit`).
-- Fallback se o spike falhar e o helper não for viável no prazo: um app por vez, com aviso explícito na UI (não silencioso).
+- **Gate T10-03a:** provar com `xfreerdp` 3.x (uma sessão + `RAIL_EXEC`). Se não suportar, helper `podstack-rail` com `libfreerdp-client` (eventos JSON em stdout, comandos por stdin).
+- **Sem fallback silencioso:** se o spike falhar e o helper não for viável, T10-03 fica bloqueada e é replanejada — não se abre "um app por vez" contra AC-5.
 
-### 4.4 Catálogo RemoteApp
+### 4.4 Catálogo e integrações
 
-1. Agente enumera Start Menu (`.lnk` + UWP via `Get-StartApps`).
-2. Para cada app: `TargetPath`, `IconLocation`; exporta `.ico` e monta `catalog.json`.
-3. Publica no guest: `TSAppAllowList` com `fDisabledAllowList=1` (ou entradas por app).
-4. Host recebe `catalog.json` + ícones por `guest-file-read` (pequenos) e cacheia por machine.
-5. `.desktop` opcional no host para integração com o menu do sistema (P1).
+Start Menu (`Get-StartApps` + `.lnk`) → `catalog.json` + `.ico` via `guest-file-*`; publicar `TSAppAllowList`; cache por machine; `.desktop` opcional (P1).
 
-### 4.5 Integrações
-
-| Item | Decisão |
-|---|---|
-| Clipboard | `cliprdr` ligado (default do FreeRDP) |
-| Drive | `/drive:PodStack,<pasta>` para abrir arquivo do host no app da VM |
-| Áudio | HDA→PipeWire por VM; canal `rdpsnd` **desligado** por padrão (evita caminho duplo e latência) |
-| HiDPI | `/scale-desktop:100` + `/dynamic-resolution`; documentar limitações em RAIL |
-| Wayland | janelas RAIL chegam via XWayland; aceitável, testar em niri/GNOME |
-| Notificações | fora do v1 (exigiria canal próprio) |
+Clipboard `cliprdr`; drive redirect `/drive:PodStack,<pasta>`; áudio HDA→PipeWire com `rdpsnd` desligado; `/scale-desktop:100` + `/dynamic-resolution`; janelas via XWayland.
 
 ## 5. Modelo de dados
 
-`MachineMeta` (campos novos, todos opcionais — machines existentes não migram):
+`MachineMeta` (campos opcionais; `meta.json` tolera ausência):
 
 ```json
 {
-  "guestChannel": "ssh",              // ssh | agent
-  "appBackend": "x11",                // x11 | xpra | rail
-  "rdpPort": 0,                       // hostfwd alocado
-  "rdpCertFingerprint": "",           // SHA-256 fixado por TOFU
+  "guestChannel": "ssh",           // ssh | agent
+  "appBackend": "x11",             // x11 | xpra | rail
+  "rdpCertFingerprint": "",        // SHA-256 (TOFU)
   "appsCatalogUpdatedAt": ""
 }
 ```
 
-Capabilities derivadas (não persistidas): `guestChannel.ssh`, `guestChannel.agent`, `apps.x11`, `apps.xpra`, `apps.rail`.
+| Operação | Política |
+|---|---|
+| `export`/`import` | **não** transporta fingerprint nem segredo RDP; TOFU é refeito e a senha regenerada no primeiro boot |
+| `clone` | limpa fingerprint, regenera segredo, regenera TPM (FR-MAC-113) |
+| machine existente | campos ausentes → `ssh`/`x11`; sem migração |
 
-Settings novas (atualizar `docs/engineering/settings.md` na implementação):
+Settings são **defaults de criação**, não override global (precedência `MachineMeta` > setting, como `machines.cpus`); nenhuma exige restart de todas as VMs:
 
-| Chave | Tipo | Default | Restart |
-|---|---|---|---|
-| `machines.apps.backend` | select `auto\|x11\|xpra\|rail` | `auto` | não |
-| `machines.apps.xpraAudio` | bool | `false` | não |
-| `machines.apps.railSound` | select `local\|rdp` | `local` | não |
-| `machines.guest.channel` | select `auto\|ssh\|agent` | `auto` | sim (argv) |
+| Chave | Tipo | Default |
+|---|---|---|
+| `machines.apps.backend` | select `auto\|x11\|xpra\|rail` | `auto` |
+| `machines.apps.xpraAudio` | bool | `false` |
+| `machines.apps.railSound` | select `local\|rdp` | `local` |
+| `machines.guest.channel` | select `auto\|ssh\|agent` | `auto` |
 
 ## 6. Contratos RPC
 
-Ver [`../../engineering/api-rpc.md`](../../engineering/api-rpc.md) para o padrão. Métodos novos, sem quebra dos existentes:
-
-| Método | Params | Retorno | Erros |
+| Método | Params | Retorno | Erros (`PODSTACK_*` + `reason`) |
 |---|---|---|---|
-| `machines.apps.list` | `{id}` | `{backend, apps[]}` | `machines.not_found`, `apps.unsupported` |
-| `machines.apps.launch` | `{id, app, args?}` | `{sessionId}` | `apps.backend_missing`, `apps.app_not_found`, `apps.guest_unreachable` |
-| `machines.apps.stop` | `{id, sessionId}` | `{ok}` | `apps.session_not_found` |
-| `machines.apps.ensureBackend` | `{id, backend}` | `{installed, command}` | `apps.unsupported` |
-| `machines.guest.exec` | `{id, argv[], timeoutMs?}` | `{exitCode, stdout, stderr}` | `guest.unavailable`, `guest.timeout` |
-| `machines.guest.info` | `{id}` | `{os, version, ip, agentVersion}` | `guest.unavailable` |
+| `machines.apps.list` | `{id}` | `{backend, items[], total?}` | `NOT_FOUND` |
+| `machines.apps.launch` | `{id, app, args?}` | `{sessionId}` | `DEPENDENCY_MISSING/backend_missing`, `NOT_FOUND/app_not_found`, `UNAVAILABLE/guest_unreachable`, `CONFLICT/session_conflict`, `AUTH_FAILED/rdp_auth_failed`, `GUI_REQUIRED/gui_required` |
+| `machines.apps.stop` | `{id, sessionId}` | `{ok}` | `NOT_FOUND` |
+| `machines.apps.ensureBackend` | `{id, backend}` | `{installed, command}` | `UNSUPPORTED/backend_unsupported` |
+| `machines.guest.exec` | `{id, argv[], timeoutMs?}` | `{exitCode, stdout, stderr}` | `UNAVAILABLE`, `TIMEOUT` |
+| `machines.guest.info` | `{id}` | `{os, version, ip, agentVersion}` | `UNAVAILABLE` |
+| `machines.stats` (alterado) | `{id}` | `{…, origin}` | inalterado |
 
-`machines.guest.exec` é interno do daemon/GUI; a CLI expõe no máximo `podstack machine apps list|launch|stop`.
+Códigos seguem `docs/engineering/api-rpc.md:83-89`; `reason` é enum fechado.
 
 ## 7. Compatibilidade
 
-- Machine Linux existente: `guestChannel=ssh`, `appBackend=x11`, comportamento idêntico.
-- Nenhum método RPC removido ou alterado.
-- `machine ssh` e o bloco gerenciado em `~/.ssh/config` permanecem.
-- O argv só muda quando `guestChannel=agent` (campo novo), então VMs antigas não ganham devices novos.
+Machine Linux existente: `ssh` + `x11`, comportamento idêntico. Nenhum método removido. `machine ssh` e o bloco em `~/.ssh/config` permanecem. O argv só muda quando o campo novo existe.
 
 ## 8. Riscos
 
 | Risco | Prob. | Impacto | Mitigação |
 |---|---|---|---|
-| `xpra` indisponível no repo da distro | Média | T9-02 bloqueado naquela distro | validar por distro; documentar; fallback X11 |
-| `chardev` do QEMU não reaceita conexão após restart do daemon | Média | canal `agent` cai até reiniciar a VM | spike de reconexão; `chardev-add/remove` via QMP |
-| Windows client só permite uma sessão RDP | Alta | RAIL multi-app não funciona com `xfreerdp` puro | broker `libfreerdp-client` (spike T9-03a) |
-| xpra + HiDPI/escala no Wayland | Média | janelas com tamanho errado | testar niri/GNOME; flags de scaling documentadas |
-| xpra em Fedora fora do repo oficial | Média | instalação falha | checar repo oficial do projeto; senão, erro claro |
-| Áudio duplicado (HDA + xpra) | Baixa | eco/volume duplo | default `--audio=no`; setting explícita |
-| `guest-exec` vira superfície de ataque | Baixa | execução no guest | socket `0600`, sem TCP, redaction, timeout |
-| Code signing do agente Windows | Média | SmartScreen | setup por PowerShell via qemu-ga, sem MSI próprio |
+| `xpra` ausente no repo da distro | Média | T10-02 bloqueado nela | validar por distro; repo oficial; fallback X11 |
+| `xpra`/`xfreerdp` ausentes no host | Média | backend inútil | setup + override + erro claro |
+| chardev não reaceita após restart | Média | canal `agent` cai | sequência QMP `device_del`→`chardev-remove`→`chardev-add`→`device_add` |
+| Windows client = 1 sessão RDP | Alta | RAIL multi-app | spike T10-03a; helper `libfreerdp-client` |
+| `/from-stdin` indisponível | Baixa | senha em argv | helper obrigatório |
+| clone/export quebram TOFU | Média | RDP não conecta | limpar fingerprint + regenerar segredo |
+| xpra + HiDPI/Wayland | Média | tamanho errado | flags de scaling; E2E niri/GNOME |
+| Áudio duplicado | Baixa | eco | `--audio=no` default; `rdpsnd` off |
+| `guest-exec` como superfície | Baixa | execução no guest | socket local, timeout, redaction |
+| Code signing do agente Windows | Média | SmartScreen | setup via PowerShell/qemu-ga, sem MSI próprio |
 
 ## 9. Testes
 
 | Nível | Cobertura |
 |---|---|
-| Unit | `GuestAgentClient` (framing, `0xFF` sync, timeout, erro), resolução de capability, builder de argv do xpra, TOFU de fingerprint, classificação de erro |
-| Integração | `MockGuestAgent` (socket Unix fake, como `MockPodmanServer`); `xpra` fake no `PATH`; restart do daemon reconectando |
-| Contrato | `test_rpc` para os métodos novos (params inválidos, erros) |
-| E2E (manual/VM real) | Ubuntu 24.04: xpra abre janela; Windows 11 Pro: RAIL com dois apps; Windows Home: erro claro |
-| Regressão | suíte existente (15 binários) + `qmllint` |
+| Unit | `GuestAgentClient` (framing, `0xFF`, timeout), capability, argv xpra, TOFU, `reason`, `AppHost` fake |
+| Integração | `MockGuestAgent`; xpra/freerdp fake no `PATH`; restart do daemon (QEMU real atrás de `PODSTACK_QEMU_INTEGRATION`) |
+| Contrato | `test_rpc`: forma `items`, cada `reason`, `origin` em stats |
+| Segurança | `/proc/<pid>/cmdline` sem senha; modo/dono de `machineDir` |
+| Dados | roundtrip export→import e clone: fingerprint limpo, segredo regenerado |
+| E2E | Ubuntu 24.04 (xpra), Windows 11 Pro (RAIL, 2 apps), Windows Home (erro) |
+| Regressão | 17 binários existentes + `qmllint`; gate 80% |
 
-Gate de cobertura de 80% permanece bloqueante.
+## 10. Fases
 
-## 10. Fases de entrega
+1. **M9** (T9-01…T9-06): habilitação Windows. Bloqueia só T10-03.
+2. **T10-01** e **T10-02** em paralelo com M9 — não dependem dele.
+3. **T10-03a** (spike) → **T10-03**.
 
-1. **T9-01** (independente) — canal `agent`, capabilities, estado `installing`.
-2. **T9-02** (independente) — xpra, catálogo Linux, RPC de apps, UI.
-3. **M10** (Anexo A) — Windows: console, firmware/TPM, provisionamento, drivers, áudio validado.
-4. **T9-03** — RAIL, após o spike T9-03a e o M10.
+## Anexo — M9 (resumo)
 
-T9-01 e T9-02 podem ir em paralelo; T9-02 entrega valor visível antes do M10.
-
----
-
-## Anexo A — Pré-requisitos Windows (M10)
-
-Necessário para T9-03; **não** é entregável de apps, é habilitação de guest.
-
-| ID | Tarefa | Conclusão |
-|---|---|---|
-| T10-01 | Console gráfico para instalação: SPICE com socket Unix + viewer em janela própria | VM Windows instalável e operável; QMP preservado |
-| T10-02 | OVMF secboot (`-machine q35,smm=on`, `-global cfi.pflash01.secure=on`), variante `OVMF_CODE/VARS.secboot` | Windows 11 satisfaz Secure Boot |
-| T10-03 | `swtpm` por VM (socket + estado persistido) | Windows 11 vê TPM 2.0 |
-| T10-04 | Provisioner Windows: `installerIso`, `-cdrom`, ordem de boot, `autounattend.xml`, `virtio-win.iso`, default ≥4 GB/64 GB, enlightenments `hv_*` | instalação unattended até desktop |
-| T10-05 | Drivers: vioscsi/NetKVM/viogpudo + `qemu-guest-agent` (MSI) | agente responde; disco/rede virtio funcionam |
-| T10-06 | Áudio HDA validado no guest Windows (playback + captura) e nó PipeWire nomeado por VM | microfone e saída funcionam; toggle `machines.audio.set` vale para Windows |
-
-Bloqueio duro: Windows Home não habilita `rail`; a UI deve explicar (FR-MAC-114).
+Detalhe em [`tasks.md`](tasks.md): T9-01 console SPICE (reverte P2, atualiza ADR/spec), T9-02 OVMF secboot+SMM, T9-03 swtpm, T9-04 provisioner Windows, T9-05 drivers+agente, T9-06 áudio validado.
