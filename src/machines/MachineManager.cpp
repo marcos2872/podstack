@@ -55,8 +55,6 @@ QTimeZone utcTimeZone()
 constexpr qint64 kMaxPublicKeyBytes = 64LL * 1024;
 
 // NOLINTBEGIN(bugprone-throwing-static-initialization)
-const QString kOvmfCodeAmd64 = QStringLiteral("/usr/share/edk2/ovmf/OVMF_CODE.fd");
-const QString kOvmfVarsAmd64 = QStringLiteral("/usr/share/edk2/ovmf/OVMF_VARS.fd");
 const QString kAavmfCodeArm64 = QStringLiteral("/usr/share/AAVMF/AAVMF_CODE.fd");
 const QString kAavmfVarsArm64 = QStringLiteral("/usr/share/AAVMF/AAVMF_VARS.fd");
 // NOLINTEND(bugprone-throwing-static-initialization)
@@ -949,6 +947,24 @@ void MachineManager::reconcile(Error *error)
     }
 }
 
+QStringList MachineManager::ovmfCodeCandidates()
+{
+    return {
+        QStringLiteral("/usr/share/edk2/ovmf/OVMF_CODE.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_CODE_4M.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_CODE.fd"),
+    };
+}
+
+QStringList MachineManager::ovmfVarsCandidates()
+{
+    return {
+        QStringLiteral("/usr/share/edk2/ovmf/OVMF_VARS.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_VARS_4M.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_VARS.fd"),
+    };
+}
+
 bool MachineManager::resolveFirmware(const QString &arch, const QString &machineDir,
                                      QString *codePath, QString *varsPath, Error *error)
 {
@@ -963,8 +979,19 @@ bool MachineManager::resolveFirmware(const QString &arch, const QString &machine
 
     if (code.isEmpty()) {
         if (arch == QStringLiteral("amd64")) {
-            code = kOvmfCodeAmd64;
-            vars = kOvmfVarsAmd64;
+            const QStringList codes = ovmfCodeCandidates();
+            const QStringList varCandidates = ovmfVarsCandidates();
+            for (int i = 0; i < codes.size() && i < varCandidates.size(); ++i) {
+                if (QFileInfo::exists(codes.at(i)) && QFileInfo::exists(varCandidates.at(i))) {
+                    code = codes.at(i);
+                    vars = varCandidates.at(i);
+                    break;
+                }
+            }
+            if (code.isEmpty()) {
+                code = codes.value(0);
+                vars = varCandidates.value(0);
+            }
         } else if (arch == QStringLiteral("arm64")) {
             code = kAavmfCodeArm64;
             vars = kAavmfVarsArm64;

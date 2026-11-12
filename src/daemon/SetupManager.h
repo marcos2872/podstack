@@ -44,6 +44,9 @@ public:
     QJsonObject status();
     QJsonObject validate();
 
+    static QStringList ovmfCodeCandidates();
+    static QStringList qemuPackagesForManager(const QString &manager);
+
     /// Inventário read-only do Docker (contagens e tamanho estimado).
     QJsonObject dockerImpact() const;
     QJsonObject jobStatus(const QString &jobId) const;

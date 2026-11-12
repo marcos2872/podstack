@@ -82,6 +82,9 @@ public:
     explicit MachineManager(Options options);
     ~MachineManager();
 
+    static QStringList ovmfCodeCandidates();
+    static QStringList ovmfVarsCandidates();
+
     MachineManager(const MachineManager &) = delete;
     MachineManager &operator=(const MachineManager &) = delete;
 

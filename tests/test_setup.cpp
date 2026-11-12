@@ -184,6 +184,7 @@ private slots:
     void cleanupTestCase();
 
     void checkIncludesCoreComponents();
+    void ubuntuOvmfAndPackages();
     void statusSummarizesChecks();
     void validateReportsWarnings();
     void rejectsInvalidActions();
@@ -1370,6 +1371,24 @@ void SetupTest::setupRejectsUnavailableHelper()
 }
 
 } // namespace
+
+void SetupTest::ubuntuOvmfAndPackages()
+{
+    const QStringList codes = PodStack::SetupManager::ovmfCodeCandidates();
+    QVERIFY(codes.contains(QStringLiteral("/usr/share/OVMF/OVMF_CODE_4M.fd")));
+
+    const QStringList apt =
+        PodStack::SetupManager::qemuPackagesForManager(QStringLiteral("apt-get"));
+    QVERIFY(apt.contains(QStringLiteral("ovmf")));
+    QVERIFY(apt.contains(QStringLiteral("qemu-system-x86")));
+    QVERIFY(apt.contains(QStringLiteral("qemu-utils")));
+    QVERIFY(!apt.contains(QStringLiteral("edk2-ovmf")));
+
+    const QStringList dnf =
+        PodStack::SetupManager::qemuPackagesForManager(QStringLiteral("dnf"));
+    QVERIFY(dnf.contains(QStringLiteral("edk2-ovmf")));
+    QVERIFY(dnf.contains(QStringLiteral("qemu-system-x86_64")));
+}
 
 QTEST_GUILESS_MAIN(SetupTest)
 #include "test_setup.moc"

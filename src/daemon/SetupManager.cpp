@@ -69,6 +69,20 @@ QString findBinary(const QString &name, const QStringList &fallbacks = {})
     return {};
 }
 
+QString detectPackageManager()
+{
+    if (!findBinary(QStringLiteral("dnf")).isEmpty()) {
+        return QStringLiteral("dnf");
+    }
+    if (!findBinary(QStringLiteral("apt-get")).isEmpty()) {
+        return QStringLiteral("apt-get");
+    }
+    if (!findBinary(QStringLiteral("pacman")).isEmpty()) {
+        return QStringLiteral("pacman");
+    }
+    return {};
+}
+
 bool fileExists(const QString &path)
 {
     return QFileInfo::exists(path);
@@ -259,11 +273,7 @@ QList<SetupCheck> SetupManager::check(bool deep)
 
     SetupCheck ovmfCheck;
     ovmfCheck.id = QStringLiteral("ovmf");
-    const QStringList ovmfPaths = {
-        QStringLiteral("/usr/share/edk2/ovmf/OVMF_CODE.fd"),
-        QStringLiteral("/usr/share/OVMF/OVMF_CODE.fd"),
-        QStringLiteral("/usr/share/qemu/edk2-x86_64-code.fd"),
-    };
+    const QStringList ovmfPaths = ovmfCodeCandidates();
     bool hasOvmf = false;
     for (const QString &path : ovmfPaths) {
         if (fileExists(path)) {
@@ -275,7 +285,8 @@ QList<SetupCheck> SetupManager::check(bool deep)
     ovmfCheck.detail = hasOvmf ? QStringLiteral("OVMF presente")
                                : QStringLiteral("OVMF não encontrado");
     if (!hasOvmf) {
-        ovmfCheck.remediation = QStringLiteral("Instale edk2-ovmf.");
+        ovmfCheck.remediation =
+            QStringLiteral("Instale edk2-ovmf (Fedora) ou ovmf (Ubuntu).");
     }
     checks.append(ovmfCheck);
 
@@ -639,6 +650,46 @@ void SetupManager::subscribe(const QString &jobId, const Notify &notify)
     }
 }
 
+QStringList SetupManager::ovmfCodeCandidates()
+{
+    return {
+        QStringLiteral("/usr/share/edk2/ovmf/OVMF_CODE.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_CODE_4M.fd"),
+        QStringLiteral("/usr/share/OVMF/OVMF_CODE.fd"),
+        QStringLiteral("/usr/share/qemu/OVMF.fd"),
+        QStringLiteral("/usr/share/qemu/edk2-x86_64-code.fd"),
+    };
+}
+
+QStringList SetupManager::qemuPackagesForManager(const QString &manager)
+{
+    if (manager == QStringLiteral("apt-get")) {
+        return {
+            QStringLiteral("qemu-system-x86"),
+            QStringLiteral("qemu-system-arm"),
+            QStringLiteral("qemu-utils"),
+            QStringLiteral("virtiofsd"),
+            QStringLiteral("ovmf"),
+            QStringLiteral("qemu-efi-aarch64"),
+        };
+    }
+    if (manager == QStringLiteral("pacman")) {
+        return {
+            QStringLiteral("qemu-full"),
+            QStringLiteral("edk2-ovmf"),
+            QStringLiteral("virtiofsd"),
+        };
+    }
+    return {
+        QStringLiteral("qemu-kvm"),
+        QStringLiteral("qemu-system-x86_64"),
+        QStringLiteral("qemu-system-aarch64"),
+        QStringLiteral("qemu-img"),
+        QStringLiteral("virtiofsd"),
+        QStringLiteral("edk2-ovmf"),
+    };
+}
+
 QStringList SetupManager::actionPackages(const QString &action,
                                          const QJsonObject &options) const
 {
@@ -647,13 +698,7 @@ QStringList SetupManager::actionPackages(const QString &action,
         return {QStringLiteral("podman")};
     }
     if (action == QStringLiteral("install-qemu")) {
-        return {
-            QStringLiteral("qemu-kvm"),
-            QStringLiteral("qemu-system-x86_64"),
-            QStringLiteral("qemu-system-aarch64"),
-            QStringLiteral("virtiofsd"),
-            QStringLiteral("edk2-ovmf"),
-        };
+        return qemuPackagesForManager(detectPackageManager());
     }
     if (action == QStringLiteral("install-components")) {
         QStringList packages;

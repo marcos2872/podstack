@@ -851,6 +851,7 @@ private slots:
     void serialPortsListing();
     void serialPortsValidation();
     void usbDevicesListing();
+    void ubuntuOvmfCandidates();
     void machineMetaInvalid();
     void machineMetaFileErrors();
     void machineStoreCrud();
@@ -10179,6 +10180,15 @@ void MachinesTest::virtiofsdIntegration()
     QVERIFY2(process.stop(&error), qPrintable(error.message));
     QVERIFY(!process.isRunning());
     QVERIFY(!QFileInfo::exists(socketPath));
+}
+
+void MachinesTest::ubuntuOvmfCandidates()
+{
+    const QStringList codes = PodStack::MachineManager::ovmfCodeCandidates();
+    QVERIFY(codes.contains(QStringLiteral("/usr/share/OVMF/OVMF_CODE_4M.fd")));
+
+    const QStringList vars = PodStack::MachineManager::ovmfVarsCandidates();
+    QVERIFY(vars.contains(QStringLiteral("/usr/share/OVMF/OVMF_VARS_4M.fd")));
 }
 
 QTEST_GUILESS_MAIN(MachinesTest)
