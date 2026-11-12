@@ -1005,7 +1005,7 @@ bool MachineManager::resolveFirmware(const QString &arch, const QString &machine
 
     if (code.isEmpty()) {
         if (arch == QStringLiteral("amd64")) {
-            (void)resolveOvmfPaths(&code, &vars);
+            (void) resolveOvmfPaths(&code, &vars);
         } else if (arch == QStringLiteral("arm64")) {
             code = kAavmfCodeArm64;
             vars = kAavmfVarsArm64;

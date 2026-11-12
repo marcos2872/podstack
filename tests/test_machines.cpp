@@ -10205,8 +10205,8 @@ void MachinesTest::ubuntuOvmfCandidates()
 
     QString codePath;
     QString varsPath;
-    QVERIFY(PodStack::MachineManager::resolveOvmfPaths(
-        &codePath, &varsPath, QStringList{codeFile}, QStringList{varsFile}));
+    QVERIFY(PodStack::MachineManager::resolveOvmfPaths(&codePath, &varsPath, QStringList{codeFile},
+                                                       QStringList{varsFile}));
     QCOMPARE(codePath, codeFile);
     QCOMPARE(varsPath, varsFile);
 

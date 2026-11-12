@@ -1394,8 +1394,8 @@ void SetupTest::qemuPackagesForPackageManagers()
 {
     QTemporaryDir bin;
     QVERIFY(bin.isValid());
-    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("systemctl")),
-                            QByteArrayLiteral("exit 0")));
+    QVERIFY(
+        writeExecutable(bin.filePath(QStringLiteral("systemctl")), QByteArrayLiteral("exit 0")));
     QVERIFY(writeExecutable(bin.filePath(QStringLiteral("podman")),
                             QByteArrayLiteral("echo 'podman version 5.0.0'\nexit 0")));
 
@@ -1421,22 +1421,20 @@ void SetupTest::qemuPackagesForPackageManagers()
         QVERIFY(!started.value(QStringLiteral("jobId")).toString().isEmpty());
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
-        QVERIFY(setup.calls.contains(QStringLiteral("InstallPackages:")
-                                     + expected.join(QLatin1Char(','))));
+        QVERIFY(setup.calls.contains(QStringLiteral("InstallPackages:") +
+                                     expected.join(QLatin1Char(','))));
         QFile::remove(bin.filePath(manager));
     };
 
     run(QStringLiteral("apt-get"),
         {QStringLiteral("qemu-system-x86"), QStringLiteral("qemu-system-arm"),
-         QStringLiteral("qemu-utils"), QStringLiteral("virtiofsd"),
-         QStringLiteral("ovmf"), QStringLiteral("qemu-efi-aarch64")});
+         QStringLiteral("qemu-utils"), QStringLiteral("virtiofsd"), QStringLiteral("ovmf"),
+         QStringLiteral("qemu-efi-aarch64")});
     run(QStringLiteral("pacman"),
-        {QStringLiteral("qemu-full"), QStringLiteral("edk2-ovmf"),
-         QStringLiteral("virtiofsd")});
-    run(QStringLiteral("dnf"),
-        {QStringLiteral("qemu-kvm"), QStringLiteral("qemu-system-x86_64"),
-         QStringLiteral("qemu-system-aarch64"), QStringLiteral("qemu-img"),
-         QStringLiteral("virtiofsd"), QStringLiteral("edk2-ovmf")});
+        {QStringLiteral("qemu-full"), QStringLiteral("edk2-ovmf"), QStringLiteral("virtiofsd")});
+    run(QStringLiteral("dnf"), {QStringLiteral("qemu-kvm"), QStringLiteral("qemu-system-x86_64"),
+                                QStringLiteral("qemu-system-aarch64"), QStringLiteral("qemu-img"),
+                                QStringLiteral("virtiofsd"), QStringLiteral("edk2-ovmf")});
 }
 
 QTEST_GUILESS_MAIN(SetupTest)
