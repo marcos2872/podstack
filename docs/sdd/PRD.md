@@ -505,9 +505,9 @@ O concorrente direto é o **Podman Desktop**; a referência de polimento é o Or
 4. **Segurança visível**: operações privilegiadas explicam o porquê e pedem consentimento.
 5. **Consistência GUI/CLI**: mesmos nomes, mesmas chaves, mesmos exit codes.
 6. **Acessível por padrão**: teclado, contraste, leitores de tela.
-7. **Identidade própria**: paleta, tipografia e ícones originais; inspiração em densidade e organização, não cópia. Marca aprovada: **cápsula (principal) + camadas (secundária)**; monograma P não aprovado. Assets em [`../assets/`](../assets/) e regras em [`branding.md`](branding.md).
+7. **Identidade própria**: paleta, tipografia e ícones originais; inspiração em densidade e organização, não cópia. Marca aprovada: **cápsula (principal) + camadas (secundária)**; monograma P não aprovado. Assets em [`../assets/`](../../assets) e regras em [`branding.md`](../engineering/branding.md).
 
-Design tokens e componentes em [`ui-map.md`](ui-map.md).
+Design tokens e componentes em [`ui-map.md`](../engineering/ui-map.md).
 
 ---
 
@@ -611,10 +611,10 @@ Design tokens e componentes em [`ui-map.md`](ui-map.md).
 
 ## 15. Anexos
 
-- [`reference/orbstack-2.2.5.md`](reference/orbstack-2.2.5.md) — baseline funcional e mapa de UI/CLI.
+- [`reference/orbstack-2.2.5.md`](../reference/orbstack-2.2.5.md) — baseline funcional e mapa de UI/CLI.
 - [`spec.md`](spec.md) — especificação detalhada e critérios de aceite por fluxo.
 - [`plan.md`](plan.md) — plano técnico.
 - [`tasks.md`](tasks.md) — tarefas por marco.
-- [`../poc/ui/README.md`](../poc/ui/README.md) — UI Concept e guia de implementação QML (referência visual; não é o app).
-- [`architecture.md`](architecture.md) — diagramas e componentes.
-- [`api-rpc.md`](api-rpc.md) — contrato do daemon.
+- [`../poc/ui/README.md`](../../poc/ui/README.md) — UI Concept e guia de implementação QML (referência visual; não é o app).
+- [`architecture.md`](../engineering/architecture.md) — diagramas e componentes.
+- [`api-rpc.md`](../engineering/api-rpc.md) — contrato do daemon.

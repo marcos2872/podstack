@@ -505,7 +505,7 @@ configurada retorna `unconfigured` e não aceita atualização.
 | `PODSTACK_EXEC_FAILED` | O comando no container falhou ao executar. | Confira se o container está rodando e se o comando existe. |
 
 A lista completa e o formato `{code, message, detail, remediation}` estão em
-[`../api-rpc.md`](../api-rpc.md).
+[`../api-rpc.md`](../engineering/api-rpc.md).
 
 ## Variáveis de ambiente úteis
 

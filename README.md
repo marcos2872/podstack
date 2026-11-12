@@ -21,10 +21,10 @@
   Alternativa Linux ao OrbStack, com Qt 6/QML, daemon de usuário e CLI scriptable.
 </p>
 
-> **Status:** **M4 validado em VM real e M5 concluído no código** — machines QEMU/KVM (ciclo de vida, SSH/arquivos, virtiofs, export/import, clone/rename/default, recursos, portas, agent forwarding, modo isolado, console serial e snapshots), sobre o M3 (Compose e builds), o M2 (imagens, volumes, redes e pods) e o M1 (containers, logs, stats, files, terminal, batch, health e rootful). **Pré-M5** entregue com multi-seleção em todas as listas, testes QML reais e gates de `clang-format`/`clang-tidy`. **15 testes**, cobertura **~80%** com gate bloqueante de **80%** (ver [`docs/testing.md`](docs/testing.md)). **M5 (Kubernetes/k3s) concluído no código** (VM dedicada, kubeconfig isolado, Pods/Services, logs, port-forward, enable/disable/reset e contexto). **M6 iniciado** com a T6-01: `*.localhost` via proxy HTTP do daemon em loopback (`network.httpPort`), sem root e sem `/etc/hosts`.
+> **Status:** **M4 validado em VM real e M5 concluído no código** — machines QEMU/KVM (ciclo de vida, SSH/arquivos, virtiofs, export/import, clone/rename/default, recursos, portas, agent forwarding, modo isolado, console serial e snapshots), sobre o M3 (Compose e builds), o M2 (imagens, volumes, redes e pods) e o M1 (containers, logs, stats, files, terminal, batch, health e rootful). **Pré-M5** entregue com multi-seleção em todas as listas, testes QML reais e gates de `clang-format`/`clang-tidy`. **15 testes**, cobertura **~80%** com gate bloqueante de **80%** (ver [`docs/sdd/testing.md`](docs/sdd/testing.md)). **M5 (Kubernetes/k3s) concluído no código** (VM dedicada, kubeconfig isolado, Pods/Services, logs, port-forward, enable/disable/reset e contexto). **M6 iniciado** com a T6-01: `*.localhost` via proxy HTTP do daemon em loopback (`network.httpPort`), sem root e sem `/etc/hosts`.
 > **Ressalvas:** console serial sem VNC; export/clone não preservam snapshots internos do qcow2; a instalação limpa tem smoke automatizado em container Fedora 44 (`scripts/clean-install-check.sh`), mas a validação da GUI, do KVM e do polkit em máquina limpa segue manual (T7-07/T7-14). Histórico de versões em [`CHANGELOG.md`](CHANGELOG.md) e guias em [`docs/user/`](docs/user/README.md).
 > **Plataforma:** Linux desktop — Fedora 43+ (Podman ≥ 5.8, Qt ≥ 6.10) e Ubuntu 24.04+ (Podman ≥ 4.9, Qt ≥ 6.4; DEB), Wayland/X11.
-> **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/constitution.md`](docs/constitution.md)).
+> **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/sdd/constitution.md`](docs/sdd/constitution.md)).
 
 ---
 
@@ -54,12 +54,12 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 | Documento | O que responde |
 |---|---|
 | [`docs/README.md`](docs/README.md) | Índice geral, convenções e mapa SDD |
-| [`docs/constitution.md`](docs/constitution.md) | Princípios inegociáveis (clean-room, rootless, segurança, qualidade) |
-| [`docs/PRD.md`](docs/PRD.md) | PRD completo: problema, personas, 127 requisitos funcionais, 32 NFRs, métricas, riscos e critérios de release |
-| [`docs/spec.md`](docs/spec.md) | Comportamento detalhado, fluxos, máquinas de estado e casos de borda |
-| [`docs/plan.md`](docs/plan.md) | Plano técnico: stack, componentes, concorrência, persistência e riscos |
-| [`docs/tasks.md`](docs/tasks.md) | 133 tarefas em M0–M8, com dependências e definição de pronto |
-| [`docs/testing.md`](docs/testing.md) | Pirâmide de testes, matriz de compatibilidade, CI e performance |
+| [`docs/sdd/constitution.md`](docs/sdd/constitution.md) | Princípios inegociáveis (clean-room, rootless, segurança, qualidade) |
+| [`docs/sdd/PRD.md`](docs/sdd/PRD.md) | PRD completo: problema, personas, 127 requisitos funcionais, 32 NFRs, métricas, riscos e critérios de release |
+| [`docs/sdd/spec.md`](docs/sdd/spec.md) | Comportamento detalhado, fluxos, máquinas de estado e casos de borda |
+| [`docs/sdd/plan.md`](docs/sdd/plan.md) | Plano técnico: stack, componentes, concorrência, persistência e riscos |
+| [`docs/sdd/tasks.md`](docs/sdd/tasks.md) | 133 tarefas em M0–M8, com dependências e definição de pronto |
+| [`docs/sdd/testing.md`](docs/sdd/testing.md) | Pirâmide de testes, matriz de compatibilidade, CI e performance |
 
 ### Usuário
 
@@ -75,16 +75,16 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 
 | Documento | Conteúdo |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | C4, sequências (exec, logs, machines, domínios, K8s), threads e erros |
-| [`docs/data-model.md`](docs/data-model.md) | Entidades, esquema SQLite, `config.json`, `meta.json` e migrações |
-| [`docs/api-rpc.md`](docs/api-rpc.md) | Contrato JSON-RPC completo do `podstackd` |
-| [`docs/ui-map.md`](docs/ui-map.md) | Telas, sidebar, inspector, componentes QML, design tokens e atalhos |
-| [`docs/branding.md`](docs/branding.md) | Logo, paleta, tipografia e regras de uso dos assets |
-| [`docs/cli-parity.md`](docs/cli-parity.md) | Mapa `orb` → `podstack`, flags, exit codes e exemplos |
-| [`docs/settings.md`](docs/settings.md) | Todas as chaves, defaults, validação e migração |
-| [`docs/security.md`](docs/security.md) | Threat model, helper/polkit, socket, segredos e SELinux |
-| [`docs/packaging.md`](docs/packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
-| [`docs/roadmap.md`](docs/roadmap.md) | Marcos, estimativas, caminho crítico e versões |
+| [`docs/engineering/architecture.md`](docs/engineering/architecture.md) | C4, sequências (exec, logs, machines, domínios, K8s), threads e erros |
+| [`docs/engineering/data-model.md`](docs/engineering/data-model.md) | Entidades, esquema SQLite, `config.json`, `meta.json` e migrações |
+| [`docs/engineering/api-rpc.md`](docs/engineering/api-rpc.md) | Contrato JSON-RPC completo do `podstackd` |
+| [`docs/engineering/ui-map.md`](docs/engineering/ui-map.md) | Telas, sidebar, inspector, componentes QML, design tokens e atalhos |
+| [`docs/engineering/branding.md`](docs/engineering/branding.md) | Logo, paleta, tipografia e regras de uso dos assets |
+| [`docs/engineering/cli-parity.md`](docs/engineering/cli-parity.md) | Mapa `orb` → `podstack`, flags, exit codes e exemplos |
+| [`docs/engineering/settings.md`](docs/engineering/settings.md) | Todas as chaves, defaults, validação e migração |
+| [`docs/engineering/security.md`](docs/engineering/security.md) | Threat model, helper/polkit, socket, segredos e SELinux |
+| [`docs/engineering/packaging.md`](docs/engineering/packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
+| [`docs/sdd/roadmap.md`](docs/sdd/roadmap.md) | Marcos, estimativas, caminho crítico e versões |
 | [`CHANGELOG.md`](CHANGELOG.md) | Histórico de versões, mudanças e limitações conhecidas do 0.1.3 |
 
 ### Decisões arquiteturais (ADRs)
@@ -123,13 +123,13 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 | [`assets/podstack-layers.svg`](assets/podstack-layers.svg) | Símbolo secundário (camadas) |
 | [`assets/podstack-capsule-small.svg`](assets/podstack-capsule-small.svg) | Cápsula compacta para 16–24 px |
 | [`assets/podstack-icon.svg`](assets/podstack-icon.svg) | Ícone do app (256×256) |
-| [`assets/png/`](assets/png/) | Ícones PNG 16–512 e bandeja 16/22/24/32/48/64 |
+| [`assets/png/`](assets/png) | Ícones PNG 16–512 e bandeja 16/22/24/32/48/64 |
 | [`assets/favicon.ico`](assets/favicon.ico) / [`favicon-32.png`](assets/favicon-32.png) | Favicon multi-size e PNG 32×32 |
 | [`assets/og-image.png`](assets/og-image.png) / [`og-image.svg`](assets/og-image.svg) | Open Graph 1200×630 |
 | [`assets/podstack_logo_concepts.svg`](assets/podstack_logo_concepts.svg) | Folha histórica de conceitos |
 | [`assets/logo.md`](assets/logo.md) | Racional original dos conceitos |
 
-Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`. Regras de uso, tamanhos mínimos e o que evitar estão em [`docs/branding.md`](docs/branding.md).
+Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`. Regras de uso, tamanhos mínimos e o que evitar estão em [`docs/engineering/branding.md`](docs/engineering/branding.md).
 
 ---
 
@@ -207,7 +207,7 @@ Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`. Regras de uso, tam
 | **M7** | Tray, settings, updates, v1.0 |
 | **M8** | USB/serial, X11/áudio, migração (pós-v1) |
 
-Detalhes e critérios de saída em [`docs/roadmap.md`](docs/roadmap.md).
+Detalhes e critérios de saída em [`docs/sdd/roadmap.md`](docs/sdd/roadmap.md).
 
 ---
 
@@ -257,7 +257,7 @@ ações do setup que instalam/removem pacotes (Podman, QEMU, Caddy etc.) em dese
 ```
 
 Ativar o `podman.socket` **não** exige o helper. Detalhes em
-[`docs/packaging.md`](docs/packaging.md) §4.1.
+[`docs/engineering/packaging.md`](docs/engineering/packaging.md) §4.1.
 
 ### Por que `docker-compose` e não `podman-compose`?
 

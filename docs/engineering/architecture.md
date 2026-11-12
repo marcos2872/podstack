@@ -1,6 +1,6 @@
 # Arquitetura — PodStack
 
-> Visão técnica detalhada. Complementa [`plan.md`](plan.md) e os ADRs.
+> Visão técnica detalhada. Complementa [`plan.md`](../sdd/plan.md) e os ADRs.
 
 ---
 
@@ -468,4 +468,4 @@ Detalhes em [`security.md`](security.md).
 | SQLite | arquivos JSON | consultas, histórico, migração |
 | RPM primeiro | Flatpak (não no v1) | integração systemd/helper/SELinux |
 
-ADRs: [`adr/`](adr/).
+ADRs: [`adr/`](../adr).

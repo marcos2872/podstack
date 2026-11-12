@@ -8,47 +8,60 @@
 > **Baseline funcional:** OrbStack 2.2.5 (build 21124), analisado estaticamente. Ver [`reference/orbstack-2.2.5.md`](reference/orbstack-2.2.5.md).
 > **Nome/branding:** PodStack é um projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado.
 
+## Estrutura de `docs/`
+
+| Diretório | Conteúdo | Papel |
+|---|---|---|
+| [`sdd/`](sdd/) | Núcleo SDD: constituição, PRD, spec, plan, roadmap, tasks, testing | fonte de verdade |
+| [`engineering/`](engineering/) | Referência técnica derivada: arquitetura, data model, RPC, UI, segurança, settings, CLI, empacotamento, web, marca | derivada |
+| [`specs/`](specs/) | Deltas SDD por feature (`spec.md`, `plan.md`, `tasks.md`) ainda não promovidos | proposta |
+| [`adr/`](adr/) | Decisões arquiteturais | decisão |
+| [`reference/`](reference/) | Material de referência do OrbStack 2.2.5 | referência |
+| [`user/`](user/) | Documentação de usuário | derivada |
+
+**Promoção de delta:** um diretório em `specs/<NNN>-<nome>/` é revisado e, quando aprovado, seu conteúdo é promovido para `sdd/spec.md`, `sdd/plan.md` e `sdd/tasks.md`; o diretório permanece como registro da proposta. Enquanto estiver em `specs/`, o delta **não** é fonte de verdade.
+
 ## Como ler
 
 O projeto segue **SDD (Spec-Driven Development)**: a especificação é a fonte de verdade; código e testes são derivados dela.
 
 | Ordem | Documento | Pergunta que responde |
 |---|---|---|
-| 1 | [`constitution.md`](constitution.md) | Quais princípios inegociáveis guiam o projeto? |
-| 2 | [`PRD.md`](PRD.md) | O que vamos construir, para quem, por quê e com quais critérios? |
-| 3 | [`spec.md`](spec.md) | Como cada funcionalidade se comporta, em detalhe? |
-| 4 | [`plan.md`](plan.md) | Como vamos construir tecnicamente? |
-| 5 | [`tasks.md`](tasks.md) | Quais tarefas executáveis levam aos marcos? |
-| 6 | [`testing.md`](testing.md) | Como provamos que está correto? |
+| 1 | [`constitution.md`](sdd/constitution.md) | Quais princípios inegociáveis guiam o projeto? |
+| 2 | [`PRD.md`](sdd/PRD.md) | O que vamos construir, para quem, por quê e com quais critérios? |
+| 3 | [`spec.md`](sdd/spec.md) | Como cada funcionalidade se comporta, em detalhe? |
+| 4 | [`plan.md`](sdd/plan.md) | Como vamos construir tecnicamente? |
+| 5 | [`tasks.md`](sdd/tasks.md) | Quais tarefas executáveis levam aos marcos? |
+| 6 | [`testing.md`](sdd/testing.md) | Como provamos que está correto? |
 
 ### Mapeamento SDD (Spec Kit)
 
 | Etapa do Spec Kit | Artefato neste repositório |
 |---|---|
-| `/speckit.constitution` | [`constitution.md`](constitution.md) |
-| `/speckit.specify` | [`PRD.md`](PRD.md) + [`spec.md`](spec.md) |
-| `/speckit.plan` | [`plan.md`](plan.md) + [`architecture.md`](architecture.md) |
-| `/speckit.tasks` | [`tasks.md`](tasks.md) |
+| `/speckit.constitution` | [`constitution.md`](sdd/constitution.md) |
+| `/speckit.specify` | [`PRD.md`](sdd/PRD.md) + [`spec.md`](sdd/spec.md) |
+| `/speckit.plan` | [`plan.md`](sdd/plan.md) + [`architecture.md`](engineering/architecture.md) |
+| `/speckit.tasks` | [`tasks.md`](sdd/tasks.md) |
 | `/speckit.implement` | `src/` (a criar no M0) |
-| `/speckit.analyze` | [`testing.md`](testing.md) + checklist do PRD §14 |
+| `/speckit.analyze` | [`testing.md`](sdd/testing.md) + checklist do PRD §14 |
 
-Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem depender do CLI `specify`.
+Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem depender do CLI `specify`. Deltas de feature usam o mesmo trio em [`specs/<NNN>-<nome>/`](specs/) (ver [`specs/001-apps-remotos-vm/`](specs/001-apps-remotos-vm/)).
 
 ## Documentos de engenharia
 
 | Documento | Conteúdo |
 |---|---|
-| [`architecture.md`](architecture.md) | Componentes, diagramas C4, fluxos e modelo de concorrência |
-| [`data-model.md`](data-model.md) | Entidades, estados e esquema de persistência |
-| [`api-rpc.md`](api-rpc.md) | Contrato JSON-RPC do daemon (`podstackd`) |
-| [`ui-map.md`](ui-map.md) | Telas, navegação, componentes QML, atalhos e estados |
-| [`branding.md`](branding.md) | Logo, paleta, tipografia, uso e assets em [`../assets/`](../assets/) |
-| [`cli-parity.md`](cli-parity.md) | Mapeamento `orb` → `podstack` e diferenças de plataforma |
-| [`settings.md`](settings.md) | Chaves, defaults, validação e arquivo de configuração |
-| [`security.md`](security.md) | Modelo de ameaças, privilégios, helper, polkit e segredos |
-| [`packaging.md`](packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
-| [`web.md`](web.md) | Site público em GitHub Pages: estrutura de `web/`, publicação, gatilhos e rollback |
-| [`roadmap.md`](roadmap.md) | Marcos M0–M8, entregáveis e critérios de saída |
+| [`architecture.md`](engineering/architecture.md) | Componentes, diagramas C4, fluxos e modelo de concorrência |
+| [`data-model.md`](engineering/data-model.md) | Entidades, estados e esquema de persistência |
+| [`api-rpc.md`](engineering/api-rpc.md) | Contrato JSON-RPC do daemon (`podstackd`) |
+| [`ui-map.md`](engineering/ui-map.md) | Telas, navegação, componentes QML, atalhos e estados |
+| [`branding.md`](engineering/branding.md) | Logo, paleta, tipografia, uso e assets em [`../assets/`](../assets) |
+| [`cli-parity.md`](engineering/cli-parity.md) | Mapeamento `orb` → `podstack` e diferenças de plataforma |
+| [`settings.md`](engineering/settings.md) | Chaves, defaults, validação e arquivo de configuração |
+| [`security.md`](engineering/security.md) | Modelo de ameaças, privilégios, helper, polkit e segredos |
+| [`packaging.md`](engineering/packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
+| [`web.md`](engineering/web.md) | Site público em GitHub Pages: estrutura de `web/`, publicação, gatilhos e rollback |
+| [`roadmap.md`](sdd/roadmap.md) | Marcos M0–M8, entregáveis e critérios de saída |
 | [UI Concept (POC)](../poc/ui/README.md) | Referência visual navegável (HTML/CSS/JS) para o redesign; **não** é o app |
 
 ## Decisões arquiteturais (ADRs)
@@ -83,12 +96,12 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 - [`../assets/podstack-layers.svg`](../assets/podstack-layers.svg) — símbolo secundário.
 - [`../assets/podstack-capsule-small.svg`](../assets/podstack-capsule-small.svg) — cápsula compacta (16–24 px).
 - [`../assets/podstack-icon.svg`](../assets/podstack-icon.svg) — ícone do app.
-- [`../assets/png/`](../assets/png/) — ícones 16–512, bandeja 16/22/24/32/48/64 e folha de validação.
+- [`../assets/png/`](../assets/png) — ícones 16–512, bandeja 16/22/24/32/48/64 e folha de validação.
 - [`../assets/favicon.ico`](../assets/favicon.ico) / [`favicon-32.png`](../assets/favicon-32.png) — favicon.
 - [`../assets/og-image.png`](../assets/og-image.png) — Open Graph 1200×630 ([fonte SVG](../assets/og-image.svg)).
 - [`../assets/podstack_logo_concepts.svg`](../assets/podstack_logo_concepts.svg) — folha histórica de conceitos.
 - [`../assets/logo.md`](../assets/logo.md) — racional original dos conceitos.
-- [`branding.md`](branding.md) — paleta, tipografia, uso, tamanhos mínimos e governança.
+- [`branding.md`](engineering/branding.md) — paleta, tipografia, uso, tamanhos mínimos e governança.
 
 ## Convenções
 

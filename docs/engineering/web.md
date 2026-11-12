@@ -1,9 +1,9 @@
 # Site público (GitHub Pages) — PodStack
 
 > **URL:** https://marcos2872.github.io/podstack/
-> **Fonte:** [`../web/`](../web/) — 16 páginas HTML + CSS/JS/SVG + `_data/`, geradas por
-> [`../scripts/web_build.py`](../scripts/web_build.py) e commitadas. O Pages publica o HTML estático.
-> **Workflow:** [`.github/workflows/pages.yml`](../.github/workflows/pages.yml)
+> **Fonte:** [`../web/`](../../web) — 16 páginas HTML + CSS/JS/SVG + `_data/`, geradas por
+> [`../scripts/web_build.py`](../../scripts/web_build.py) e commitadas. O Pages publica o HTML estático.
+> **Workflow:** [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml)
 
 O site é a vitrine pública do PodStack: páginas estáticas por área do produto (containers,
 images, volumes, networks, pods, compose, builds, machines, kubernetes, domains, settings,
@@ -207,11 +207,11 @@ done
 
 ## 8. Arquivos relacionados
 
-- [`../web/`](../web/) — fonte do site.
-- [`../web/_data/nav.json`](../web/_data/nav.json) — árvore da navegação.
-- [`../web/_data/site.json`](../web/_data/site.json) — versão, GitHub e licença.
-- [`../scripts/web_build.py`](../scripts/web_build.py) — gerador do chrome, pager e busca.
-- [`../.github/workflows/pages.yml`](../.github/workflows/pages.yml) — pipeline de publicação.
+- [`../web/`](../../web) — fonte do site.
+- [`../web/_data/nav.json`](../../web/_data/nav.json) — árvore da navegação.
+- [`../web/_data/site.json`](../../web/_data/site.json) — versão, GitHub e licença.
+- [`../scripts/web_build.py`](../../scripts/web_build.py) — gerador do chrome, pager e busca.
+- [`../.github/workflows/pages.yml`](../../.github/workflows/pages.yml) — pipeline de publicação.
 - [`packaging.md`](packaging.md) — empacotamento de binários (RPM/DEB/Flatpak), que é independente do site.
 - [`branding.md`](branding.md) — paleta, marca e assets usados pelo site.
-- [`tasks.md`](tasks.md) — backlog; publicação do site não pertence a nenhum marco M0–M8.
+- [`tasks.md`](../sdd/tasks.md) — backlog; publicação do site não pertence a nenhum marco M0–M8.

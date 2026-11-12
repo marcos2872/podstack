@@ -356,7 +356,7 @@ inline. Nada é gravado direto no arquivo: `Backend::refreshSettings/setSetting/
 A aba **Geral** começa com o bloco **Atualizações do PodStack**: o checkbox “Verificar
 atualizações ao iniciar” grava `updates.mode` (`check`/`off`) e o botão **Verificar atualizações**
 chama `updates.check` com `force=true`, exibindo o resultado ao lado. Não existe aba **Updates**:
-canal, feed e chave pública são internos do app (schema/CLI), conforme `docs/settings.md` §2.9.
+canal, feed e chave pública são internos do app (schema/CLI), conforme `docs/engineering/settings.md` §2.9.
 
 O rodapé mantém **Executar configuração** (reabre o setup) e **Fechar**. Reset por chave usa o
 botão da linha; o reset total fica na CLI (`podstack config reset --all --yes`) e preserva

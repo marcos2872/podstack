@@ -1,6 +1,6 @@
 # Plano técnico — PodStack
 
-> Derivado do [`PRD.md`](PRD.md) e da [`spec.md`](spec.md). Define stack, componentes, contratos, concorrência, persistência, build e riscos. Decisões em [`adr/`](adr/).
+> Derivado do [`PRD.md`](PRD.md) e da [`spec.md`](spec.md). Define stack, componentes, contratos, concorrência, persistência, build e riscos. Decisões em [`adr/`](../adr).
 
 ---
 

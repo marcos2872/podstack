@@ -211,7 +211,7 @@ Regras de normalização:
 > `containers.create` e `containers.duplicate` aplicam `network.proxy`/`network.proxyExclude`
 > ao `env` do novo container, sem sobrescrever chaves definidas explicitamente pelo usuário
 > (ou herdadas do container duplicado). A configuração é lida na criação; containers
-> existentes exigem recriação. Ver [`settings.md`](settings.md) e [`spec.md`](spec.md) §6.3.
+> existentes exigem recriação. Ver [`settings.md`](settings.md) e [`spec.md`](../sdd/spec.md) §6.3.
 
 > **Portas e LAN:** sem `exposeLan`, cada `ports[]` sem `hostIp` explícito usa
 > `hostIp=127.0.0.1`; com `exposeLan:true`, o daemon força `hostIp=0.0.0.0` e chama
@@ -222,7 +222,7 @@ Regras de normalização:
 > retornam `PODSTACK_UNSUPPORTED` com a remediação de recriar o container. No firewalld as
 > regras são runtime (sem `--permanent`) e não sobrevivem a reload/restart; no ufw são
 > persistentes até `ClosePorts`/`ufw delete allow`. Ver
-> [`spec.md`](spec.md) §6.2 e [`security.md`](security.md) §4.2.
+> [`spec.md`](../sdd/spec.md) §6.2 e [`security.md`](security.md) §4.2.
 
 ### 4.3 `images.*`
 
