@@ -185,6 +185,7 @@ private slots:
 
     void checkIncludesCoreComponents();
     void ubuntuOvmfAndPackages();
+    void qemuPackagesForPackageManagers();
     void statusSummarizesChecks();
     void validateReportsWarnings();
     void rejectsInvalidActions();
@@ -1387,6 +1388,55 @@ void SetupTest::ubuntuOvmfAndPackages()
     const QStringList dnf = PodStack::SetupManager::qemuPackagesForManager(QStringLiteral("dnf"));
     QVERIFY(dnf.contains(QStringLiteral("edk2-ovmf")));
     QVERIFY(dnf.contains(QStringLiteral("qemu-system-x86_64")));
+}
+
+void SetupTest::qemuPackagesForPackageManagers()
+{
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("systemctl")),
+                            QByteArrayLiteral("exit 0")));
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("podman")),
+                            QByteArrayLiteral("echo 'podman version 5.0.0'\nexit 0")));
+
+    const QByteArray previousPath = qgetenv("PATH");
+    const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
+    const auto run = [&](const QString &manager, const QStringList &expected) {
+        QVERIFY(writeExecutable(bin.filePath(manager), QByteArrayLiteral("exit 0")));
+        qputenv("PATH", bin.path().toUtf8());
+
+        FakeSetupManager setup;
+        bool done = false;
+        PodStack::Error error;
+        const QJsonObject started = setup.apply(
+            QJsonObject{{QStringLiteral("action"), QStringLiteral("install-qemu")}},
+            [&done](const QString &method, const QJsonObject &) {
+                if (method == QStringLiteral("setup.done")) {
+                    done = true;
+                }
+            },
+            &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error.message));
+        QVERIFY(!started.value(QStringLiteral("jobId")).toString().isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(setup.calls.contains(QStringLiteral("InstallPackages:")
+                                     + expected.join(QLatin1Char(','))));
+        QFile::remove(bin.filePath(manager));
+    };
+
+    run(QStringLiteral("apt-get"),
+        {QStringLiteral("qemu-system-x86"), QStringLiteral("qemu-system-arm"),
+         QStringLiteral("qemu-utils"), QStringLiteral("virtiofsd"),
+         QStringLiteral("ovmf"), QStringLiteral("qemu-efi-aarch64")});
+    run(QStringLiteral("pacman"),
+        {QStringLiteral("qemu-full"), QStringLiteral("edk2-ovmf"),
+         QStringLiteral("virtiofsd")});
+    run(QStringLiteral("dnf"),
+        {QStringLiteral("qemu-kvm"), QStringLiteral("qemu-system-x86_64"),
+         QStringLiteral("qemu-system-aarch64"), QStringLiteral("qemu-img"),
+         QStringLiteral("virtiofsd"), QStringLiteral("edk2-ovmf")});
 }
 
 QTEST_GUILESS_MAIN(SetupTest)

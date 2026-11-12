@@ -84,6 +84,9 @@ public:
 
     static QStringList ovmfCodeCandidates();
     static QStringList ovmfVarsCandidates();
+    static bool resolveOvmfPaths(QString *code, QString *vars,
+                                 const QStringList &codeCandidates = {},
+                                 const QStringList &varCandidates = {});
 
     MachineManager(const MachineManager &) = delete;
     MachineManager &operator=(const MachineManager &) = delete;

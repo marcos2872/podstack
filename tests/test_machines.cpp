@@ -10189,6 +10189,34 @@ void MachinesTest::ubuntuOvmfCandidates()
 
     const QStringList vars = PodStack::MachineManager::ovmfVarsCandidates();
     QVERIFY(vars.contains(QStringLiteral("/usr/share/OVMF/OVMF_VARS_4M.fd")));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString codeFile = dir.filePath(QStringLiteral("OVMF_CODE_4M.fd"));
+    const QString varsFile = dir.filePath(QStringLiteral("OVMF_VARS_4M.fd"));
+    QFile code(codeFile);
+    QVERIFY(code.open(QIODevice::WriteOnly));
+    QCOMPARE(code.write("code"), 4);
+    code.close();
+    QFile varsFileHandle(varsFile);
+    QVERIFY(varsFileHandle.open(QIODevice::WriteOnly));
+    QCOMPARE(varsFileHandle.write("vars"), 4);
+    varsFileHandle.close();
+
+    QString codePath;
+    QString varsPath;
+    QVERIFY(PodStack::MachineManager::resolveOvmfPaths(
+        &codePath, &varsPath, QStringList{codeFile}, QStringList{varsFile}));
+    QCOMPARE(codePath, codeFile);
+    QCOMPARE(varsPath, varsFile);
+
+    QString defaultCode;
+    QString defaultVars;
+    const bool defaultFound =
+        PodStack::MachineManager::resolveOvmfPaths(&defaultCode, &defaultVars);
+    QVERIFY(!defaultCode.isEmpty());
+    QVERIFY(!defaultVars.isEmpty());
+    QCOMPARE(defaultFound, QFileInfo::exists(defaultCode) && QFileInfo::exists(defaultVars));
 }
 
 QTEST_GUILESS_MAIN(MachinesTest)
