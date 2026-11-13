@@ -237,7 +237,7 @@ recebido. A montagem da linha de comando fica em `QemuCommand`
 caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
 Para guests Windows (M9), o mesmo construtor emite `-machine q35,smm=on` +
 `-global cfi.pflash01.secure=on`, o `-spice unix=on,...` com `virtio-vga`/`usb-tablet`,
-o trio `-chardev chrtpm`/`-tpmdev emulator`/`-device tpm-tis,tpmdev=tpm0` e, enquanto
+o trio `-chardev chrtpm`/`-tpmdev emulator`/`-device tpm-crb,tpmdev=tpm0` e, enquanto
 `installPending`, o instalador como CD USB (`usb-storage` + `bootindex=0`) e
 virtio-win/answer file como CD-ROMs IDE; um thread envia `send-key` via QMP nos
 primeiros segundos para responder ao prompt do boot manager. `-display none` permanece.

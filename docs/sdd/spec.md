@@ -643,7 +643,7 @@ substitui o XML gerado.
 - **TPM 2.0 (T9-03).** `swtpm socket --tpm2 --tpmstate dir=<machineDir>/tpm,mode=0600
   --ctrl type=unixio,path=<machineDir>/swtpm.sock,mode=0600` sobe antes do QEMU; o argv recebe
   `-chardev socket,id=chrtpm,...`, `-tpmdev emulator,id=tpm0,chardev=chrtpm` e
-  `-device tpm-tis,tpmdev=tpm0`. O diretório `tpm/` é `0700`, os arquivos de estado são `0600` e o estado
+  `-device tpm-crb,tpmdev=tpm0`. O diretório `tpm/` é `0700`, os arquivos de estado são `0600` e o estado
   sobrevive a stop/start. No restart do daemon o processo é adotado/reconciliado pelo socket;
   no stop/delete é encerrado. Clone cria TPM novo; export/import não transporta o estado.
   `swtpm` ausente → `PODSTACK_DEPENDENCY_MISSING` com remediação.

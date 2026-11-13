@@ -330,7 +330,7 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
         args << QStringLiteral("-chardev")
              << QStringLiteral("socket,id=chrtpm,path=%1").arg(spec.tpmSocketPath);
         args << QStringLiteral("-tpmdev") << QStringLiteral("emulator,id=tpm0,chardev=chrtpm");
-        args << QStringLiteral("-device") << QStringLiteral("tpm-tis,tpmdev=tpm0");
+        args << QStringLiteral("-device") << QStringLiteral("tpm-crb,tpmdev=tpm0");
     }
     args << QStringLiteral("-daemonize");
     args << QStringLiteral("-pidfile") << spec.pidFile;

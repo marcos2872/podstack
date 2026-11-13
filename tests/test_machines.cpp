@@ -2926,7 +2926,7 @@ void MachinesTest::qemuCommandTpm()
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(args.contains(QStringLiteral("socket,id=chrtpm,path=%1").arg(spec.tpmSocketPath)));
     QVERIFY(args.contains(QStringLiteral("emulator,id=tpm0,chardev=chrtpm")));
-    QVERIFY(args.contains(QStringLiteral("tpm-tis,tpmdev=tpm0")));
+    QVERIFY(args.contains(QStringLiteral("tpm-crb,tpmdev=tpm0")));
 
     QemuSpec relative = spec;
     relative.tpmSocketPath = QStringLiteral("swtpm.sock");
@@ -6631,6 +6631,7 @@ void MachinesTest::windowsProvisionerXml()
     QVERIFY(xml.contains(QStringLiteral("virtio-win-gt-x64.msi")));
     QVERIFY(xml.contains(QStringLiteral("OpenSSH.Server")));
     QVERIFY(xml.contains(QStringLiteral("administrators_authorized_keys")));
+    QVERIFY(xml.contains(QStringLiteral("VK7JG-NPHTM-C97JM-9MPGT-3V66T")));
     QVERIFY(xml.contains(QStringLiteral("shutdown /r /t 10")));
     QVERIFY(xml.contains(QStringLiteral("A&amp;b&lt;c&gt;")));
     QVERIFY(xml.contains(QStringLiteral("Windows 11 Pro")));

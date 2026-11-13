@@ -227,12 +227,25 @@
   em scripts/CLI.
 - **Instalação Windows >10 min:** enquanto `installPending=true` não há
   timeout. Depois do stop/start pós-instalação, o timeout de 10 min vale.
+- **Windows 11 25H2/pt-BR:** o Setup mostrava a tela de Product Key porque o
+  `autounattend.xml` não tinha `ProductKey`. Foram adicionadas chaves genéricas
+  por edição (Home/Pro/Education/Enterprise) com `WillShowUI=Never`.
+- **TPM 2.0 no E2E (2026-11-13):** mesmo com `swtpm_setup --createek`
+  (`tpm2-00.permall` com EK) e `tpm-crb`/`tpm-tis`, o Setup 25H2 ainda acusa
+  “O PC deve ser compatível com TPM 2.0”. O `query-tpm` do QMP mostra o
+  dispositivo, então o bloqueio está na exposição ACPI/OVMF ou no requisito do
+  instalador; T9-03 **não está validada**.
+- **T9-07 neste host:** `scripts/build-rpm.sh` falha por BuildRequires ausentes
+  (`kf6-kstatusnotifieritem-devel`, `qt6-qt5compat-devel`,
+  `selinux-policy-devel`) e `scripts/build-deb.sh` falha por `dpkg-deb`
+  ausente; sem root para instalar. Clean-install Fedora/Ubuntu não executado.
+- **T9-06:** não alcançado; o E2E parou no requisito de TPM 2.0.
 
 ## Evidência da última rodada
 
 - `cmake --build --preset dev`: ok, sem warnings novos.
 - `ctest --preset dev`: **17/17** testes passando.
-- Cobertura (`gcovr`, gate 80%): **80,1%** de linhas (26728/33367). A T9-08
+- Cobertura (`gcovr`, gate 80%): **80,1%** de linhas (26762/33406). A T9-08
   partiu de 79,8% e as T10-00/T10-01/T9-05/T9-07 subiram o gate
   (`GuestAgentClient.cpp` 90%, `GuestChannel.cpp` 97%, `GuestAppCatalog.cpp` 86%,
   `AppSessionManager.cpp` 86%).

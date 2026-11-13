@@ -246,7 +246,10 @@ RPM/DEB/Flatpak, CRIU e emulação binfmt/FEX).
 OVMF Secure Boot, TPM 2.0, criação Windows (ISO local do Windows + `autounattend`),
 download/cache do virtio-win, canal `agent` (`qga.sock`/`guest-ping`/`guest-get-osinfo`),
 provisionamento Linux/Windows com timeout, Home/Pro e dependências de host no empacotamento.
-Pendentes: T9-06 (áudio) e o E2E com Windows real. Escopo completo em
+**E2E 25H2 (2026-11-13):** Product Key corrigido; Setup ainda para em “TPM 2.0 não
+compatível” mesmo com `swtpm_setup --createek` e `tpm-crb`, então T9-03/T9-05/T9-06 não
+foram validados. O clean-install Fedora/Ubuntu não rodou (BuildRequires/`dpkg-deb` ausentes).
+Escopo completo em
 [`../specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/spec.md). M9 não bloqueia o
 v1.0; RAIL (M10) depende de T9-05.
 

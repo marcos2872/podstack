@@ -191,7 +191,7 @@ M9 não entrega apps: entrega console, firmware, TPM, provisionamento, drivers/a
 ### 3.3 TPM 2.0 (T9-03)
 
 - `swtpm socket --tpm2 --tpmstate dir=<machineDir>/tpm --ctrl type=unixio,path=<machineDir>/swtpm.sock --mode 0600`.
-- QEMU: `-chardev socket,id=chrtpm,path=<machineDir>/swtpm.sock`, `-tpmdev emulator,id=tpm0,chardev=chrtpm`, `-device tpm-tis`.
+- QEMU: `-chardev socket,id=chrtpm,path=<machineDir>/swtpm.sock`, `-tpmdev emulator,id=tpm0,chardev=chrtpm`, `-device tpm-crb`.
 - Estado em `<machineDir>/tpm/` (`0700`); **arquivos de estado do TPM são `0600`**; `swtpm` sobe antes do QEMU e é encerrado depois.
 - `clone` cria diretório novo e TPM novo; `export` não inclui `tpm/` nem `swtpm.sock`; `import` cria TPM vazio (o guest pode exigir reativação — documentado).
 - Testes: argv, modos, restart preserva estado, clone/export/import não transportam estado (FR-MAC-113).

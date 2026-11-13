@@ -1214,8 +1214,32 @@ bool MachineManager::startSwtpm(const MachineMeta &meta, Error *error)
     }
 
     auto process = std::make_unique<SwtpmProcess>();
+    const QString stateDirectory = SwtpmProcess::stateDirFor(directory);
+    const QString stateFile = stateDirectory + QStringLiteral("/tpm2-00.permall");
+    if (!QFileInfo::exists(stateFile)) {
+        const QString setupBinary =
+            qEnvironmentVariable("PODSTACK_SWTPM_SETUP_BINARY").trimmed().isEmpty()
+                ? QStandardPaths::findExecutable(QStringLiteral("swtpm_setup"))
+                : qEnvironmentVariable("PODSTACK_SWTPM_SETUP_BINARY").trimmed();
+        if (!setupBinary.isEmpty()) {
+            QDir().mkpath(stateDirectory);
+            QFile::setPermissions(stateDirectory, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                                      QFileDevice::ExeOwner);
+            QProcess setup;
+            setup.setProcessChannelMode(QProcess::SeparateChannels);
+            setup.start(setupBinary, {QStringLiteral("--tpm2"), QStringLiteral("--tpm-state"),
+                                      stateDirectory, QStringLiteral("--createek")});
+            if (!setup.waitForStarted(5000) || !setup.waitForFinished(30000) ||
+                setup.exitStatus() != QProcess::NormalExit || setup.exitCode() != 0) {
+                qCWarning(lcCore) << "swtpm_setup falhou para a machine" << meta.name << ":"
+                                  << setup.readAllStandardError();
+            }
+        } else {
+            qCWarning(lcCore) << "swtpm_setup ausente; o TPM pode não ter EK para o Windows.";
+        }
+    }
     Error startError;
-    if (!process->start(m_options.swtpmBinary, SwtpmProcess::stateDirFor(directory),
+    if (!process->start(m_options.swtpmBinary, stateDirectory,
                         SwtpmProcess::socketPathFor(directory), &startError)) {
         qCWarning(lcCore) << "Falha ao iniciar o swtpm da machine" << meta.name << ":"
                           << startError.code << startError.detail;

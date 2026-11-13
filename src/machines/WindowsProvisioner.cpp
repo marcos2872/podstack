@@ -199,6 +199,24 @@ QString inputLocale(const QString &locale)
     return QStringLiteral("0409:00000409");
 }
 
+QString genericProductKey(const QString &edition)
+{
+    const QString value = edition.toLower();
+    if (value.contains(QStringLiteral("education"))) {
+        return QStringLiteral("YNMGQ-8RYV3-4PGQ3-C8XTP-7CFBY");
+    }
+    if (value.contains(QStringLiteral("enterprise"))) {
+        return QStringLiteral("NPPR9-FWDCX-D2C8J-H872K-2YT43");
+    }
+    if (value.contains(QStringLiteral("home"))) {
+        return QStringLiteral("YTMG3-N6DKC-DKB77-7M9GH-8HVX7");
+    }
+    if (value.contains(QStringLiteral("pro"))) {
+        return QStringLiteral("VK7JG-NPHTM-C97JM-9MPGT-3V66T");
+    }
+    return {};
+}
+
 QString xmlEscapeSingleQuotes(const QString &value)
 {
     QString escaped = value;
@@ -463,6 +481,13 @@ QString WindowsProvisioner::buildXml(const WindowsProvisionOptions &options)
     writer.writeEndElement(); // ImageInstall
 
     writer.writeStartElement(QStringLiteral("UserData"));
+    const QString productKey = genericProductKey(options.edition);
+    if (!productKey.isEmpty()) {
+        writer.writeStartElement(QStringLiteral("ProductKey"));
+        writer.writeTextElement(QStringLiteral("Key"), productKey);
+        writer.writeTextElement(QStringLiteral("WillShowUI"), QStringLiteral("Never"));
+        writer.writeEndElement();
+    }
     writer.writeTextElement(QStringLiteral("AcceptEula"), QStringLiteral("true"));
     writer.writeTextElement(QStringLiteral("FullName"), QStringLiteral("PodStack"));
     writer.writeTextElement(QStringLiteral("Organization"), QStringLiteral("PodStack"));

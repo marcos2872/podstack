@@ -246,7 +246,7 @@ qemu-system-x86_64 \
   `[a-z0-9-]{1,32}` únicas (default `host<N>`).
 - Controle por QMP: `system_powerdown`, `quit`, `query-status`, `human-monitor-command`.
 - Windows (M9 — Fase 1): `-M q35,smm=on`, `-global driver=cfi.pflash01,property=secure,value=on`,
-  NVRAM `nvram.fd`, SPICE em socket Unix, `virtio-vga`/`usb-tablet` e `-tpmdev`/`tpm-tis,tpmdev=tpm0` com
+  NVRAM `nvram.fd`, SPICE em socket Unix, `virtio-vga`/`usb-tablet` e `-tpmdev`/`tpm-crb,tpmdev=tpm0` com
   `swtpm` por machine. O modelo completo está em
   [`docs/specs/001-apps-remotos-vm/plan.md`](../specs/001-apps-remotos-vm/plan.md) §3.
 
