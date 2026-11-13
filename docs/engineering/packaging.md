@@ -215,7 +215,7 @@ Ações separadas por método; nunca uma ação "root genérica".
 
 ## 6. SELinux
 
-O módulo mínimo está em [`packaging/selinux/`](../packaging/selinux/):
+O módulo mínimo está em [`packaging/selinux/`](../../packaging/selinux):
 `podstack.te`, `podstack.fc` e `podstack.if` (`policy_module(podstack, 0.1.3)`,
 refpolicy/Fedora).
 
@@ -306,8 +306,8 @@ Se aparecer AVC, ajuste `podstack.te` e recarregue com `semodule -i`. Use
 
 ## 7. RPM spec (esqueleto)
 
-O spec real está em [`packaging/rpm/podstack.spec`](../packaging/rpm/podstack.spec) e o build local em
-[`scripts/build-rpm.sh`](../scripts/build-rpm.sh):
+O spec real está em [`packaging/rpm/podstack.spec`](../../packaging/rpm/podstack.spec) e o build local em
+[`scripts/build-rpm.sh`](../../scripts/build-rpm.sh):
 
 ```bash
 ./scripts/build-rpm.sh
@@ -434,7 +434,7 @@ rpmbuild -ba podstack.spec
 
 ## 8. DEB (Ubuntu 24.04–26.04)
 
-- Metadados em [`packaging/deb/control`](../packaging/deb/control); build local em Ubuntu 24.04:
+- Metadados em [`packaging/deb/control`](../../packaging/deb/control); build local em Ubuntu 24.04:
   ```bash
   cmake -S . -B build/ubuntu -G Ninja \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -447,7 +447,7 @@ rpmbuild -ba podstack.spec
 - O `.deb` é construído no **Ubuntu 24.04** (Qt 6.4.2) e roda em 24.04, 25.10 e 26.04; o RPM
   continua em Fedora 44 (Qt 6.10). O script usa `cmake --install` em uma árvore staging com
   `DESTDIR`, `--strip` e `dpkg-deb --root-owner-group`; requer `dpkg-dev`.
-- O qtermwidget **2.0.0** é vendorizado em [`third_party/qtermwidget`](../third_party/qtermwidget)
+- O qtermwidget **2.0.0** é vendorizado em [`third_party/qtermwidget`](../../third_party/qtermwidget)
   e linkado estaticamente no `podstack-gui`; não há `libqtermwidget6.so` em runtime. Os color
   schemes/keytabs vão para `/usr/share/podstack/qtermwidget6`, sem colidir com o
   `libqtermwidget6-2` do Ubuntu 26.04.
@@ -467,7 +467,7 @@ rpmbuild -ba podstack.spec
 
 ## 9. Flatpak
 
-- Manifest em [`packaging/flatpak/dev.podstack.PodStack.yml`](../packaging/flatpak/dev.podstack.PodStack.yml);
+- Manifest em [`packaging/flatpak/dev.podstack.PodStack.yml`](../../packaging/flatpak/dev.podstack.PodStack.yml);
   build:
   ```bash
   ./scripts/build-flatpak.sh
@@ -504,7 +504,7 @@ rpmbuild -ba podstack.spec
 
 ### 11.1 Pipeline de release (`release.yml`)
 
-O workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) roda em
+O workflow [`.github/workflows/release.yml`](../../.github/workflows/release.yml) roda em
 push de tag `v*` e em `workflow_dispatch`, em três jobs:
 
 1. `rpm` (Fedora 44): valida o AppStream, configura/compila o preset `release`, roda
@@ -516,7 +516,7 @@ push de tag `v*` e em `workflow_dispatch`, em três jobs:
    (`scripts/build-deb.sh`);
 3. `publish`: baixa os artefatos dos dois jobs, gera `SHA256SUMS` dos `.rpm`/`.deb`, assina
    com GPG (opcional), extrai as notas da seção da versão no
-   [`CHANGELOG.md`](../CHANGELOG.md) e gera `podstack-update.json`
+   [`CHANGELOG.md`](../../CHANGELOG.md) e gera `podstack-update.json`
    (`scripts/generate-update-manifest.sh`) com a URL base das releases do GitHub e o canal
    de `PODSTACK_UPDATE_CHANNEL` (variável do repositório), assina o manifesto com minisign
    (opcional) e publica os artefatos (`gh release create` ou `gh release upload --clobber`).
@@ -548,11 +548,11 @@ obrigatória). Para habilitar updates, importe a chave privada minisign, publiqu
 
 ## 12. Instalação limpa (checklist)
 
-**Automatizado:** [`scripts/clean-install-check.sh`](../scripts/clean-install-check.sh) roda
+**Automatizado:** [`scripts/clean-install-check.sh`](../../scripts/clean-install-check.sh) roda
 em container Fedora 44 descartável (via Podman) e cobre instalação do RPM principal e do
 `podstack-helper`; presença de binários, units systemd de usuário, unit/polkit do helper e
 módulo SELinux; metainfo + `appstreamcli validate`; daemon com socket `0600`; `podstack
-status` e `podstack doctor`. O [`packaging.yml`](../.github/workflows/packaging.yml) executa o build do RPM em container
+status` e `podstack doctor`. O [`packaging.yml`](../../.github/workflows/packaging.yml) executa o build do RPM em container
 Fedora 44 e o build do DEB em container Ubuntu 24.04 em PRs que alteram `packaging/**`,
 `scripts/build-*`, `scripts/clean-install-check.sh`, `CMakeLists.txt`, `third_party/**` ou
 `release.yml`.

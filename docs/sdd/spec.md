@@ -1,7 +1,7 @@
 # Spec funcional — PodStack
 
 > Especificação derivada do [`PRD.md`](PRD.md). Define comportamento observável, estados, fluxos e critérios de aceite. Onde o PRD diz "o quê", esta spec diz "como se comporta".
-> Baseline de paridade: OrbStack 2.2.5 (ver [`reference/`](reference/)).
+> Baseline de paridade: OrbStack 2.2.5 (ver [`reference/`](../reference)).
 
 ---
 
@@ -81,7 +81,7 @@ Formato único:
 }
 ```
 
-- Códigos estáveis documentados em [`api-rpc.md`](api-rpc.md).
+- Códigos estáveis documentados em [`api-rpc.md`](../engineering/api-rpc.md).
 - A GUI mostra mensagem amigável + detalhe técnico expansível + ação sugerida.
 - Nunca exibir stack trace cru; log completo com correlação.
 
@@ -840,7 +840,7 @@ roteador; o PodStack não altera a rede do usuário nem usa root para isso.
 
 ### 13.3 Comandos
 
-Ver [`cli-parity.md`](cli-parity.md) para a tabela completa `orb` → `podstack`.
+Ver [`cli-parity.md`](../engineering/cli-parity.md) para a tabela completa `orb` → `podstack`.
 
 ---
 

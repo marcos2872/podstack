@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Smoke test E2E do roteiro J1 (docs/testing.md §14): sobe um projeto Compose
+# Smoke test E2E do roteiro J1 (docs/sdd/testing.md §14): sobe um projeto Compose
 # com nginx:alpine, valida a porta publicada por HTTP, os logs e o down.
 #
 # Opt-in: PODSTACK_E2E=1. Sem esse valor o script apenas explica como rodar.

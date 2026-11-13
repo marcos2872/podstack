@@ -447,7 +447,7 @@ ctest --preset dev -R machines --output-on-failure
 
 ## 12. CI
 
-Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em **toda pull request** e em push para `main`.
+Workflow: [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) — roda em **toda pull request** e em push para `main`.
 
 | Etapa | Conteúdo | Bloqueia merge |
 |---|---|---|
@@ -467,8 +467,8 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — roda em 
 
 | Workflow | Gatilho | O que cobre |
 |---|---|---|
-| [`release.yml`](../.github/workflows/release.yml) | push de tag `v*` e `workflow_dispatch` | Confere se a tag corresponde à versão do `CMakeLists.txt`; build `release` + `ctest`; `appstreamcli validate`; RPM (`build-rpm.sh`) e DEB (`build-deb.sh`); assinatura GPG opcional dos RPMs e do `SHA256SUMS`; `SHA256SUMS`; SBOM CycloneDX (`generate-sbom.sh`); manifesto `podstack-update.json` com notas extraídas do `CHANGELOG.md` e assinatura minisign opcional; upload dos artefatos e `gh release create`/`gh release upload`. |
-| [`packaging.yml`](../.github/workflows/packaging.yml) | PR com mudanças em `packaging/**`, `scripts/build-*`, `scripts/clean-install-check.sh`, `CMakeLists.txt`, `third_party/**` ou `release.yml`; e `workflow_dispatch` | Build do RPM em container Fedora 44 e do DEB em container Ubuntu 24.04; `scripts/clean-install-check.sh --skip-build` cobre instalação do RPM/helper, binários, units systemd, polkit, metainfo/AppStream, socket 0600, `podstack status` e `podstack doctor`. Não cobre GUI, KVM nem polkit reais. |
+| [`release.yml`](../../.github/workflows/release.yml) | push de tag `v*` e `workflow_dispatch` | Confere se a tag corresponde à versão do `CMakeLists.txt`; build `release` + `ctest`; `appstreamcli validate`; RPM (`build-rpm.sh`) e DEB (`build-deb.sh`); assinatura GPG opcional dos RPMs e do `SHA256SUMS`; `SHA256SUMS`; SBOM CycloneDX (`generate-sbom.sh`); manifesto `podstack-update.json` com notas extraídas do `CHANGELOG.md` e assinatura minisign opcional; upload dos artefatos e `gh release create`/`gh release upload`. |
+| [`packaging.yml`](../../.github/workflows/packaging.yml) | PR com mudanças em `packaging/**`, `scripts/build-*`, `scripts/clean-install-check.sh`, `CMakeLists.txt`, `third_party/**` ou `release.yml`; e `workflow_dispatch` | Build do RPM em container Fedora 44 e do DEB em container Ubuntu 24.04; `scripts/clean-install-check.sh --skip-build` cobre instalação do RPM/helper, binários, units systemd, polkit, metainfo/AppStream, socket 0600, `podstack status` e `podstack doctor`. Não cobre GUI, KVM nem polkit reais. |
 
 As assinaturas usam os secrets `GPG_PRIVATE_KEY`, `GPG_KEY_ID`,
 `PODSTACK_UPDATE_PUBLIC_KEY` e `MINISIGN_PRIVATE_KEY`. Sem eles, a release é

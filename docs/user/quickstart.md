@@ -254,4 +254,4 @@ Atalhos implementados:
 
 - Comandos e flags: [`cli.md`](cli.md).
 - Problemas de daemon, Podman, KVM, portas ou HTTPS: [`troubleshooting.md`](troubleshooting.md).
-- Limitações do 0.1.3: [`README.md`](README.md#limitações-conhecidas-do-010).
+- Limitações do 0.1.3: [`README.md`](README.md#limitações-conhecidas-do-013).

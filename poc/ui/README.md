@@ -115,7 +115,7 @@ O concorrente direto é o **Podman Desktop**; a aposta é um app nativo, denso e
 ## 8. Clean-room e marca
 
 - A POC é **inspirada no estilo** do OrbStack (densidade, sidebar, listas, cartões, tipografia), sem copiar código, assets, ícones, textos ou layout pixel a pixel.
-- A marca é **PodStack** (cápsula + camadas). Use os assets de [`assets/`](../../assets/) e as regras de [`docs/branding.md`](../../docs/branding.md).
+- A marca é **PodStack** (cápsula + camadas). Use os assets de [`assets/`](../../assets) e as regras de [`docs/engineering/branding.md`](../../docs/engineering/branding.md).
 - “OrbStack” é marca registrada de terceiros; não use o nome em telas, textos ou assets do produto.
 
 ---
@@ -124,10 +124,10 @@ O concorrente direto é o **Podman Desktop**; a aposta é um app nativo, denso e
 
 A POC é a **referência visual**. A fonte de verdade de comportamento continua sendo:
 
-- [`docs/PRD.md`](../../docs/PRD.md) — requisitos e critérios de aceite.
-- [`docs/spec.md`](../../docs/spec.md) — fluxos detalhados.
-- [`docs/ui-map.md`](../../docs/ui-map.md) — mapa de telas.
-- [`docs/api-rpc.md`](../../docs/api-rpc.md) — contrato do daemon.
-- [`docs/tasks.md`](../../docs/tasks.md) — marcos e pendências.
+- [`docs/sdd/PRD.md`](../../docs/sdd/PRD.md) — requisitos e critérios de aceite.
+- [`docs/sdd/spec.md`](../../docs/sdd/spec.md) — fluxos detalhados.
+- [`docs/engineering/ui-map.md`](../../docs/engineering/ui-map.md) — mapa de telas.
+- [`docs/engineering/api-rpc.md`](../../docs/engineering/api-rpc.md) — contrato do daemon.
+- [`docs/sdd/tasks.md`](../../docs/sdd/tasks.md) — marcos e pendências.
 
 Quando a POC divergir da spec, **a spec vence**; atualize a spec antes de implementar.

@@ -61,9 +61,9 @@ Opções consideradas:
 
 ## Referências
 
-- [`PRD.md`](../PRD.md) §2.4 e §7.18
-- [`spec.md`](../spec.md) §2.6
-- [`security.md`](../security.md) §4.2 e §4.4
-- [`settings.md`](../settings.md) §2.11
+- [`PRD.md`](../sdd/PRD.md) §2.4 e §7.18
+- [`spec.md`](../sdd/spec.md) §2.6
+- [`security.md`](../engineering/security.md) §4.2 e §4.4
+- [`settings.md`](../engineering/settings.md) §2.11
 - [`poc/ui/ONBOARDING.md`](../../poc/ui/ONBOARDING.md)
 - [`poc/ui/FLOWS.md`](../../poc/ui/FLOWS.md) §12.3

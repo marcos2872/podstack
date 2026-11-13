@@ -10,7 +10,7 @@
 - Fonte: `poc/ui/app.js` → objeto `data` (containers, images, volumes, networks, compose, builds, pods, machines, devices) e `state` (navegação, seleção, setup).
 - Nada é persistido; recarregar a página restaura o mock.
 - Os campos marcados **“app”** existem no RPC/`PodmanClient`; os marcados **“mock”** são apenas para a demo (métricas de exemplo, logs/files estáticos, IPs, uptime).
-- Em caso de divergência, o contrato real é [`docs/api-rpc.md`](../../docs/api-rpc.md) + [`src/podman/PodmanClient.h`](../../src/podman/PodmanClient.h).
+- Em caso de divergência, o contrato real é [`docs/engineering/api-rpc.md`](../../docs/engineering/api-rpc.md) + [`src/podman/PodmanClient.h`](../../src/podman/PodmanClient.h).
 
 ---
 
