@@ -250,6 +250,7 @@ fi
 %{_datadir}/icons/hicolor/256x256/apps/dev.podstack.PodStack.png
 %{_datadir}/icons/hicolor/512x512/apps/dev.podstack.PodStack.png
 %{_libexecdir}/podstack/podstack-helper
+%{_libexecdir}/podstack/podstack-update-exec
 %{_unitdir}/podstack-helper.service
 %{_datadir}/polkit-1/actions/dev.podstack.helper.policy
 %{_datadir}/dbus-1/system.d/dev.podstack.Helper1.conf

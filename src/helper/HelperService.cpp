@@ -8,18 +8,24 @@
 #include "helper/Firewall.h"
 #include "helper/Polkit.h"
 #include "helper/PortBinding.h"
+#include "helper/UpdateService.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusReply>
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QLoggingCategory>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QStringList>
 #include <QtGlobal>
+
+#include <mutex>
+#include <algorithm>
 
 Q_LOGGING_CATEGORY(lcHelper, "podstack.helper")
 
@@ -33,6 +39,9 @@ constexpr auto kClosePortsAction = "dev.podstack.helper.close-ports";
 constexpr auto kDnsZoneAction = "dev.podstack.helper.dns-zone";
 constexpr auto kBindPortsAction = "dev.podstack.helper.bind-ports";
 constexpr auto kTrustCaAction = "dev.podstack.helper.trust-ca";
+constexpr auto kStageUpdateAction = "dev.podstack.helper.stage-update";
+constexpr auto kInstallUpdateAction = "dev.podstack.helper.install-update";
+constexpr auto kUpdateStatusAction = "dev.podstack.helper.get-update-status";
 
 const QStringList &installAllowlist()
 {
@@ -106,6 +115,28 @@ QString runProcess(const QString &program, const QStringList &arguments, int tim
                               : tail;
     }
     return {};
+}
+
+bool updateRateLimit(uint uid, const QString &method, int limit, QString *error)
+{
+    static std::mutex mutex;
+    static QHash<QString, QVector<qint64>> calls;
+
+    const QString key = QString::number(uid) + QLatin1Char(':') + method;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    std::lock_guard<std::mutex> lock(mutex);
+    QVector<qint64> &entries = calls[key];
+    entries.erase(std::remove_if(entries.begin(), entries.end(),
+                                 [now](qint64 timestamp) { return now - timestamp > 60000; }),
+                  entries.end());
+    if (entries.size() >= limit) {
+        if (error) {
+            *error = QStringLiteral("Muitas chamadas de update; tente novamente em instantes.");
+        }
+        return false;
+    }
+    entries.append(now);
+    return true;
 }
 
 } // namespace
@@ -683,6 +714,95 @@ QVariantMap HelperService::TrustCa(const QString &certPath, const QString &finge
 QVariantMap HelperService::UntrustCa(const QString &fingerprint)
 {
     return changeCaTrust(QString(), fingerprint, false);
+}
+
+UpdateService *HelperService::updateService()
+{
+    if (!m_updateService) {
+        m_updateService = std::make_unique<UpdateService>();
+    }
+    return m_updateService.get();
+}
+
+QVariantMap HelperService::updateFailure(const Error &error)
+{
+    QVariantMap map = result(false, error.message);
+    map.insert(QStringLiteral("code"), error.code);
+    map.insert(QStringLiteral("detail"), error.detail);
+    return map;
+}
+
+QVariantMap HelperService::StageUpdate(const QByteArray &manifest, const QByteArray &signature,
+                                       const QString &artifactPath, const QString &channel)
+{
+    const uint uid = callerUid();
+    QString error;
+    if (!authorize(QString::fromLatin1(kStageUpdateAction), &error)) {
+        qCWarning(lcHelper, "StageUpdate uid=%u result=denied", uid);
+        return result(false, error);
+    }
+    if (!updateRateLimit(uid, QStringLiteral("stage"), 10, &error)) {
+        return result(false, error);
+    }
+
+    QVariantMap reply;
+    Error updateError;
+    if (!updateService()->stage(uid, manifest, signature, artifactPath, channel, &reply,
+                                &updateError)) {
+        qCWarning(lcHelper, "StageUpdate uid=%u result=error code=%s", uid,
+                  qUtf8Printable(updateError.code));
+        return updateFailure(updateError);
+    }
+    qCInfo(lcHelper, "StageUpdate uid=%u job=%s result=ok", uid,
+           qUtf8Printable(reply.value(QStringLiteral("jobId")).toString()));
+    return reply;
+}
+
+QVariantMap HelperService::InstallUpdate(const QString &jobId)
+{
+    const uint uid = callerUid();
+    QString error;
+    if (!authorize(QString::fromLatin1(kInstallUpdateAction), &error)) {
+        qCWarning(lcHelper, "InstallUpdate uid=%u job=%s result=denied", uid,
+                  qUtf8Printable(jobId));
+        return result(false, error);
+    }
+    if (!updateRateLimit(uid, QStringLiteral("install"), 10, &error)) {
+        return result(false, error);
+    }
+
+    QVariantMap reply;
+    Error updateError;
+    if (!updateService()->install(uid, jobId, &reply, &updateError)) {
+        qCWarning(lcHelper, "InstallUpdate uid=%u job=%s result=error code=%s", uid,
+                  qUtf8Printable(jobId), qUtf8Printable(updateError.code));
+        return updateFailure(updateError);
+    }
+    qCInfo(lcHelper, "InstallUpdate uid=%u job=%s unit=%s result=ok", uid,
+           qUtf8Printable(jobId),
+           qUtf8Printable(reply.value(QStringLiteral("unit")).toString()));
+    return reply;
+}
+
+QVariantMap HelperService::GetUpdateStatus(const QString &jobId)
+{
+    const uint uid = callerUid();
+    QString error;
+    if (!authorize(QString::fromLatin1(kUpdateStatusAction), &error)) {
+        qCWarning(lcHelper, "GetUpdateStatus uid=%u job=%s result=denied", uid,
+                  qUtf8Printable(jobId));
+        return result(false, error);
+    }
+    if (!updateRateLimit(uid, QStringLiteral("status"), 120, &error)) {
+        return result(false, error);
+    }
+
+    QVariantMap reply;
+    Error updateError;
+    if (!updateService()->status(uid, jobId, &reply, &updateError)) {
+        return updateFailure(updateError);
+    }
+    return reply;
 }
 
 } // namespace PodStack

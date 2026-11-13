@@ -2,6 +2,8 @@
 #include "core/Logging.h"
 #include "core/RpcClient.h"
 #include "core/RpcStream.h"
+#include "core/UpdateRunner.h"
+#include "daemon/HelperClient.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -33,6 +35,37 @@ constexpr int kExitError = 1;
 constexpr int kExitUsage = 2;
 constexpr int kExitOutdated = 3;
 constexpr int kExitEngineUnavailable = 7;
+constexpr int kExitCancelled = 9;
+
+class DbusUpdateHelper : public PodStack::UpdateHelper {
+public:
+    bool call(const QString &method, const QVariantList &arguments, QVariantMap *reply,
+              PodStack::Error *error) override
+    {
+        PodStack::HelperClient client;
+        QString helperError;
+        QVariantMap values;
+        const bool ok = client.callMap(method, arguments, &values, &helperError);
+        if (reply) {
+            *reply = values;
+        }
+        if (ok) {
+            return true;
+        }
+        if (error) {
+            error->code = values.value(QStringLiteral("code")).toString();
+            if (error->code.isEmpty()) {
+                error->code = QStringLiteral("PODSTACK_HELPER_REQUIRED");
+            }
+            error->message = values.value(QStringLiteral("message")).toString();
+            if (error->message.isEmpty()) {
+                error->message = helperError;
+            }
+            error->detail = values.value(QStringLiteral("detail")).toString();
+        }
+        return false;
+    }
+};
 
 QTextStream &out()
 {
@@ -104,6 +137,7 @@ void printUsage()
           << "                          Lê e altera configurações\n"
           << "  doctor                  Diagnóstico rápido\n"
           << "  update --check [--json] [--channel stable|beta]\n"
+          << "  update --install [--yes] [--json] [--channel stable|beta]\n"
           << "                          Verifica updates assinados (exit 3 se houver)\n"
           << "  report [--include-logs] [--json]\n"
           << "                          Relatório redigido para suporte\n"
@@ -478,78 +512,208 @@ int commandReport(const QStringList &args)
 
 int commandUpdate(const QStringList &args)
 {
-    if (!args.contains(QStringLiteral("--check"))) {
-        err() << "Uso: podstack update --check [--json] [--channel stable|beta]\n";
+    bool check = false;
+    bool install = false;
+    bool yes = false;
+    bool json = false;
+    bool runnerMode = false;
+    QString channel;
+    QString manifestPath;
+
+    for (int index = 0; index < args.size(); ++index) {
+        const QString &arg = args.at(index);
+        if (arg == QStringLiteral("--check")) {
+            check = true;
+        } else if (arg == QStringLiteral("--install")) {
+            install = true;
+        } else if (arg == QStringLiteral("--yes") || arg == QStringLiteral("-y")) {
+            yes = true;
+        } else if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--runner")) {
+            runnerMode = true;
+        } else if (arg == QStringLiteral("--channel") || arg == QStringLiteral("--manifest")) {
+            if (index + 1 >= args.size() || args.at(index + 1).startsWith(QStringLiteral("--"))) {
+                err() << "Uso: podstack update --check|--install [--yes] [--json] "
+                         "[--channel stable|beta]\n";
+                err().flush();
+                return kExitUsage;
+            }
+            if (arg == QStringLiteral("--channel")) {
+                channel = args.at(++index);
+            } else {
+                manifestPath = args.at(++index);
+            }
+        } else {
+            err() << "opção desconhecida para update: " << arg << '\n';
+            err().flush();
+            return kExitUsage;
+        }
+    }
+
+    if (check == install) {
+        err() << "Uso: podstack update --check|--install [--yes] [--json] "
+                 "[--channel stable|beta]\n";
         err().flush();
         return kExitUsage;
     }
 
-    QString channel;
-    const int channelIndex = args.indexOf(QStringLiteral("--channel"));
-    if (channelIndex >= 0) {
-        if (channelIndex + 1 >= args.size() ||
-            args.at(channelIndex + 1).startsWith(QStringLiteral("--"))) {
-            err() << "Uso: podstack update --check [--json] [--channel stable|beta]\n";
+    if (check) {
+        QJsonObject params;
+        params.insert(QStringLiteral("force"), true);
+        if (!channel.isEmpty()) {
+            params.insert(QStringLiteral("channel"), channel);
+        }
+
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result = client.call(QStringLiteral("updates.check"), params, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+
+        const QString status = result.value(QStringLiteral("status")).toString();
+        if (json) {
+            QJsonObject document = result;
+            document.insert(QStringLiteral("api"), 1);
+            out() << QJsonDocument(document).toJson(QJsonDocument::Indented);
+            out().flush();
+        } else if (status == QStringLiteral("ok")) {
+            const QString current = result.value(QStringLiteral("currentVersion")).toString();
+            const QString latest = result.value(QStringLiteral("latestVersion")).toString();
+            if (result.value(QStringLiteral("updateAvailable")).toBool()) {
+                out() << QStringLiteral("PodStack %1 disponível (canal %2); atual: %3.\n")
+                             .arg(latest, result.value(QStringLiteral("channel")).toString(),
+                                  current);
+                const QString url = result.value(QStringLiteral("releaseUrl")).toString();
+                if (!url.isEmpty()) {
+                    out() << url << '\n';
+                }
+            } else {
+                out() << QStringLiteral("PodStack %1 está atualizado (canal %2).\n")
+                             .arg(current, result.value(QStringLiteral("channel")).toString());
+            }
+            out().flush();
+        } else {
+            const QString reason = result.value(QStringLiteral("reason")).toString();
+            if (status == QStringLiteral("unavailable")) {
+                err() << "Não foi possível verificar updates: " << reason << '\n';
+                err().flush();
+            } else {
+                out() << (reason.isEmpty() ? QStringLiteral("Nenhum update disponível.\n")
+                                           : reason + QStringLiteral("\n"));
+                out().flush();
+            }
+        }
+
+        if (status == QStringLiteral("unavailable")) {
+            return kExitError;
+        }
+        if (status == QStringLiteral("ok")
+            && result.value(QStringLiteral("updateAvailable")).toBool()) {
+            return kExitOutdated;
+        }
+        return kExitOk;
+    }
+
+    DbusUpdateHelper helper;
+    PodStack::UpdateRunnerOptions options;
+    options.channel = channel;
+    PodStack::UpdateRunner runner(&helper, options);
+    PodStack::Error error;
+    if (!yes && !runnerMode && !isatty(STDIN_FILENO)) {
+        err() << "confirmação necessária: use --yes em modo não interativo.\n";
+        err().flush();
+        return kExitUsage;
+    }
+    const bool prepared = manifestPath.isEmpty() ? runner.prepare(&error)
+                                                 : runner.prepareFromManifest(manifestPath, &error);
+    if (!prepared) {
+        QJsonObject document;
+        document.insert(QStringLiteral("api"), 1);
+        document.insert(QStringLiteral("command"), QStringLiteral("update-install"));
+        document.insert(QStringLiteral("status"), QStringLiteral("failed"));
+        QJsonObject jsonError;
+        jsonError.insert(QStringLiteral("code"), error.code);
+        jsonError.insert(QStringLiteral("message"), error.message);
+        jsonError.insert(QStringLiteral("detail"), error.detail);
+        document.insert(QStringLiteral("error"), jsonError);
+        if (json || runnerMode) {
+            out() << QJsonDocument(document).toJson(QJsonDocument::Indented);
+        } else {
+            err() << "Falha ao preparar o update: " << error.message;
+            if (!error.detail.isEmpty()) {
+                err() << " (" << error.detail << ')';
+            }
+            err() << '\n';
+        }
+        out().flush();
+        err().flush();
+        return PodStack::UpdateRunner::exitCodeFor(error);
+    }
+
+    if (!yes && !runnerMode) {
+        if (!isatty(STDIN_FILENO)) {
+            err() << "confirmação necessária: use --yes em modo não interativo.\n";
             err().flush();
             return kExitUsage;
         }
-        channel = args.at(channelIndex + 1);
-    }
-
-    QJsonObject params;
-    params.insert(QStringLiteral("force"), true);
-    if (!channel.isEmpty()) {
-        params.insert(QStringLiteral("channel"), channel);
-    }
-
-    PodStack::RpcClient client;
-    PodStack::Error error;
-    const QJsonObject result = client.call(QStringLiteral("updates.check"), params, &error);
-    if (!error.isEmpty()) {
-        return fail(error);
-    }
-
-    const QString status = result.value(QStringLiteral("status")).toString();
-    if (args.contains(QStringLiteral("--json"))) {
-        QJsonObject json = result;
-        json.insert(QStringLiteral("api"), 1);
-        out() << QJsonDocument(json).toJson(QJsonDocument::Indented);
+        out() << QStringLiteral("Instalar PodStack %1 e reiniciar os serviços? [s/N] ")
+                     .arg(runner.version());
         out().flush();
-    } else if (status == QStringLiteral("ok")) {
-        const QString current = result.value(QStringLiteral("currentVersion")).toString();
-        const QString latest = result.value(QStringLiteral("latestVersion")).toString();
-        if (result.value(QStringLiteral("updateAvailable")).toBool()) {
-            out() << QStringLiteral("PodStack %1 disponível (canal %2); atual: %3.\n")
-                         .arg(latest, result.value(QStringLiteral("channel")).toString(), current);
-            const QString url = result.value(QStringLiteral("releaseUrl")).toString();
-            if (!url.isEmpty()) {
-                out() << url << '\n';
-            }
-        } else {
-            out() << QStringLiteral("PodStack %1 está atualizado (canal %2).\n")
-                         .arg(current, result.value(QStringLiteral("channel")).toString());
+        std::string answer;
+        std::getline(std::cin, answer);
+        const QString normalized = QString::fromStdString(answer).trimmed().toLower();
+        if (normalized != QStringLiteral("s") && normalized != QStringLiteral("sim")
+            && normalized != QStringLiteral("y") && normalized != QStringLiteral("yes")) {
+            out() << QStringLiteral("cancelado\n");
+            out().flush();
+            return kExitCancelled;
         }
+    }
+
+    if (!json) {
+        out() << QStringLiteral("Instalando PodStack %1...\n").arg(runner.version());
         out().flush();
-    } else {
-        const QString reason = result.value(QStringLiteral("reason")).toString();
-        if (status == QStringLiteral("unavailable")) {
-            err() << "Não foi possível verificar updates: " << reason << '\n';
-            err().flush();
-        } else {
-            out() << (reason.isEmpty() ? QStringLiteral("Nenhum update disponível.\n")
-                                       : reason + QStringLiteral("\n"));
+    }
+    const bool installed = runner.install(&error);
+
+    QJsonObject document;
+    document.insert(QStringLiteral("api"), 1);
+    document.insert(QStringLiteral("command"), QStringLiteral("update-install"));
+    document.insert(QStringLiteral("status"),
+                    installed ? QStringLiteral("ok") : QStringLiteral("failed"));
+    document.insert(QStringLiteral("version"), runner.version());
+    document.insert(QStringLiteral("phase"), runner.phase());
+    document.insert(QStringLiteral("jobId"), runner.jobId());
+    if (!installed) {
+        QJsonObject jsonError;
+        jsonError.insert(QStringLiteral("code"), error.code);
+        jsonError.insert(QStringLiteral("message"), error.message);
+        jsonError.insert(QStringLiteral("detail"), error.detail);
+        document.insert(QStringLiteral("error"), jsonError);
+    }
+    if (json || runnerMode) {
+        out() << QJsonDocument(document).toJson(QJsonDocument::Indented);
+        out().flush();
+    }
+    if (installed) {
+        if (!json) {
+            out() << QStringLiteral("Update instalado; abra o PodStack novamente.\n");
             out().flush();
         }
+        return kExitOk;
     }
 
-    if (status == QStringLiteral("unavailable")) {
-        return kExitError;
+    if (!json) {
+        err() << "Falha ao instalar o update: " << error.message;
+        if (!error.detail.isEmpty()) {
+            err() << " (" << error.detail << ')';
+        }
+        err() << '\n';
+        err().flush();
     }
-    if (status == QStringLiteral("ok") &&
-        result.value(QStringLiteral("updateAvailable")).toBool()) {
-        return kExitOutdated;
-    }
-    return kExitOk;
+    return PodStack::UpdateRunner::exitCodeFor(error);
 }
 
 int commandCheckpoint(const QStringList &args)

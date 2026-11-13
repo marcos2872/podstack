@@ -590,12 +590,12 @@ Todo PR/tarefa anexa:
 | Área | Casos |
 |---|---|
 | Manifesto/artefato | parse, assinatura Ed25519/minisign, SHA-256 divergente, nome/versão/arch errados, versão igual/downgrade, canal beta/stable, manifesto em cache e expirado |
-| Download/cache | `.part` + rename, 300 MB, disco cheio, timeout 15 min, interrupção, limpeza de versões antigas, `0600`/`0700` |
-| Runner/estado | `state.json` atômico, fases, `jobId`/`unit`/`stateDir`/`pid`/`boot_id`, JSON corrompido, retomada por `GetUpdateStatus`, `gui-was-open`/`--relaunch`, `kill -9` do runner |
-| Helper | `StageUpdate`/`InstallUpdate`/`GetUpdateStatus`, uid via `GetConnectionUnixUser`, `O_NOFOLLOW`, path/symlink/dono, staging `0700`, chave de release vs `updates.publicKey` customizada, TOCTOU, unidade ativa, admissão por `flock`, varredura no start, rate limit |
+| Download/cache | `test_update_runner`: `.part` + rename, assinatura, SHA, cache TTL, timeout e versão igual; 300 MB/disco cheio no runner |
+| Runner/estado | `test_update_runner`: `state.json` atômico, fases, `jobId`/`unit`/`stateDir`, stop/start do socket, polling de `GetUpdateStatus`, falha; `gui-was-open`/`--relaunch` em T-UPD-04 |
+| Helper | `test_update_service`: `StageUpdate`/`InstallUpdate`/`GetUpdateStatus`, assinatura/chave de release, SHA-256, identidade `dpkg-deb`/`rpm`, artefato de outro dono/symlink, staging `0700`/`0600`, unidade ativa, admissão por `flock`, `systemd-run`; rate limit no `HelperService` |
 | Scriptlets | `preinst`/`postinst`/`postrm`/`prerm` e `%pre`/`%preun`/`%post`/`%posttrans` com processos falsos em container via `tests/packaging/test-scriptlets.sh` (`systemctl`/`loginctl`/`pkill`/`pgrep` falsos); fallback sem systemd; falha após `%pre`; `unmask` com retry; corrida de socket activation; trap de limpeza; CTest `package_scriptlets` |
 | Machines/cgroup | `ProcessScope` monta `systemd-run --user --scope` e cai para execução direta sem systemd; QEMU em `podstack-machine-<id>.scope` e virtiofsd em `podstack-virtiofsd-<hash>.scope` (cgroup real quando o user manager existe); reconciliação de órfãos após restart |
-| Exit codes/JSON | `update --check` 0/1/2/3/6/8/9 e `update --install` 0/1/2/6/8/9; `--json` com `error.code`; recusa de downgrade/chave customizada; cancelamento/timeout |
+| Exit codes/JSON | `test_cli/updateCommand`: `update --check` 0/1/2/3/6/8/9 e `update --install` 0/1/2/6/8/9 (sem 3); `--json` com `error.code`; `--yes` obrigatório sem TTY; manifesto ausente |
 | Logs core | `test_logging`: JSON Lines, nomes correntes/rotacionados (`-YYYYMMDD[-N]`), rotação diária/por tamanho, timer da meia-noite, 8º dia removido, 1–30 dias, 10 MB/200 MB, `0600`/`0700`, `flock`, concorrência daemon+CLI, fila cheia/drop-oldest, `kill -9`, redaction com `diagnostics.redact=false` |
 | Logs root | `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` `0750`/`0640`, `uid`/`jobId` por linha, redaction de token na saída de `apt`/`dnf`, `GetLogs` uid A/B/negado/jobId, cap 1 MiB, rate limit; app não lê root |
 | CLI/GUI | `system logs` filtros/`--follow`/`--since`/`--level`/`--component`/`--json`/`--export`/`--clear`, filtro inválido 2, export `0600` canonicalizado/sem symlink, “Ver log”, leitura em worker/modelo virtualizado, i18n/`Accessible.name`, `qmllint` |
@@ -619,6 +619,7 @@ Todo PR/tarefa anexa:
 
 - `ctest --preset dev` verde, cobertura ≥ 80% (gate bloqueante).
 - `package_scriptlets` roda os scriptlets Debian/RPM com comandos falsos, sem tocar na máquina.
+- `update_exec` valida o wrapper transiente: estado done/failed, log JSONL 0640 e redaction.
 - `clang-format --dry-run --Werror`, `clang-tidy` e `qmllint` nas áreas tocadas.
 - Nenhum segredo em argv/log; permissões `0600`/`0640`; helper como única fronteira root;
   redaction incondicional; assinatura/SHA validados no helper.

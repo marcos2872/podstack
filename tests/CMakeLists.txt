@@ -94,6 +94,15 @@ qt_add_executable(test_logging test_logging.cpp)
 target_link_libraries(test_logging PRIVATE podstack_core Qt6::Test)
 add_test(NAME logging COMMAND test_logging)
 
+qt_add_executable(test_update_service test_update_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/UpdateService.cpp)
+target_link_libraries(test_update_service PRIVATE podstack_core Qt6::Test)
+add_test(NAME update_service COMMAND test_update_service)
+
+qt_add_executable(test_update_runner test_update_runner.cpp MockHttpServer.cpp)
+target_link_libraries(test_update_runner PRIVATE podstack_core Qt6::Network Qt6::Test)
+add_test(NAME update_runner COMMAND test_update_runner)
+
 qt_add_executable(test_setup test_setup.cpp MockPodmanServer.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/SetupManager.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/DockerInventory.cpp
@@ -103,6 +112,7 @@ qt_add_executable(test_setup test_setup.cpp MockPodmanServer.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/PortBinding.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/Firewall.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/HelperService.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/UpdateService.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/Polkit.cpp)
 target_link_libraries(test_setup PRIVATE podstack_podman Qt6::Concurrent Qt6::DBus
     SQLite::SQLite3 Qt6::Test)
@@ -112,3 +122,7 @@ add_test(NAME package_scriptlets
     COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-scriptlets.sh ${CMAKE_SOURCE_DIR})
 set_tests_properties(package_scriptlets PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_test(NAME update_exec
+    COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-update-exec.sh
+            $<TARGET_FILE:podstack-update-exec>)

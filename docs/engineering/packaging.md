@@ -26,6 +26,7 @@
 /usr/bin/pds -> podstack
 /usr/libexec/podstack/podstackd
 /usr/libexec/podstack/podstack-helper
+/usr/libexec/podstack/podstack-update-exec
 /usr/lib/systemd/user/podstack.socket
 /usr/lib/systemd/user/podstack.service
 /usr/lib/systemd/system/podstack-helper.service
@@ -140,7 +141,7 @@ BusName=dev.podstack.Helper1
 ExecStart=/usr/libexec/podstack/podstack-helper
 User=root
 PrivateTmp=yes
-ProtectHome=yes
+ProtectHome=read-only
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
 ```
@@ -154,6 +155,12 @@ ProtectControlGroups=yes
   para `rpm_script_t` ao executar scriptlets de RPM; com NNP o kernel nega `nnp_transition` e a
   instalação falha. A allowlist de pacotes continua sendo a fronteira de segurança.
 - O helper nunca recebe `Exec`/shell; cada método monta `dnf`/`apt-get`/`pacman` com argumentos fixos.
+- **Update assistido:** `StageUpdate` valida assinatura/chave de release, SHA-256 e identidade do
+  pacote e copia para `/run/podstack/update/<jobId>/` (`0700`/`0600`); `InstallUpdate` inicia a
+  unidade transiente `podstack-update-<uuid>.service` com
+  `flock /run/podstack/update.lock /usr/libexec/podstack/podstack-update-exec`; o wrapper grava
+  `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` (`0640`) e `state.json` (`0640`). O helper roda com
+  `ProtectHome=read-only` para ler o artefato do usuário sem escrever no home.
 
 ### 4.1 Helper em desenvolvimento
 
@@ -192,6 +199,33 @@ helper: o setup usa `enable-socket` (`systemctl --user enable --now podman.socke
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+  <action id="dev.podstack.helper.stage-update">
+    <description>Stage a PodStack update</description>
+    <message>Allow PodStack to validate and stage the signed update package?</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+  <action id="dev.podstack.helper.install-update">
+    <description>Install a PodStack update</description>
+    <message>Allow PodStack to install the validated update and restart the app?</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+  <action id="dev.podstack.helper.get-update-status">
+    <description>Read PodStack update progress</description>
+    <message>Allow PodStack to read the progress of the running update?</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
       <allow_active>auth_admin_keep</allow_active>
     </defaults>
   </action>
@@ -296,6 +330,7 @@ binário; ambos tolerantes a host sem SELinux (`|| :`). O `%preun` remove com
 
 ```bash
 ls -Z /usr/libexec/podstack/podstack-helper
+/usr/libexec/podstack/podstack-update-exec
 ls -Zd /run/podstack
 semodule -l | grep podstack
 ausearch -m avc -ts recent        # negações do domínio podstack_helper_t
@@ -421,6 +456,7 @@ fi
 
 %files helper
 /usr/libexec/podstack/podstack-helper
+/usr/libexec/podstack/podstack-update-exec
 /usr/lib/systemd/system/podstack-helper.service
 /usr/share/dbus-1/system.d/dev.podstack.Helper1.conf
 /usr/share/polkit-1/actions/dev.podstack.helper.policy

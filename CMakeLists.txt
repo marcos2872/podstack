@@ -63,6 +63,7 @@ add_library(podstack_core STATIC
     src/core/Emulation.cpp
     src/core/RpcClient.cpp
     src/core/RpcStream.cpp
+    src/core/UpdateRunner.cpp
 )
 target_include_directories(podstack_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_core PUBLIC Qt6::Core Qt6::Network OpenSSL::Crypto)
@@ -164,18 +165,25 @@ add_executable(podstack-helper
     src/helper/PortBinding.cpp
     src/helper/Firewall.cpp
     src/helper/Polkit.cpp
+    src/helper/UpdateService.cpp
 )
 target_include_directories(podstack-helper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(podstack-helper PRIVATE PODSTACK_VERSION="${PROJECT_VERSION}")
 target_link_libraries(podstack-helper PRIVATE podstack_core Qt6::DBus)
+
+add_executable(podstack-update-exec
+    src/helper/UpdateExec.cpp
+)
+target_link_libraries(podstack-update-exec PRIVATE podstack_core)
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 add_executable(podstack
     src/cli/main.cpp
+    src/daemon/HelperClient.cpp
 )
-target_link_libraries(podstack PRIVATE podstack_core Qt6::Network)
+target_link_libraries(podstack PRIVATE podstack_core Qt6::Network Qt6::DBus)
 
 # ---------------------------------------------------------------------------
 # GUI
@@ -327,6 +335,7 @@ install(FILES packaging/systemd-system/podstack-helper.service
 )
 
 install(TARGETS podstack-helper RUNTIME DESTINATION libexec/podstack)
+install(TARGETS podstack-update-exec RUNTIME DESTINATION libexec/podstack)
 
 install(FILES packaging/polkit/dev.podstack.helper.policy
     DESTINATION share/polkit-1/actions

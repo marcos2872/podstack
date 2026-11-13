@@ -2,10 +2,14 @@
 
 #pragma once
 
+#include "helper/UpdateService.h"
+
 #include <QDBusContext>
 #include <QObject>
 #include <QStringList>
 #include <QVariantMap>
+
+#include <memory>
 
 namespace PodStack {
 
@@ -32,6 +36,10 @@ public slots:
     Q_SCRIPTABLE QVariantMap UnbindPorts(const QStringList &ports);
     Q_SCRIPTABLE QVariantMap TrustCa(const QString &certPath, const QString &fingerprint);
     Q_SCRIPTABLE QVariantMap UntrustCa(const QString &fingerprint);
+    Q_SCRIPTABLE QVariantMap StageUpdate(const QByteArray &manifest, const QByteArray &signature,
+                                         const QString &artifactPath, const QString &channel);
+    Q_SCRIPTABLE QVariantMap InstallUpdate(const QString &jobId);
+    Q_SCRIPTABLE QVariantMap GetUpdateStatus(const QString &jobId);
 
 protected:
     /// Ponto de extensão para testes; em produção exige polkit via D-Bus.
@@ -45,6 +53,7 @@ protected:
     virtual bool runSystemctl(const QStringList &arguments, QString *error) const;
     virtual QString caAnchorsDirectory() const;
     virtual bool runTrustUpdate(QString *error) const;
+    virtual UpdateService *updateService();
 
 private:
     bool validatePackages(const QStringList &packages, const QStringList &allowed,
@@ -61,7 +70,10 @@ private:
     uint callerUid() const;
 
     static QVariantMap result(bool ok, const QString &message);
+    static QVariantMap updateFailure(const Error &error);
     static QStringList installedPackages(const QStringList &packages);
+
+    std::unique_ptr<UpdateService> m_updateService;
 };
 
 } // namespace PodStack

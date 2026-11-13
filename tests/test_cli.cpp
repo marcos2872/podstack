@@ -1947,6 +1947,26 @@ void CliTest::updateCommand()
 
     const CliResult usage = run({QStringLiteral("update")}, env);
     QCOMPARE(usage.code, 2);
+
+    const CliResult installWithoutYes =
+        run({QStringLiteral("update"), QStringLiteral("--install")}, env);
+    QCOMPARE(installWithoutYes.code, 2);
+    QVERIFY(installWithoutYes.err.contains(QStringLiteral("--yes")));
+
+    const CliResult installBadOption =
+        run({QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--bogus")}, env);
+    QCOMPARE(installBadOption.code, 2);
+
+    const CliResult both =
+        run({QStringLiteral("update"), QStringLiteral("--check"), QStringLiteral("--install")}, env);
+    QCOMPARE(both.code, 2);
+
+    const CliResult missingManifest =
+        run({QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--yes"),
+             QStringLiteral("--manifest"), QStringLiteral("/tmp/nao-existe-podstack.json")},
+            env);
+    QCOMPARE(missingManifest.code, 1);
+    QVERIFY(missingManifest.err.contains(QStringLiteral("preparar")));
 }
 
 void CliTest::goldenExitCodes()

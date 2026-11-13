@@ -76,13 +76,13 @@ flowchart TB
 
 ### 4.2 Helper
 
-- systemd system unit com `PrivateTmp=yes`, `ProtectHome=yes`, `ProtectKernelTunables=yes` e
+- systemd system unit com `PrivateTmp=yes`, `ProtectHome=read-only`, `ProtectKernelTunables=yes` e
   `ProtectControlGroups=yes`. **Não** usa `NoNewPrivileges=yes`: o `dnf` precisa da transição
   SELinux para `rpm_script_t` ao rodar scriptlets de RPM (`nnp_transition`). A allowlist fechada
   de pacotes + polkit + auditoria é a fronteira de segurança.
 - D-Bus system bus, serviço `dev.podstack.Helper1`.
 - Polkit: cada método tem ação `dev.podstack.helper.<method>` com `auth_admin`/`auth_self`.
-- Rate limit: 10 req/min por uid por método.
+- Rate limit: 10 req/min por uid para stage/install; 120/min para `GetUpdateStatus` (polling).
 - Auditoria: journal com uid, método, parâmetros (sem segredos) e resultado.
 
 **Métodos permitidos (API fechada):**
@@ -100,8 +100,18 @@ flowchart TB
 | `RemovePackages` | `{packages:[...], reason}` | Remove pacotes **allowlisted** (ex.: docker-ce) |
 | `OpenPorts` | `{ports:[8080,8443], protocol:"tcp"\|"udp"}` | Abre portas no firewall em modo **runtime** (firewalld/ufw), reversível |
 | `ClosePorts` | `{ports:[...], protocol}` | Remove as regras runtime abertas por `OpenPorts` |
+| `StageUpdate` | `{manifest, signature, artifactPath, channel}` | Valida assinatura/chave de release, SHA-256 e identidade do pacote; copia para staging root-owned |
+| `InstallUpdate` | `{jobId}` | Recusa unidade ativa e inicia a unidade transiente com `systemd-run`/`flock` |
+| `GetUpdateStatus` | `{jobId}` | Lê `state.json` do job, escopado ao uid do chamador |
 
 **Proibido:** `Exec`, `Shell`, caminho arbitrário, escrita fora de paths allowlisted; instalação/remoção de pacotes só via `InstallPackages`/`RemovePackages`, com allowlist e consentimento.
+
+**Update assistido:** a chave de verificação do install é a de release embutida no helper ou
+`/etc/podstack/update.pub` root-owned — nunca `updates.publicKey`, que serve apenas para
+check/notificação. O artefato é lido com `O_NOFOLLOW`, `fstat` de dono/tamanho e copiado para
+`/run/podstack/update/<jobId>/` root-owned; o helper não confia em SHA/caminho do chamador. O
+gerenciador roda na unidade transiente, fora do cgroup do helper/sessão, com lock global
+`/run/podstack/update.lock`; falha não executa o gerenciador.
 
 **Firewall runtime (LAN):** `OpenPorts`/`ClosePorts` só aceitam listas de portas
 (`1..65535`, até 32 por chamada, sem duplicatas) e `protocol` `tcp`/`udp`. O helper executa
