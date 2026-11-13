@@ -246,7 +246,12 @@ primeiros segundos para responder ao prompt do boot manager. `-display none` per
 
 O `WindowsProvisioner` (`src/machines/WindowsProvisioner.{h,cpp}`) valida as ISOs locais
 e o answer file, gera `autounattend.xml` (partições GPT/EFI/MSR, conta local, OOBE,
-`DriverPaths` e FirstLogonCommands) e um ISO pequeno com o XML. O `MachineManager` usa
+`DriverPaths` e FirstLogonCommands) e um ISO pequeno com o XML. O `VirtioWinCache`
+(`src/machines/VirtioWinCache.{h,cpp}`) resolve o ISO do virtio-win quando ele não é
+informado: baixa o manifesto embutido (HTTPS + SHA-256 + tamanho) para
+`~/.local/share/podstack/virtio-win/` (`0700`, arquivos `0600`), com `.part`/rename
+atômico, lock por arquivo, verificação de hash e limpeza das versões antigas; o job de
+criação emite os estágios `virtio-win` e `virtio-win-verify`. O `MachineManager` usa
 `installPending` para anexar as mídias apenas durante a instalação e limpa
 `autounattend.xml`/`.iso` e os caminhos das ISOs no primeiro stop; o próximo start
 boota do disco.

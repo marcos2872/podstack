@@ -345,8 +345,11 @@ interface MachineSnapshot { id: string; name: string; sizeBytes: number; date: s
 **Criação assíncrona.** `machines.create` valida os parâmetros de forma síncrona (nome RFC
 1123, CPUs 1..256, memória/disco ≥ 1 GiB, arquitetura e distro) e só então inicia o job.
 `provisioner` aceita `linux` (default) e `windows`. Para Windows, `distro` é
-ausente/`"windows"`, `installerIso` e `virtioWinIso` são obrigatórios (ISOs locais
-absolutos/legíveis), a senha é obrigatória (a GUI/CLI gera quando o usuário não informa),
+ausente/`"windows"`, `installerIso` é obrigatório e `virtioWinIso` é **opcional** (ISO
+local absoluto/legível). Sem `virtioWinIso`, o job baixa o ISO oficial do virtio-win por um
+manifesto embutido (URL HTTPS + SHA-256 + tamanho), com cache `0600` em
+`~/.local/share/podstack/virtio-win/` e remoção das versões antigas; a senha é obrigatória
+(a GUI/CLI gera quando o usuário não informa),
 `windowsEdition` default é `Windows 11 Pro`, os mínimos são **2 vCPU/4 GiB/64 GiB** e mounts/
 agent forwarding são recusados; `answerFile` opcional substitui o XML gerado. O job gera
 `autounattend.xml`/`autounattend.iso` (`0600`) e anexa o instalador como CD USB
@@ -354,11 +357,18 @@ agent forwarding são recusados; `answerFile` opcional substitui o XML gerado. O
 respondido automaticamente via QMP (`send-key`) durante a instalação
 enquanto `installPending=true`. Progresso e resultado chegam como notificações:
 
-- `machines.delta {jobId, stage, progress}` — `stage` é `image`, `disk`, `seed`, `starting`
-  ou `running`; `progress` vai de 0 a 100.
+- `machines.delta {jobId, stage, progress}` — `stage` é `image`, `virtio-win`,
+  `virtio-win-verify`, `disk`, `seed`, `unattend`, `starting` ou `running`; `progress` vai
+  de 0 a 100.
 - `machines.done {jobId, machine?, error?}` — `machine` é o objeto `Machine` em caso de
   sucesso; `error` é um `ErrorData` (mesmo formato de `data` dos erros) em caso de falha,
   inclusive `PODSTACK_CANCELLED`.
+
+Falha de rede/HTTP no download do virtio-win encerra o job com
+`PODSTACK_DEPENDENCY_MISSING` (`reason=download_failed`) e remediação para informar um ISO
+local (`--virtio-win-iso`/campo da GUI); hash ou tamanho divergente →
+`PODSTACK_DOWNLOAD_FAILED` (`reason=checksum_mismatch`). Um ISO local informado tem
+precedência e não é copiado para o cache.
 
 `machines.cancel` apenas sinaliza o job; o cancelamento é observado no próximo checkpoint
 (download, disco, seed ou início) e o job termina com `machines.done`/`PODSTACK_CANCELLED`.

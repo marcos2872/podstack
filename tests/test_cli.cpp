@@ -1275,6 +1275,31 @@ void CliTest::machineCreateWindows()
                  .contains(QStringLiteral("senha do Windows:")));
     QCOMPARE(captured.value(QStringLiteral("password")).toString(),
              QStringLiteral("MinhaSenha123"));
+
+    // Sem --virtio-win-iso o CLI delega o download ao daemon.
+    captured = {};
+    QProcess downloadProcess;
+    downloadProcess.setProcessEnvironment(env);
+    downloadProcess.setProcessChannelMode(QProcess::SeparateChannels);
+    downloadProcess.start(cliPath(), {QStringLiteral("machine"), QStringLiteral("create"),
+                                      QStringLiteral("win-cli-3"), QStringLiteral("--provisioner"),
+                                      QStringLiteral("windows"), QStringLiteral("--iso"),
+                                      QStringLiteral("/tmp/win.iso")});
+    QVERIFY(downloadProcess.waitForStarted(3000));
+    timer.restart();
+    while (downloadProcess.state() != QProcess::NotRunning && timer.elapsed() < 15000) {
+        QTest::qWait(10);
+    }
+    if (downloadProcess.state() != QProcess::NotRunning) {
+        downloadProcess.kill();
+        downloadProcess.waitForFinished(1000);
+    }
+    QCOMPARE(downloadProcess.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(downloadProcess.exitCode(), 0);
+    QCOMPARE(captured.value(QStringLiteral("installerIso")).toString(),
+             QStringLiteral("/tmp/win.iso"));
+    QVERIFY(!captured.contains(QStringLiteral("virtioWinIso")));
+    QVERIFY(captured.value(QStringLiteral("password")).toString().size() >= 20);
 }
 
 void CliTest::machineSsh()

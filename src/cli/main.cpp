@@ -1625,11 +1625,12 @@ void printMachineUsage(QTextStream &stream)
            << "  create DISTRO[:VER] NOME [--cpus N] [--memory 4G] [--disk 20G]\n"
            << "         [--user U] [--user-data ARQUIVO] [--isolate-network]\n"
            << "         [--forward-ssh-agent] [--isolated]\n"
-           << "  create NOME --provisioner windows --iso ARQUIVO --virtio-win-iso ARQUIVO\n"
+           << "  create NOME --provisioner windows --iso ARQUIVO [--virtio-win-iso ARQUIVO]\n"
            << "         [--answer-file XML] [--edition NOME] [--windows-ssh]\n"
            << "         [--memory 4G] [--disk 64G] [--password-stdin] [--isolated]\n"
            << "                          Cria uma machine (a senha Linux entra na T4-04;\n"
-           << "                          Windows gera senha se --password-stdin faltar)\n"
+           << "                          Windows gera senha se --password-stdin faltar;\n"
+           << "                          sem --virtio-win-iso baixa o ISO oficial ~877 MB)\n"
            << "  start <id|nome> [--json] Inicia uma machine\n"
            << "  stop <id|nome> [--force] [--json]\n"
            << "                          Para uma machine\n"
@@ -2134,10 +2135,6 @@ int machineCreateCommand(const QStringList &args)
             err() << "--iso é obrigatório com --provisioner windows\n";
             return kExitUsage;
         }
-        if (virtioWinIso.isEmpty()) {
-            err() << "--virtio-win-iso é obrigatório com --provisioner windows\n";
-            return kExitUsage;
-        }
         if (forwardSshAgent) {
             err() << "encaminhar o SSH agent não é suportado em machines Windows\n";
             return kExitUsage;
@@ -2189,7 +2186,9 @@ int machineCreateCommand(const QStringList &args)
     if (windows) {
         params.insert(QStringLiteral("distro"), QStringLiteral("windows"));
         params.insert(QStringLiteral("installerIso"), installerIso);
-        params.insert(QStringLiteral("virtioWinIso"), virtioWinIso);
+        if (!virtioWinIso.isEmpty()) {
+            params.insert(QStringLiteral("virtioWinIso"), virtioWinIso);
+        }
         if (!answerFile.isEmpty()) {
             params.insert(QStringLiteral("answerFile"), answerFile);
         }

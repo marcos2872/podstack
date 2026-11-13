@@ -802,15 +802,13 @@ void GuiTest::backendMachines()
                     {QStringLiteral("virtioWinIso"), QStringLiteral("/tmp/virtio.iso")}});
     QVERIFY(backend.machineCreateError().contains(QStringLiteral("2 vCPUs")));
 
-    backend.createMachine(
-        QVariantMap{{QStringLiteral("name"), QStringLiteral("win-gui")},
-                    {QStringLiteral("provisioner"), QStringLiteral("windows")},
-                    {QStringLiteral("cpus"), 2},
-                    {QStringLiteral("memoryGiB"), 4},
-                    {QStringLiteral("diskGiB"), 64},
-                    {QStringLiteral("password"), QStringLiteral("Senha123!")},
-                    {QStringLiteral("installerIso"), QString()},
-                    {QStringLiteral("virtioWinIso"), QStringLiteral("/tmp/virtio.iso")}});
+    backend.createMachine(QVariantMap{{QStringLiteral("name"), QStringLiteral("win-gui")},
+                                      {QStringLiteral("provisioner"), QStringLiteral("windows")},
+                                      {QStringLiteral("cpus"), 2},
+                                      {QStringLiteral("memoryGiB"), 4},
+                                      {QStringLiteral("diskGiB"), 64},
+                                      {QStringLiteral("password"), QStringLiteral("Senha123!")},
+                                      {QStringLiteral("installerIso"), QString()}});
     QVERIFY(backend.machineCreateError().contains(QStringLiteral("ISO do Windows")));
 
     PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));

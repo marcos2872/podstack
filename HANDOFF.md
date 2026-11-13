@@ -37,9 +37,9 @@
 
 ### T9-04 / T9-04a — criação Windows
 - `provisioner: "windows"` com `distro` ausente/`"windows"`.
-- **ISOs locais obrigatórias** nesta fase: `installerIso` (Windows) e
-  `virtioWinIso` (virtio-win). O PodStack não baixa/redistribui Windows;
-  T9-08 (download/cache) segue pendente.
+- **ISO local do Windows obrigatório** (`installerIso`); o do virtio-win
+  (`virtioWinIso`) é opcional desde a T9-08 (sem ele, baixa/cacheia o oficial).
+  O PodStack não baixa/redistribui o Windows.
 - `WindowsProvisioner` (`src/machines/WindowsProvisioner.*`):
   - valida ISOs `.iso` absolutos/legíveis, answer file XML (opcional);
   - gera `autounattend.xml` + `autounattend.iso` (`0600`);
@@ -68,7 +68,7 @@
 - GUI: seletor Linux/Windows no diálogo “Nova machine”, campos de ISOs, answer
   file, edição, senha/Gerar, `windowsSsh` e aviso de licença.
 - CLI: `podstack machine create <nome> --provisioner windows --iso <arq>
-  --virtio-win-iso <arq> [--answer-file <xml>] [--edition <nome>]
+  [--virtio-win-iso <arq>] [--answer-file <xml>] [--edition <nome>]
   [--windows-ssh] [--password-stdin]`.
 - Export de machine Windows **ainda retorna `PODSTACK_UNSUPPORTED`** (o
   manifesto não carrega `provisioner` nem ISOs). Clone é recusado enquanto
@@ -76,13 +76,29 @@
 - Campos novos persistidos: `windowsSsh`, `windowsEdition`, `installPending`,
   `installerIso`, `virtioWinIso` (migração aditiva em `MachineStore`).
 
+### T9-08 — download/cache do virtio-win
+- `VirtioWinCache` (`src/machines/VirtioWinCache.*`) usa manifesto embutido:
+  versão `0.1.302`, URL HTTPS do fedorapeople, SHA-256
+  `303f7ae40dad495d6ae474fdc571df58958a4dbc5c37a522d80f9a203867949d` e
+  877.373.440 bytes.
+- `machines.create` Windows sem `virtioWinIso` baixa o ISO no job, com os
+  estágios `virtio-win` (0–68) e `virtio-win-verify` (68–74); cancelamento
+  usa `machines.cancel`.
+- Cache `~/.local/share/podstack/virtio-win/` (`0700`), ISO e sidecar `0600`;
+  reuso por sidecar/tamanho, rehash quando falta sidecar, `.part` + rename
+  atômico e lock de 15 min. Versões antigas são removidas após verificar a atual.
+- Falha de rede/HTTP → `PODSTACK_DEPENDENCY_MISSING` (`reason=download_failed`)
+  com remediação para informar ISO local; hash/tamanho divergente →
+  `PODSTACK_DOWNLOAD_FAILED` (`reason=checksum_mismatch`).
+- GUI: campo “ISO do virtio-win (opcional)”, vazio baixa automaticamente; CLI
+  omite `--virtio-win-iso`; `Backend`/QML mostram os novos estágios.
+
 ## O que falta (em ordem sugerida)
 
 1. **E2E real do Windows** (parcialmente executado em 2026-11-13).
-   - Há `/dev/kvm`, QEMU 10.2.2 e ISOs válidos em `~/Downloads`:
-     `Windows11_Client_x64_pt-br_26300_9457.iso` (Windows 11 Pro, build
-     10.0.26300, imagem 4) e `virtio-win-0.1.302.iso`
-     (fonte oficial: `https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso`).
+   - Há `/dev/kvm` e QEMU 10.2.2; os ISOs usados no teste anterior não estão
+     mais no disco. O virtio-win pode ser baixado pelo T9-08 ou de
+     `https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso`.
    - Já validado: o ISO Windows boota em **SeaBIOS/legacy**; no **OVMF** ele
      **não** boota como CD IDE/AHCI (BdsDxe “Time out”), mas boota como **CD USB**
      (`usb-storage` + `bootindex=0`). O `send-key` via QMP passa do prompt
@@ -106,12 +122,9 @@
 4. **T9-07.** Empacotamento (`Requires`/`Depends` de QEMU/OVMF/swtpm/SPICE),
    checks no `SetupManager` + `test_setup`, `scripts/clean-install-check.sh`
    para DEB e correção de `qemuPackagesForManager()`.
-5. **T9-08.** Download/cache do virtio-win por manifesto com URL HTTPS e
-   SHA-256 (o projeto upstream não publica hash do ISO principal; será
-   necessário fixar um hash calculado). Manter fallback de ISO local.
-6. **Export/import Windows.** Levar `provisioner` no manifesto, tratar seed
+5. **Export/import Windows.** Levar `provisioner` no manifesto, tratar seed
    opcional e NVRAM/TPM fora do arquivo; habilitar export depois.
-7. **M10.** Apps remotos (xpra/RAIL); RAIL depende de T9-05.
+6. **M10.** Apps remotos (xpra/RAIL); RAIL depende de T9-05.
 
 ## Gotchas descobertos no primeiro teste real
 
@@ -138,15 +151,24 @@
 ## Evidência da última rodada
 
 - `cmake --build --preset dev`: ok, sem warnings novos.
-- `ctest --preset dev`: **17/17** testes passando após os ajustes de USB/QMP.
-- Cobertura (`gcovr`, gate 80%): **80,6%** de linhas na medição anterior ao
-  ajuste final de USB/QMP; repetir no E2E.
-- `clang-format` 22.1.8 (linhas alteradas) e `clang-tidy` 22.1.8: limpos.
+- `ctest --preset dev`: **17/17** testes passando.
+- Cobertura (`gcovr`, gate 80%): **79,9%** de linhas (25024/31328); o baseline
+  da branch antes da T9-08 era **79,8%** (24990/31328), então o gate de 80% já
+  falhava — a T9-08 não o reduziu (`VirtioWinCache.cpp` ficou em 90%).
+- `clang-format` 22.1.8 via `clang-format-diff` (linhas alteradas) e `clang-tidy`
+  22.1.8 em `VirtioWinCache.cpp`: limpos.
   (Não há `clang-tools-extra` instalado no host; use
   `uvx --from clang-format==22.1.8` / `uvx --from clang-tidy==22.1.8`.)
 - `qmllint`: sem erros; warnings de `Theme`/acesso não qualificado são
   preexistentes no QML.
+- T9-08 (cache): `./build/dev/tests/test_machines virtioWinCache* machineManagerWindowsDownload*
+  machineManagerWindowsValidation` passam; `virtioWinCacheIntegration` com o ISO real
+  (877.373.440 bytes) servido por HTTP local: **PASS**, SHA-256
+  `303f7ae4…949d` confere, cache `0700` e ISO/sidecar `0600`. O download externo pelo
+  fedorapeople estagnou no host desta sessão; o hash/tamanho foram conferidos no arquivo
+  baixado por `curl` antes do teste.
 - Testes focados úteis:
+  - `./build/dev/tests/test_machines virtioWinCacheDownload virtioWinCacheReuse virtioWinCacheChecksumFailure virtioWinCacheOffline virtioWinCacheCleanup virtioWinCacheCancel machineManagerWindowsDownload machineManagerWindowsDownloadFailure machineManagerWindowsValidation`
   - `./build/dev/tests/test_machines windowsProvisionerXml windowsProvisionerPrepare windowsProvisionerValidation machineManagerWindowsCreate machineManagerWindowsValidation`
   - `./build/dev/tests/test_cli machineCreateWindows`
   - `./build/dev/tests/test_gui backendMachines`
@@ -158,8 +180,9 @@
   (promoção do M9 no SDD).
 - Criação Windows: `4b9cff9` (backend), `cebf1ca` (GUI/CLI), `a6d9647`
   (docs) e `43c71cf` (primeira versão desta nota).
-- Ajuste pós-E2E (QEMU 10.2/USB/QMP): ver o commit mais recente no
-  `git log` (`fix(machines): ...`); esta nota foi atualizada junto.
+- Ajuste pós-E2E (QEMU 10.2/USB/QMP): `fd63fbe`.
+- T9-08 (download/cache do virtio-win): commit `feat(machines): ...` desta
+  rodada; ver o `git log` para o hash.
 
 Nada foi enviado ao remoto. Antes de continuar, rode `git status` e leia
 [`docs/sdd/tasks.md`](docs/sdd/tasks.md) para confirmar o estado.

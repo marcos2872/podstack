@@ -22,6 +22,9 @@ QString cloudImagesDir();
 /// ~/.local/share/podstack/machines
 QString machinesDir();
 
+/// ~/.local/share/podstack/virtio-win (cache do ISO do virtio-win)
+QString virtioWinCacheDir();
+
 /// ~/.local/share/podstack/machines/<id>; vazio se o id não for seguro para path.
 QString machineDir(const QString &id);
 

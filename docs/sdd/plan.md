@@ -261,7 +261,8 @@ qemu-system-x86_64 \
 - `provisioner` e os campos Windows (`windowsSsh`, `windowsEdition`, `installPending`,
   `installerIso`, `virtioWinIso`) são persistidos em `meta.json` e no índice SQLite, com
   migração aditiva por `PRAGMA table_info` + `ALTER TABLE`.
-- A criação Windows usa **ISOs locais** do Windows e do virtio-win, gera
+- A criação Windows usa **ISO local** do Windows; o ISO do virtio-win pode ser local ou
+  baixado do manifesto embutido (HTTPS + SHA-256, cache `0600`; T9-08). Gera
   `autounattend.xml`+`autounattend.iso` (`0600`), valida mínimos 2 vCPU/4 GiB/64 GiB e não
   usa cloud-init/seed. `installPending` controla as mídias de instalação; o primeiro
   stop limpa as mídias e o flag. `windowsEdition` (default `Windows 11 Pro`) escolhe
@@ -275,9 +276,8 @@ qemu-system-x86_64 \
 - TPM 2.0: `SwtpmProcess` (mesmo modelo do `VirtiofsdProcess`) sobe antes do QEMU, é adotado
   por `cmdline` após restart do daemon e encerrado no stop/delete. `tpm/` é `0700` e os
   arquivos de estado são `0600`.
-- Limitações desta rodada: sem download do virtio-win (T9-08; ISO local), sem `guest-ping`/
-  `guestOs` (T9-05), export Windows retorna `PODSTACK_UNSUPPORTED` e mounts/agent forwarding
-  são recusados.
+- Limitações desta rodada: sem `guest-ping`/`guestOs` (T9-05), export Windows retorna
+  `PODSTACK_UNSUPPORTED` e mounts/agent forwarding são recusados.
 
 ### 7.4 Limitações
 

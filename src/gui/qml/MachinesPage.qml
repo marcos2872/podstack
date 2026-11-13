@@ -326,6 +326,12 @@ ColumnLayout {
         if (stage === "image") {
             return qsTr("Baixando imagem cloud…")
         }
+        if (stage === "virtio-win") {
+            return qsTr("Baixando o ISO do virtio-win (~877 MB)…")
+        }
+        if (stage === "virtio-win-verify") {
+            return qsTr("Verificando o ISO do virtio-win…")
+        }
         if (stage === "disk") {
             return qsTr("Criando disco qcow2…")
         }
@@ -878,7 +884,7 @@ ColumnLayout {
 
                 Text {
                     visible: machinesPage.windowsProvisioner
-                    text: qsTr("ISO do virtio-win")
+                    text: qsTr("ISO do virtio-win (opcional)")
                     color: Theme.textSecondary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMeta
@@ -887,10 +893,19 @@ ColumnLayout {
                     id: machineVirtioWinIso
                     Layout.fillWidth: true
                     visible: machinesPage.windowsProvisioner
-                    placeholderText: "/home/voce/virtio-win.iso"
+                    placeholderText: qsTr("vazio = baixar automaticamente")
                     title: qsTr("Selecionar o ISO do virtio-win")
                     filter: qsTr("Imagens ISO (*.iso)")
                     enabled: !backend.machineCreateActive
+                }
+                Text {
+                    visible: machinesPage.windowsProvisioner
+                    text: qsTr("Sem arquivo local, o PodStack baixa o ISO oficial (~877 MB) e verifica o SHA-256 no primeiro uso.")
+                    color: Theme.textTertiary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
                 }
 
                 Text {
@@ -1137,7 +1152,6 @@ ColumnLayout {
                 enabled: !backend.machineCreateActive && machineName.text.length > 0
                          && (machinesPage.windowsProvisioner
                              ? machineWindowsIso.text.length > 0
-                               && machineVirtioWinIso.text.length > 0
                                && machineWindowsPassword.text.length >= 8
                              : machinesPage.distroLabels.length > 0)
                 onClicked: machinesPage.createRequested()

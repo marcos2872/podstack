@@ -86,6 +86,7 @@ add_library(podstack_machines STATIC
     src/machines/DistroRegistry.cpp
     src/machines/HttpDownloader.cpp
     src/machines/CloudImageCache.cpp
+    src/machines/VirtioWinCache.cpp
     src/machines/CloudInit.cpp
     src/machines/SshConfig.cpp
     src/machines/MachineMeta.cpp

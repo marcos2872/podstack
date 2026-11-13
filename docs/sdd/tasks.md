@@ -252,7 +252,7 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 ## M9 — Guest Windows (P1, v1.x)
 
-> **Status (2026-11-12): Fase 1 (T9-01/T9-02/T9-03) e criação Windows (T9-04/T9-04a) implementadas em código, com testes; E2E com Windows real e driver/agente (T9-05) pendentes.** Delta completo (requisitos, desenho e critérios): [`docs/specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/tasks.md). Requisitos: FR-MAC-111…116 e NFR-MAC-006…008. M9 não bloqueia o v1.0; bloqueia apenas a parte RAIL de T10-03.
+> **Status (2026-11-13): Fase 1 (T9-01/T9-02/T9-03), criação Windows (T9-04/T9-04a) e download/cache do virtio-win (T9-08) implementados em código, com testes; E2E com Windows real e driver/agente (T9-05) pendentes.** Delta completo (requisitos, desenho e critérios): [`docs/specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/tasks.md). Requisitos: FR-MAC-111…116 e NFR-MAC-006…008. M9 não bloqueia o v1.0; bloqueia apenas a parte RAIL de T10-03.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
@@ -264,7 +264,7 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 | T9-05 | P1 | Drivers + agente: vioscsi/viostor, NetKVM, viogpudo, `virtio-win-guest-tools` e `qemu-guest-agent` via `autounattend`; `windowsSsh` instala OpenSSH; `provisioning` → `running` dirigido por `guest-ping` no canal `agent`, timeout de 10 min → `error`; `guest-get-osinfo` grava `guestOs` e detecta Home/Pro (FR-MAC-115/120). | T9-04, T10-01 | disco/rede virtio sem `!`; `guest-ping` responde; timeout e Home/Pro testados |
 | T9-06 | P1 | Áudio Windows: validar `intel-hda` duplex (saída + microfone), nó PipeWire nomeado por VM; `machines.audio.set` vale para Windows (FR-MAC-116). | T9-04 | playback e microfone funcionam; stream identificável no mixer |
 | T9-07 | P1 | Dependências de host no empacotamento: `Requires`/`Depends` para QEMU x86/arm, utils, virtiofsd, OVMF, módulos SPICE, áudio e swtpm; backends gráficos em `Recommends`/`Suggests` (xpra nunca em `Depends`); checks no `SetupManager` + `test_setup`; estender `scripts/clean-install-check.sh` para DEB e corrigir `qemuPackagesForManager()` (NFR-MAC-006/007). | — | instalação limpa em Fedora 44 e Ubuntu 24.04/26.04 sem check obrigatório em `missing` |
-| T9-08 | P1 | ISO virtio-win: download por manifest com URL e SHA-256, job com progresso/cancelamento, cache `0600` em `~/.local/share/podstack/virtio-win/`, verificação de hash, falha offline com instrução de arquivo local e limpeza de cache antigo (NFR-MAC-007). | — | download/verificação/cache testados; hash inválido não é usado |
+| T9-08 | P1 | ISO virtio-win: download por manifest com URL e SHA-256, job com progresso/cancelamento, cache `0600` em `~/.local/share/podstack/virtio-win/`, verificação de hash, falha offline com instrução de arquivo local e limpeza de cache antigo (NFR-MAC-007). | — | ✅ código — manifesto HTTPS/SHA-256, cache `0600`, progresso/cancelamento, limpeza e fallback de ISO local testados (`virtioWinCache*`, `machineManagerWindowsDownload`); download real verificado |
 
 **Bloqueios duros:** Windows Home não habilita RAIL; GPU/3D exige VFIO (fora); Windows ARM e host aarch64 fora (M9/RAIL são x86_64-only, NFR-MAC-008).
 

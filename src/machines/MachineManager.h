@@ -10,6 +10,7 @@
 #include "machines/QemuRuntime.h"
 #include "machines/SshConfig.h"
 #include "machines/SwtpmProcess.h"
+#include "machines/VirtioWinCache.h"
 #include "machines/VirtiofsdProcess.h"
 
 #include <QByteArray>
@@ -80,6 +81,8 @@ public:
         QString storePath;      // vazio = podstack.db
         QString machinesRoot;   // vazio = Paths::machinesDir()
         QString imageCacheDir;  // vazio = Paths::cloudImagesDir()
+        QString virtioWinCacheDir;           // vazio = Paths::virtioWinCacheDir()
+        VirtioWinManifest virtioWinManifest; // url vazio = manifesto embutido
         QString qemuImgBinary;  // vazio = QStandardPaths
         QString sshKeygenBinary; // vazio = QStandardPaths
         QString virtiofsdBinary; // vazio = PODSTACK_VIRTIOFSD_BINARY/QStandardPaths
@@ -220,6 +223,7 @@ private:
     std::unique_ptr<QemuRuntime> m_runtime;
     MachineStore m_store;
     CloudImageCache m_cache;
+    VirtioWinCache m_virtioWin;
     SshConfig m_sshConfig;
     std::recursive_mutex m_virtiofsMutex;
     std::map<QString, std::map<QString, std::unique_ptr<VirtiofsdProcess>>> m_virtiofs;

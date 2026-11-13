@@ -100,7 +100,7 @@ Não persistido. Cache em memória reconstruído por eventos.
 | `windowsSsh` | bool | instala/habilita OpenSSH no Windows |
 | `windowsEdition` | string? | imagem do ISO (default `Windows 11 Pro`) |
 | `installPending` | bool | anexa as ISOs de instalação enquanto true |
-| `installerIso` / `virtioWinIso` | string? | ISOs locais durante a instalação (limpos no stop) |
+| `installerIso` / `virtioWinIso` | string? | ISOs durante a instalação (Windows local; virtio-win local ou do cache; limpos no stop) |
 | `arch` | enum | `amd64`, `arm64` |
 | `cpus` | int | 1..N |
 | `memoryBytes` | int64 | ≥ 1 GiB |

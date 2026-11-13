@@ -12,6 +12,7 @@
 #include "machines/QmpClient.h"
 #include "machines/SerialPorts.h"
 #include "machines/UsbDevices.h"
+#include "machines/VirtioWinCache.h"
 #include "machines/WindowsProvisioner.h"
 
 #include <QDateTime>
@@ -306,16 +307,18 @@ MachineManager::MachineManager()
 }
 
 MachineManager::MachineManager(Options options)
-    : m_options(std::move(options))
-    , m_runtime(m_options.runtime ? std::move(m_options.runtime)
-                                  : std::make_unique<QemuProcessRuntime>())
-    , m_store(m_options.storePath.isEmpty()
-                  ? QString()
-                  : QFileInfo(m_options.storePath).absoluteFilePath())
-    , m_cache(m_options.imageCacheDir.isEmpty()
-                  ? QString()
-                  : QDir(m_options.imageCacheDir).absolutePath())
-    , m_sshConfig(m_options.sshConfigPath)
+    : m_options(std::move(options)),
+      m_runtime(m_options.runtime ? std::move(m_options.runtime)
+                                  : std::make_unique<QemuProcessRuntime>()),
+      m_store(m_options.storePath.isEmpty() ? QString()
+                                            : QFileInfo(m_options.storePath).absoluteFilePath()),
+      m_cache(m_options.imageCacheDir.isEmpty() ? QString()
+                                                : QDir(m_options.imageCacheDir).absolutePath()),
+      m_virtioWin(m_options.virtioWinCacheDir.isEmpty()
+                      ? QString()
+                      : QDir(m_options.virtioWinCacheDir).absolutePath(),
+                  m_options.virtioWinManifest),
+      m_sshConfig(m_options.sshConfigPath)
 {
     if (m_options.machinesRoot.isEmpty()) {
         m_options.machinesRoot = Paths::machinesDir();
@@ -463,7 +466,8 @@ bool MachineManager::validate(const CreateMachineRequest &request, Error *error)
         if (!WindowsProvisioner::validateInstallerIso(request.installerIso, error)) {
             return false;
         }
-        if (!WindowsProvisioner::validateVirtioWinIso(request.virtioWinIso, error)) {
+        if (!request.virtioWinIso.trimmed().isEmpty() &&
+            !WindowsProvisioner::validateVirtioWinIso(request.virtioWinIso, error)) {
             return false;
         }
         if (!request.answerFile.trimmed().isEmpty() &&
@@ -2350,6 +2354,32 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         return {};
     }
 
+    QString virtioWinIso = request.virtioWinIso;
+    if (windows && virtioWinIso.trimmed().isEmpty()) {
+        // O download ocupa 0–68 e a verificação 68–74; o disco começa em 75.
+        VirtioWinProgress isoProgress;
+        if (progress) {
+            isoProgress = [&progress](const QString &stage, qint64 received, qint64 total) {
+                const bool verify = stage == QStringLiteral("verify");
+                const int span = verify ? 6 : 68;
+                const int percent = total > 0 ? static_cast<int>((received * span) / total) : 0;
+                progress(verify ? QStringLiteral("virtio-win-verify")
+                                : QStringLiteral("virtio-win"),
+                         qBound(0, (verify ? 68 : 0) + percent, 74));
+            };
+        }
+        if (progress) {
+            progress(QStringLiteral("virtio-win"), 0);
+        }
+        Error isoError;
+        if (!m_virtioWin.ensure(isoProgress, cancelled, &virtioWinIso, &isoError)) {
+            if (error) {
+                *error = isoError;
+            }
+            return {};
+        }
+    }
+
     QString backingPath;
     if (!windows) {
         const DownloadProgress downloadProgress =
@@ -2497,7 +2527,7 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
                                                               : request.windowsEdition.trimmed())
                 : QString();
     meta.installerIso = windows ? request.installerIso : QString();
-    meta.virtioWinIso = windows ? request.virtioWinIso : QString();
+    meta.virtioWinIso = windows ? virtioWinIso : QString();
     meta.installPending = windows;
     meta.state = QStringLiteral("provisioning");
     meta.isolated = request.isolated;

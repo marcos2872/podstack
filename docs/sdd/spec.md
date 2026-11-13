@@ -581,20 +581,26 @@ Host <name>.podstack <name>
 ### 7.9 Guest Windows (M9)
 
 O M9 usa `provisioner: "windows"` no metadado (`linux` é o default). A criação Windows aceita
-`distro` ausente/`"windows"`, exige um **ISO local do Windows** (`installerIso`) e um **ISO
-local do virtio-win** (`virtioWinIso`) e gera `autounattend.xml` + ISO de answer file. O
-PodStack nunca baixa/redistribui o Windows; o alvo testado é **Windows 11 Pro amd64**
-(`Home` instala, mas não habilita RAIL). `windowsEdition` (default `Windows 11 Pro`) escolhe
-a imagem via `/IMAGE/NAME`; um `answerFile` próprio substitui o XML gerado.
+`distro` ausente/`"windows"`, exige um **ISO local do Windows** (`installerIso`) e aceita um
+**ISO local do virtio-win** (`virtioWinIso`) **ou baixa o oficial** por manifesto e gera
+`autounattend.xml` + ISO de answer file. O PodStack nunca baixa/redistribui o Windows; o alvo
+testado é **Windows 11 Pro amd64** (`Home` instala, mas não habilita RAIL). `windowsEdition`
+(default `Windows 11 Pro`) escolhe a imagem via `/IMAGE/NAME`; um `answerFile` próprio
+substitui o XML gerado.
 
-- **Criação (T9-04/T9-04a).** `machines.create`/`podstack machine create` exigem
-  `provisioner:"windows"`, `installerIso`, `virtioWinIso`, senha (a GUI/CLI gera se faltar;
-  a CLI imprime a senha uma vez e a GUI copia para o clipboard) e mínimos **2 vCPU / 4 GiB /
-  64 GiB**; valores menores → `PODSTACK_VALIDATION`. Sem cloud-init/seed; mounts e SSH
-  agent forwarding são recusados. O XML (`0600`) tem partições GPT/EFI/MSR, conta local,
-  OOBE sem conta online, `DriverPaths` (`viostor`, `NetKVM`, `vioscsi`, `viogpudo`, `Balloon`,
-  `viorng`, `vioserial`), guest-tools (`virtio-win-gt-x64.msi`) e qemu-ga
-  (`guest-agent\qemu-ga-x86_64.msi`) e OpenSSH quando `windowsSsh`. O ISO do answer
+- **Criação (T9-04/T9-04a/T9-08).** `machines.create`/`podstack machine create` exigem
+  `provisioner:"windows"`, `installerIso`, senha (a GUI/CLI gera se faltar; a CLI imprime a
+  senha uma vez e a GUI copia para o clipboard) e mínimos **2 vCPU / 4 GiB / 64 GiB**;
+  valores menores → `PODSTACK_VALIDATION`. Sem `virtioWinIso`, o job baixa o ISO oficial do
+  virtio-win (manifesto embutido com URL HTTPS, SHA-256 e tamanho), com progresso/
+  cancelamento e cache `0600` em `~/.local/share/podstack/virtio-win/`; versões antigas do
+  cache são removidas após a verificação. Falha de rede → `PODSTACK_DEPENDENCY_MISSING`
+  (`reason=download_failed`) com remediação para informar um ISO local; hash/tamanho
+  divergente → `PODSTACK_DOWNLOAD_FAILED` (`reason=checksum_mismatch`). Sem cloud-init/seed;
+  mounts e SSH agent forwarding são recusados. O XML (`0600`) tem partições GPT/EFI/MSR,
+  conta local, OOBE sem conta online, `DriverPaths` (`viostor`, `NetKVM`, `vioscsi`,
+  `viogpudo`, `Balloon`, `viorng`, `vioserial`), guest-tools (`virtio-win-gt-x64.msi`) e
+  qemu-ga (`guest-agent\qemu-ga-x86_64.msi`) e OpenSSH quando `windowsSsh`. O ISO do answer
   file é anexado como CD-ROM junto ao instalador e ao virtio-win. O instalador usa
   `usb-storage` com `bootindex=0` (o OVMF não inicializa o El Torito desse ISO pelo CD
   IDE/AHCI); virtio-win e answer file ficam em CD-ROMs IDE. O prompt "Press any key to boot
@@ -640,7 +646,8 @@ a imagem via `/IMAGE/NAME`; um `answerFile` próprio substitui o XML gerado.
 - [ ] E2E com Windows 11 real (instalação até o desktop, Secure Boot ativo, TPM 2.0 visível) —
   depende de um ISO Windows e da T9-05.
 - [ ] Remoção do answer file por `guest-ping` e detecção Home/Pro — T9-05.
-- [ ] Download/cache do virtio-win — T9-08; nesta fase o ISO é local.
+- [x] Download/cache do virtio-win (T9-08): manifesto HTTPS + SHA-256, progresso/
+  cancelamento, cache `0600`, remoção de versões antigas e fallback de ISO local.
 
 
 ---

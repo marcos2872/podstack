@@ -203,10 +203,12 @@ encerra a janela da instância já em execução.
   `autounattend.xml`/`.iso` são removidos no primeiro `stop` (a remoção por `guest-ping` fica
   na T9-05) e ficam fora do export. A CLI imprime a senha gerada uma única vez; a GUI a copia
   para o clipboard ao concluir.
-- ISO do Windows/virtio-win: caminhos locais absolutos, validados como arquivo `.iso`
-  legível; o PodStack não baixa nem redistribui o Windows. As ISOs são anexadas read-only e
-  os caminhos são limpos no stop. Um `answerFile` próprio é validado como XML antes de virar
-  o CD-ROM de answer file e substitui o XML gerado (incluindo a injeção da chave SSH).
+- ISO do Windows/virtio-win: o caminho do Windows é local absoluto, validado como arquivo
+  `.iso` legível; o PodStack não baixa nem redistribui o Windows. O virtio-win pode ser
+  informado localmente ou baixado do manifesto embutido (ver acima). As ISOs são anexadas
+  read-only e os caminhos são limpos no stop. Um `answerFile` próprio é validado como XML
+  antes de virar o CD-ROM de answer file e substitui o XML gerado (incluindo a injeção da
+  chave SSH).
 - Proxy: a URL de `network.proxy` pode conter usuário/senha. Ela **nunca** é registrada em
   log, ecoada em erro de validação ou incluída em diagnóstico; os erros são genéricos. O
   `config.json` é `0600`, e as variáveis vão ao container/machine pelo ambiente/cloud-init,
@@ -275,6 +277,11 @@ encerra a janela da instância já em execução.
   (**SHA-256/SHA-512**) é obrigatório e verificado antes de usar a imagem. O cache em
   `~/.cache/podstack/images/` é `0700` e os arquivos/sidecars são `0600`; download em
   `.part` com rename atômico e lock por imagem.
+- ISO do virtio-win (T9-08): o manifesto embutido usa **HTTPS** com SHA-256 e tamanho
+  esperados; o cache em `~/.local/share/podstack/virtio-win/` é `0700`, o ISO/sidecar são
+  `0600` e o download usa `.part` + rename atômico com lock. Hash ou tamanho divergente
+  descarta o arquivo; falha de rede vira `PODSTACK_DEPENDENCY_MISSING` com a opção de ISO
+  local. O ISO informado pelo usuário tem precedência e não é copiado.
 - Export/import de máquina: o `.tar.zst` contém o disco, o seed cloud-init e o par de
   chaves SSH da machine; o `.part` e o arquivo final são criados com `0600` e o
   arquivo só é renomeado no sucesso. O import valida o formato `podstack.machine/1`,

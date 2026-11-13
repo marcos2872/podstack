@@ -24,6 +24,7 @@
 #include "machines/SerialPorts.h"
 #include "machines/SshConfig.h"
 #include "machines/UsbDevices.h"
+#include "machines/VirtioWinCache.h"
 #include "machines/VirtiofsdProcess.h"
 #include "machines/WindowsProvisioner.h"
 
@@ -95,6 +96,8 @@ using PodStack::SshConfig;
 using PodStack::SshInfo;
 using PodStack::UpdateMachineRequest;
 using PodStack::VirtiofsdProcess;
+using PodStack::VirtioWinCache;
+using PodStack::VirtioWinManifest;
 using PodStack::WindowsProvisioner;
 using PodStack::WindowsProvisionOptions;
 using PodStack::WindowsProvisionResult;
@@ -314,6 +317,18 @@ bool writeTestFile(const QString &path, const QByteArray &content,
     }
     file.close();
     return QFile::setPermissions(path, permissions);
+}
+
+VirtioWinManifest virtioWinManifestFor(const QString &url, const QByteArray &payload)
+{
+    VirtioWinManifest manifest;
+    manifest.version = QStringLiteral("0.1.302-test");
+    manifest.url = url;
+    manifest.sha256 =
+        QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex());
+    manifest.sizeBytes = payload.size();
+    manifest.fileName = QStringLiteral("virtio-win-0.1.302.iso");
+    return manifest;
 }
 
 bool createFirmwareFiles(const QString &root, QString *codePath, QString *varsPath)
@@ -1000,10 +1015,20 @@ private slots:
     void machineManagerAudio();
     void machineManagerWindowsStart();
     void machineManagerSpiceConsole();
+    void virtioWinCacheDownload();
+    void virtioWinCacheReuse();
+    void virtioWinCacheChecksumFailure();
+    void virtioWinCacheOffline();
+    void virtioWinCacheCleanup();
+    void virtioWinCacheCancel();
+    void virtioWinCacheErrors();
+    void virtioWinCacheIntegration();
     void windowsProvisionerXml();
     void windowsProvisionerPrepare();
     void windowsProvisionerValidation();
     void machineManagerWindowsCreate();
+    void machineManagerWindowsDownload();
+    void machineManagerWindowsDownloadFailure();
     void machineManagerWindowsValidation();
     void machineManagerSnapshots();
     void qemuRuntimeFallback();
@@ -1175,8 +1200,9 @@ void MachinesTest::registryLists()
 void MachinesTest::pathsCacheDir()
 {
     QCOMPARE(PodStack::Paths::cacheDir(), m_root + QStringLiteral("/cache/podstack"));
-    QCOMPARE(PodStack::Paths::cloudImagesDir(),
-             m_root + QStringLiteral("/cache/podstack/images"));
+    QCOMPARE(PodStack::Paths::cloudImagesDir(), m_root + QStringLiteral("/cache/podstack/images"));
+    QCOMPARE(PodStack::Paths::virtioWinCacheDir(),
+             m_root + QStringLiteral("/data/podstack/virtio-win"));
 
     QString error;
     QVERIFY2(PodStack::Paths::ensureDirs(&error), qPrintable(error));
@@ -1184,6 +1210,9 @@ void MachinesTest::pathsCacheDir()
     const QFileInfo info(PodStack::Paths::cloudImagesDir());
     QVERIFY(info.isDir());
     QVERIFY(ownerOnly(info.permissions(), true));
+    const QFileInfo virtioInfo(PodStack::Paths::virtioWinCacheDir());
+    QVERIFY(virtioInfo.isDir());
+    QVERIFY(ownerOnly(virtioInfo.permissions(), true));
 }
 
 void MachinesTest::pathsMachinesDir()
@@ -5845,6 +5874,291 @@ void MachinesTest::machineManagerSpiceConsole()
     qunsetenv("PODSTACK_REMOTE_VIEWER");
 }
 
+void MachinesTest::virtioWinCacheDownload()
+{
+    const QByteArray payload(64 * 1024, 'v');
+    const QString urlPath = QStringLiteral("/virtio/download.iso");
+    m_server.setResponse(urlPath, 200, payload);
+    const QString directory = cacheDirFor(QStringLiteral("virtio-download"));
+    VirtioWinCache cache(directory, virtioWinManifestFor(m_server.url(urlPath), payload));
+
+    QString path;
+    PodStack::Error error;
+    QStringList stages;
+    qint64 lastDownload = 0;
+    qint64 lastVerify = 0;
+    const bool ok = cache.ensure(
+        [&](const QString &stage, qint64 received, qint64 total) {
+            stages.append(stage);
+            QVERIFY(received >= 0);
+            if (stage == QStringLiteral("download")) {
+                lastDownload = received;
+            } else if (stage == QStringLiteral("verify")) {
+                QVERIFY(total > 0);
+                lastVerify = received;
+            }
+        },
+        {}, &path, &error);
+    QVERIFY2(ok, qPrintable(error.message));
+    QCOMPARE(path, cache.cachedPath());
+    QCOMPARE(m_server.requestCount(urlPath), 1);
+    QVERIFY(stages.contains(QStringLiteral("download")));
+    QVERIFY(stages.contains(QStringLiteral("verify")));
+    QCOMPARE(lastDownload, static_cast<qint64>(payload.size()));
+    QCOMPARE(lastVerify, static_cast<qint64>(payload.size()));
+    QVERIFY(QFileInfo(path).isFile());
+    QVERIFY(ownerOnly(QFileInfo(path).permissions(), false));
+    QVERIFY(ownerOnly(QFileInfo(directory).permissions(), true));
+    QVERIFY(QFileInfo(cache.cachedPath() + QStringLiteral(".json")).isFile());
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(file.readAll(), payload);
+}
+
+void MachinesTest::virtioWinCacheReuse()
+{
+    const QByteArray payload(8192, 'r');
+    const QString urlPath = QStringLiteral("/virtio/reuse.iso");
+    m_server.setResponse(urlPath, 200, payload);
+    const QString directory = cacheDirFor(QStringLiteral("virtio-reuse"));
+    VirtioWinCache cache(directory, virtioWinManifestFor(m_server.url(urlPath), payload));
+
+    QString path;
+    PodStack::Error error;
+    QVERIFY2(cache.ensure({}, {}, &path, &error), qPrintable(error.message));
+    QCOMPARE(m_server.requestCount(urlPath), 1);
+
+    error = {};
+    QVERIFY2(cache.ensure({}, {}, &path, &error), qPrintable(error.message));
+    QCOMPARE(m_server.requestCount(urlPath), 1);
+
+    // Cache hit ainda reporta progresso para a UI.
+    int hits = 0;
+    error = {};
+    QVERIFY2(cache.ensure([&hits](const QString &, qint64, qint64) { ++hits; }, {}, &path, &error),
+             qPrintable(error.message));
+    QVERIFY(hits > 0);
+
+    // Sem sidecar, o cache revalida o hash sem baixar de novo.
+    QVERIFY(QFile::remove(cache.cachedPath() + QStringLiteral(".json")));
+    error = {};
+    QVERIFY2(cache.ensure({}, {}, &path, &error), qPrintable(error.message));
+    QCOMPARE(m_server.requestCount(urlPath), 1);
+    QVERIFY(QFileInfo(cache.cachedPath() + QStringLiteral(".json")).isFile());
+
+    // Sidecar corrompido também é reparado pelo hash, sem novo download.
+    QVERIFY(writeTestFile(cache.cachedPath() + QStringLiteral(".json"), QByteArrayLiteral("{}")));
+    error = {};
+    QVERIFY2(cache.ensure({}, {}, &path, &error), qPrintable(error.message));
+    QCOMPARE(m_server.requestCount(urlPath), 1);
+}
+
+void MachinesTest::virtioWinCacheChecksumFailure()
+{
+    const QByteArray payload(4096, 'x');
+    const QString urlPath = QStringLiteral("/virtio/checksum.iso");
+    m_server.setResponse(urlPath, 200, payload);
+    VirtioWinManifest manifest = virtioWinManifestFor(m_server.url(urlPath), payload);
+    manifest.sha256 = QString(64, QLatin1Char('0'));
+    const QString directory = cacheDirFor(QStringLiteral("virtio-checksum"));
+    VirtioWinCache cache(directory, manifest);
+
+    QString path;
+    PodStack::Error error;
+    QVERIFY(!cache.ensure({}, {}, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+    QCOMPARE(error.reason, QStringLiteral("checksum_mismatch"));
+    QVERIFY(!QFileInfo(cache.cachedPath()).exists());
+    QVERIFY(!QFileInfo(cache.cachedPath() + QStringLiteral(".json")).exists());
+    QCOMPARE(m_server.requestCount(urlPath), 1);
+}
+
+void MachinesTest::virtioWinCacheOffline()
+{
+    const QByteArray payload(4096, 'o');
+    const QString urlPath = QStringLiteral("/virtio/offline.iso");
+    m_server.setResponse(urlPath, 500, {});
+    const QString directory = cacheDirFor(QStringLiteral("virtio-offline"));
+    VirtioWinCache cache(directory, virtioWinManifestFor(m_server.url(urlPath), payload));
+
+    QString path;
+    PodStack::Error error;
+    QVERIFY(!cache.ensure({}, {}, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DEPENDENCY_MISSING"));
+    QCOMPARE(error.reason, QStringLiteral("download_failed"));
+    QVERIFY(error.remediation.contains(QStringLiteral("--virtio-win-iso")));
+    QVERIFY(!QFileInfo(cache.cachedPath()).exists());
+    QVERIFY(!QFileInfo(cache.cachedPath() + QStringLiteral(".part")).exists());
+}
+
+void MachinesTest::virtioWinCacheCleanup()
+{
+    const QByteArray payload(8192, 'c');
+    const QString urlPath = QStringLiteral("/virtio/cleanup.iso");
+    m_server.setResponse(urlPath, 200, payload);
+    const QString directory = cacheDirFor(QStringLiteral("virtio-cleanup"));
+    QVERIFY(QDir().mkpath(directory));
+    const QString oldIso = directory + QStringLiteral("/virtio-win-0.1.301.iso");
+    const QString oldSidecar = oldIso + QStringLiteral(".json");
+    const QString oldPart = oldIso + QStringLiteral(".part");
+    const QString keep = directory + QStringLiteral("/keep.txt");
+    QVERIFY(writeTestFile(oldIso, QByteArrayLiteral("old")));
+    QVERIFY(writeTestFile(oldSidecar, QByteArrayLiteral("{}")));
+    QVERIFY(writeTestFile(oldPart, QByteArrayLiteral("part")));
+    QVERIFY(writeTestFile(keep, QByteArrayLiteral("keep")));
+
+    VirtioWinCache cache(directory, virtioWinManifestFor(m_server.url(urlPath), payload));
+    QString path;
+    PodStack::Error error;
+    QVERIFY2(cache.ensure({}, {}, &path, &error), qPrintable(error.message));
+    QVERIFY(!QFileInfo(oldIso).exists());
+    QVERIFY(!QFileInfo(oldSidecar).exists());
+    QVERIFY(!QFileInfo(oldPart).exists());
+    QVERIFY(QFileInfo(keep).isFile());
+}
+
+void MachinesTest::virtioWinCacheCancel()
+{
+    const QByteArray payload(4096, 'k');
+    const QString urlPath = QStringLiteral("/virtio/cancel.iso");
+    m_server.setResponse(urlPath, 200, payload);
+    VirtioWinCache cache(cacheDirFor(QStringLiteral("virtio-cancel")),
+                         virtioWinManifestFor(m_server.url(urlPath), payload));
+
+    QString path;
+    PodStack::Error error;
+    QVERIFY(!cache.ensure({}, [] { return true; }, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+    QVERIFY(!QFileInfo(cache.cachedPath()).exists());
+    QCOMPARE(m_server.requestCount(urlPath), 0);
+}
+
+void MachinesTest::virtioWinCacheErrors()
+{
+    const QByteArray payload(8192, 'e');
+    const QString urlPath = QStringLiteral("/virtio/errors.iso");
+    m_server.setResponse(urlPath, 200, payload);
+    const VirtioWinManifest manifest = virtioWinManifestFor(m_server.url(urlPath), payload);
+    QString path;
+    PodStack::Error error;
+
+    // O diretório do cache é um arquivo: mkpath falha.
+    const QString blocked = cacheDirFor(QStringLiteral("virtio-blocked"));
+    QVERIFY(writeTestFile(blocked, QByteArrayLiteral("not-a-dir")));
+    VirtioWinCache blockedCache(blocked, manifest);
+    QVERIFY(!blockedCache.ensure({}, {}, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+
+    // Arquivo em cache ilegível e sem sidecar: o rehash falha.
+    error = {};
+    const QString unreadableDir = cacheDirFor(QStringLiteral("virtio-unreadable"));
+    VirtioWinCache unreadable(unreadableDir, manifest);
+    QVERIFY(writeTestFile(unreadable.cachedPath(), payload, {}));
+    QVERIFY(!unreadable.ensure({}, {}, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+    QFile::setPermissions(unreadable.cachedPath(),
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+
+    // Cancelamento durante a verificação do arquivo existente.
+    error = {};
+    const QString cancelHashDir = cacheDirFor(QStringLiteral("virtio-cancel-hash"));
+    VirtioWinCache cancelHash(cancelHashDir, manifest);
+    QVERIFY(writeTestFile(cancelHash.cachedPath(), payload));
+    QVERIFY(!cancelHash.ensure({}, [] { return true; }, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+
+    // Conteúdo errado com tamanho certo: o rehash descarta e baixa de novo.
+    error = {};
+    const QString rehashDir = cacheDirFor(QStringLiteral("virtio-rehash"));
+    VirtioWinCache rehash(rehashDir, manifest);
+    QVERIFY(writeTestFile(rehash.cachedPath(), QByteArray(payload.size(), 'x')));
+    QVERIFY2(rehash.ensure({}, {}, &path, &error), qPrintable(error.message));
+    QCOMPARE(m_server.requestCount(urlPath), 1);
+
+    // Cancelamento durante o download.
+    error = {};
+    const QString cancelDir = cacheDirFor(QStringLiteral("virtio-cancel-download"));
+    VirtioWinCache cancelDownload(cancelDir, manifest);
+    bool cancel = false;
+    const bool cancelled = cancelDownload.ensure(
+        [&cancel](const QString &stage, qint64, qint64) {
+            if (stage == QStringLiteral("download")) {
+                cancel = true;
+            }
+        },
+        [&cancel] { return cancel; }, &path, &error);
+    QVERIFY(!cancelled);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CANCELLED"));
+    QVERIFY(!QFileInfo(cancelDownload.cachedPath()).exists());
+
+    // Tamanho inesperado depois do download.
+    error = {};
+    VirtioWinManifest wrongSize = manifest;
+    wrongSize.sizeBytes += 1;
+    VirtioWinCache sizeCache(cacheDirFor(QStringLiteral("virtio-size")), wrongSize);
+    QVERIFY(!sizeCache.ensure({}, {}, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+    QCOMPARE(error.reason, QStringLiteral("checksum_mismatch"));
+    QVERIFY(!QFileInfo(sizeCache.cachedPath()).exists());
+
+    // Falha ao gravar o sidecar depois de baixar.
+    error = {};
+    VirtioWinCache sidecarCache(cacheDirFor(QStringLiteral("virtio-sidecar")), manifest);
+    QVERIFY(QDir().mkpath(sidecarCache.cachedPath() + QStringLiteral(".json")));
+    QVERIFY(!sidecarCache.ensure({}, {}, &path, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DOWNLOAD_FAILED"));
+    QVERIFY(!QFileInfo(sidecarCache.cachedPath()).exists());
+
+    // Sidecar com JSON quebrado: o hash repara sem novo download.
+    error = {};
+    const QString repairDir = cacheDirFor(QStringLiteral("virtio-repair"));
+    VirtioWinCache repair(repairDir, manifest);
+    QVERIFY2(repair.ensure({}, {}, &path, &error), qPrintable(error.message));
+    const int requests = m_server.requestCount(urlPath);
+    QVERIFY(writeTestFile(repair.cachedPath() + QStringLiteral(".json"), QByteArrayLiteral("{")));
+    error = {};
+    QVERIFY2(repair.ensure({}, {}, &path, &error), qPrintable(error.message));
+    QCOMPARE(m_server.requestCount(urlPath), requests);
+}
+
+void MachinesTest::virtioWinCacheIntegration()
+{
+    if (!qEnvironmentVariableIsSet("PODSTACK_VIRTIO_WIN_INTEGRATION")) {
+        QSKIP("defina PODSTACK_VIRTIO_WIN_INTEGRATION=1 para baixar o ISO real");
+    }
+    VirtioWinManifest manifest = VirtioWinCache::defaultManifest();
+    const QString urlOverride = qEnvironmentVariable("PODSTACK_VIRTIO_WIN_URL");
+    if (!urlOverride.isEmpty()) {
+        manifest.url = urlOverride;
+    }
+    QCOMPARE(manifest.sha256.size(), 64);
+    QVERIFY(manifest.sizeBytes > 0);
+
+    QString directory = qEnvironmentVariable("PODSTACK_VIRTIO_WIN_CACHE");
+    if (directory.isEmpty()) {
+        directory = m_root + QStringLiteral("/virtio-real");
+    }
+    VirtioWinCache cache(directory, manifest);
+    const bool cached = QFileInfo(cache.cachedPath()).isFile();
+
+    QString path;
+    PodStack::Error error;
+    QStringList stages;
+    QVERIFY2(cache.ensure([&stages](const QString &stage, qint64, qint64) { stages.append(stage); },
+                          {}, &path, &error),
+             qPrintable(error.message));
+    QCOMPARE(path, cache.cachedPath());
+    QCOMPARE(QFileInfo(path).size(), manifest.sizeBytes);
+    QVERIFY(ownerOnly(QFileInfo(path).permissions(), false));
+    QVERIFY(ownerOnly(QFileInfo(directory).permissions(), true));
+    QVERIFY(QFileInfo(cache.cachedPath() + QStringLiteral(".json")).isFile());
+    QVERIFY(stages.contains(QStringLiteral("verify")));
+    if (!cached) {
+        QVERIFY(stages.contains(QStringLiteral("download")));
+    }
+}
+
 void MachinesTest::windowsProvisionerXml()
 {
     WindowsProvisionOptions options;
@@ -6130,6 +6444,134 @@ void MachinesTest::machineManagerWindowsCreate()
     qunsetenv("PODSTACK_SWTPM_LOG");
 }
 
+void MachinesTest::machineManagerWindowsDownload()
+{
+    const QString root = m_root + QStringLiteral("/wc-download");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+    const QString swtpm = createSwtpmScript(root);
+    QVERIFY(!swtpm.isEmpty());
+    qputenv("PODSTACK_QEMU_IMG_LOG", (root + QStringLiteral("/qemu-img.log")).toUtf8());
+    qputenv("PODSTACK_SWTPM_LOG", (root + QStringLiteral("/swtpm.log")).toUtf8());
+
+    const QByteArray payload(32 * 1024, 'd');
+    const QString urlPath = QStringLiteral("/virtio/manager.iso");
+    m_server.setResponse(urlPath, 200, payload);
+    const VirtioWinManifest manifest = virtioWinManifestFor(m_server.url(urlPath), payload);
+    const QString cacheDir = root + QStringLiteral("/virtio-cache");
+
+    const QString windowsIso = root + QStringLiteral("/isos/windows.iso");
+    QVERIFY(writeTestFile(windowsIso, QByteArray(2048, 'w')));
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.virtioWinCacheDir = cacheDir;
+    options.virtioWinManifest = manifest;
+    options.qemuImgBinary = qemuImg;
+    options.ovmfSecbootCodePath = ovmfCode;
+    options.ovmfSecbootVarsPath = ovmfVars;
+    options.swtpmBinary = swtpm;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("win-download");
+    request.provisioner = QStringLiteral("windows");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.password = QStringLiteral("Senha123!");
+    request.cpus = 2;
+    request.memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+    request.diskBytes = 64LL * 1024LL * 1024LL * 1024LL;
+    request.installerIso = windowsIso;
+    request.windowsEdition = QStringLiteral("Windows 11 Pro");
+
+    QStringList stages;
+    PodStack::Error error;
+    const MachineMeta meta = manager.create(
+        request,
+        [&stages](const QString &stage, int progress) {
+            stages.append(stage);
+            QVERIFY(progress >= 0 && progress <= 100);
+        },
+        {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QString expectedPath = VirtioWinCache(cacheDir, manifest).cachedPath();
+    QCOMPARE(meta.virtioWinIso, expectedPath);
+    QVERIFY(QFileInfo(expectedPath).isFile());
+    QVERIFY(ownerOnly(QFileInfo(expectedPath).permissions(), false));
+    QCOMPARE(fake->lastSpec.driverIsoPath, expectedPath);
+    QVERIFY(stages.contains(QStringLiteral("virtio-win")));
+    QVERIFY(stages.contains(QStringLiteral("virtio-win-verify")));
+    QCOMPARE(m_server.requestCount(urlPath), 1);
+
+    error = {};
+    (void) manager.stop(meta.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    qunsetenv("PODSTACK_QEMU_IMG_LOG");
+    qunsetenv("PODSTACK_SWTPM_LOG");
+}
+
+void MachinesTest::machineManagerWindowsDownloadFailure()
+{
+    const QString root = m_root + QStringLiteral("/wc-download-failure");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QByteArray payload(4096, 'f');
+    const QString urlPath = QStringLiteral("/virtio/manager-failure.iso");
+    m_server.setResponse(urlPath, 404, {});
+    const QString cacheDir = root + QStringLiteral("/virtio-cache");
+    const QString windowsIso = root + QStringLiteral("/isos/windows.iso");
+    QVERIFY(writeTestFile(windowsIso, QByteArray(2048, 'w')));
+
+    MachineManager::Options options;
+    options.storePath = root + QStringLiteral("/podstack.db");
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.virtioWinCacheDir = cacheDir;
+    options.virtioWinManifest = virtioWinManifestFor(m_server.url(urlPath), payload);
+    options.runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("win-offline");
+    request.provisioner = QStringLiteral("windows");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.password = QStringLiteral("Senha123!");
+    request.cpus = 2;
+    request.memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+    request.diskBytes = 64LL * 1024LL * 1024LL * 1024LL;
+    request.installerIso = windowsIso;
+
+    PodStack::Error error;
+    const MachineMeta meta = manager.create(request, {}, {}, &error);
+    QVERIFY(meta.id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DEPENDENCY_MISSING"));
+    QCOMPARE(error.reason, QStringLiteral("download_failed"));
+    QVERIFY(error.remediation.contains(QStringLiteral("--virtio-win-iso")));
+
+    error = {};
+    const QVector<MachineMeta> machines = manager.list(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(machines.isEmpty());
+    QVERIFY(!QFileInfo(cacheDir + QStringLiteral("/virtio-win-0.1.302.iso")).exists());
+}
+
 void MachinesTest::machineManagerWindowsValidation()
 {
     const QString root = m_root + QStringLiteral("/manager-windows-validation");
@@ -6203,6 +6645,11 @@ void MachinesTest::machineManagerWindowsValidation()
     invalid.virtioWinIso = root + QStringLiteral("/missing.iso");
     error = {};
     QVERIFY(!manager.validate(invalid, &error));
+
+    invalid = request;
+    invalid.virtioWinIso.clear();
+    error = {};
+    QVERIFY2(manager.validate(invalid, &error), qPrintable(error.message));
 
     invalid = request;
     invalid.answerFile = badXml;

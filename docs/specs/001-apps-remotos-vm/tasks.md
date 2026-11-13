@@ -25,6 +25,8 @@
 
 **Bloqueios duros:** Windows Home não habilita RAIL; GPU/3D exige VFIO (fora); Windows ARM e host aarch64 fora (M9/RAIL são x86_64-only, NFR-MAC-008).
 
+> **Status T9-08 (2026-11-13):** ✅ código — manifesto embutido (0.1.302, URL HTTPS, SHA-256 e tamanho), cache `0700`/`0600` em `~/.local/share/podstack/virtio-win/`, progresso/cancelamento no job de criação, limpeza de versões antigas, fallback de ISO local e erros `PODSTACK_DEPENDENCY_MISSING`/`PODSTACK_DOWNLOAD_FAILED` testados. A criação Windows aceita `virtioWinIso` vazio na GUI, CLI e RPC.
+
 ---
 
 ## M10 — Apps remotos (4 tarefas)

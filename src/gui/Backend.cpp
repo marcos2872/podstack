@@ -4134,10 +4134,6 @@ void Backend::createMachine(const QVariantMap &spec)
             fail(QStringLiteral("Selecione o ISO do Windows."));
             return;
         }
-        if (virtioWinIso.isEmpty()) {
-            fail(QStringLiteral("Selecione o ISO do virtio-win."));
-            return;
-        }
         if (password.isEmpty()) {
             fail(QStringLiteral("Informe ou gere a senha da conta Windows."));
             return;
@@ -4145,7 +4141,9 @@ void Backend::createMachine(const QVariantMap &spec)
         const QString answerFile = spec.value(QStringLiteral("answerFile")).toString().trimmed();
         const QString edition = spec.value(QStringLiteral("windowsEdition")).toString().trimmed();
         params.insert(QStringLiteral("installerIso"), installerIso);
-        params.insert(QStringLiteral("virtioWinIso"), virtioWinIso);
+        if (!virtioWinIso.isEmpty()) {
+            params.insert(QStringLiteral("virtioWinIso"), virtioWinIso);
+        }
         if (!answerFile.isEmpty()) {
             params.insert(QStringLiteral("answerFile"), answerFile);
         }
