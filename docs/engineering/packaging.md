@@ -462,12 +462,15 @@ rpmbuild -ba podstack.spec
   alternativas `t64` para o 24.04 e sem `t64` para o 26.04; `libqt6sql6-sqlite`, `qt6-qpa-plugins`,
   `qt6-wayland`, módulos QML (`qml6-module-qtquick*`, `qml6-module-qtqml*`,
   `qml6-module-qt5compat-graphicaleffects`), `libcurl4t64` + `libcurl3t64-gnutls`,
-  `libarchive13t64`, `libssl3t64` e `libcrypt1`. Recomenda QEMU/KVM, virtiofsd, Caddy e o
-  provider Compose.
+  `libarchive13t64`, `libssl3t64`, `libcrypt1` e `procps` (pkill/pgrep do `preinst`). Recomenda
+  QEMU/KVM, virtiofsd, Caddy e o provider Compose.
 - Instalação: `sudo apt install ./podstack_<versão>_amd64.deb`. O binário exige glibc 2.39
   (Ubuntu 24.04+); Debian 12 não é suportado por este pacote.
-- O `postinst` habilita `podstack.socket` por usuário (`systemctl --global enable`) e o
-  `podstack-helper.service`.
+- O `postinst` recarrega as units, habilita `podstack.socket` por usuário
+  (`systemctl --global enable`), remove a máscara runtime do socket e **reinicia** o
+  `podstack-helper.service` (não apenas `enable --now`). O `preinst` encerra GUI/daemon/helper
+  antigos antes do unpack; o `postrm` restaura helper/socket nos casos `abort-upgrade`/`abort-install`.
+  O runner `podstack update --install --runner` nunca é encerrado.
 - Para publicar em repositório APT, gerar `Packages`/`Release` assinados no CI (não incluído).
 
 ---
@@ -505,6 +508,18 @@ rpmbuild -ba podstack.spec
 - Canal beta: COPR separado (`podstack-beta`).
 - Verificação de versão: `podstack update --check` (exit 3 se desatualizado).
 - Nunca auto-update silencioso em headless/CI.
+- **Upgrade com o app aberto:** o `preinst` (Debian) e o `%pre` (RPM) percorrem os usuários
+  logados, aplicam `mask --runtime podstack.socket`, param socket/service, encerram a GUI com
+  SIGTERM (SIGKILL após 3 s) e o daemon (systemd ou `pkill -x podstackd`), conferem o helper e
+  abortam com trap de limpeza se algo não parar. O `postinst`/`%post` reinicia o helper e remove a
+  máscara; `postrm`/`%posttrans` restauram nos abortos. O `preinst` não toca em Podman, containers,
+  machines nem no runner `podstack`.
+- **SIGTERM na GUI:** a GUI instala um handler de SIGTERM/SIGINT via self-pipe +
+  `QSocketNotifier`; ao receber o sinal, salva o `UiState` (geometria/seção/abas) e encerra, para a
+  janela reabrir no mesmo lugar.
+- **Health check:** o `%posttrans` valida `systemctl is-active podstack-helper.service` e
+  `podstack-helper --version`, além do `unmask --runtime` por usuário; falha só retorna não-zero
+  quando não consegue restaurar.
 - Feed oficial: `podstack-update.json` anexado à release do GitHub + `podstack-update.json.minisig`
   (Ed25519/minisign). O manifesto assinado contém os canais `stable`/`beta` com versão, notas,
   `releaseUrl` e artefatos (`arch`, `format`, `url`, `sha256`).

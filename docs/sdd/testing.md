@@ -592,7 +592,7 @@ Todo PR/tarefa anexa:
 | Download/cache | `.part` + rename, 300 MB, disco cheio, timeout 15 min, interrupção, limpeza de versões antigas, `0600`/`0700` |
 | Runner/estado | `state.json` atômico, fases, `jobId`/`unit`/`stateDir`/`pid`/`boot_id`, JSON corrompido, retomada por `GetUpdateStatus`, `gui-was-open`/`--relaunch`, `kill -9` do runner |
 | Helper | `StageUpdate`/`InstallUpdate`/`GetUpdateStatus`, uid via `GetConnectionUnixUser`, `O_NOFOLLOW`, path/symlink/dono, staging `0700`, chave de release vs `updates.publicKey` customizada, TOCTOU, unidade ativa, admissão por `flock`, varredura no start, rate limit |
-| Scriptlets | `preinst`/`postinst`/`postrm`/`prerm` e `%pre`/`%preun`/`%post`/`%posttrans` com processos falsos em container; fallback sem systemd; falha após `%pre`; `unmask` com retry; corrida de socket activation; trap de limpeza |
+| Scriptlets | `preinst`/`postinst`/`postrm`/`prerm` e `%pre`/`%preun`/`%post`/`%posttrans` com processos falsos em container via `tests/packaging/test-scriptlets.sh` (`systemctl`/`loginctl`/`pkill`/`pgrep` falsos); fallback sem systemd; falha após `%pre`; `unmask` com retry; corrida de socket activation; trap de limpeza; CTest `package_scriptlets` |
 | Machines/cgroup | `ProcessScope` monta `systemd-run --user --scope` e cai para execução direta sem systemd; QEMU em `podstack-machine-<id>.scope` e virtiofsd em `podstack-virtiofsd-<hash>.scope` (cgroup real quando o user manager existe); reconciliação de órfãos após restart |
 | Exit codes/JSON | `update --check` 0/1/2/3/6/8/9 e `update --install` 0/1/2/6/8/9; `--json` com `error.code`; recusa de downgrade/chave customizada; cancelamento/timeout |
 | Logs core | JSON Lines, nomes correntes/rotacionados (`-YYYYMMDD[-N]`), rotação diária/por tamanho, timer da meia-noite, 8º dia removido, 1–30 dias, 10 MB/200 MB, `0600`/`0700`, `flock`, concorrência daemon+CLI, fila cheia/drop-oldest, `kill -9`, redaction com `diagnostics.redact=false` |
@@ -617,6 +617,7 @@ Todo PR/tarefa anexa:
 ### 16.3 Portões
 
 - `ctest --preset dev` verde, cobertura ≥ 80% (gate bloqueante).
+- `package_scriptlets` roda os scriptlets Debian/RPM com comandos falsos, sem tocar na máquina.
 - `clang-format --dry-run --Werror`, `clang-tidy` e `qmllint` nas áreas tocadas.
 - Nenhum segredo em argv/log; permissões `0600`/`0640`; helper como única fronteira root;
   redaction incondicional; assinatura/SHA validados no helper.

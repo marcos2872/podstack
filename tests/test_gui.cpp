@@ -6,6 +6,7 @@
 #include "gui/ContainerListModel.h"
 #include "gui/StreamClient.h"
 #include "gui/UiState.h"
+#include "gui/UnixSignals.h"
 #include "k8s/K8sStore.h"
 #include "machines/MachineStore.h"
 
@@ -28,6 +29,8 @@
 #include <QTest>
 #include <QVariantList>
 #include <QVariantMap>
+
+#include <csignal>
 
 namespace {
 
@@ -69,6 +72,7 @@ private slots:
     void uiStateRoundTrip();
     void uiStateInvalidFallsBack();
     void uiStateRejectsInvalidValues();
+    void unixTerminationSignal();
     void guiStartsAndQuits();
 
 private:
@@ -1639,6 +1643,20 @@ void GuiTest::uiStateRejectsInvalidValues()
     QVERIFY(!PodStack::UiState::isValidSection(QStringLiteral("bogus")));
     QVERIFY(!PodStack::UiState::isValidContainerTab(-1));
     QVERIFY(!PodStack::UiState::isValidMachineTab(QStringLiteral("bogus")));
+}
+
+void GuiTest::unixTerminationSignal()
+{
+    int received = 0;
+    QString error;
+    QVERIFY2(PodStack::installTerminationHandler(this, [&received]() { ++received; }, &error),
+             qPrintable(error));
+
+    ::raise(SIGTERM);
+    QTRY_COMPARE_WITH_TIMEOUT(received, 1, 3000);
+
+    ::raise(SIGINT);
+    QTRY_COMPARE_WITH_TIMEOUT(received, 2, 3000);
 }
 
 void GuiTest::guiStartsAndQuits()

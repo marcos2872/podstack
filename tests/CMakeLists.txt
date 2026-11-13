@@ -103,3 +103,8 @@ qt_add_executable(test_setup test_setup.cpp MockPodmanServer.cpp
 target_link_libraries(test_setup PRIVATE podstack_podman Qt6::Concurrent Qt6::DBus
     SQLite::SQLite3 Qt6::Test)
 add_test(NAME setup COMMAND test_setup)
+
+add_test(NAME package_scriptlets
+    COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-scriptlets.sh ${CMAKE_SOURCE_DIR})
+set_tests_properties(package_scriptlets PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

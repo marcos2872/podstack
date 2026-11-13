@@ -26,8 +26,10 @@ cmake --build "$build_dir"
 rm -rf "$root"
 mkdir -p "$root/DEBIAN"
 DESTDIR="$root" cmake --install "$build_dir" --prefix /usr --strip
+install -m 0755 packaging/deb/preinst "$root/DEBIAN/preinst"
 install -m 0755 packaging/deb/postinst "$root/DEBIAN/postinst"
 install -m 0755 packaging/deb/prerm "$root/DEBIAN/prerm"
+install -m 0755 packaging/deb/postrm "$root/DEBIAN/postrm"
 
 # `packaging/deb/control` é o controle de FONTE (usado por dpkg-buildpackage).
 # O .deb é montado por staging + dpkg-deb, então precisa de um controle
@@ -41,7 +43,7 @@ Section: admin
 Priority: optional
 Maintainer: PodStack contributors <dev@podstack.dev>
 Homepage: https://podstack.dev
-Depends: podman (>= 4.9), systemd, polkitd, openssh-client, libqt6core6t64, libqt6gui6t64 | libqt6gui6, libqt6widgets6t64 | libqt6widgets6, libqt6qml6, libqt6quick6, libqt6quickwidgets6, libqt6quickcontrols2-6, libqt6network6t64 | libqt6network6, libqt6dbus6t64 | libqt6dbus6, libqt6svg6, libqt6sql6t64 | libqt6sql6, libqt6sql6-sqlite, libqt6concurrent6t64 | libqt6concurrent6, libqt6opengl6t64 | libqt6opengl6, libarchive13t64, libcurl4t64, libcurl3t64-gnutls, libsqlite3-0, libssl3t64, libcrypt1, qt6-qpa-plugins, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, qml6-module-qtquick-dialogs, qml6-module-qt5compat-graphicaleffects
+Depends: podman (>= 4.9), systemd, polkitd, procps, openssh-client, libqt6core6t64, libqt6gui6t64 | libqt6gui6, libqt6widgets6t64 | libqt6widgets6, libqt6qml6, libqt6quick6, libqt6quickwidgets6, libqt6quickcontrols2-6, libqt6network6t64 | libqt6network6, libqt6dbus6t64 | libqt6dbus6, libqt6svg6, libqt6sql6t64 | libqt6sql6, libqt6sql6-sqlite, libqt6concurrent6t64 | libqt6concurrent6, libqt6opengl6t64 | libqt6opengl6, libarchive13t64, libcurl4t64, libcurl3t64-gnutls, libsqlite3-0, libssl3t64, libcrypt1, qt6-qpa-plugins, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, qml6-module-qtquick-dialogs, qml6-module-qt5compat-graphicaleffects
 Recommends: qemu-kvm, qemu-utils, virtiofsd, caddy, docker-compose-v2 | docker-compose, gnome-shell-extension-appindicator
 Description: Native desktop for Podman containers, VMs and Kubernetes
  PodStack provides containers, images, volumes, networks, Compose projects,

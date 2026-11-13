@@ -194,6 +194,7 @@ add_library(podstack_gui_lib STATIC
     src/gui/Translation.cpp
     src/gui/Tray.cpp
     src/gui/UiState.cpp
+    src/gui/UnixSignals.cpp
 )
 target_include_directories(podstack_gui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 qt_add_resources(podstack_gui_lib "translations"

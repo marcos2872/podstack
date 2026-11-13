@@ -1,0 +1,130 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Executado antes do unpack no upgrade/reinstalação. Encerra GUI, daemon e
+# helper antigos para que nenhum processo continue servindo o código anterior
+# (o incidente 0.1.2→0.1.3). O runner `podstack update --install --runner` não
+# é tocado: ele precisa sobreviver para concluir a instalação.
+set -u
+
+SOCKET_UNIT=podstack.socket
+SERVICE_UNIT=podstack.service
+HELPER_UNIT=podstack-helper.service
+
+touched_uids=""
+
+log() {
+    echo "PodStack: $*" >&2
+}
+
+used_systemd() {
+    command -v systemctl >/dev/null 2>&1
+}
+
+logged_uids() {
+    if command -v loginctl >/dev/null 2>&1; then
+        loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u
+    fi
+}
+
+has_procps() {
+    command -v pkill >/dev/null 2>&1 && command -v pgrep >/dev/null 2>&1
+}
+
+restore_runtime() {
+    for uid in $touched_uids; do
+        systemctl --machine "user@${uid}.service" --user unmask --runtime \
+            "$SOCKET_UNIT" >/dev/null 2>&1 || true
+    done
+    systemctl start "$HELPER_UNIT" >/dev/null 2>&1 || true
+}
+
+abort_upgrade() {
+    log "$1"
+    log "restaurando a máscara do socket e o helper..."
+    restore_runtime
+    exit 1
+}
+
+trap 'abort_upgrade "atualização interrompida"' INT TERM HUP
+
+stop_helper() {
+    if ! systemctl is-active --quiet "$HELPER_UNIT" 2>/dev/null; then
+        return 0
+    fi
+    if ! systemctl stop "$HELPER_UNIT" >/dev/null 2>&1; then
+        abort_upgrade "não foi possível parar o helper; abortando o upgrade."
+    fi
+    if systemctl is-active --quiet "$HELPER_UNIT" 2>/dev/null; then
+        abort_upgrade "o helper ainda está ativo após o stop; abortando o upgrade."
+    fi
+}
+
+stop_logged_users() {
+    uids="$(logged_uids)"
+    if [ -n "$uids" ] && ! has_procps; then
+        abort_upgrade "procps (pkill/pgrep) é necessário para encerrar a GUI; abortando o upgrade."
+    fi
+    for uid in $uids; do
+        touched_uids="$touched_uids $uid"
+        # A máscara runtime impede o socket activation de recriar o daemon
+        # antigo durante o unpack; ela não persiste no boot.
+        systemctl --machine "user@${uid}.service" --user mask --runtime \
+            "$SOCKET_UNIT" >/dev/null 2>&1 || true
+        systemctl --machine "user@${uid}.service" --user stop \
+            "$SOCKET_UNIT" "$SERVICE_UNIT" >/dev/null 2>&1 || true
+        if systemctl --machine "user@${uid}.service" --user is-active --quiet \
+            "$SERVICE_UNIT" 2>/dev/null; then
+            pkill -TERM -u "$uid" -x podstackd >/dev/null 2>&1 || true
+        fi
+        pkill -TERM -u "$uid" -x podstack-gui >/dev/null 2>&1 || true
+    done
+
+    sleep 3
+
+    for uid in $touched_uids; do
+        pkill -KILL -u "$uid" -x podstack-gui >/dev/null 2>&1 || true
+        if pgrep -u "$uid" -x podstack-gui >/dev/null 2>&1; then
+            abort_upgrade "a GUI do uid ${uid} não encerrou; abortando o upgrade."
+        fi
+        pkill -KILL -u "$uid" -x podstackd >/dev/null 2>&1 || true
+        if pgrep -u "$uid" -x podstackd >/dev/null 2>&1; then
+            abort_upgrade "o daemon do uid ${uid} não encerrou; abortando o upgrade."
+        fi
+        if systemctl --machine "user@${uid}.service" --user is-active --quiet \
+            "$SERVICE_UNIT" 2>/dev/null; then
+            abort_upgrade "o daemon do uid ${uid} continua ativo; abortando o upgrade."
+        fi
+    done
+}
+
+stop_without_systemd() {
+    if ! has_procps; then
+        log "pkill/pgrep ausentes; não é possível encerrar o app antigo."
+        abort_upgrade "instale procps e tente novamente."
+    fi
+    pkill -TERM -x podstack-gui >/dev/null 2>&1 || true
+    pkill -TERM -x podstackd >/dev/null 2>&1 || true
+    sleep 3
+    pkill -KILL -x podstack-gui >/dev/null 2>&1 || true
+    pkill -KILL -x podstackd >/dev/null 2>&1 || true
+    if pgrep -x podstackd >/dev/null 2>&1; then
+        abort_upgrade "o daemon não encerrou; abortando o upgrade."
+    fi
+    if pgrep -x podstack-gui >/dev/null 2>&1; then
+        abort_upgrade "a GUI não encerrou; abortando o upgrade."
+    fi
+}
+
+case "${1:-}" in
+    install|upgrade)
+        if used_systemd; then
+            stop_logged_users
+            stop_helper
+        else
+            stop_without_systemd
+        fi
+        ;;
+esac
+
+exit 0

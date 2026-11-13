@@ -8,6 +8,7 @@
 #include "gui/SingleInstance.h"
 #include "gui/Translation.h"
 #include "gui/Tray.h"
+#include "gui/UnixSignals.h"
 
 #include <QApplication>
 #include <QCommandLineOption>
@@ -161,6 +162,19 @@ int main(int argc, char *argv[])
                      &QCoreApplication::quit);
     QObject::connect(&singleInstance, &PodStack::SingleInstance::quitRequested, &app,
                      &QCoreApplication::quit);
+
+    // O systemd encerra a GUI com SIGTERM no update; salva o UiState antes de
+    // sair para a janela reabrir na mesma seção/aba.
+    QString signalError;
+    if (!PodStack::installTerminationHandler(
+            &app,
+            [&window, &app]() {
+                window.prepareForExit();
+                app.quit();
+            },
+            &signalError)) {
+        qWarning("podstack-gui: %s", qUtf8Printable(signalError));
+    }
 
     return app.exec();
 }

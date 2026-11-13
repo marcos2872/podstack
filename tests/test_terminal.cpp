@@ -83,6 +83,7 @@ private slots:
     void mainWindowTerminalDock();
     void mainWindowQml();
     void mainWindowRestoresSection();
+    void mainWindowPrepareForExit();
     void mainWindowShortcuts();
     void translationCatalog();
     void appSelectKeepsSelectionWhenOpened();
@@ -892,6 +893,36 @@ void TerminalTest::mainWindowRestoresSection()
         3000);
 
     qunsetenv("PODSTACK_UI_STATE");
+}
+
+void TerminalTest::mainWindowPrepareForExit()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString statePath = dir.filePath(QStringLiteral("ui-state.json"));
+    const QByteArray previousState = qgetenv("PODSTACK_UI_STATE");
+    qputenv("PODSTACK_UI_STATE", statePath.toUtf8());
+    const auto restore = qScopeGuard([previousState] {
+        if (previousState.isEmpty()) {
+            qunsetenv("PODSTACK_UI_STATE");
+        } else {
+            qputenv("PODSTACK_UI_STATE", previousState);
+        }
+    });
+
+    PodStack::Backend backend;
+    PodStack::TrayController tray(false);
+    PodStack::NotificationService notifications;
+    PodStack::SingleInstance singleInstance;
+    PodStack::MainWindow window(&backend, &tray, &notifications, &singleInstance,
+                                /*startHidden=*/false, /*loadQml=*/false);
+    QVERIFY(window.isVisible());
+    window.prepareForExit();
+
+    PodStack::UiState saved;
+    QVERIFY(saved.load(statePath));
+    QVERIFY(!saved.windowGeometry.isEmpty());
+    QCOMPARE(saved.section, QStringLiteral("containers"));
 }
 
 void TerminalTest::mainWindowShortcuts()

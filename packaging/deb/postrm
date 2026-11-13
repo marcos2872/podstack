@@ -1,0 +1,48 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Casos de aborto do Debian: o upgrade falhou depois que o preinst aplicou a
+# máscara runtime e parou o helper. Restaura o socket e o helper para o app
+# continuar funcionando na versão antiga. Na remoção, apenas limpa a máscara
+# runtime dos usuários logados.
+set -u
+
+SOCKET_UNIT=podstack.socket
+HELPER_UNIT=podstack-helper.service
+
+log() {
+    echo "PodStack: $*" >&2
+}
+
+logged_uids() {
+    if command -v loginctl >/dev/null 2>&1; then
+        loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u
+    fi
+}
+
+unmask_all() {
+    for uid in $(logged_uids); do
+        systemctl --machine "user@${uid}.service" --user unmask --runtime \
+            "$SOCKET_UNIT" >/dev/null 2>&1 || true
+    done
+}
+
+case "${1:-}" in
+    abort-upgrade|abort-install)
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload >/dev/null 2>&1 || true
+            systemctl enable "$HELPER_UNIT" >/dev/null 2>&1 || true
+            systemctl restart "$HELPER_UNIT" >/dev/null 2>&1 || true
+            unmask_all
+        fi
+        log "instalação abortada; helper restaurado. Reabra o app." >&2
+        ;;
+    remove|purge)
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload >/dev/null 2>&1 || true
+            unmask_all
+        fi
+        ;;
+esac
+
+exit 0
