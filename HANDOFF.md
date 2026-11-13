@@ -127,3 +127,6 @@
 
 Nada foi enviado ao remoto. Antes de continuar, rode `git status` e leia
 [`docs/sdd/tasks.md`](docs/sdd/tasks.md) para confirmar o estado.
+
+
+https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso
