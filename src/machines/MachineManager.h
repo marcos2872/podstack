@@ -35,6 +35,11 @@ struct CreateMachineRequest {
     QString user;
     QString password;
     QString userData;
+    QString installerIso;   // provisioner windows: ISO local do Windows
+    QString virtioWinIso;   // provisioner windows: ISO local do virtio-win
+    QString answerFile;     // provisioner windows: autounattend.xml opcional
+    QString windowsEdition; // provisioner windows: edição do Windows
+    bool windowsSsh = false;
     int cpus = 2;
     qint64 memoryBytes = 4294967296LL;
     qint64 diskBytes = 21474836480LL;

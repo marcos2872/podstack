@@ -125,6 +125,7 @@ QJsonObject RpcClient::call(const QString &method, const QJsonObject &params, Er
                     error->message = errorObject.value(QStringLiteral("message")).toString();
                     error->detail = data.value(QStringLiteral("detail")).toString();
                     error->remediation = data.value(QStringLiteral("remediation")).toString();
+                    error->reason = data.value(QStringLiteral("reason")).toString();
                     error->retryable = data.value(QStringLiteral("retryable")).toBool();
                 }
                 return {};

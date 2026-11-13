@@ -178,6 +178,11 @@ QJsonObject MachineMeta::toJson() const
     }
     object.insert(QStringLiteral("usbDevices"), usbArray);
     object.insert(QStringLiteral("audioEnabled"), audioEnabled);
+    object.insert(QStringLiteral("windowsEdition"), windowsEdition);
+    object.insert(QStringLiteral("installerIso"), installerIso);
+    object.insert(QStringLiteral("virtioWinIso"), virtioWinIso);
+    object.insert(QStringLiteral("windowsSsh"), windowsSsh);
+    object.insert(QStringLiteral("installPending"), installPending);
     return object;
 }
 
@@ -238,6 +243,11 @@ MachineMeta MachineMeta::fromJson(const QJsonObject &object)
         }
     }
     meta.audioEnabled = object.value(QStringLiteral("audioEnabled")).toBool();
+    meta.windowsEdition = object.value(QStringLiteral("windowsEdition")).toString();
+    meta.installerIso = object.value(QStringLiteral("installerIso")).toString();
+    meta.virtioWinIso = object.value(QStringLiteral("virtioWinIso")).toString();
+    meta.windowsSsh = object.value(QStringLiteral("windowsSsh")).toBool();
+    meta.installPending = object.value(QStringLiteral("installPending")).toBool();
     return meta;
 }
 

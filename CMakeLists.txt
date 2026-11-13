@@ -50,6 +50,7 @@ add_library(podstack_core STATIC
     src/core/DiskUsage.cpp
     src/core/Error.cpp
     src/core/Ids.cpp
+    src/core/Password.cpp
     src/core/Paths.cpp
     src/core/Config.cpp
     src/core/Settings.cpp
@@ -94,6 +95,7 @@ add_library(podstack_machines STATIC
     src/machines/QemuRuntime.cpp
     src/machines/VirtiofsdProcess.cpp
     src/machines/SwtpmProcess.cpp
+    src/machines/WindowsProvisioner.cpp
     src/machines/MachineManager.cpp
     src/machines/MachineArchive.cpp
     src/machines/MachineStats.cpp

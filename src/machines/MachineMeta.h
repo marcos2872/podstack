@@ -79,6 +79,11 @@ struct MachineMeta {
     QStringList serialPorts;
     QVector<MachineUsbDevice> usbDevices;
     bool audioEnabled = false;
+    QString windowsEdition;      // ex.: Windows 11 Pro (provisioner windows)
+    QString installerIso;        // ISO do Windows fornecida pelo usuário (instalação pendente)
+    QString virtioWinIso;        // ISO do virtio-win fornecida pelo usuário (instalação pendente)
+    bool windowsSsh = false;     // instala/habilita OpenSSH no answer file
+    bool installPending = false; // anexa ISOs e -boot once=d somente enquanto true
     QJsonObject toJson() const;
     static MachineMeta fromJson(const QJsonObject &object);
 };

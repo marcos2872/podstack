@@ -80,8 +80,23 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
         invalid(error, QStringLiteral("O caminho do disco deve ser absoluto."), spec.diskPath);
         return {};
     }
-    if (!absolutePath(spec.seedPath)) {
+    if (!spec.seedPath.isEmpty() && !absolutePath(spec.seedPath)) {
         invalid(error, QStringLiteral("O caminho do seed deve ser absoluto."), spec.seedPath);
+        return {};
+    }
+    const QStringList isoPaths = {spec.installerIsoPath, spec.driverIsoPath, spec.unattendIsoPath};
+    for (const QString &isoPath : isoPaths) {
+        if (isoPath.isEmpty()) {
+            continue;
+        }
+        if (!absolutePath(isoPath)) {
+            invalid(error, QStringLiteral("O caminho da ISO deve ser absoluto."), isoPath);
+            return {};
+        }
+    }
+    if (spec.bootOnceCdrom && spec.installerIsoPath.isEmpty() && spec.driverIsoPath.isEmpty() &&
+        spec.unattendIsoPath.isEmpty()) {
+        invalid(error, QStringLiteral("O boot pelo CD-ROM exige uma ISO configurada."));
         return {};
     }
     if (!absolutePath(spec.qmpSocketPath)) {
@@ -216,7 +231,12 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
     }
     args << QStringLiteral("-accel")
          << (spec.kvm ? QStringLiteral("kvm") : QStringLiteral("tcg"));
-    args << QStringLiteral("-cpu") << (spec.kvm ? QStringLiteral("host") : QStringLiteral("max"));
+    QString cpu = spec.kvm ? QStringLiteral("host") : QStringLiteral("max");
+    if (spec.kvm && spec.secureBoot) {
+        cpu += QStringLiteral(",hv_relaxed,hv_vpindex,hv_synic,hv_stimer,hv_reset,"
+                              "hv_frequencies");
+    }
+    args << QStringLiteral("-cpu") << cpu;
     args << QStringLiteral("-smp") << QString::number(spec.cpus);
     args << QStringLiteral("-m") << QString::number(spec.memoryBytes / kBytesPerMiB);
     args << QStringLiteral("-name") << QStringLiteral("podstack:%1").arg(spec.machineId);
@@ -225,8 +245,17 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
     args << QStringLiteral("-drive")
          << QStringLiteral("file=%1,if=virtio,format=qcow2,cache=writeback,discard=unmap")
                 .arg(spec.diskPath);
-    args << QStringLiteral("-drive")
-         << QStringLiteral("file=%1,format=raw,if=virtio,readonly=on").arg(spec.seedPath);
+    if (!spec.seedPath.isEmpty()) {
+        args << QStringLiteral("-drive")
+             << QStringLiteral("file=%1,format=raw,if=virtio,readonly=on").arg(spec.seedPath);
+    }
+    for (const QString &isoPath : isoPaths) {
+        if (isoPath.isEmpty()) {
+            continue;
+        }
+        args << QStringLiteral("-drive")
+             << QStringLiteral("file=%1,if=ide,media=cdrom,readonly=on").arg(isoPath);
+    }
 
     QString netdev = QStringLiteral("user,id=net0");
     for (const QemuPort &port : spec.ports) {
@@ -283,6 +312,9 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
              << QStringLiteral("socket,id=chrtpm,path=%1").arg(spec.tpmSocketPath);
         args << QStringLiteral("-tpmdev") << QStringLiteral("emulator,id=tpm0,chardev=chrtpm");
         args << QStringLiteral("-device") << QStringLiteral("tpm-tis");
+    }
+    if (spec.bootOnceCdrom) {
+        args << QStringLiteral("-boot") << QStringLiteral("once=d");
     }
     args << QStringLiteral("-daemonize");
     args << QStringLiteral("-pidfile") << spec.pidFile;

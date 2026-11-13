@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSet>
 
 #include <sqlite3.h>
 
@@ -95,13 +96,19 @@ MachineMeta metaFromRow(sqlite3_stmt *statement)
     meta.createdAt = columnText(statement, 19);
     meta.updatedAt = columnText(statement, 20);
     meta.error = columnText(statement, 21);
+    meta.windowsSsh = sqlite3_column_int(statement, 22) != 0;
+    meta.windowsEdition = columnText(statement, 23);
+    meta.installPending = sqlite3_column_int(statement, 24) != 0;
+    meta.installerIso = columnText(statement, 25);
+    meta.virtioWinIso = columnText(statement, 26);
     return meta;
 }
 
 const char *kMachineColumns = R"SQL(
 SELECT id, name, distro, distro_version, provisioner, arch, cpus, memory_bytes, disk_bytes,
        disk_path, seed_path, ssh_port, ssh_user, ssh_key_path, state, isolated, isolate_network,
-       forward_ssh_agent, last_boot_at, created_at, updated_at, error
+       forward_ssh_agent, last_boot_at, created_at, updated_at, error,
+       windows_ssh, windows_edition, install_pending, installer_iso, virtio_win_iso
 FROM machines
 )SQL";
 
@@ -244,7 +251,12 @@ CREATE TABLE IF NOT EXISTS machines (
   last_boot_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  error TEXT
+  error TEXT,
+  windows_ssh INTEGER NOT NULL DEFAULT 0,
+  windows_edition TEXT,
+  install_pending INTEGER NOT NULL DEFAULT 0,
+  installer_iso TEXT,
+  virtio_win_iso TEXT
 );
 CREATE TABLE IF NOT EXISTS machine_ports (
   id TEXT PRIMARY KEY,
@@ -293,8 +305,8 @@ CREATE INDEX IF NOT EXISTS idx_machines_state ON machines(state);
         return false;
     }
 
-    // Migração aditiva: bancos criados antes do M9 não têm `provisioner`.
-    bool hasProvisioner = false;
+    // Migração aditiva: bancos criados antes do M9 não têm as colunas Windows.
+    QSet<QString> existingColumns;
     sqlite3_stmt *columns = nullptr;
     if (sqlite3_prepare_v2(m_db, "PRAGMA table_info(machines);", -1, &columns, nullptr) !=
         SQLITE_OK) {
@@ -302,19 +314,30 @@ CREATE INDEX IF NOT EXISTS idx_machines_state ON machines(state);
     }
     while (sqlite3_step(columns) == SQLITE_ROW) {
         const auto *name = sqlite3_column_text(columns, 1);
-        if (name &&
-            QByteArray(reinterpret_cast<const char *>(name)) == QByteArrayLiteral("provisioner")) {
-            hasProvisioner = true;
-            break;
+        if (name) {
+            existingColumns.insert(QString::fromUtf8(reinterpret_cast<const char *>(name)));
         }
     }
     sqlite3_finalize(columns);
 
-    if (!hasProvisioner) {
-        if (!execSql(m_db,
-                     "ALTER TABLE machines ADD COLUMN provisioner TEXT NOT NULL "
-                     "DEFAULT 'linux';",
-                     &sqlError)) {
+    const struct Migration {
+        const char *name;
+        const char *definition;
+    } migrations[] = {
+        {"provisioner", "TEXT NOT NULL DEFAULT 'linux'"},
+        {"windows_ssh", "INTEGER NOT NULL DEFAULT 0"},
+        {"windows_edition", "TEXT"},
+        {"install_pending", "INTEGER NOT NULL DEFAULT 0"},
+        {"installer_iso", "TEXT"},
+        {"virtio_win_iso", "TEXT"},
+    };
+    for (const Migration &migration : migrations) {
+        if (existingColumns.contains(QString::fromLatin1(migration.name))) {
+            continue;
+        }
+        const QByteArray sql = QByteArrayLiteral("ALTER TABLE machines ADD COLUMN ") +
+                               migration.name + ' ' + migration.definition + ';';
+        if (!execSql(m_db, sql.constData(), &sqlError)) {
             if (error) {
                 *error =
                     Error::make(QStringLiteral("PODSTACK_DB_ERROR"),
@@ -362,8 +385,9 @@ bool MachineStore::upsert(const MachineMeta &meta, Error *error)
 INSERT INTO machines
 (id, name, distro, distro_version, provisioner, arch, cpus, memory_bytes, disk_bytes, disk_path,
  seed_path, ssh_port, ssh_user, ssh_key_path, state, isolated, isolate_network,
- forward_ssh_agent, last_boot_at, created_at, updated_at, error)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ forward_ssh_agent, last_boot_at, created_at, updated_at, error,
+ windows_ssh, windows_edition, install_pending, installer_iso, virtio_win_iso)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
   distro = excluded.distro,
@@ -385,7 +409,12 @@ ON CONFLICT(id) DO UPDATE SET
   last_boot_at = excluded.last_boot_at,
   created_at = excluded.created_at,
   updated_at = excluded.updated_at,
-  error = excluded.error
+  error = excluded.error,
+  windows_ssh = excluded.windows_ssh,
+  windows_edition = excluded.windows_edition,
+  install_pending = excluded.install_pending,
+  installer_iso = excluded.installer_iso,
+  virtio_win_iso = excluded.virtio_win_iso
 )SQL";
 
     bool ok = false;
@@ -416,6 +445,11 @@ ON CONFLICT(id) DO UPDATE SET
     bindText(machine.get(), 20, meta.createdAt);
     bindText(machine.get(), 21, meta.updatedAt);
     bindText(machine.get(), 22, meta.error);
+    sqlite3_bind_int(machine.get(), 23, meta.windowsSsh ? 1 : 0);
+    bindText(machine.get(), 24, meta.windowsEdition);
+    sqlite3_bind_int(machine.get(), 25, meta.installPending ? 1 : 0);
+    bindText(machine.get(), 26, meta.installerIso);
+    bindText(machine.get(), 27, meta.virtioWinIso);
 
     if (sqlite3_step(machine.get()) != SQLITE_DONE) {
         return abort(QStringLiteral("Falha ao gravar a machine."));

@@ -813,30 +813,53 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
     request.name = params.value(QStringLiteral("name")).toString().trimmed();
     request.distro = params.value(QStringLiteral("distro")).toString().trimmed();
     request.version = params.value(QStringLiteral("version")).toString().trimmed();
-    request.provisioner =
-        params.value(QStringLiteral("provisioner")).toString(QStringLiteral("linux"));
+    request.provisioner = params.value(QStringLiteral("provisioner"))
+                              .toString(QStringLiteral("linux"))
+                              .trimmed()
+                              .toLower();
+    const bool windows = request.provisioner == QStringLiteral("windows");
     request.arch = params.value(QStringLiteral("arch")).toString().trimmed();
     request.user = params.value(QStringLiteral("user")).toString();
     request.password = params.value(QStringLiteral("password")).toString();
     request.userData = params.value(QStringLiteral("userData")).toString();
-    request.cpus = params.value(QStringLiteral("cpus"))
-                       .toInt(config.get(QStringLiteral("machines.cpus")).toInt(request.cpus));
-    request.memoryBytes =
-        params.value(QStringLiteral("memoryBytes"))
-            .toInteger(
-                config.get(QStringLiteral("machines.memoryBytes")).toInteger(request.memoryBytes));
-    request.diskBytes =
-        params.value(QStringLiteral("diskBytes"))
-            .toInteger(
-                config.get(QStringLiteral("machines.diskBytes")).toInteger(request.diskBytes));
-    request.isolateNetwork =
-        params.value(QStringLiteral("isolateNetwork")).toBool(request.isolateNetwork);
-    request.forwardSshAgent = params.value(QStringLiteral("forwardSshAgent"))
-                                  .toBool(config.get(QStringLiteral("machines.forwardSshAgent"))
-                                              .toBool(request.forwardSshAgent));
-    request.isolated =
-        params.value(QStringLiteral("isolated"))
-            .toBool(config.get(QStringLiteral("machines.isolated")).toBool(request.isolated));
+    request.installerIso = params.value(QStringLiteral("installerIso")).toString().trimmed();
+    request.virtioWinIso = params.value(QStringLiteral("virtioWinIso")).toString().trimmed();
+    request.answerFile = params.value(QStringLiteral("answerFile")).toString().trimmed();
+    request.windowsEdition = params.value(QStringLiteral("windowsEdition")).toString().trimmed();
+    request.windowsSsh = params.value(QStringLiteral("windowsSsh")).toBool(false);
+    if (windows) {
+        // Windows tem mínimos próprios; os defaults globais de machines.* não se aplicam.
+        request.cpus = params.contains(QStringLiteral("cpus"))
+                           ? params.value(QStringLiteral("cpus")).toInt()
+                           : 2;
+        request.memoryBytes = params.contains(QStringLiteral("memoryBytes"))
+                                  ? params.value(QStringLiteral("memoryBytes")).toInteger()
+                                  : 4LL * 1024LL * 1024LL * 1024LL;
+        request.diskBytes = params.contains(QStringLiteral("diskBytes"))
+                                ? params.value(QStringLiteral("diskBytes")).toInteger()
+                                : 64LL * 1024LL * 1024LL * 1024LL;
+        request.isolateNetwork =
+            params.value(QStringLiteral("isolateNetwork")).toBool(request.isolateNetwork);
+        request.isolated = params.value(QStringLiteral("isolated")).toBool(false);
+    } else {
+        request.cpus = params.value(QStringLiteral("cpus"))
+                           .toInt(config.get(QStringLiteral("machines.cpus")).toInt(request.cpus));
+        request.memoryBytes = params.value(QStringLiteral("memoryBytes"))
+                                  .toInteger(config.get(QStringLiteral("machines.memoryBytes"))
+                                                 .toInteger(request.memoryBytes));
+        request.diskBytes =
+            params.value(QStringLiteral("diskBytes"))
+                .toInteger(
+                    config.get(QStringLiteral("machines.diskBytes")).toInteger(request.diskBytes));
+        request.isolateNetwork =
+            params.value(QStringLiteral("isolateNetwork")).toBool(request.isolateNetwork);
+        request.forwardSshAgent = params.value(QStringLiteral("forwardSshAgent"))
+                                      .toBool(config.get(QStringLiteral("machines.forwardSshAgent"))
+                                                  .toBool(request.forwardSshAgent));
+        request.isolated =
+            params.value(QStringLiteral("isolated"))
+                .toBool(config.get(QStringLiteral("machines.isolated")).toBool(request.isolated));
+    }
 
     const QJsonValue mountsValue = params.value(QStringLiteral("mounts"));
     if (!mountsValue.isUndefined() && !mountsValue.isNull()) {

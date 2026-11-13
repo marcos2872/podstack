@@ -25,6 +25,7 @@
 #include "machines/SshConfig.h"
 #include "machines/UsbDevices.h"
 #include "machines/VirtiofsdProcess.h"
+#include "machines/WindowsProvisioner.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -48,6 +49,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimeZone>
+#include <QXmlStreamReader>
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -93,6 +95,9 @@ using PodStack::SshConfig;
 using PodStack::SshInfo;
 using PodStack::UpdateMachineRequest;
 using PodStack::VirtiofsdProcess;
+using PodStack::WindowsProvisioner;
+using PodStack::WindowsProvisionOptions;
+using PodStack::WindowsProvisionResult;
 
 namespace {
 
@@ -915,6 +920,7 @@ private slots:
     void qemuCommandSecureBoot();
     void qemuCommandSpice();
     void qemuCommandTpm();
+    void qemuCommandWindowsMedia();
     void qemuCommandInvalid();
     void qmpHandshake();
     void qmpQueryStatus();
@@ -994,6 +1000,11 @@ private slots:
     void machineManagerAudio();
     void machineManagerWindowsStart();
     void machineManagerSpiceConsole();
+    void windowsProvisionerXml();
+    void windowsProvisionerPrepare();
+    void windowsProvisionerValidation();
+    void machineManagerWindowsCreate();
+    void machineManagerWindowsValidation();
     void machineManagerSnapshots();
     void qemuRuntimeFallback();
     void qemuRuntimePidFile();
@@ -2733,6 +2744,8 @@ void MachinesTest::qemuCommandSecureBoot()
     QCOMPARE(valueAfter(args, QStringLiteral("-M")), QStringLiteral("q35,smm=on"));
     QCOMPARE(valueAfter(args, QStringLiteral("-global")),
              QStringLiteral("driver=cfi.pflash01,property=secure,value=on"));
+    QVERIFY(valueAfter(args, QStringLiteral("-cpu")).contains(QStringLiteral("hv_relaxed")));
+    QVERIFY(valueAfter(args, QStringLiteral("-cpu")).contains(QStringLiteral("hv_synic")));
 
     spec.secureBoot = false;
     const QStringList without = QemuCommand::arguments(spec, &error);
@@ -2794,6 +2807,45 @@ void MachinesTest::qemuCommandTpm()
     relative.tpmSocketPath = QStringLiteral("swtpm.sock");
     error = {};
     QVERIFY(QemuCommand::arguments(relative, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void MachinesTest::qemuCommandWindowsMedia()
+{
+    QemuSpec spec = qemuSpec(m_root);
+    spec.seedPath.clear();
+    spec.installerIsoPath = m_root + QStringLiteral("/iso/windows.iso");
+    spec.driverIsoPath = m_root + QStringLiteral("/iso/virtio-win.iso");
+    spec.unattendIsoPath = m_root + QStringLiteral("/iso/autounattend.iso");
+    spec.bootOnceCdrom = true;
+
+    PodStack::Error error;
+    const QStringList args = QemuCommand::arguments(spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    for (const QString &iso : {spec.installerIsoPath, spec.driverIsoPath, spec.unattendIsoPath}) {
+        QVERIFY(args.contains(QStringLiteral("file=%1,if=ide,media=cdrom,readonly=on").arg(iso)));
+    }
+    QCOMPARE(valueAfter(args, QStringLiteral("-boot")), QStringLiteral("once=d"));
+    QVERIFY(!args.contains(
+        QStringLiteral("file=%1,format=raw,if=virtio,readonly=on").arg(spec.seedPath)));
+
+    QemuSpec noSeed = qemuSpec(m_root);
+    noSeed.seedPath.clear();
+    error = {};
+    const QStringList noSeedArgs = QemuCommand::arguments(noSeed, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!noSeedArgs.contains(QStringLiteral("-boot")));
+
+    QemuSpec relative = spec;
+    relative.driverIsoPath = QStringLiteral("virtio-win.iso");
+    error = {};
+    QVERIFY(QemuCommand::arguments(relative, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    QemuSpec bootWithoutMedia = qemuSpec(m_root);
+    bootWithoutMedia.bootOnceCdrom = true;
+    error = {};
+    QVERIFY(QemuCommand::arguments(bootWithoutMedia, &error).isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
@@ -5612,7 +5664,7 @@ void MachinesTest::machineManagerAudio()
 
 void MachinesTest::machineManagerWindowsStart()
 {
-    const QString root = m_root + QStringLiteral("/manager-windows-start");
+    const QString root = m_root + QStringLiteral("/wstart");
     QDir(root).removeRecursively();
     QVERIFY(QDir().mkpath(root));
 
@@ -5794,6 +5846,407 @@ void MachinesTest::machineManagerSpiceConsole()
              QStringLiteral("backend_missing"));
     qputenv("PATH", oldPath);
     qunsetenv("PODSTACK_REMOTE_VIEWER");
+}
+
+void MachinesTest::windowsProvisionerXml()
+{
+    WindowsProvisionOptions options;
+    options.machineName = QStringLiteral("win-dev");
+    options.computerName = QStringLiteral("win-dev");
+    options.user = QStringLiteral("podstack");
+    options.password = QStringLiteral("A&b<c>\"d'");
+    options.edition = QStringLiteral("Windows 11 Pro");
+    options.installSsh = true;
+    options.sshPublicKey = QStringLiteral("ssh-ed25519 AAAATEST podstack");
+    options.locale = QStringLiteral("pt-BR");
+    options.timeZone = QStringLiteral("E. South America Standard Time");
+
+    const QString xml = WindowsProvisioner::buildXml(options);
+    QVERIFY(xml.startsWith(QStringLiteral("<?xml")));
+    QVERIFY(xml.contains(QStringLiteral("E. South America Standard Time")));
+    QVERIFY(xml.contains(QStringLiteral("/IMAGE/NAME")));
+    QVERIFY(xml.contains(QStringLiteral("Windows 11 Pro")));
+    QVERIFY(xml.contains(QStringLiteral("viostor")));
+    QVERIFY(xml.contains(QStringLiteral("NetKVM")));
+    QVERIFY(xml.contains(QStringLiteral("vioscsi")));
+    QVERIFY(xml.contains(QStringLiteral("viogpudo")));
+    QVERIFY(xml.contains(QStringLiteral("E:\\viostor\\w11\\amd64")));
+    QVERIFY(xml.contains(QStringLiteral("F:\\viostor\\w11\\amd64")));
+    QVERIFY(xml.contains(QStringLiteral("qemu-ga-x86_64.msi")));
+    QVERIFY(xml.contains(QStringLiteral("guest-agent\\qemu-ga-x86_64.msi")));
+    QVERIFY(xml.contains(QStringLiteral("virtio-win-gt-x64.msi")));
+    QVERIFY(xml.contains(QStringLiteral("OpenSSH.Server")));
+    QVERIFY(xml.contains(QStringLiteral("administrators_authorized_keys")));
+    QVERIFY(xml.contains(QStringLiteral("shutdown /r /t 10")));
+    QVERIFY(xml.contains(QStringLiteral("A&amp;b&lt;c&gt;")));
+    QVERIFY(xml.contains(QStringLiteral("Windows 11 Pro")));
+
+    QXmlStreamReader reader(xml);
+    while (!reader.atEnd()) {
+        reader.readNext();
+    }
+    QVERIFY2(!reader.hasError(), qPrintable(reader.errorString()));
+
+    options.installSsh = false;
+    const QString withoutSsh = WindowsProvisioner::buildXml(options);
+    QVERIFY(!withoutSsh.contains(QStringLiteral("OpenSSH.Server")));
+    QVERIFY(!withoutSsh.contains(QStringLiteral("administrators_authorized_keys")));
+
+    QCOMPARE(WindowsProvisioner::defaultEdition(), QStringLiteral("Windows 11 Pro"));
+    QCOMPARE(WindowsProvisioner::generatePassword().size(), 24);
+    QVERIFY(WindowsProvisioner::generatePassword() != WindowsProvisioner::generatePassword());
+    QCOMPARE(WindowsProvisioner::windowsComputerName(QStringLiteral("a-very-long-machine-name")),
+             QStringLiteral("a-very-long-mac"));
+    QCOMPARE(WindowsProvisioner::windowsTimeZone(QStringLiteral("America/Sao_Paulo")),
+             QStringLiteral("E. South America Standard Time"));
+    QCOMPARE(WindowsProvisioner::windowsTimeZone(QStringLiteral("Unknown/Zone")),
+             QStringLiteral("UTC"));
+}
+
+void MachinesTest::windowsProvisionerPrepare()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    WindowsProvisionOptions options;
+    options.machineName = QStringLiteral("win-prepare");
+    options.computerName = QStringLiteral("win-prepare");
+    options.user = QStringLiteral("podstack");
+    options.password = QStringLiteral("Senha123!");
+
+    WindowsProvisionResult result;
+    PodStack::Error error;
+    QVERIFY2(WindowsProvisioner::prepare(directory.path(), options, {}, &result, &error),
+             qPrintable(error.message));
+    QVERIFY(QFileInfo(result.answerFilePath).isFile());
+    QVERIFY(QFileInfo(result.answerIsoPath).isFile());
+    QVERIFY(ownerOnly(QFileInfo(result.answerFilePath).permissions(), false));
+    QVERIFY(ownerOnly(QFileInfo(result.answerIsoPath).permissions(), false));
+    QVERIFY(isoEntryNames(result.answerIsoPath).contains(QStringLiteral("autounattend.xml")));
+    QVERIFY(result.xml.contains(QStringLiteral("win-prepare")));
+    QVERIFY(result.xml.contains(QStringLiteral("Senha123!")));
+
+    const QString customPath = directory.filePath(QStringLiteral("custom.xml"));
+    const QByteArray custom =
+        QByteArrayLiteral("<unattend><settings pass=\"specialize\"/></unattend>");
+    QVERIFY(writeTestFile(customPath, custom));
+    WindowsProvisionResult customResult;
+    error = {};
+    QVERIFY2(
+        WindowsProvisioner::prepare(directory.path(), options, customPath, &customResult, &error),
+        qPrintable(error.message));
+    QFile file(customResult.answerFilePath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(file.readAll(), custom);
+    QVERIFY(isoEntryNames(customResult.answerIsoPath).contains(QStringLiteral("autounattend.xml")));
+
+    error = {};
+    QVERIFY(!WindowsProvisioner::prepare(directory.path(), options,
+                                         directory.filePath(QStringLiteral("missing.xml")),
+                                         &customResult, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+}
+
+void MachinesTest::windowsProvisionerValidation()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    PodStack::Error error;
+    QVERIFY(!WindowsProvisioner::validateInstallerIso(QString(), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+    error = {};
+    QVERIFY(!WindowsProvisioner::validateInstallerIso(QStringLiteral("relative.iso"), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+    error = {};
+    QVERIFY(!WindowsProvisioner::validateInstallerIso(
+        directory.filePath(QStringLiteral("missing.iso")), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    const QString wrongExtension = directory.filePath(QStringLiteral("windows.txt"));
+    QVERIFY(writeTestFile(wrongExtension, QByteArrayLiteral("x")));
+    error = {};
+    QVERIFY(!WindowsProvisioner::validateInstallerIso(wrongExtension, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    const QString emptyIso = directory.filePath(QStringLiteral("empty.iso"));
+    QVERIFY(writeTestFile(emptyIso, QByteArray()));
+    error = {};
+    QVERIFY(!WindowsProvisioner::validateInstallerIso(emptyIso, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    const QString goodIso = directory.filePath(QStringLiteral("good.iso"));
+    QVERIFY(writeTestFile(goodIso, QByteArrayLiteral("iso")));
+    error = {};
+    QVERIFY(WindowsProvisioner::validateInstallerIso(goodIso, &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const QString badXml = directory.filePath(QStringLiteral("bad.xml"));
+    QVERIFY(writeTestFile(badXml, QByteArrayLiteral("<unattend>")));
+    error = {};
+    QVERIFY(!WindowsProvisioner::validateAnswerFile(badXml, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    const QString goodXml = directory.filePath(QStringLiteral("good.xml"));
+    QVERIFY(writeTestFile(goodXml, QByteArrayLiteral("<unattend/>")));
+    error = {};
+    QVERIFY(WindowsProvisioner::validateAnswerFile(goodXml, &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+}
+
+void MachinesTest::machineManagerWindowsCreate()
+{
+    const QString root = m_root + QStringLiteral("/wc");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QString ovmfCode;
+    QString ovmfVars;
+    QVERIFY(createFirmwareFiles(root, &ovmfCode, &ovmfVars));
+    const QString qemuImg = createQemuImgScript(root);
+    QVERIFY(!qemuImg.isEmpty());
+    const QString swtpm = createSwtpmScript(root);
+    QVERIFY(!swtpm.isEmpty());
+    const QString qemuImgLog = root + QStringLiteral("/qemu-img.log");
+    qputenv("PODSTACK_QEMU_IMG_LOG", qemuImgLog.toUtf8());
+    qputenv("PODSTACK_SWTPM_LOG", (root + QStringLiteral("/swtpm.log")).toUtf8());
+
+    const QString windowsIso = root + QStringLiteral("/isos/windows.iso");
+    const QString virtioIso = root + QStringLiteral("/isos/virtio-win.iso");
+    QVERIFY(writeTestFile(windowsIso, QByteArray(2048, 'w')));
+    QVERIFY(writeTestFile(virtioIso, QByteArray(2048, 'v')));
+
+    auto runtime = std::make_unique<FakeQemuRuntime>();
+    FakeQemuRuntime *fake = runtime.get();
+    const QString storePath = root + QStringLiteral("/podstack.db");
+    MachineManager::Options options;
+    QVERIFY(configureSshOptions(&options, root));
+    options.storePath = storePath;
+    options.machinesRoot = root + QStringLiteral("/machines");
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.qemuImgBinary = qemuImg;
+    options.ovmfSecbootCodePath = ovmfCode;
+    options.ovmfSecbootVarsPath = ovmfVars;
+    options.swtpmBinary = swtpm;
+    options.sshPortStart = freePortHint();
+    options.runtime = std::move(runtime);
+
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("win-create");
+    request.provisioner = QStringLiteral("windows");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.password = QStringLiteral("Senha123!");
+    request.cpus = 2;
+    request.memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+    request.diskBytes = 64LL * 1024LL * 1024LL * 1024LL;
+    request.installerIso = windowsIso;
+    request.virtioWinIso = virtioIso;
+    request.windowsEdition = QStringLiteral("Windows 11 Pro");
+    request.windowsSsh = true;
+
+    PodStack::Error error;
+    const MachineMeta meta = manager.create(request, {}, {}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(meta.state, QStringLiteral("running"));
+    QCOMPARE(meta.provisioner, QStringLiteral("windows"));
+    QCOMPARE(meta.distro, QStringLiteral("windows"));
+    QVERIFY(meta.seedPath.isEmpty());
+    QVERIFY(meta.installPending);
+    QVERIFY(meta.windowsSsh);
+    QVERIFY(!meta.sshKeyPath.isEmpty());
+    QCOMPARE(meta.windowsEdition, QStringLiteral("Windows 11 Pro"));
+    QCOMPARE(meta.installerIso, windowsIso);
+    QCOMPARE(meta.virtioWinIso, virtioIso);
+
+    const QString directory = root + QStringLiteral("/machines/") + meta.id;
+    const QString answerXml = directory + QStringLiteral("/autounattend.xml");
+    const QString answerIso = directory + QStringLiteral("/autounattend.iso");
+    QVERIFY(QFileInfo(answerXml).isFile());
+    QVERIFY(QFileInfo(answerIso).isFile());
+    QVERIFY(ownerOnly(QFileInfo(answerXml).permissions(), false));
+    QVERIFY(ownerOnly(QFileInfo(answerIso).permissions(), false));
+    QVERIFY(QFileInfo(directory + QStringLiteral("/nvram.fd")).isFile());
+    QVERIFY(QFileInfo(directory + QStringLiteral("/tpm")).isDir());
+
+    QVERIFY(fake->lastSpec.secureBoot);
+    QVERIFY(fake->lastSpec.bootOnceCdrom);
+    QCOMPARE(fake->lastSpec.installerIsoPath, windowsIso);
+    QCOMPARE(fake->lastSpec.driverIsoPath, virtioIso);
+    QCOMPARE(fake->lastSpec.unattendIsoPath, answerIso);
+    QVERIFY(fake->lastSpec.seedPath.isEmpty());
+
+    QFile xmlFile(answerXml);
+    QVERIFY(xmlFile.open(QIODevice::ReadOnly));
+    const QString xml = QString::fromUtf8(xmlFile.readAll());
+    QVERIFY(xml.contains(QStringLiteral("Windows 11 Pro")));
+    QVERIFY(xml.contains(QStringLiteral("OpenSSH.Server")));
+    QFile publicKey(meta.sshKeyPath + QStringLiteral(".pub"));
+    QVERIFY(publicKey.open(QIODevice::ReadOnly));
+    QVERIFY(xml.contains(QString::fromUtf8(publicKey.readAll()).trimmed()));
+
+    QFile imgLog(qemuImgLog);
+    QVERIFY(imgLog.open(QIODevice::ReadOnly));
+    const QString imgArgs = QString::fromUtf8(imgLog.readAll());
+    QVERIFY(imgArgs.contains(QStringLiteral("create")));
+    const QStringList imgArgLines = imgArgs.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QVERIFY(!imgArgLines.contains(QStringLiteral("-b")));
+    QVERIFY(!imgArgLines.contains(QStringLiteral("-F")));
+
+    // Export de Windows ainda não é suportado (depois de concluir a instalação).
+    // Clone durante a instalação é recusado.
+    error = {};
+    QVERIFY(manager.clone(meta.id, QStringLiteral("win-clone"), {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+
+    error = {};
+    const MachineMeta stopped = manager.stop(meta.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(stopped.state, QStringLiteral("stopped"));
+    QVERIFY(!stopped.installPending);
+    QVERIFY(stopped.installerIso.isEmpty());
+    QVERIFY(stopped.virtioWinIso.isEmpty());
+    QVERIFY(!QFileInfo(answerXml).exists());
+    QVERIFY(!QFileInfo(answerIso).exists());
+
+    error = {};
+    QVERIFY(
+        manager.exportMachine(meta.id, root + QStringLiteral("/win.tar.zst"), false, {}, {}, &error)
+            .id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    // O próximo start não anexa mais as mídias de instalação.
+    error = {};
+    const MachineMeta restarted = manager.start(meta.id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(restarted.state, QStringLiteral("running"));
+    QVERIFY(!fake->lastSpec.bootOnceCdrom);
+    QVERIFY(fake->lastSpec.installerIsoPath.isEmpty());
+    QVERIFY(fake->lastSpec.driverIsoPath.isEmpty());
+    QVERIFY(fake->lastSpec.unattendIsoPath.isEmpty());
+
+    error = {};
+    (void) manager.stop(meta.id, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    qunsetenv("PODSTACK_QEMU_IMG_LOG");
+    qunsetenv("PODSTACK_SWTPM_LOG");
+}
+
+void MachinesTest::machineManagerWindowsValidation()
+{
+    const QString root = m_root + QStringLiteral("/manager-windows-validation");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    const QString windowsIso = root + QStringLiteral("/windows.iso");
+    const QString virtioIso = root + QStringLiteral("/virtio-win.iso");
+    QVERIFY(writeTestFile(windowsIso, QByteArrayLiteral("win")));
+    QVERIFY(writeTestFile(virtioIso, QByteArrayLiteral("virtio")));
+    const QString badXml = root + QStringLiteral("/bad.xml");
+    QVERIFY(writeTestFile(badXml, QByteArrayLiteral("<unattend>")));
+
+    MachineManager::Options options;
+    const QString storePath = root + QStringLiteral("/podstack.db");
+    const QString machinesRoot = root + QStringLiteral("/machines");
+    options.storePath = storePath;
+    options.machinesRoot = machinesRoot;
+    options.imageCacheDir = root + QStringLiteral("/images");
+    options.runtime = std::make_unique<FakeQemuRuntime>();
+    MachineManager manager(std::move(options));
+
+    CreateMachineRequest request;
+    request.name = QStringLiteral("win-validate");
+    request.provisioner = QStringLiteral("windows");
+    request.arch = QStringLiteral("amd64");
+    request.user = QStringLiteral("podstack");
+    request.password = QStringLiteral("Senha123!");
+    request.cpus = 2;
+    request.memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+    request.diskBytes = 64LL * 1024LL * 1024LL * 1024LL;
+    request.installerIso = windowsIso;
+    request.virtioWinIso = virtioIso;
+    request.windowsEdition = QStringLiteral("Windows 11 Pro");
+
+    PodStack::Error error;
+    QVERIFY2(manager.validate(request, &error), qPrintable(error.message));
+
+    CreateMachineRequest invalid = request;
+    invalid.cpus = 1;
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    invalid = request;
+    invalid.memoryBytes = 2LL * 1024LL * 1024LL * 1024LL;
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+
+    invalid = request;
+    invalid.diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+
+    invalid = request;
+    invalid.password.clear();
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+
+    invalid = request;
+    invalid.password = QStringLiteral("short");
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+
+    invalid = request;
+    invalid.installerIso.clear();
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+
+    invalid = request;
+    invalid.virtioWinIso = root + QStringLiteral("/missing.iso");
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+
+    invalid = request;
+    invalid.answerFile = badXml;
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
+
+    invalid = request;
+    invalid.mounts = {MachineMount{QStringLiteral("m"), QStringLiteral("/tmp"),
+                                   QStringLiteral("/mnt"), false, QStringLiteral("host")}};
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+
+    invalid = request;
+    invalid.forwardSshAgent = true;
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+
+    invalid = request;
+    invalid.arch = QStringLiteral("arm64");
+    error = {};
+    QVERIFY(!manager.validate(invalid, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    QCOMPARE(error.reason, QStringLiteral("backend_unsupported"));
+
+    // Clone de uma machine Windows ainda em instalação é recusado.
+    MachineMeta seeded = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000050"),
+                                     QStringLiteral("win-seeded"));
+    seeded.distro = QStringLiteral("windows");
+    seeded.distroVersion.clear();
+    seeded.provisioner = QStringLiteral("windows");
+    seeded.state = QStringLiteral("stopped");
+    seeded.installPending = true;
+    QVERIFY(seedMachine(storePath, machinesRoot, seeded));
+
+    error = {};
+    QVERIFY(
+        manager.clone(seeded.id, QStringLiteral("win-seeded-clone"), {}, {}, &error).id.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
 }
 
 void MachinesTest::machineManagerUpdateRemoveErrors()

@@ -11,6 +11,7 @@
 #include "machines/MachineArchive.h"
 #include "machines/SerialPorts.h"
 #include "machines/UsbDevices.h"
+#include "machines/WindowsProvisioner.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -208,6 +209,22 @@ void restrictSpiceSocket(const QemuSpec &spec)
     QFile::setPermissions(spec.spiceSocketPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 }
 
+/// Encerra a fase de instalação Windows: o próximo start boota do disco e as
+/// mídias de instalação/answer file deixam de existir.
+void clearWindowsInstall(MachineMeta &meta, const QString &directory)
+{
+    if (meta.provisioner != QStringLiteral("windows") || !meta.installPending) {
+        return;
+    }
+    meta.installPending = false;
+    meta.installerIso.clear();
+    meta.virtioWinIso.clear();
+    if (!directory.isEmpty()) {
+        QFile::remove(directory + QStringLiteral("/autounattend.xml"));
+        QFile::remove(directory + QStringLiteral("/autounattend.iso"));
+    }
+}
+
 /// Um órfão pertence a esta instalação quando o cmdline referencia um caminho
 /// dentro do machinesRoot (disco, seed, sockets). Isso permite limpar até um
 /// processo cujo diretório já foi apagado, sem tocar em outra instalação.
@@ -357,13 +374,78 @@ bool MachineManager::validate(const CreateMachineRequest &request, Error *error)
                                           QStringLiteral("Use 'linux' ou 'windows'.")));
     }
     if (provisioner == QStringLiteral("windows")) {
-        // A criação Windows (installerIso/autounattend) é entregue na T9-04.
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
-                                 QStringLiteral("A criação de machines Windows ainda não está "
-                                                "disponível."),
-                                 QStringLiteral("provisioner=windows"),
-                                 QStringLiteral("Use uma distro Linux por enquanto.")));
+        if (arch != QStringLiteral("amd64")) {
+            Error unsupported =
+                Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                            QStringLiteral("Machines Windows são suportadas apenas em host amd64."),
+                            arch, QStringLiteral("Use uma machine Linux ou um host x86_64."));
+            unsupported.reason = QStringLiteral("backend_unsupported");
+            return fails(error, unsupported);
+        }
+        if (request.cpus < 2) {
+            return fails(error, invalidParams(QStringLiteral("Windows exige ao menos 2 vCPUs."),
+                                              QString::number(request.cpus)));
+        }
+        constexpr qint64 kWindowsMemory = 4LL * 1024LL * 1024LL * 1024LL;
+        constexpr qint64 kWindowsDisk = 64LL * 1024LL * 1024LL * 1024LL;
+        if (request.memoryBytes < kWindowsMemory) {
+            return fails(error,
+                         invalidParams(QStringLiteral("Windows exige ao menos 4 GiB de memória."),
+                                       QString::number(request.memoryBytes)));
+        }
+        if (request.diskBytes < kWindowsDisk) {
+            return fails(error,
+                         invalidParams(QStringLiteral("Windows exige ao menos 64 GiB de disco."),
+                                       QString::number(request.diskBytes)));
+        }
+        if (request.isolated && !request.mounts.isEmpty()) {
+            return fails(error,
+                         invalidParams(QStringLiteral("O modo isolado não permite mounts.")));
+        }
+        if (!request.mounts.isEmpty()) {
+            return fails(error,
+                         Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                                     QStringLiteral("Mounts em machines Windows ainda não são "
+                                                    "suportados."),
+                                     QString::number(request.mounts.size())));
+        }
+        if (request.forwardSshAgent) {
+            return fails(error,
+                         invalidParams(QStringLiteral("Encaminhar o SSH agent não é suportado "
+                                                      "em machines Windows.")));
+        }
+        const QString user = request.user.trimmed().isEmpty() ? normalizedUser(request.user)
+                                                              : request.user.trimmed();
+        static const QRegularExpression windowsUserPattern(
+            QStringLiteral("^[A-Za-z0-9._-]{1,20}$"));
+        if (!windowsUserPattern.match(user).hasMatch() || user.endsWith(QLatin1Char('.')) ||
+            user.compare(QStringLiteral("Administrator"), Qt::CaseInsensitive) == 0) {
+            return fails(error,
+                         invalidParams(QStringLiteral("Usuário inválido para o Windows."), user,
+                                       QStringLiteral("Use 1..20 caracteres [A-Za-z0-9._-].")));
+        }
+        if (request.password.isEmpty()) {
+            return fails(error, invalidParams(QStringLiteral("Informe a senha da conta Windows.")));
+        }
+        if (request.password.size() < 8) {
+            return fails(error,
+                         invalidParams(QStringLiteral("A senha do Windows deve ter ao menos 8 "
+                                                      "caracteres.")));
+        }
+        if (request.windowsEdition.trimmed().isEmpty()) {
+            return fails(error, invalidParams(QStringLiteral("Informe a edição do Windows.")));
+        }
+        if (!WindowsProvisioner::validateInstallerIso(request.installerIso, error)) {
+            return false;
+        }
+        if (!WindowsProvisioner::validateVirtioWinIso(request.virtioWinIso, error)) {
+            return false;
+        }
+        if (!request.answerFile.trimmed().isEmpty() &&
+            !WindowsProvisioner::validateAnswerFile(request.answerFile, error)) {
+            return false;
+        }
+        return true;
     }
     if (request.distro.trimmed().isEmpty()) {
         return fails(error, invalidParams(QStringLiteral("Informe a distro da machine.")));
@@ -1732,17 +1814,16 @@ bool MachineManager::createDisk(const QString &diskPath, const QString &backingP
         return false;
     }
 
-    const QStringList arguments{
+    QStringList arguments{
         QStringLiteral("create"),
         QStringLiteral("-f"),
         QStringLiteral("qcow2"),
-        QStringLiteral("-F"),
-        QStringLiteral("qcow2"),
-        QStringLiteral("-b"),
-        backingPath,
-        diskPath,
-        QString::number(diskBytes),
     };
+    if (!backingPath.isEmpty()) {
+        arguments << QStringLiteral("-F") << QStringLiteral("qcow2") << QStringLiteral("-b")
+                  << backingPath;
+    }
+    arguments << diskPath << QString::number(diskBytes);
 
     QProcess process;
     process.setProcessChannelMode(QProcess::SeparateChannels);
@@ -2087,6 +2168,12 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
     if (windows) {
         spec.spiceSocketPath = directory + QStringLiteral("/spice.sock");
         spec.tpmSocketPath = SwtpmProcess::socketPathFor(directory);
+        if (meta.installPending) {
+            spec.installerIsoPath = meta.installerIso;
+            spec.driverIsoPath = meta.virtioWinIso;
+            spec.unattendIsoPath = directory + QStringLiteral("/autounattend.iso");
+            spec.bootOnceCdrom = true;
+        }
     }
 
     for (const MachineMount &mount : meta.mounts) {
@@ -2123,11 +2210,40 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
         return {};
     }
     if (meta.seedPath.isEmpty() || !QFileInfo(meta.seedPath).isFile()) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                          QStringLiteral("O seed cloud-init da machine não existe."),
-                          meta.seedPath, QStringLiteral("Recrie a machine.")));
-        return {};
+        if (!windows) {
+            fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                     QStringLiteral("O seed cloud-init da machine não existe."),
+                                     meta.seedPath, QStringLiteral("Recrie a machine.")));
+            return {};
+        }
+    }
+    if (windows && meta.installPending) {
+        const QFileInfo installer(meta.installerIso);
+        const QFileInfo drivers(meta.virtioWinIso);
+        const QFileInfo unattend(spec.unattendIsoPath);
+        if (!installer.isFile() || !installer.isReadable()) {
+            fails(error,
+                  Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                              QStringLiteral("A ISO do Windows não está disponível."),
+                              meta.installerIso,
+                              QStringLiteral("Selecione o ISO novamente ou recrie a machine.")));
+            return {};
+        }
+        if (!drivers.isFile() || !drivers.isReadable()) {
+            fails(error,
+                  Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                              QStringLiteral("A ISO do virtio-win não está disponível."),
+                              meta.virtioWinIso,
+                              QStringLiteral("Selecione o ISO novamente ou recrie a machine.")));
+            return {};
+        }
+        if (!unattend.isFile() || !unattend.isReadable()) {
+            fails(error,
+                  Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                              QStringLiteral("O answer file da instalação Windows não existe."),
+                              spec.unattendIsoPath, QStringLiteral("Recrie a machine.")));
+            return {};
+        }
     }
 
     if (!resolveFirmware(meta.arch, windows, directory, &spec.ovmfCodePath, &spec.ovmfVarsPath,
@@ -2161,31 +2277,37 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     }
 
     const QString arch = normalizeArch(request.arch);
+    const bool windows = request.provisioner.trimmed().toLower() == QStringLiteral("windows");
     QString distroSpec = request.distro.trimmed();
-    if (!request.version.trimmed().isEmpty() && !distroSpec.contains(QLatin1Char(':'))) {
-        distroSpec += QLatin1Char(':') + request.version.trimmed();
-    }
-
-    Error resolveError;
-    const DistroImage image = m_options.resolveDistro(distroSpec, arch, &resolveError);
-    if (!resolveError.isEmpty()) {
-        if (error) {
-            *error = resolveError;
+    DistroImage image;
+    if (windows) {
+        image.distro = QStringLiteral("windows");
+    } else {
+        if (!request.version.trimmed().isEmpty() && !distroSpec.contains(QLatin1Char(':'))) {
+            distroSpec += QLatin1Char(':') + request.version.trimmed();
         }
-        return {};
-    }
-    if (!image.url.isEmpty() && !image.arch.isEmpty() && image.arch != arch) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
-                          QStringLiteral("A imagem resolvida não corresponde à arquitetura."),
-                          QStringLiteral("%1 != %2").arg(image.arch, arch)));
-        return {};
-    }
-    if (image.url.isEmpty() || image.checksum.isEmpty()) {
-        fails(error, Error::make(QStringLiteral("PODSTACK_INTERNAL"),
-                                 QStringLiteral("A distro resolvida não tem imagem válida."),
-                                 distroSpec));
-        return {};
+
+        Error resolveError;
+        image = m_options.resolveDistro(distroSpec, arch, &resolveError);
+        if (!resolveError.isEmpty()) {
+            if (error) {
+                *error = resolveError;
+            }
+            return {};
+        }
+        if (!image.url.isEmpty() && !image.arch.isEmpty() && image.arch != arch) {
+            fails(error,
+                  Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                              QStringLiteral("A imagem resolvida não corresponde à arquitetura."),
+                              QStringLiteral("%1 != %2").arg(image.arch, arch)));
+            return {};
+        }
+        if (image.url.isEmpty() || image.checksum.isEmpty()) {
+            fails(error, Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                     QStringLiteral("A distro resolvida não tem imagem válida."),
+                                     distroSpec));
+            return {};
+        }
     }
 
     Error existingError;
@@ -2204,21 +2326,22 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         return {};
     }
 
-    const DownloadProgress downloadProgress =
-        progress ? DownloadProgress([&progress](qint64 received, qint64 total) {
-            const int percent =
-                total > 0 ? static_cast<int>((received * 70) / total) : 0;
-            progress(QStringLiteral("image"), qBound(0, percent, 70));
-        })
-                 : DownloadProgress();
-
     QString backingPath;
-    Error downloadError;
-    if (!m_cache.ensure(image, downloadProgress, cancelled, &backingPath, &downloadError)) {
-        if (error) {
-            *error = downloadError;
+    if (!windows) {
+        const DownloadProgress downloadProgress =
+            progress ? DownloadProgress([&progress](qint64 received, qint64 total) {
+                const int percent = total > 0 ? static_cast<int>((received * 70) / total) : 0;
+                progress(QStringLiteral("image"), qBound(0, percent, 70));
+            })
+                     : DownloadProgress();
+
+        Error downloadError;
+        if (!m_cache.ensure(image, downloadProgress, cancelled, &backingPath, &downloadError)) {
+            if (error) {
+                *error = downloadError;
+            }
+            return {};
         }
-        return {};
     }
 
     if (cancelled && cancelled()) {
@@ -2251,9 +2374,12 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         return {};
     }
 
+    const QString machineUser =
+        request.user.trimmed().isEmpty() ? normalizedUser(request.user) : request.user.trimmed();
     QString sshKeyPath;
     QString sshPublicKey;
-    if (!ensureSshKey(directory, request.name, &sshKeyPath, &sshPublicKey, error)) {
+    if ((!windows || request.windowsSsh) &&
+        !ensureSshKey(directory, request.name, &sshKeyPath, &sshPublicKey, error)) {
         cleanupDirectory(directory);
         return {};
     }
@@ -2262,28 +2388,54 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         progress(QStringLiteral("disk"), 75);
     }
     const QString diskPath = directory + QStringLiteral("/disk.qcow2");
-    if (!createDisk(diskPath, backingPath, request.diskBytes, error)) {
+    if (!createDisk(diskPath, windows ? QString() : backingPath, request.diskBytes, error)) {
         cleanupDirectory(directory);
         return {};
     }
 
-    if (progress) {
-        progress(QStringLiteral("seed"), 85);
-    }
-    const QString seedPath = directory + QStringLiteral("/seed.iso");
-    CloudInitOptions seed;
-    seed.machineId = id;
-    seed.hostname = request.name;
-    seed.user = normalizedUser(request.user);
-    seed.password = request.password;
-    seed.userData = request.userData;
-    seed.sshAuthorizedKeys = {sshPublicKey};
-    if (seed.userData.isEmpty()) {
-        seed.environment = proxyEnvironmentFromConfig();
-    }
-    if (!CloudInit::writeSeedIso(seedPath, seed, error)) {
-        cleanupDirectory(directory);
-        return {};
+    QString seedPath;
+    if (!windows) {
+        if (progress) {
+            progress(QStringLiteral("seed"), 85);
+        }
+        seedPath = directory + QStringLiteral("/seed.iso");
+        CloudInitOptions seed;
+        seed.machineId = id;
+        seed.hostname = request.name;
+        seed.user = machineUser;
+        seed.password = request.password;
+        seed.userData = request.userData;
+        seed.sshAuthorizedKeys = {sshPublicKey};
+        if (seed.userData.isEmpty()) {
+            seed.environment = proxyEnvironmentFromConfig();
+        }
+        if (!CloudInit::writeSeedIso(seedPath, seed, error)) {
+            cleanupDirectory(directory);
+            return {};
+        }
+    } else {
+        if (progress) {
+            progress(QStringLiteral("unattend"), 85);
+        }
+        WindowsProvisionOptions provisionOptions;
+        provisionOptions.machineName = request.name;
+        provisionOptions.computerName = request.name;
+        provisionOptions.user = machineUser;
+        provisionOptions.password = request.password;
+        provisionOptions.edition = request.windowsEdition.trimmed().isEmpty()
+                                       ? WindowsProvisioner::defaultEdition()
+                                       : request.windowsEdition.trimmed();
+        provisionOptions.installSsh = request.windowsSsh;
+        provisionOptions.sshPublicKey = sshPublicKey;
+        provisionOptions.locale = WindowsProvisioner::localeName();
+        provisionOptions.timeZone =
+            WindowsProvisioner::windowsTimeZone(QTimeZone::systemTimeZoneId());
+        WindowsProvisionResult provision;
+        if (!WindowsProvisioner::prepare(directory, provisionOptions, request.answerFile,
+                                         &provision, error)) {
+            cleanupDirectory(directory);
+            return {};
+        }
     }
 
     if (cancelled && cancelled()) {
@@ -2303,9 +2455,9 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     MachineMeta meta;
     meta.id = id;
     meta.name = request.name;
-    meta.distro = image.distro;
-    meta.distroVersion = image.version;
-    meta.provisioner = request.provisioner.trimmed().toLower();
+    meta.distro = windows ? QStringLiteral("windows") : image.distro;
+    meta.distroVersion = windows ? QString() : image.version;
+    meta.provisioner = windows ? QStringLiteral("windows") : QStringLiteral("linux");
     meta.arch = arch;
     meta.cpus = request.cpus;
     meta.memoryBytes = request.memoryBytes;
@@ -2314,7 +2466,15 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     meta.seedPath = seedPath;
     meta.sshKeyPath = sshKeyPath;
     meta.sshPort = sshPort;
-    meta.sshUser = seed.user;
+    meta.sshUser = machineUser;
+    meta.windowsSsh = windows && request.windowsSsh;
+    meta.windowsEdition =
+        windows ? (request.windowsEdition.trimmed().isEmpty() ? WindowsProvisioner::defaultEdition()
+                                                              : request.windowsEdition.trimmed())
+                : QString();
+    meta.installerIso = windows ? request.installerIso : QString();
+    meta.virtioWinIso = windows ? request.virtioWinIso : QString();
+    meta.installPending = windows;
     meta.state = QStringLiteral("provisioning");
     meta.isolated = request.isolated;
     meta.isolateNetwork = request.isolateNetwork || request.isolated;
@@ -2334,7 +2494,8 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     }
 
     Error sshConfigError;
-    if (!m_sshConfig.sync(meta, meta.forwardSshAgent, &sshConfigError)) {
+    if (!meta.sshKeyPath.isEmpty() &&
+        !m_sshConfig.sync(meta, meta.forwardSshAgent, &sshConfigError)) {
         m_store.remove(meta.id, nullptr);
         cleanupDirectory(directory);
         if (error) {
@@ -2576,6 +2737,10 @@ MachineMeta MachineManager::stop(const QString &idOrName, bool force, Error *err
         for (const MachineMount &mount : meta.mounts) {
             QFile::remove(virtiofsSocketPath(meta.id, mount.tag));
         }
+        if (meta.installPending) {
+            clearWindowsInstall(meta, machineDirFor(meta.id));
+            persist(meta, error);
+        }
         return meta;
     }
 
@@ -2626,6 +2791,7 @@ MachineMeta MachineManager::stop(const QString &idOrName, bool force, Error *err
 
     meta.state = QStringLiteral("stopped");
     meta.error.clear();
+    clearWindowsInstall(meta, machineDirFor(meta.id));
     if (!persist(meta, error)) {
         return meta;
     }
@@ -3523,6 +3689,14 @@ MachineMeta MachineManager::exportMachine(
                           meta.id));
         return {};
     }
+    if (meta.provisioner == QStringLiteral("windows")) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                                 QStringLiteral("Exportar machines Windows ainda não é suportado."),
+                                 meta.id,
+                                 QStringLiteral("Use o console/clone ou aguarde uma versão com o "
+                                                "manifesto Windows.")));
+        return {};
+    }
 
     std::shared_ptr<std::recursive_mutex> lockHolder;
     std::unique_lock<std::recursive_mutex> machineGuard;
@@ -4080,6 +4254,12 @@ MachineMeta MachineManager::clone(
                           source.id));
         return {};
     }
+    if (source.provisioner == QStringLiteral("windows") && source.installPending) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("Conclua a instalação do Windows antes de clonar."),
+                                 source.id));
+        return {};
+    }
 
     std::shared_ptr<std::recursive_mutex> lockHolder;
     std::unique_lock<std::recursive_mutex> machineGuard;
@@ -4249,9 +4429,10 @@ MachineMeta MachineManager::clone(
     };
 
     Error copyError;
-    if (!copyPrivate(source.seedPath, seedPath, &copyError)
-        || !copyPrivate(source.sshKeyPath, sshKeyPath, &copyError)
-        || !copyPrivate(source.sshKeyPath + QStringLiteral(".pub"), publicKeyPath, &copyError)) {
+    if ((!source.seedPath.isEmpty() && !copyPrivate(source.seedPath, seedPath, &copyError)) ||
+        (!source.sshKeyPath.isEmpty() && !copyPrivate(source.sshKeyPath, sshKeyPath, &copyError)) ||
+        (!source.sshKeyPath.isEmpty() &&
+         !copyPrivate(source.sshKeyPath + QStringLiteral(".pub"), publicKeyPath, &copyError))) {
         cleanup();
         resume();
         if (error) {
@@ -4259,9 +4440,10 @@ MachineMeta MachineManager::clone(
         }
         return {};
     }
-    if (!QFile::setPermissions(publicKeyPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                                  | QFileDevice::ReadGroup
-                                                  | QFileDevice::ReadOther)) {
+    if (!source.sshKeyPath.isEmpty() &&
+        !QFile::setPermissions(publicKeyPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                                  QFileDevice::ReadGroup |
+                                                  QFileDevice::ReadOther)) {
         cleanup();
         resume();
         fails(error, Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
@@ -4294,10 +4476,13 @@ MachineMeta MachineManager::clone(
     meta.memoryBytes = source.memoryBytes;
     meta.diskBytes = source.diskBytes;
     meta.diskPath = diskPath;
-    meta.seedPath = seedPath;
-    meta.sshKeyPath = sshKeyPath;
+    meta.seedPath = source.seedPath.isEmpty() ? QString() : seedPath;
+    meta.sshKeyPath = source.sshKeyPath.isEmpty() ? QString() : sshKeyPath;
     meta.sshPort = sshPort;
     meta.sshUser = source.sshUser;
+    meta.windowsSsh = source.windowsSsh;
+    meta.windowsEdition = source.windowsEdition;
+    meta.installPending = false;
     meta.state = QStringLiteral("stopped");
     meta.isolated = source.isolated;
     meta.isolateNetwork = source.isolateNetwork || source.isolated;
@@ -4320,7 +4505,7 @@ MachineMeta MachineManager::clone(
     }
 
     Error sshError;
-    if (!m_sshConfig.sync(meta, meta.forwardSshAgent, &sshError)) {
+    if (!meta.sshKeyPath.isEmpty() && !m_sshConfig.sync(meta, meta.forwardSshAgent, &sshError)) {
         cleanup();
         resume();
         if (error) {

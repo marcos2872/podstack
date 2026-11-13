@@ -1239,6 +1239,44 @@ void RpcTest::machinesFlow()
                 &invalid);
     QCOMPARE(invalid.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
+    const QJsonObject windowsBase{
+        {QStringLiteral("provisioner"), QStringLiteral("windows")},
+        {QStringLiteral("password"), QStringLiteral("Senha123!")},
+        {QStringLiteral("installerIso"), QStringLiteral("/tmp/podstack-win.iso")},
+        {QStringLiteral("virtioWinIso"), QStringLiteral("/tmp/podstack-virtio.iso")},
+        {QStringLiteral("cpus"), 2},
+        {QStringLiteral("memoryBytes"), 4LL * 1024LL * 1024LL * 1024LL},
+        {QStringLiteral("diskBytes"), 64LL * 1024LL * 1024LL * 1024LL},
+    };
+    PodStack::Error windowsMinCpus;
+    QJsonObject windowsInvalid = windowsBase;
+    windowsInvalid.insert(QStringLiteral("name"), QStringLiteral("win-min-cpus"));
+    windowsInvalid.insert(QStringLiteral("cpus"), 1);
+    client.call(QStringLiteral("machines.create"), windowsInvalid, &windowsMinCpus);
+    QCOMPARE(windowsMinCpus.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error windowsMissingIso;
+    windowsInvalid = windowsBase;
+    windowsInvalid.insert(QStringLiteral("name"), QStringLiteral("win-missing-iso"));
+    windowsInvalid.insert(QStringLiteral("installerIso"), QString());
+    client.call(QStringLiteral("machines.create"), windowsInvalid, &windowsMissingIso);
+    QCOMPARE(windowsMissingIso.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error windowsMissingPassword;
+    windowsInvalid = windowsBase;
+    windowsInvalid.insert(QStringLiteral("name"), QStringLiteral("win-missing-password"));
+    windowsInvalid.insert(QStringLiteral("password"), QString());
+    client.call(QStringLiteral("machines.create"), windowsInvalid, &windowsMissingPassword);
+    QCOMPARE(windowsMissingPassword.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    PodStack::Error windowsArm;
+    windowsInvalid = windowsBase;
+    windowsInvalid.insert(QStringLiteral("name"), QStringLiteral("win-arm"));
+    windowsInvalid.insert(QStringLiteral("arch"), QStringLiteral("arm64"));
+    client.call(QStringLiteral("machines.create"), windowsInvalid, &windowsArm);
+    QCOMPARE(windowsArm.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+    QCOMPARE(windowsArm.reason, QStringLiteral("backend_unsupported"));
+
     const QString sharedSource = m_testDataDir + QStringLiteral("/shared");
     QVERIFY(QDir().mkpath(sharedSource));
 

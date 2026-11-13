@@ -51,6 +51,10 @@ struct QemuSpec {
     bool secureBoot = false;
     QString spiceSocketPath; // vazio = sem console SPICE
     QString tpmSocketPath;   // vazio = sem TPM 2.0
+    QString installerIsoPath; // ISO do instalador Windows (provisioner windows)
+    QString driverIsoPath;    // ISO do virtio-win (provisioner windows)
+    QString unattendIsoPath;  // ISO com autounattend.xml (provisioner windows)
+    bool bootOnceCdrom = false;
     QVector<QemuMount> mounts;
     QVector<QemuPort> ports;
     QStringList serialPorts;
