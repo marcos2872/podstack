@@ -96,6 +96,26 @@ bool ensureParentDirectory(const QString &parent, Error *error)
 
 } // namespace
 
+QJsonObject GuestChannelInfo::toJson() const
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("channel"), channel);
+    object.insert(QStringLiteral("role"), role);
+    object.insert(QStringLiteral("version"), version);
+    object.insert(QStringLiteral("lastSeenAt"), lastSeenAt);
+    return object;
+}
+
+GuestChannelInfo GuestChannelInfo::fromJson(const QJsonObject &object)
+{
+    GuestChannelInfo info;
+    info.channel = object.value(QStringLiteral("channel")).toString();
+    info.role = object.value(QStringLiteral("role")).toString();
+    info.version = object.value(QStringLiteral("version")).toString();
+    info.lastSeenAt = object.value(QStringLiteral("lastSeenAt")).toString();
+    return info;
+}
+
 QJsonObject MachineUsbDevice::toJson() const
 {
     QJsonObject object;
@@ -135,6 +155,7 @@ QJsonObject MachineMeta::toJson() const
     object.insert(QStringLiteral("name"), name);
     object.insert(QStringLiteral("distro"), distro);
     object.insert(QStringLiteral("distroVersion"), distroVersion);
+    object.insert(QStringLiteral("provisioner"), provisioner);
     object.insert(QStringLiteral("arch"), arch);
     object.insert(QStringLiteral("cpus"), cpus);
     object.insert(QStringLiteral("memoryBytes"), memoryBytes);
@@ -177,6 +198,21 @@ QJsonObject MachineMeta::toJson() const
     }
     object.insert(QStringLiteral("usbDevices"), usbArray);
     object.insert(QStringLiteral("audioEnabled"), audioEnabled);
+    object.insert(QStringLiteral("windowsEdition"), windowsEdition);
+    object.insert(QStringLiteral("installerIso"), installerIso);
+    object.insert(QStringLiteral("virtioWinIso"), virtioWinIso);
+    object.insert(QStringLiteral("windowsSsh"), windowsSsh);
+    object.insert(QStringLiteral("installPending"), installPending);
+    object.insert(QStringLiteral("errorReason"), errorReason);
+    object.insert(QStringLiteral("guestReady"), guestReady);
+    object.insert(QStringLiteral("guestOs"), guestOs);
+    object.insert(QStringLiteral("origin"),
+                  guestChannels.isEmpty() ? QString() : guestChannels.first().channel);
+    QJsonArray channelArray;
+    for (const GuestChannelInfo &channel : guestChannels) {
+        channelArray.append(channel.toJson());
+    }
+    object.insert(QStringLiteral("guestChannels"), channelArray);
     return object;
 }
 
@@ -187,6 +223,10 @@ MachineMeta MachineMeta::fromJson(const QJsonObject &object)
     meta.name = object.value(QStringLiteral("name")).toString();
     meta.distro = object.value(QStringLiteral("distro")).toString();
     meta.distroVersion = object.value(QStringLiteral("distroVersion")).toString();
+    meta.provisioner = object.value(QStringLiteral("provisioner")).toString();
+    if (meta.provisioner.isEmpty()) {
+        meta.provisioner = QStringLiteral("linux");
+    }
     meta.arch = object.value(QStringLiteral("arch")).toString();
     meta.cpus = object.value(QStringLiteral("cpus")).toInt(2);
     meta.memoryBytes = object.value(QStringLiteral("memoryBytes")).toInteger();
@@ -233,6 +273,20 @@ MachineMeta MachineMeta::fromJson(const QJsonObject &object)
         }
     }
     meta.audioEnabled = object.value(QStringLiteral("audioEnabled")).toBool();
+    meta.windowsEdition = object.value(QStringLiteral("windowsEdition")).toString();
+    meta.installerIso = object.value(QStringLiteral("installerIso")).toString();
+    meta.virtioWinIso = object.value(QStringLiteral("virtioWinIso")).toString();
+    meta.windowsSsh = object.value(QStringLiteral("windowsSsh")).toBool();
+    meta.installPending = object.value(QStringLiteral("installPending")).toBool();
+    meta.errorReason = object.value(QStringLiteral("errorReason")).toString();
+    meta.guestReady = object.value(QStringLiteral("guestReady")).toBool();
+    meta.guestOs = object.value(QStringLiteral("guestOs")).toObject();
+    const QJsonArray channelArray = object.value(QStringLiteral("guestChannels")).toArray();
+    for (const QJsonValue &value : channelArray) {
+        if (value.isObject()) {
+            meta.guestChannels.append(GuestChannelInfo::fromJson(value.toObject()));
+        }
+    }
     return meta;
 }
 

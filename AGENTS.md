@@ -12,36 +12,36 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** **M4 validado em VM real e M5 concluído no código** (machines QEMU/KVM: criar/listar/logs/stats, ciclo de vida e reconciliação de órfãos, SSH/arquivos, mounts virtiofs, export/import `.tar.zst`, clone/rename/default, CPU/memória/disco com restart, port forwarding, SSH agent forwarding, modo isolado, console serial e snapshots) sobre o M3 (Compose por labels + provider, logs por serviço/agregados, builds via Libpod com histórico SQLite, eventos globais em toasts), o M2 (imagens/volumes/redes/pods) e o M1 (containers, logs, stats, files, terminal, batch, health, rootful). **Pré-M5 mergeado** (PR #12): multi-seleção em containers, imagens, volumes, redes, pods, machines, Compose e builds; testes QML reais (`Main.qml`, `ContainerDetail.qml`, `MachineDetail.qml`); `clang-format`/`clang-tidy` bloqueantes no CI; correções de settings, inspector, virtiofsd e startup. **Onboarding/setup implementado** (`SetupManager`, `SetupWindow` com 7 etapas, `setup.*`, `podstack setup` e `podstack-helper` com polkit/allowlist); a validação de instalação limpa segue pendente (T7-07/T7-14). **Bandeja implementada** (`TrayController` SNI, fechar-para-bandeja, menu de containers por projeto Compose, Activity Monitor, configurações, autostart, notificações de falha/OOM/unhealthy e instância única). **15 testes**; cobertura **~80%** com gate bloqueante de **80%** (ver `docs/testing.md`). Settings completos (T7-01) concluídos. Pendências: Supabase (T3-09, adiada) e itens de T7-03/T7-05 que dependem do M5/updates. **M5 concluído:** **T5-01** (VM k3s + instalação), **T5-02** (kubeconfig isolado, contexto, `podstack kube info/env` e `kubectl get nodes` no host), **T5-03** (Pods/Services via RPC + página Kubernetes com refresh de 2 s), **T5-04** (logs por container do pod com streaming SSH) e **T5-05** (delete de Pod/Service + port-forward), **T5-06** (enable/disable/reset com confirmação e CLI) e **T5-07** (TLS SANs + port-forward de Service com exposição LAN; NodePort/LB nativos ficam para T6) e **T5-08** (troca explícita de contexto; automática por projeto depende de definição) implementadas. M5 concluído no código. **M6 iniciado:** T6-01 (`*.localhost` + `HttpProxy` em loopback na `network.httpPort`, 404 HTML, sem root/`/etc/hosts`), T6-02 (página de índice em `http://localhost:<porta>/`, 404 com a lista de serviços), T6-03 (detecção concorrente da porta HTTP com cache por container/digest), T6-04 (`DnsServer` em 127.0.0.1:5353 + helper `InstallDnsZone`/`RemoveDnsZone` com drop-in do resolved e polkit), T6-05 (helper `BindPorts`/`UnbindPorts` com unidades systemd `systemd-socket-proxyd` para :80/:443), T6-06 (Caddy com CA interna e HTTPS on-demand para `*.localhost`/`*.podstack.local`), T6-07 (helper `TrustCa`/`UntrustCa` com fingerprint SHA-256 e `update-ca-trust`), T6-08 (labels `dev.podstack.domains/http-port/https-port` + mount/opt-out da CA nos containers) e T6-09 (exposição LAN opt-in no `HttpProxy`/Caddy); a T6-10 fica documentada como limitação rootless e o **M6 está concluído no código**. **M7 concluído no código (2026-11-11):** settings (86 chaves), tema/escala, tray com Machines/Kubernetes e “Verificar atualizações”, notificações (falha/OOM/unhealthy/update/disco), updates assinados (Ed25519/minisign, `podstack update --check`, exit 3), report redigido, setup/onboarding, coexistência e remoção opt-in do Docker (`setup.dockerImpact`), restauração de geometria/seção/abas e atalhos/acessibilidade de teclado. **M8 concluído no código (2026-11-11):** T8-01 (USB passthrough), T8-02 (serial), T8-03 (áudio PipeWire), T8-04 (X11 + cloud-init), T8-05 (i18n en-US da UI principal), T8-06 (RPM/DEB/Flatpak), T8-07 (snapshots já na T4-16), T8-08 (CRIU checkpoint/restore) e T8-09 (emulação binfmt/FEX). Pendências transversais seguem em TX-07/08/09. Próximas tarefas em [`docs/tasks.md`](docs/tasks.md).
+**Status atual:** **M4 validado em VM real e M5 concluído no código** (machines QEMU/KVM: criar/listar/logs/stats, ciclo de vida e reconciliação de órfãos, SSH/arquivos, mounts virtiofs, export/import `.tar.zst`, clone/rename/default, CPU/memória/disco com restart, port forwarding, SSH agent forwarding, modo isolado, console serial e snapshots) sobre o M3 (Compose por labels + provider, logs por serviço/agregados, builds via Libpod com histórico SQLite, eventos globais em toasts), o M2 (imagens/volumes/redes/pods) e o M1 (containers, logs, stats, files, terminal, batch, health, rootful). **Pré-M5 mergeado** (PR #12): multi-seleção em containers, imagens, volumes, redes, pods, machines, Compose e builds; testes QML reais (`Main.qml`, `ContainerDetail.qml`, `MachineDetail.qml`); `clang-format`/`clang-tidy` bloqueantes no CI; correções de settings, inspector, virtiofsd e startup. **Onboarding/setup implementado** (`SetupManager`, `SetupWindow` com 7 etapas, `setup.*`, `podstack setup` e `podstack-helper` com polkit/allowlist); a validação de instalação limpa segue pendente (T7-07/T7-14). **Bandeja implementada** (`TrayController` SNI, fechar-para-bandeja, menu de containers por projeto Compose, Activity Monitor, configurações, autostart, notificações de falha/OOM/unhealthy e instância única). **15 testes**; cobertura **~80%** com gate bloqueante de **80%** (ver `docs/sdd/testing.md`). Settings completos (T7-01) concluídos. Pendências: Supabase (T3-09, adiada) e itens de T7-03/T7-05 que dependem do M5/updates. **M5 concluído:** **T5-01** (VM k3s + instalação), **T5-02** (kubeconfig isolado, contexto, `podstack kube info/env` e `kubectl get nodes` no host), **T5-03** (Pods/Services via RPC + página Kubernetes com refresh de 2 s), **T5-04** (logs por container do pod com streaming SSH) e **T5-05** (delete de Pod/Service + port-forward), **T5-06** (enable/disable/reset com confirmação e CLI) e **T5-07** (TLS SANs + port-forward de Service com exposição LAN; NodePort/LB nativos ficam para T6) e **T5-08** (troca explícita de contexto; automática por projeto depende de definição) implementadas. M5 concluído no código. **M6 iniciado:** T6-01 (`*.localhost` + `HttpProxy` em loopback na `network.httpPort`, 404 HTML, sem root/`/etc/hosts`), T6-02 (página de índice em `http://localhost:<porta>/`, 404 com a lista de serviços), T6-03 (detecção concorrente da porta HTTP com cache por container/digest), T6-04 (`DnsServer` em 127.0.0.1:5353 + helper `InstallDnsZone`/`RemoveDnsZone` com drop-in do resolved e polkit), T6-05 (helper `BindPorts`/`UnbindPorts` com unidades systemd `systemd-socket-proxyd` para :80/:443), T6-06 (Caddy com CA interna e HTTPS on-demand para `*.localhost`/`*.podstack.local`), T6-07 (helper `TrustCa`/`UntrustCa` com fingerprint SHA-256 e `update-ca-trust`), T6-08 (labels `dev.podstack.domains/http-port/https-port` + mount/opt-out da CA nos containers) e T6-09 (exposição LAN opt-in no `HttpProxy`/Caddy); a T6-10 fica documentada como limitação rootless e o **M6 está concluído no código**. **M7 concluído no código (2026-11-11):** settings (86 chaves), tema/escala, tray com Machines/Kubernetes e “Verificar atualizações”, notificações (falha/OOM/unhealthy/update/disco), updates assinados (Ed25519/minisign, `podstack update --check`, exit 3), report redigido, setup/onboarding, coexistência e remoção opt-in do Docker (`setup.dockerImpact`), restauração de geometria/seção/abas e atalhos/acessibilidade de teclado. **M8 concluído no código (2026-11-11):** T8-01 (USB passthrough), T8-02 (serial), T8-03 (áudio PipeWire), T8-04 (X11 + cloud-init), T8-05 (i18n en-US da UI principal), T8-06 (RPM/DEB/Flatpak), T8-07 (snapshots já na T4-16), T8-08 (CRIU checkpoint/restore) e T8-09 (emulação binfmt/FEX). Pendências transversais seguem em TX-07/08/09. Próximas tarefas em [`docs/sdd/tasks.md`](docs/sdd/tasks.md).
 
 ---
 
 ## 2. Leia antes de agir
 
-A especificação é a fonte de verdade (ver [`docs/constitution.md`](docs/constitution.md), princípio 1).
+A especificação é a fonte de verdade (ver [`docs/sdd/constitution.md`](docs/sdd/constitution.md), princípio 1).
 
 | Ordem | Documento | Por quê |
 |---|---|---|
-| 1 | [`docs/constitution.md`](docs/constitution.md) | Princípios inegociáveis |
-| 2 | [`docs/PRD.md`](docs/PRD.md) | Escopo, requisitos e critérios de aceite |
-| 3 | [`docs/spec.md`](docs/spec.md) | Comportamento detalhado |
-| 4 | [`docs/plan.md`](docs/plan.md) | Stack e decisões técnicas |
-| 5 | [`docs/tasks.md`](docs/tasks.md) | Tarefa atual, dependências e definição de pronto |
-| 6 | [`docs/architecture.md`](docs/architecture.md) | Componentes, fluxos e concorrência |
-| 7 | [`docs/testing.md`](docs/testing.md) | Como provar que funciona |
+| 1 | [`docs/sdd/constitution.md`](docs/sdd/constitution.md) | Princípios inegociáveis |
+| 2 | [`docs/sdd/PRD.md`](docs/sdd/PRD.md) | Escopo, requisitos e critérios de aceite |
+| 3 | [`docs/sdd/spec.md`](docs/sdd/spec.md) | Comportamento detalhado |
+| 4 | [`docs/sdd/plan.md`](docs/sdd/plan.md) | Stack e decisões técnicas |
+| 5 | [`docs/sdd/tasks.md`](docs/sdd/tasks.md) | Tarefa atual, dependências e definição de pronto |
+| 6 | [`docs/engineering/architecture.md`](docs/engineering/architecture.md) | Componentes, fluxos e concorrência |
+| 7 | [`docs/sdd/testing.md`](docs/sdd/testing.md) | Como provar que funciona |
 
 Para a área que você vai mexer, leia também:
 
-- Containers/Podman: [`docs/api-rpc.md`](docs/api-rpc.md), [`docs/adr/0002-libpod-libcurl.md`](docs/adr/0002-libpod-libcurl.md)
+- Containers/Podman: [`docs/engineering/api-rpc.md`](docs/engineering/api-rpc.md), [`docs/adr/0002-libpod-libcurl.md`](docs/adr/0002-libpod-libcurl.md)
 - Machines: [`docs/adr/0003-machines-qemu-kvm.md`](docs/adr/0003-machines-qemu-kvm.md)
-- UI/QML: [`docs/ui-map.md`](docs/ui-map.md), [`docs/branding.md`](docs/branding.md)
-- CLI: [`docs/cli-parity.md`](docs/cli-parity.md)
-- Settings: [`docs/settings.md`](docs/settings.md)
-- Segurança/helper: [`docs/security.md`](docs/security.md)
+- UI/QML: [`docs/engineering/ui-map.md`](docs/engineering/ui-map.md), [`docs/engineering/branding.md`](docs/engineering/branding.md)
+- CLI: [`docs/engineering/cli-parity.md`](docs/engineering/cli-parity.md)
+- Settings: [`docs/engineering/settings.md`](docs/engineering/settings.md)
+- Segurança/helper: [`docs/engineering/security.md`](docs/engineering/security.md)
 - Domínios/HTTPS: [`docs/adr/0004-domains-localhost-helper.md`](docs/adr/0004-domains-localhost-helper.md)
 - Compose: [`docs/adr/0007-compose-provider.md`](docs/adr/0007-compose-provider.md)
-- Empacotamento: [`docs/packaging.md`](docs/packaging.md), [`docs/adr/0006-rpm-first.md`](docs/adr/0006-rpm-first.md)
-- Planejamento: [`docs/roadmap.md`](docs/roadmap.md)
+- Empacotamento: [`docs/engineering/packaging.md`](docs/engineering/packaging.md), [`docs/adr/0006-rpm-first.md`](docs/adr/0006-rpm-first.md)
+- Planejamento: [`docs/sdd/roadmap.md`](docs/sdd/roadmap.md)
 
 ---
 
@@ -55,7 +55,7 @@ Para a área que você vai mexer, leia também:
 6. **Sem segredos em log.** Redaction obrigatória; nunca logar tokens, senhas, chaves ou `Authorization`.
 7. **Nada de trabalho pesado na UI.** Streams/jobs em worker threads; UI nunca bloqueia > 16 ms.
 8. **Toda mudança atualiza a doc afetada** (spec/plan/api/settings/ADR).
-9. **Toda tarefa termina com evidência** de teste/lint (ver [`docs/testing.md`](docs/testing.md)).
+9. **Toda tarefa termina com evidência** de teste/lint (ver [`docs/sdd/testing.md`](docs/sdd/testing.md)).
 10. **Sem escopo extra.** Não refatore, renomeie ou "melhore" o que a tarefa não pediu.
 
 ---
@@ -81,26 +81,31 @@ Para a área que você vai mexer, leia também:
 │   ├── og-image.png
 │   ├── png/
 │   └── logo.md
-├── docs/                     # especificação, PRD, arquitetura, ADRs, referência
-│   ├── README.md
-│   ├── constitution.md
-│   ├── PRD.md
-│   ├── spec.md
-│   ├── plan.md
-│   ├── tasks.md
-│   ├── architecture.md
-│   ├── data-model.md
-│   ├── api-rpc.md
-│   ├── ui-map.md
-│   ├── branding.md
-│   ├── cli-parity.md
-│   ├── settings.md
-│   ├── security.md
-│   ├── testing.md
-│   ├── packaging.md
-│   ├── roadmap.md
+├── docs/                     # especificação, engenharia, specs de feature, ADRs
+│   ├── README.md             # índice e convenções
+│   ├── sdd/                  # núcleo SDD (documentos canônicos)
+│   │   ├── constitution.md
+│   │   ├── PRD.md
+│   │   ├── spec.md
+│   │   ├── plan.md
+│   │   ├── roadmap.md
+│   │   ├── tasks.md
+│   │   └── testing.md
+│   ├── engineering/          # referência técnica derivada
+│   │   ├── architecture.md
+│   │   ├── data-model.md
+│   │   ├── api-rpc.md
+│   │   ├── ui-map.md
+│   │   ├── security.md
+│   │   ├── settings.md
+│   │   ├── cli-parity.md
+│   │   ├── packaging.md
+│   │   ├── web.md
+│   │   └── branding.md
+│   ├── specs/                # deltas SDD por feature (spec/plan/tasks)
 │   ├── adr/
-│   └── reference/
+│   ├── reference/
+│   └── user/
 ├── CMakeLists.txt
 ├── CMakePresets.json
 ├── src/                      # core, podman, daemon, cli, gui
@@ -119,7 +124,7 @@ Para a área que você vai mexer, leia também:
 
 ## 5. Fluxo de trabalho
 
-1. **Escolha uma tarefa** em [`docs/tasks.md`](docs/tasks.md): menor ID disponível do marco atual, respeitando `Dep`.
+1. **Escolha uma tarefa** em [`docs/sdd/tasks.md`](docs/sdd/tasks.md): menor ID disponível do marco atual, respeitando `Dep`.
 2. **Leia o contexto**: PRD (requisito), spec (fluxo), plan/architecture (desenho), ADR da área.
 3. **Planeje** em voz alta (ou com `planner`): arquivos, abordagem, testes, riscos.
 4. **Implemente** o menor incremento que satisfaz o critério de aceite.
@@ -215,11 +220,11 @@ PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
 
 - Requisito novo → `FR-<DOMÍNIO>-<NNN>` no PRD **e** fluxo na spec.
 - Decisão arquitetural → ADR em `docs/adr/` (contexto, decisão, alternativas, consequências).
-- Novo método RPC → `docs/api-rpc.md` + versão da API se incompatível.
-- Nova chave de setting → `docs/settings.md` (tipo/default/validação/restart) + schema.
-- Comando/flags de CLI → `docs/cli-parity.md`.
-- Tela/componente QML → `docs/ui-map.md`.
-- Mudança de marca → `docs/branding.md`.
+- Novo método RPC → `docs/engineering/api-rpc.md` + versão da API se incompatível.
+- Nova chave de setting → `docs/engineering/settings.md` (tipo/default/validação/restart) + schema.
+- Comando/flags de CLI → `docs/engineering/cli-parity.md`.
+- Tela/componente QML → `docs/engineering/ui-map.md`.
+- Mudança de marca → `docs/engineering/branding.md`.
 
 **Não crie documentos paralelos**; edite o existente.
 
@@ -235,14 +240,14 @@ PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
 - Updates: assinatura verificada antes de aplicar.
 - Antes de operação privilegiada: explicar o porquê e pedir consentimento.
 
-Detalhes em [`docs/security.md`](docs/security.md).
+Detalhes em [`docs/engineering/security.md`](docs/engineering/security.md).
 
 ---
 
 ## 10. Marca e assets
 
 - **Direção aprovada:** **cápsula** (símbolo principal) + **camadas** (símbolo secundário). O **monograma P não foi aprovado** — não usar.
-- Usar os arquivos em [`assets/`](assets/) e as regras em [`docs/branding.md`](docs/branding.md):
+- Usar os arquivos em [`assets/`](assets) e as regras em [`docs/engineering/branding.md`](docs/engineering/branding.md):
   - `podstack-capsule.svg` — símbolo principal
   - `podstack-layers.svg` — símbolo secundário
   - `podstack-capsule-small.svg` — 16–24 px (favicon)
@@ -255,7 +260,7 @@ Detalhes em [`docs/security.md`](docs/security.md).
   - `og-image.png` — Open Graph 1200×630
 - Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`.
 - **Proibido** usar esferas/órbitas, baleia do Docker, roxo do Podman, monograma P ou qualquer asset do OrbStack.
-- Alterações de marca exigem aprovação de Produto + Design e atualização de `docs/branding.md`.
+- Alterações de marca exigem aprovação de Produto + Design e atualização de `docs/engineering/branding.md`.
 
 ---
 
@@ -273,7 +278,7 @@ Detalhes em [`docs/security.md`](docs/security.md).
 
 | ID | Decisão | Impacto | Onde |
 |---|---|---|---|
-| Q1 | **Resolvida:** licença **GPL-3.0-or-later**; terminal **QTermWidget** (GPL-2.0-or-later, compatível) | — | [`docs/PRD.md`](docs/PRD.md) §13, [`docs/adr/0005-terminal-backend.md`](docs/adr/0005-terminal-backend.md) |
+| Q1 | **Resolvida:** licença **GPL-3.0-or-later**; terminal **QTermWidget** (GPL-2.0-or-later, compatível) | — | [`docs/sdd/PRD.md`](docs/sdd/PRD.md) §13, [`docs/adr/0005-terminal-backend.md`](docs/adr/0005-terminal-backend.md) |
 | Q2 | **Resolvida:** k3s em VM dedicada; kind fora do v1 | — | PRD §13 |
 | Q3 | **Resolvida:** Flatpak não no v1; reavaliar sob demanda | — | PRD §13 |
 | Q4 | **Resolvida:** rootful suportado como opt-in explícito | — | PRD §13 |
@@ -298,21 +303,21 @@ Uma tarefa só está concluída quando:
 - [ ] Documentação afetada atualizada.
 - [ ] Nenhum segredo em log; permissões corretas.
 - [ ] Evidência (comando + resultado) registrada.
-- [ ] `[x]` marcado em [`docs/tasks.md`](docs/tasks.md) somente após tudo acima.
+- [ ] `[x]` marcado em [`docs/sdd/tasks.md`](docs/sdd/tasks.md) somente após tudo acima.
 
 ---
 
 ## 14. Índice completo da documentação
 
-**Núcleo SDD:** [`docs/README.md`](docs/README.md) · [`docs/constitution.md`](docs/constitution.md) · [`docs/PRD.md`](docs/PRD.md) · [`docs/spec.md`](docs/spec.md) · [`docs/plan.md`](docs/plan.md) · [`docs/tasks.md`](docs/tasks.md) · [`docs/testing.md`](docs/testing.md)
+**Núcleo SDD:** [`docs/README.md`](docs/README.md) · [`docs/sdd/constitution.md`](docs/sdd/constitution.md) · [`docs/sdd/PRD.md`](docs/sdd/PRD.md) · [`docs/sdd/spec.md`](docs/sdd/spec.md) · [`docs/sdd/plan.md`](docs/sdd/plan.md) · [`docs/sdd/tasks.md`](docs/sdd/tasks.md) · [`docs/sdd/testing.md`](docs/sdd/testing.md)
 
-**Engenharia:** [`docs/architecture.md`](docs/architecture.md) · [`docs/data-model.md`](docs/data-model.md) · [`docs/api-rpc.md`](docs/api-rpc.md) · [`docs/ui-map.md`](docs/ui-map.md) · [`docs/branding.md`](docs/branding.md) · [`docs/cli-parity.md`](docs/cli-parity.md) · [`docs/settings.md`](docs/settings.md) · [`docs/security.md`](docs/security.md) · [`docs/packaging.md`](docs/packaging.md) · [`docs/roadmap.md`](docs/roadmap.md)
+**Engenharia:** [`docs/engineering/architecture.md`](docs/engineering/architecture.md) · [`docs/engineering/data-model.md`](docs/engineering/data-model.md) · [`docs/engineering/api-rpc.md`](docs/engineering/api-rpc.md) · [`docs/engineering/ui-map.md`](docs/engineering/ui-map.md) · [`docs/engineering/branding.md`](docs/engineering/branding.md) · [`docs/engineering/cli-parity.md`](docs/engineering/cli-parity.md) · [`docs/engineering/settings.md`](docs/engineering/settings.md) · [`docs/engineering/security.md`](docs/engineering/security.md) · [`docs/engineering/packaging.md`](docs/engineering/packaging.md) · [`docs/sdd/roadmap.md`](docs/sdd/roadmap.md)
 
 **ADRs:** [`0001`](docs/adr/0001-daemon-json-rpc.md) · [`0002`](docs/adr/0002-libpod-libcurl.md) · [`0003`](docs/adr/0003-machines-qemu-kvm.md) · [`0004`](docs/adr/0004-domains-localhost-helper.md) · [`0005`](docs/adr/0005-terminal-backend.md) · [`0006`](docs/adr/0006-rpm-first.md) · [`0007`](docs/adr/0007-compose-provider.md) · [`0008`](docs/adr/0008-docker-coexistence-setup.md) · [`0009`](docs/adr/0009-tray-sni-lifecycle.md)
 
 **Referência OrbStack:** [`análise do DMG`](docs/reference/orbstack-2.2.5.md) · [`notas oficiais`](docs/reference/orbstack-2.2.5-official-notes.md) · [`árvore do CLI`](docs/reference/cli-tree.json) · [`árvore legível`](docs/reference/cli-tree.md) · [`arquivos Swift`](docs/reference/swift-files.txt) · [`settings keys`](docs/reference/settings-keys.txt)
 
-**Assets:** [`podstack-logo.svg`](assets/podstack-logo.svg) · [`podstack-capsule.svg`](assets/podstack-capsule.svg) · [`podstack-layers.svg`](assets/podstack-layers.svg) · [`podstack-capsule-small.svg`](assets/podstack-capsule-small.svg) · [`podstack-icon.svg`](assets/podstack-icon.svg) · [`png/`](assets/png/) · [`favicon.ico`](assets/favicon.ico) · [`og-image.png`](assets/og-image.png) · [`conceitos`](assets/podstack_logo_concepts.svg) · [`racional`](assets/logo.md)
+**Assets:** [`podstack-logo.svg`](assets/podstack-logo.svg) · [`podstack-capsule.svg`](assets/podstack-capsule.svg) · [`podstack-layers.svg`](assets/podstack-layers.svg) · [`podstack-capsule-small.svg`](assets/podstack-capsule-small.svg) · [`podstack-icon.svg`](assets/podstack-icon.svg) · [`png/`](assets/png) · [`favicon.ico`](assets/favicon.ico) · [`og-image.png`](assets/og-image.png) · [`conceitos`](assets/podstack_logo_concepts.svg) · [`racional`](assets/logo.md)
 
 ---
 
@@ -321,7 +326,7 @@ Uma tarefa só está concluída quando:
 Se você é um agente começando agora:
 
 1. Leia os 5 primeiros documentos da §2.
-2. Abra [`docs/tasks.md`](docs/tasks.md) e localize o primeiro `T0-*` não concluído.
+2. Abra [`docs/sdd/tasks.md`](docs/sdd/tasks.md) e localize o primeiro `T0-*` não concluído.
 3. Verifique se o ambiente tem as dependências da §6; se não, peça confirmação antes de instalar.
 4. Implemente **apenas** essa tarefa, com teste e evidência.
 5. Atualize a doc e marque a tarefa.

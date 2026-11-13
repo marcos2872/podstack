@@ -301,6 +301,64 @@ QList<SetupCheck> SetupManager::check(bool deep)
     }
     checks.append(virtiofsdCheck);
 
+    SetupCheck swtpmCheck;
+    swtpmCheck.id = QStringLiteral("swtpm");
+    const QString swtpm = findBinary(QStringLiteral("swtpm"));
+    swtpmCheck.status = swtpm.isEmpty() ? QStringLiteral("missing") : QStringLiteral("ok");
+    swtpmCheck.detail = swtpm.isEmpty() ? QStringLiteral("swtpm não encontrado")
+                                        : QStringLiteral("swtpm instalado");
+    if (swtpm.isEmpty()) {
+        swtpmCheck.remediation = QStringLiteral(
+            "Instale swtpm para TPM 2.0 nas machines Windows (swtpm no Fedora/Ubuntu).");
+    }
+    checks.append(swtpmCheck);
+
+    SetupCheck spiceCheck;
+    spiceCheck.id = QStringLiteral("spice");
+    const QStringList spiceModules{
+        QStringLiteral("/usr/lib64/qemu/ui-spice-core.so"),
+        QStringLiteral("/usr/lib64/qemu/hw-display-spice-core.so"),
+        QStringLiteral("/usr/lib/x86_64-linux-gnu/qemu/ui-spice-core.so"),
+        QStringLiteral("/usr/lib/x86_64-linux-gnu/qemu/hw-display-spice-core.so"),
+    };
+    bool hasSpice = false;
+    for (const QString &path : spiceModules) {
+        if (fileExists(path)) {
+            hasSpice = true;
+            break;
+        }
+    }
+    spiceCheck.status = hasSpice ? QStringLiteral("ok") : QStringLiteral("missing");
+    spiceCheck.detail = hasSpice ? QStringLiteral("módulo SPICE do QEMU presente")
+                                 : QStringLiteral("módulo SPICE do QEMU não encontrado");
+    if (!hasSpice) {
+        spiceCheck.remediation = QStringLiteral(
+            "Instale qemu-ui-spice-core (Fedora) ou qemu-system-modules-spice (Ubuntu).");
+    }
+    checks.append(spiceCheck);
+
+    SetupCheck audioCheck;
+    audioCheck.id = QStringLiteral("qemu-audio");
+    const QStringList audioModules{
+        QStringLiteral("/usr/lib64/qemu/audio-pipewire.so"),
+        QStringLiteral("/usr/lib/x86_64-linux-gnu/qemu/audio-pipewire.so"),
+    };
+    bool hasAudio = false;
+    for (const QString &path : audioModules) {
+        if (fileExists(path)) {
+            hasAudio = true;
+            break;
+        }
+    }
+    audioCheck.status = hasAudio ? QStringLiteral("ok") : QStringLiteral("missing");
+    audioCheck.detail = hasAudio ? QStringLiteral("áudio PipeWire do QEMU presente")
+                                 : QStringLiteral("áudio PipeWire do QEMU não encontrado");
+    if (!hasAudio) {
+        audioCheck.remediation =
+            QStringLiteral("Instale qemu-audio-pipewire (Fedora) ou qemu-system-gui (Ubuntu).");
+    }
+    checks.append(audioCheck);
+
     SetupCheck systemdCheck;
     systemdCheck.id = QStringLiteral("systemd-user");
     const QString systemdState = firstLine(runCommand(
@@ -670,6 +728,9 @@ QStringList SetupManager::qemuPackagesForManager(const QString &manager)
             QStringLiteral("virtiofsd"),
             QStringLiteral("ovmf"),
             QStringLiteral("qemu-efi-aarch64"),
+            QStringLiteral("qemu-system-modules-spice"),
+            QStringLiteral("qemu-system-gui"),
+            QStringLiteral("swtpm"),
         };
     }
     if (manager == QStringLiteral("pacman")) {
@@ -677,15 +738,19 @@ QStringList SetupManager::qemuPackagesForManager(const QString &manager)
             QStringLiteral("qemu-full"),
             QStringLiteral("edk2-ovmf"),
             QStringLiteral("virtiofsd"),
+            QStringLiteral("swtpm"),
         };
     }
     return {
         QStringLiteral("qemu-kvm"),
-        QStringLiteral("qemu-system-x86_64"),
-        QStringLiteral("qemu-system-aarch64"),
+        QStringLiteral("qemu-system-x86-core"),
+        QStringLiteral("qemu-system-aarch64-core"),
         QStringLiteral("qemu-img"),
         QStringLiteral("virtiofsd"),
         QStringLiteral("edk2-ovmf"),
+        QStringLiteral("qemu-ui-spice-core"),
+        QStringLiteral("qemu-audio-pipewire"),
+        QStringLiteral("swtpm"),
     };
 }
 

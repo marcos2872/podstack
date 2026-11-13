@@ -17,6 +17,9 @@ QJsonObject Error::toJson() const
     if (!remediation.isEmpty()) {
         obj.insert(QStringLiteral("remediation"), remediation);
     }
+    if (!reason.isEmpty()) {
+        obj.insert(QStringLiteral("reason"), reason);
+    }
     obj.insert(QStringLiteral("retryable"), retryable);
     return obj;
 }

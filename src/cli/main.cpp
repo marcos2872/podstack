@@ -1,5 +1,6 @@
 #include "core/Error.h"
 #include "core/Logging.h"
+#include "core/Password.h"
 #include "core/RpcClient.h"
 #include "core/RpcStream.h"
 
@@ -1621,10 +1622,18 @@ void printMachineUsage(QTextStream &stream)
            << "  console <id|nome> [--tail BYTES] [--no-follow] [--json]\n"
            << "                          Lê o console serial (follow por padrão; --json\n"
            << "                          só com --no-follow)\n"
+           << "  apps list <id|nome> [--json]\n"
+           << "                          Lista os apps do guest (catálogo)\n"
+           << "  apps launch|stop ...    Exige a GUI (PODSTACK_GUI_REQUIRED)\n"
            << "  create DISTRO[:VER] NOME [--cpus N] [--memory 4G] [--disk 20G]\n"
            << "         [--user U] [--user-data ARQUIVO] [--isolate-network]\n"
            << "         [--forward-ssh-agent] [--isolated]\n"
-           << "                          Cria uma machine (a senha entra na T4-04)\n"
+           << "  create NOME --provisioner windows --iso ARQUIVO [--virtio-win-iso ARQUIVO]\n"
+           << "         [--answer-file XML] [--edition NOME] [--windows-ssh]\n"
+           << "         [--memory 4G] [--disk 64G] [--password-stdin] [--isolated]\n"
+           << "                          Cria uma machine (a senha Linux entra na T4-04;\n"
+           << "                          Windows gera senha se --password-stdin faltar;\n"
+           << "                          sem --virtio-win-iso baixa o ISO oficial ~877 MB)\n"
            << "  start <id|nome> [--json] Inicia uma machine\n"
            << "  stop <id|nome> [--force] [--json]\n"
            << "                          Para uma machine\n"
@@ -1730,6 +1739,7 @@ PodStack::Error errorFromJson(const QJsonObject &object)
     error.message = object.value(QStringLiteral("message")).toString();
     error.detail = object.value(QStringLiteral("detail")).toString();
     error.remediation = object.value(QStringLiteral("remediation")).toString();
+    error.reason = object.value(QStringLiteral("reason")).toString();
     error.retryable = object.value(QStringLiteral("retryable")).toBool();
     if (error.message.isEmpty()) {
         error.message = QStringLiteral("Falha ao criar a machine.");
@@ -2039,8 +2049,17 @@ int machineCreateCommand(const QStringList &args)
     int cpus = 2;
     qint64 memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
     qint64 diskBytes = 20LL * 1024LL * 1024LL * 1024LL;
+    bool memorySet = false;
+    bool diskSet = false;
     QString user;
     QString userDataPath;
+    QString provisioner = QStringLiteral("linux");
+    QString installerIso;
+    QString virtioWinIso;
+    QString answerFile;
+    QString edition;
+    bool windowsSsh = false;
+    bool passwordStdin = false;
     bool isolateNetwork = false;
     bool forwardSshAgent = false;
     bool isolated = false;
@@ -2060,15 +2079,31 @@ int machineCreateCommand(const QStringList &args)
                 err() << "--memory inválido; use bytes ou sufixo K/M/G/T (ex.: 4G)\n";
                 return kExitUsage;
             }
+            memorySet = true;
         } else if (arg == QStringLiteral("--disk") && i + 1 < args.size()) {
             if (!parseSize(args.at(++i), &diskBytes)) {
                 err() << "--disk inválido; use bytes ou sufixo K/M/G/T (ex.: 20G)\n";
                 return kExitUsage;
             }
+            diskSet = true;
         } else if (arg == QStringLiteral("--user") && i + 1 < args.size()) {
             user = args.at(++i);
         } else if (arg == QStringLiteral("--user-data") && i + 1 < args.size()) {
             userDataPath = args.at(++i);
+        } else if (arg == QStringLiteral("--provisioner") && i + 1 < args.size()) {
+            provisioner = args.at(++i).trimmed().toLower();
+        } else if (arg == QStringLiteral("--iso") && i + 1 < args.size()) {
+            installerIso = args.at(++i);
+        } else if (arg == QStringLiteral("--virtio-win-iso") && i + 1 < args.size()) {
+            virtioWinIso = args.at(++i);
+        } else if (arg == QStringLiteral("--answer-file") && i + 1 < args.size()) {
+            answerFile = args.at(++i);
+        } else if (arg == QStringLiteral("--edition") && i + 1 < args.size()) {
+            edition = args.at(++i);
+        } else if (arg == QStringLiteral("--windows-ssh")) {
+            windowsSsh = true;
+        } else if (arg == QStringLiteral("--password-stdin")) {
+            passwordStdin = true;
         } else if (arg == QStringLiteral("--isolate-network")) {
             isolateNetwork = true;
         } else if (arg == QStringLiteral("--isolated")) {
@@ -2083,7 +2118,37 @@ int machineCreateCommand(const QStringList &args)
         }
     }
 
-    if (positional.size() != 2) {
+    const bool windows = provisioner == QStringLiteral("windows");
+    if (provisioner != QStringLiteral("linux") && !windows) {
+        err() << "--provisioner deve ser 'linux' ou 'windows'\n";
+        return kExitUsage;
+    }
+    if (!windows && (!installerIso.isEmpty() || !virtioWinIso.isEmpty() || !answerFile.isEmpty() ||
+                     !edition.isEmpty() || windowsSsh)) {
+        err() << "as opções --iso/--virtio-win-iso/--answer-file/--edition/--windows-ssh "
+                 "exigem --provisioner windows\n";
+        return kExitUsage;
+    }
+    if (windows) {
+        if (positional.size() != 1) {
+            printMachineUsage(err());
+            return kExitUsage;
+        }
+        if (installerIso.isEmpty()) {
+            err() << "--iso é obrigatório com --provisioner windows\n";
+            return kExitUsage;
+        }
+        if (forwardSshAgent) {
+            err() << "encaminhar o SSH agent não é suportado em machines Windows\n";
+            return kExitUsage;
+        }
+        if (!memorySet) {
+            memoryBytes = 4LL * 1024LL * 1024LL * 1024LL;
+        }
+        if (!diskSet) {
+            diskBytes = 64LL * 1024LL * 1024LL * 1024LL;
+        }
+    } else if (positional.size() != 2) {
         printMachineUsage(err());
         return kExitUsage;
     }
@@ -2100,17 +2165,57 @@ int machineCreateCommand(const QStringList &args)
         userData = QString::fromUtf8(file.readAll());
     }
 
+    QString password;
+    if (passwordStdin) {
+        password = QTextStream(stdin).readLine();
+        if (password.endsWith(QLatin1Char('\r'))) {
+            password.chop(1);
+        }
+        if (password.isEmpty()) {
+            err() << "--password-stdin exige uma senha na entrada padrão\n";
+            return kExitUsage;
+        }
+    }
+    QString generatedPassword;
+    if (windows && password.isEmpty()) {
+        generatedPassword = PodStack::generatePassword();
+        password = generatedPassword;
+    }
+
     QJsonObject params;
-    params.insert(QStringLiteral("distro"), positional.at(0));
-    params.insert(QStringLiteral("name"), positional.at(1));
+    const QString name = windows ? positional.at(0) : positional.at(1);
+    params.insert(QStringLiteral("name"), name);
+    params.insert(QStringLiteral("provisioner"), provisioner);
+    if (windows) {
+        params.insert(QStringLiteral("distro"), QStringLiteral("windows"));
+        params.insert(QStringLiteral("installerIso"), installerIso);
+        if (!virtioWinIso.isEmpty()) {
+            params.insert(QStringLiteral("virtioWinIso"), virtioWinIso);
+        }
+        if (!answerFile.isEmpty()) {
+            params.insert(QStringLiteral("answerFile"), answerFile);
+        }
+        if (!edition.isEmpty()) {
+            params.insert(QStringLiteral("windowsEdition"), edition);
+        }
+        if (windowsSsh) {
+            params.insert(QStringLiteral("windowsSsh"), true);
+        }
+        params.insert(QStringLiteral("password"), password);
+    } else {
+        params.insert(QStringLiteral("distro"), positional.at(0));
+        if (!userData.isEmpty()) {
+            params.insert(QStringLiteral("userData"), userData);
+        }
+        if (!password.isEmpty()) {
+            params.insert(QStringLiteral("password"), password);
+        }
+    }
     params.insert(QStringLiteral("cpus"), cpus);
     params.insert(QStringLiteral("memoryBytes"), memoryBytes);
     params.insert(QStringLiteral("diskBytes"), diskBytes);
     if (!user.isEmpty()) {
         params.insert(QStringLiteral("user"), user);
-    }
-    if (!userData.isEmpty()) {
-        params.insert(QStringLiteral("userData"), userData);
     }
     if (isolateNetwork) {
         params.insert(QStringLiteral("isolateNetwork"), true);
@@ -2161,6 +2266,10 @@ int machineCreateCommand(const QStringList &args)
     }
 
     out() << "machine " << machineId << " criada (" << machineState << ")\n";
+    if (!generatedPassword.isEmpty()) {
+        out() << "senha do Windows: " << generatedPassword << '\n'
+              << "guarde esta senha; ela não será exibida novamente.\n";
+    }
     out().flush();
     return kExitOk;
 }
@@ -4390,6 +4499,66 @@ int commandKube(const QStringList &args)
     return kExitUsage;
 }
 
+int machineAppsCommand(const QStringList &args)
+{
+    if (args.size() < 3) {
+        err() << "Uso: podstack machine apps <list|launch|stop> <machine> [appId|sessionId] "
+                 "[--json]\n";
+        return kExitUsage;
+    }
+    const QString action = args.at(1);
+    const QString machine = args.at(2);
+    const bool json = args.contains(QStringLiteral("--json"));
+
+    if (action == QStringLiteral("list")) {
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.apps.list"),
+                        QJsonObject{{QStringLiteral("id"), machine}}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        if (json) {
+            out() << QJsonDocument(result).toJson(QJsonDocument::Compact) << '\n';
+            return kExitOk;
+        }
+        const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+        if (items.isEmpty()) {
+            out() << "nenhum app encontrado\n";
+        }
+        for (const QJsonValue &value : items) {
+            const QJsonObject item = value.toObject();
+            out() << item.value(QStringLiteral("name")).toString() << "  "
+                  << item.value(QStringLiteral("appId")).toString() << '\n';
+        }
+        const QJsonArray sessions = result.value(QStringLiteral("sessions")).toArray();
+        if (!sessions.isEmpty()) {
+            out() << "sessões:\n";
+            for (const QJsonValue &value : sessions) {
+                const QJsonObject session = value.toObject();
+                out() << "  " << session.value(QStringLiteral("sessionId")).toString() << "  "
+                      << session.value(QStringLiteral("appId")).toString() << "  "
+                      << session.value(QStringLiteral("backend")).toString() << "  "
+                      << session.value(QStringLiteral("state")).toString() << '\n';
+            }
+        }
+        return kExitOk;
+    }
+
+    if (action == QStringLiteral("launch") || action == QStringLiteral("stop")) {
+        PodStack::Error error = PodStack::Error::make(
+            QStringLiteral("PODSTACK_GUI_REQUIRED"),
+            QStringLiteral("Abrir/parar apps exige a GUI (o cliente roda na sessão gráfica)."),
+            action, QStringLiteral("Abra o PodStack e use “Abrir app” na machine."));
+        error.reason = QStringLiteral("gui_required");
+        return fail(error);
+    }
+
+    err() << "comando de apps desconhecido: " << action << '\n';
+    return kExitUsage;
+}
+
 int commandMachine(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -4439,6 +4608,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("update")) {
         return machineUpdateCommand(args);
+    }
+    if (subcommand == QStringLiteral("apps")) {
+        return machineAppsCommand(args);
     }
     if (subcommand == QStringLiteral("port") || subcommand == QStringLiteral("ports")) {
         return machinePortCommand(args.mid(1));

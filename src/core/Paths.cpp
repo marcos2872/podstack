@@ -91,6 +91,11 @@ QString machinesDir()
     return dataDir() + QStringLiteral("/machines");
 }
 
+QString virtioWinCacheDir()
+{
+    return dataDir() + QStringLiteral("/virtio-win");
+}
+
 QString machineDir(const QString &id)
 {
     static const QRegularExpression validId(QStringLiteral("^[A-Za-z0-9._:-]+$"));
@@ -126,8 +131,8 @@ QString podmanSocket()
 
 bool ensureDirs(QString *error)
 {
-    const QStringList dirs{configDir(), dataDir(), stateDir(), cacheDir(), cloudImagesDir(),
-                           machinesDir(), runtimeDir()};
+    const QStringList dirs{configDir(),      dataDir(),     stateDir(),          cacheDir(),
+                           cloudImagesDir(), machinesDir(), virtioWinCacheDir(), runtimeDir()};
     for (const QString &dir : dirs) {
         if (!ensureDir(dir, error)) {
             return false;

@@ -174,7 +174,7 @@
 | T6-07 | P1 | Confiar na CA (host/containers) opt-in | T6-06 | ✅/parcial — `TrustCa`/`UntrustCa` no helper exigem CA autoassinada e fingerprint SHA-256 correspondente, validam que o arquivo pertence ao chamador, gravam `podstack-local-ca.crt` em `/etc/pki/ca-trust/source/anchors` (ou `/usr/local/share/ca-certificates`) e rodam `update-ca-trust`/`update-ca-certificates`; remoção idempotente e policy `dev.podstack.helper.trust-ca`. Evidência: `test_setup` (35 casos, 3 novos), `ctest` 17/17. O mount da CA nos containers via label opt-out fica na T6-08 (labels), junto do opt-out. |
 | T6-08 | P1 | Labels `dev.podstack.domains/http-port/https-port` | T6-03 | ✅ — `dev.podstack.http-port`/`https-port` forçam a porta publicada (por porta do container ou do host; HTTPS usa `QSslSocket` sem verificação de peer); `dev.podstack.domains` roteia Hosts customizados e aparece no índice; labels inválidos caem na detecção normal. `dev.podstack.ca=false` opta por não montar a CA local no container (`containers.create`/`duplicate`; compose fica pendente). Evidência: `test_http_proxy` (32 casos, 5 novos) e `test_rpc/containerMountsLocalCaUnlessOptedOut`; `ctest` 17/17. Roteamento de domínios customizados via compose/Caddy e o mount em containers de compose ficam como pendência documentada. |
 | T6-09 | P1 | Exposição LAN de domínios/portas | T6-01 | ✅ — `network.exposeLan=true` (restart) faz o `HttpProxy` escutar em `0.0.0.0`/`::` e o Caddyfile usar `bind 0.0.0.0`, com warning no log; a liberação do firewall das portas 8080/8443 fica explícita para o usuário/setup (o helper `OpenPorts` já existe). Evidência: `test_http_proxy/exposesLanWhenConfigured` e `test_caddy` (bind 0.0.0.0), `ctest` 17/17. |
-| T6-10 | P2 | Port forwarding de portas não publicadas | T6-04 | ⏸ adiada — no modelo **rootless** o Podman não publica portas depois do create; as alternativas são publicar no `run`/Compose ou um container roteador, e o PodStack não altera a rede do usuário. Limitação documentada em `docs/spec.md` §11.7; fica para um marco futuro com helper/router dedicado. |
+| T6-10 | P2 | Port forwarding de portas não publicadas | T6-04 | ⏸ adiada — no modelo **rootless** o Podman não publica portas depois do create; as alternativas são publicar no `run`/Compose ou um container roteador, e o PodStack não altera a rede do usuário. Limitação documentada em `docs/sdd/spec.md` §11.7; fica para um marco futuro com helper/router dedicado. |
 
 **Status (2026-11-10): M6 com T6-01..T6-05 implementadas.** O proxy HTTP de
 entrada vive no daemon (`HttpProxy`), escuta apenas em loopback e mapeia
@@ -250,6 +250,45 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 ---
 
+## M9 — Guest Windows (P1, v1.x)
+
+> **Status (2026-11-13): Fase 1 (T9-01/T9-02/T9-03), criação Windows (T9-04/T9-04a), canal `agent`/provisionamento (T9-05) e dependências de host (T9-07) implementados em código, com testes; E2E com Windows real e áudio (T9-06) pendentes.** Delta completo (requisitos, desenho e critérios): [`docs/specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/tasks.md). Requisitos: FR-MAC-111…116 e NFR-MAC-006…008. M9 não bloqueia o v1.0; bloqueia apenas a parte RAIL de T10-03.
+
+| ID | P | Tarefa | Dep | Conclusão |
+|---|---|---|---|---|
+| T9-01 | P1 | Console gráfico SPICE em socket Unix (`-spice unix=on,addr=<machineDir>/spice.sock`) + viewer `remote-viewer` lançado pela GUI a partir de `machines.console.spice`; `-display none` quando off; viewer ausente → `DEPENDENCY_MISSING/backend_missing`; ADR-0003/spec/plan/api-rpc atualizados (FR-MAC-111). | T4-03, T4-05 | ✅ código — argv/SPICE, RPC e erros testados (`qemuCommandSpice`, `machineManagerSpiceConsole`, `test_rpc/machineConsole`); E2E gráfico pendente (T9-05) |
+| T9-02 | P1 | OVMF Secure Boot: `OVMF_CODE/VARS.secboot` por VM, `-machine q35,smm=on`, `-global driver=cfi.pflash01,property=secure,value=on`; NVRAM em `<state>/machines/<id>/nvram.fd` (`0600`); candidatos por distro (spec §11.1); Linux preserva `OVMF_VARS.fd` (FR-MAC-112). | T4-03, T4-05 | ✅ código — candidatos/par, `nvram.fd` 0600 e Linux inalterado testados; E2E `Confirm-SecureBootUEFI` pendente (T9-05) |
+| T9-03 | P1 | `swtpm` por VM: chardev socket em `machineDir`, estado persistido `0600` (diretório `0700`), `-tpmdev emulator` + `tpm-crb,tpmdev=tpm0`; política de clone/export (FR-MAC-113). | T4-03, T4-05 | ✅ código — `SwtpmProcess`, permissões, restart e argv testados; E2E TPM 2.0 e clone/export pendentes (T9-05) |
+| T9-04 | P1 | Provisioner Windows (backend): `provisioner: windows`, `distro` opcional/ausente (ou `"windows"`), `installerIso`, `virtioWinIso` (opcional), `answerFile?`, `windowsSsh?`, instalador em CD USB com `bootindex=0` + virtio-win/answer em IDE, `autounattend.xml`/ISO (`0600`, removidos no stop/agente e fora do export), `DriverPaths` para `virtio-win.iso`, mínimos ≥ 2 vCPU/4 GiB/64 GiB, enlightenments `hv_*`; sem cloud-init/seed; senha só no XML (FR-MAC-114). | T9-02, T9-03 | ✅ código — create/argv/XML/mínimos/`installPending` testados (`machineManagerWindowsCreate`, `windowsProvisioner*`, `qemuCommandWindowsMedia`); E2E em andamento. virtio-win local ou baixado/cacheado (T9-08) |
+| T9-04a | P1 | UI/CLI de criação Windows: diálogo (ISO, virtio-win opcional, senha/gerar, vCPU/RAM/disco, `answerFile`, `windowsSsh`, edição, aviso de licença) e `podstack machine create <name> --provisioner windows --iso <arquivo> [--virtio-win-iso <arquivo>] [--answer-file <xml>] [--windows-ssh] [--edition <nome>] [--password-stdin]`; validação inline; docs `api-rpc`/`cli-parity`/`ui-map` (FR-MAC-114). | T9-04 | ✅ código — GUI/CLI e validação mínima testados (`test_gui/backendMachines`, `test_cli/machineCreateWindows`); E2E visual pendente |
+| T9-05 | P1 | Drivers + agente: vioscsi/viostor, NetKVM, viogpudo, `virtio-win-guest-tools` e `qemu-guest-agent` via `autounattend`; `windowsSsh` instala OpenSSH; `provisioning` → `running` dirigido por `guest-ping` no canal `agent`, timeout de 10 min → `error`; `guest-get-osinfo` grava `guestOs` e detecta Home/Pro (FR-MAC-115/120). | T9-04, T10-01 | ✅ código — `GuestAgentClient`/`GuestChannel`, qga no QEMU, watcher de provisioning, timeout (Windows sem timeout durante `installPending`), Home/Pro e limpeza das mídias testados (`guestAgentClient`, `machineManagerWindowsGuest`, `machineManagerGuestTimeout`); E2E real pendente |
+| T9-06 | P1 | Áudio Windows: validar `intel-hda` duplex (saída + microfone), nó PipeWire nomeado por VM; `machines.audio.set` vale para Windows (FR-MAC-116). | T9-04 | playback e microfone funcionam; stream identificável no mixer |
+| T9-07 | P1 | Dependências de host no empacotamento: `Requires`/`Depends` para QEMU x86/arm, utils, virtiofsd, OVMF, módulos SPICE, áudio e swtpm; backends gráficos em `Recommends`/`Suggests` (xpra nunca em `Depends`); checks no `SetupManager` + `test_setup`; estender `scripts/clean-install-check.sh` para DEB e corrigir `qemuPackagesForManager()` (NFR-MAC-006/007). | — | ✅ código — listas RPM/DEB, checks `swtpm`/`spice`/`qemu-audio`, `test_setup` e branch `--deb` no clean-install; validação em containers Fedora/Ubuntu pendente |
+| T9-08 | P1 | ISO virtio-win: download por manifest com URL e SHA-256, job com progresso/cancelamento, cache `0600` em `~/.local/share/podstack/virtio-win/`, verificação de hash, falha offline com instrução de arquivo local e limpeza de cache antigo (NFR-MAC-007). | — | ✅ código — manifesto HTTPS/SHA-256, cache `0600`, progresso/cancelamento, limpeza e fallback de ISO local testados (`virtioWinCache*`, `machineManagerWindowsDownload`); download real verificado |
+
+**Bloqueios duros:** Windows Home não habilita RAIL; GPU/3D exige VFIO (fora); Windows ARM e host aarch64 fora (M9/RAIL são x86_64-only, NFR-MAC-008).
+
+**Ordem:** T9-01/T9-02/T9-03/T9-08 em paralelo; T9-04 → T9-04a → T9-05 → T9-06; T9-07 em paralelo.
+
+---
+
+## M10 — Apps remotos (P1, v1.x)
+
+> Promovido da spec [`docs/specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/tasks.md).
+> Requisitos: FR-MAC-101…124 e NFR-MAC-001…008 (PRD §7.7/§7.8). ADR:
+> [`0011-apps-remotos-vm.md`](../adr/0011-apps-remotos-vm.md). RAIL depende do E2E Windows
+> (T9-05/T9-06).
+
+| ID | P | Tarefa | Dep | Conclusão |
+|---|---|---|---|---|
+| T10-00 | P1 | `AppSessionManager` no daemon + RPC `machines.apps.*`, eventos, lock por `(machineId, appId)`, TTL de 60 s, reconciliação e `trust`. | T4-03, T4-05 | ✅ código — `list/launch/stop/detach/subscribe/unsubscribe/trust`, idempotência, eventos, TTL e backend x11 testados (`appSessionManager`, `test_rpc/appsFlow`); xpra/rail na T10-03 |
+| T10-01 | P1 | `GuestChannel` + catálogo de apps + `origin` em stats/get/list. | T4-03, T4-05 | ✅ código — qga/SSH, catálogo Linux/Windows com cache de 5 min e ícones, `origin=agent` em stats; testes `guestAppCatalog*`, `machineStatsAgent`, `guestChannel*` |
+| T10-02 | P1 | `AppHost` na GUI, diálogo “Abrir app da VM”, CLI `machine apps`, queda do RPC. | T10-00, T10-01, T4-04 | 🟡 código — `AppHost` (spawn/stop/shutdown), diálogo com busca/sessões, subscribe dedicado de `machines.apps.session.*` + polling de fallback, `shutdownAll` em erro de RPC; CLI `apps list` e `launch/stop` → `GUI_REQUIRED`; delegação real do CLI à instância única pendente |
+| T10-03a | P1 | Spike RAIL/RDP com Windows 11 Pro (2 apps, `quser`, TOFU, Home/Pro). | T9-05 | ⏳ bloqueado pelo ISO Windows/E2E |
+| T10-03 | P1 | Backends xpra (Linux) e RAIL (Windows) + X11 legado; settings, consentimento, catálogo Start Menu, clipboard, drive redirect, TOFU, broker de sessão única. | T10-00…T10-02, T10-03a (RAIL) | 🟡 parcial — xpra host (`auto`/3.1.5 warning, `LaunchSpec`, áudio) e settings; RAIL/FreeRDP/T10-03a e instalação no guest pendentes |
+
+---
+
 ## Transversais
 
 | ID | P | Tarefa | Conclusão |
@@ -282,6 +321,8 @@ flowchart LR
   M4 --> M7
   M6 --> M7
   M7 --> M8
+  M4 --> M9
+  M8 --> M9
 ```
 
 ## Definição de pronto (por tarefa)

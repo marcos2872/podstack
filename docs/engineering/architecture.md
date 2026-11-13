@@ -1,6 +1,6 @@
 # Arquitetura — PodStack
 
-> Visão técnica detalhada. Complementa [`plan.md`](plan.md) e os ADRs.
+> Visão técnica detalhada. Complementa [`plan.md`](../sdd/plan.md) e os ADRs.
 
 ---
 
@@ -235,6 +235,46 @@ fechamento após o envio como sucesso, desde que nenhum erro tenha sido
 recebido. A montagem da linha de comando fica em `QemuCommand`
 (`src/machines/QemuCommand.{h,cpp}`), que valida arquitetura, CPUs, memória,
 caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
+Para guests Windows (M9), o mesmo construtor emite `-machine q35,smm=on` +
+`-global cfi.pflash01.secure=on`, o `-spice unix=on,...` com `virtio-vga`/`usb-tablet`,
+o trio `-chardev chrtpm`/`-tpmdev emulator`/`-device tpm-crb,tpmdev=tpm0` e, enquanto
+`installPending`, o instalador como CD USB (`usb-storage` + `bootindex=0`) e
+virtio-win/answer file como CD-ROMs IDE; um thread envia `send-key` via QMP nos
+primeiros segundos para responder ao prompt do boot manager. `-display none` permanece.
+`-cpu host` recebe os enlightenments
+`hv_relaxed,hv_vpindex,hv_time,hv_synic,hv_stimer,hv_reset,hv_frequencies`.
+
+O `WindowsProvisioner` (`src/machines/WindowsProvisioner.{h,cpp}`) valida as ISOs locais
+e o answer file, gera `autounattend.xml` (partições GPT/EFI/MSR, conta local, OOBE,
+`DriverPaths` e FirstLogonCommands) e um ISO pequeno com o XML. O `VirtioWinCache`
+(`src/machines/VirtioWinCache.{h,cpp}`) resolve o ISO do virtio-win quando ele não é
+informado: baixa o manifesto embutido (HTTPS + SHA-256 + tamanho) para
+`~/.local/share/podstack/virtio-win/` (`0700`, arquivos `0600`), com `.part`/rename
+atômico, lock por arquivo, verificação de hash e limpeza das versões antigas; o job de
+criação emite os estágios `virtio-win` e `virtio-win-verify`. O `MachineManager` usa
+`installPending` para anexar as mídias apenas durante a instalação; quando o canal `agent`
+responde, `clearWindowsInstall` remove `autounattend.xml`/`.iso`, limpa os caminhos das ISOs
+e o flag (o primeiro `stop` continua como fallback), e o próximo start boota do disco.
+
+O `GuestAgentClient` (`src/machines/GuestAgentClient.{h,cpp}`) fala o protocolo JSON do
+qemu-guest-agent por linha, com `guest-sync-delimited`/`0xFF`, timeouts e comandos de
+liveness, SO, execução, rede e arquivos pequenos (≤ 1 MiB). O `GuestChannel`
+(`src/machines/GuestChannel.{h,cpp}`) resolve `ssh`/`agent`, sonda o SSH existente e
+reconecta o chardev via QMP (`device_del qga0` → `chardev-remove qga` → `chardev-add qga` →
+`device_add qga0`). O `MachineManager` mantém um watcher por machine em `provisioning`
+(thread própria, join no stop/delete/destructor): Linux espera SSH por 300 s e Windows espera
+`guest-ping` por 10 min (sem timeout enquanto `installPending=true`); ao responder, grava
+`guestReady`, `guestOs`, `guestChannels` e transita para `running`, ou grava
+`error`/`errorReason` (`provisioning_timeout`/`guest_unreachable`).
+
+O `GuestAppCatalog` (`src/machines/GuestAppCatalog.{h,cpp}`) lê `.desktop` no Linux e o Start
+Menu no Windows via `guest-exec`, transferindo ícones pequenos por `guest-file-*`, com cache
+por machine de 5 min e `refresh` explícito. O `AppSessionManager`
+(`src/machines/AppSessionManager.{h,cpp}`) é o dono das sessões de apps no daemon: mantém
+`AppSession` em memória, faz `launch` idempotente por `(machineId, appId)`, TTL de 60 s,
+`stop`/`detach` e reconciliação no stop/delete da machine; o `LaunchSpec` (x11 nesta fase)
+vai na resposta e a GUI (`AppHost`, T10-02) lança o cliente local. Eventos
+`machines.apps.session.*` são entregues aos assinantes de `machines.apps.subscribe`.
 
 #### Runtime e ciclo de vida
 
@@ -258,7 +298,11 @@ processo, marca `stopped` quem está em `running`/`starting`/`stopping` sem
 processo e encerra processos com `podstack:<id>` sem machine no store, desde
 que pertençam ao `machinesRoot` desta instalação (SIGTERM, espera curta,
 SIGKILL). O filtro por uid e diretório impede que um daemon de teste ou outra
-instalação do usuário mate QEMUs alheios.
+instalação do usuário mate QEMUs alheios. O `SwtpmProcess` segue o mesmo modelo
+do `VirtiofsdProcess`: sobe antes do QEMU, é confirmado pelo `cmdline`
+(`type=unixio,path=<machineDir>/swtpm.sock`), é adotado por socket quando o
+daemon reinicia e é encerrado no stop/delete; machines paradas têm swtpm órfão
+finalizado na reconciliação.
 
 O `MachineManager` (`src/machines/MachineManager.{h,cpp}`) orquestra o
 provisionamento: valida nome RFC 1123 (1..63, `[a-z0-9-]`), CPUs (1..256),
@@ -268,7 +312,8 @@ para testes), garante a imagem no `CloudImageCache`, cria o qcow2 com
 diretório da machine em `0600`, grava o seed NoCloud e escolhe a primeira
 porta SSH livre a partir de `sshPortStart` (bind em `127.0.0.1`, até 20
 tentativas, ignorando portas já registradas). Os estados seguem
-`provisioning → starting → running → stopping → stopped`; qualquer falha
+`provisioning → starting → provisioning → running → stopping → stopped` (o segundo
+`provisioning` é a espera pelo canal de guest); qualquer falha
 persiste `error` no `meta.json` e no SQLite, e o create remove disco, seed e
 OVMF vars parciais, mantendo o diretório com `meta.json`/`console.log` para
 diagnóstico.
@@ -468,4 +513,4 @@ Detalhes em [`security.md`](security.md).
 | SQLite | arquivos JSON | consultas, histórico, migração |
 | RPM primeiro | Flatpak (não no v1) | integração systemd/helper/SELinux |
 
-ADRs: [`adr/`](adr/).
+ADRs: [`adr/`](../adr).

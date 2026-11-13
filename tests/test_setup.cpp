@@ -243,18 +243,18 @@ void SetupTest::checkIncludesCoreComponents()
 {
     PodStack::SetupManager manager;
     const QList<PodStack::SetupCheck> checks = manager.check(false);
-    QVERIFY(checks.size() >= 9);
+    QVERIFY(checks.size() >= 12);
 
     QSet<QString> ids;
     for (const PodStack::SetupCheck &check : checks) {
         ids.insert(check.id);
         QVERIFY(!check.status.isEmpty());
     }
-    for (const QString &id : {QStringLiteral("podman"), QStringLiteral("docker"),
-                              QStringLiteral("kvm"), QStringLiteral("qemu"),
-                              QStringLiteral("ovmf"), QStringLiteral("virtiofsd"),
-                              QStringLiteral("sqlite"), QStringLiteral("caddy"),
-                              QStringLiteral("k3s")}) {
+    for (const QString &id :
+         {QStringLiteral("podman"), QStringLiteral("docker"), QStringLiteral("kvm"),
+          QStringLiteral("qemu"), QStringLiteral("ovmf"), QStringLiteral("virtiofsd"),
+          QStringLiteral("swtpm"), QStringLiteral("spice"), QStringLiteral("qemu-audio"),
+          QStringLiteral("sqlite"), QStringLiteral("caddy"), QStringLiteral("k3s")}) {
         QVERIFY2(ids.contains(id), qPrintable(id));
     }
 }
@@ -268,7 +268,7 @@ void SetupTest::statusSummarizesChecks()
     QVERIFY(status.contains(QStringLiteral("dockerPolicy")));
 
     const QJsonArray checks = status.value(QStringLiteral("checks")).toArray();
-    QVERIFY(checks.size() >= 9);
+    QVERIFY(checks.size() >= 12);
 
     const QJsonObject summary = status.value(QStringLiteral("summary")).toObject();
     QVERIFY(summary.contains(QStringLiteral("ok")));
@@ -282,7 +282,7 @@ void SetupTest::validateReportsWarnings()
     PodStack::SetupManager manager;
     const QJsonObject validation = manager.validate();
     QVERIFY(validation.contains(QStringLiteral("ok")));
-    QVERIFY(validation.value(QStringLiteral("checks")).toArray().size() >= 9);
+    QVERIFY(validation.value(QStringLiteral("checks")).toArray().size() >= 12);
     QVERIFY(validation.value(QStringLiteral("warnings")).isArray());
 }
 
@@ -970,7 +970,7 @@ void SetupTest::setupRunsSocketJob()
     QVERIFY(methods.contains(QStringLiteral("setup.delta")));
     QCOMPARE(lastPayload.value(QStringLiteral("state")).toString(), QStringLiteral("success"));
     QCOMPARE(lastPayload.value(QStringLiteral("progress")).toInt(), 100);
-    QVERIFY(lastPayload.value(QStringLiteral("checks")).toArray().size() >= 9);
+    QVERIFY(lastPayload.value(QStringLiteral("checks")).toArray().size() >= 12);
     QVERIFY(manager.activeJob().isEmpty());
     QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
 }
@@ -1383,11 +1383,17 @@ void SetupTest::ubuntuOvmfAndPackages()
     QVERIFY(apt.contains(QStringLiteral("ovmf")));
     QVERIFY(apt.contains(QStringLiteral("qemu-system-x86")));
     QVERIFY(apt.contains(QStringLiteral("qemu-utils")));
+    QVERIFY(apt.contains(QStringLiteral("qemu-system-modules-spice")));
+    QVERIFY(apt.contains(QStringLiteral("qemu-system-gui")));
+    QVERIFY(apt.contains(QStringLiteral("swtpm")));
     QVERIFY(!apt.contains(QStringLiteral("edk2-ovmf")));
 
     const QStringList dnf = PodStack::SetupManager::qemuPackagesForManager(QStringLiteral("dnf"));
     QVERIFY(dnf.contains(QStringLiteral("edk2-ovmf")));
-    QVERIFY(dnf.contains(QStringLiteral("qemu-system-x86_64")));
+    QVERIFY(dnf.contains(QStringLiteral("qemu-system-x86-core")));
+    QVERIFY(dnf.contains(QStringLiteral("qemu-ui-spice-core")));
+    QVERIFY(dnf.contains(QStringLiteral("qemu-audio-pipewire")));
+    QVERIFY(dnf.contains(QStringLiteral("swtpm")));
 }
 
 void SetupTest::qemuPackagesForPackageManagers()
@@ -1429,12 +1435,15 @@ void SetupTest::qemuPackagesForPackageManagers()
     run(QStringLiteral("apt-get"),
         {QStringLiteral("qemu-system-x86"), QStringLiteral("qemu-system-arm"),
          QStringLiteral("qemu-utils"), QStringLiteral("virtiofsd"), QStringLiteral("ovmf"),
-         QStringLiteral("qemu-efi-aarch64")});
-    run(QStringLiteral("pacman"),
-        {QStringLiteral("qemu-full"), QStringLiteral("edk2-ovmf"), QStringLiteral("virtiofsd")});
-    run(QStringLiteral("dnf"), {QStringLiteral("qemu-kvm"), QStringLiteral("qemu-system-x86_64"),
-                                QStringLiteral("qemu-system-aarch64"), QStringLiteral("qemu-img"),
-                                QStringLiteral("virtiofsd"), QStringLiteral("edk2-ovmf")});
+         QStringLiteral("qemu-efi-aarch64"), QStringLiteral("qemu-system-modules-spice"),
+         QStringLiteral("qemu-system-gui"), QStringLiteral("swtpm")});
+    run(QStringLiteral("pacman"), {QStringLiteral("qemu-full"), QStringLiteral("edk2-ovmf"),
+                                   QStringLiteral("virtiofsd"), QStringLiteral("swtpm")});
+    run(QStringLiteral("dnf"), {QStringLiteral("qemu-kvm"), QStringLiteral("qemu-system-x86-core"),
+                                QStringLiteral("qemu-system-aarch64-core"),
+                                QStringLiteral("qemu-img"), QStringLiteral("virtiofsd"),
+                                QStringLiteral("edk2-ovmf"), QStringLiteral("qemu-ui-spice-core"),
+                                QStringLiteral("qemu-audio-pipewire"), QStringLiteral("swtpm")});
 }
 
 QTEST_GUILESS_MAIN(SetupTest)

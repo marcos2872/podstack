@@ -20,9 +20,15 @@ namespace PodStack {
 class MachineStatsCollector {
 public:
     QJsonObject sample(const MachineMeta &machine, const SshInfo &ssh, Error *error = nullptr);
+    /// Coleta as mesmas métricas via qemu-guest-agent (`guest-exec` + `/bin/sh`).
+    QJsonObject sampleAgent(const MachineMeta &machine, const QString &agentSocketPath,
+                            Error *error = nullptr);
     void reset();
 
 private:
+    QJsonObject parseOutput(const MachineMeta &machine, const QString &key,
+                            const QByteArray &output, const QString &origin, Error *error);
+
     struct Previous {
         quint64 cpuTotal = 0;
         quint64 cpuIdle = 0;

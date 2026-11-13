@@ -16,6 +16,16 @@ Rectangle {
     property bool showTerminalTab: false
     property bool showFilesTab: false
     property string terminalError: ""
+    property string appQuery: ""
+    readonly property var visibleApps: {
+        const query = root.appQuery.trim().toLowerCase()
+        if (query.length === 0) {
+            return backend.appItems
+        }
+        return backend.appItems.filter(function(item) {
+            return (item.name || "").toLowerCase().indexOf(query) >= 0
+        })
+    }
 
     readonly property int terminalTabIndex: 3
     readonly property int filesTabIndex: 4
@@ -452,6 +462,7 @@ Rectangle {
                 size: "sm"
                 enabled: root.machineId.length > 0 && root.machineState !== "running"
                          && root.machineState !== "starting"
+                         && root.machineState !== "provisioning"
                          && backend.actionActive === false
                          && backend.machineCreateActive === false
                 onClicked: backend.machineLifecycle("start", root.machineId)
@@ -462,7 +473,8 @@ Rectangle {
                 size: "sm"
                 enabled: root.machineId.length > 0
                          && (root.machineState === "running"
-                             || root.machineState === "starting")
+                             || root.machineState === "starting"
+                             || root.machineState === "provisioning")
                          && backend.actionActive === false
                          && backend.machineCreateActive === false
                 onClicked: backend.machineLifecycle("stop", root.machineId, false)
@@ -472,12 +484,43 @@ Rectangle {
             // Terminal; no overlay a aba já está visível e este atalho some.
             ActionButton {
                 visible: !root.showTerminalTab
+                         && (root.machine.provisioner !== "windows"
+                             || root.machine.windowsSsh === true)
                 text: qsTr("SSH")
                 iconName: "terminal"
                 size: "sm"
                 enabled: root.machineId.length > 0 && root.machineState === "running"
                          && backend.actionActive === false
                 onClicked: root.expandRequested(root.machineId, root.terminalTabIndex)
+            }
+
+            // Console gráfico SPICE: apenas machines Windows e com o remote-viewer
+            // disponível no host. O viewer é lançado pela GUI, nunca pelo daemon.
+            ActionButton {
+                visible: root.machine.provisioner === "windows"
+                text: qsTr("Console")
+                iconName: "external"
+                size: "sm"
+                enabled: root.machineId.length > 0
+                         && (root.machineState === "running"
+                             || root.machineState === "provisioning")
+                         && backend.actionActive === false
+                onClicked: backend.openMachineConsole(root.machineId)
+                Accessible.name: qsTr("Abrir o console gráfico da machine")
+            }
+
+            ActionButton {
+                visible: root.machine.provisioner !== "windows"
+                text: qsTr("Abrir app")
+                iconName: "external"
+                size: "sm"
+                enabled: root.machineId.length > 0 && root.machineState === "running"
+                         && backend.actionActive === false
+                onClicked: {
+                    backend.refreshApps(root.machineId)
+                    appDialog.open()
+                }
+                Accessible.name: qsTr("Abrir um app da machine")
             }
 
             ActionButton {
@@ -692,6 +735,21 @@ Rectangle {
 
                         Text { text: qsTr("SSH"); color: Theme.textTertiary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMicro }
                         Text { Layout.fillWidth: true; text: root.machine.ssh || "-"; color: Theme.textSecondary; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMeta; elide: Text.ElideRight }
+
+                        Text { text: qsTr("Guest"); color: Theme.textTertiary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMicro }
+                        Text {
+                            Layout.fillWidth: true
+                            text: {
+                                if (root.machine.guestOs && root.machine.guestOs.productName) {
+                                    return root.machine.guestOs.productName
+                                }
+                                return root.machine.guestReady ? qsTr("pronto") : qsTr("aguardando agente/SSH")
+                            }
+                            color: Theme.textSecondary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMeta
+                            elide: Text.ElideRight
+                        }
 
                         Text { text: qsTr("Criada"); color: Theme.textTertiary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMicro }
                         Text { Layout.fillWidth: true; text: root.machine.createdAt || "-"; color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta; elide: Text.ElideRight }
@@ -1159,6 +1217,114 @@ Rectangle {
                 machineId: root.machineId
             }
         }
+    }
+
+    AppDialog {
+        id: appDialog
+        title: qsTr("Abrir app da VM")
+        modal: true
+        width: 560
+        anchors.centerIn: parent
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Text {
+                text: qsTr("O cliente abre na sua sessão gráfica; fechar a janela encerra a sessão.")
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            FormField {
+                id: appSearch
+                Layout.fillWidth: true
+                placeholderText: qsTr("Buscar app…")
+                onTextChanged: root.appQuery = text
+            }
+            Text {
+                visible: backend.appsLoading
+                text: qsTr("Carregando catálogo…")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 240
+                clip: true
+                model: root.visibleApps
+                ScrollBar.vertical: ScrollBar {}
+                delegate: RowLayout {
+                    width: ListView.view.width
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        text: modelData.name || modelData.appId
+                        color: Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMeta
+                        elide: Text.ElideRight
+                    }
+                    ActionButton {
+                        text: qsTr("Abrir")
+                        size: "sm"
+                        onClicked: backend.launchApp(root.machineId, modelData.appId, "auto")
+                    }
+                }
+                Text {
+                    visible: root.visibleApps.length === 0 && !backend.appsLoading
+                    anchors.centerIn: parent
+                    text: qsTr("Nenhum app encontrado.")
+                    color: Theme.textTertiary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                }
+            }
+            Text {
+                visible: backend.appSessions.length > 0
+                text: qsTr("Sessões abertas")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+            }
+            Repeater {
+                model: backend.appSessions
+                delegate: RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        text: (modelData.appId || "") + " · " + (modelData.backend || "")
+                        color: Theme.textSecondary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMeta
+                        elide: Text.ElideRight
+                    }
+                    ActionButton {
+                        text: qsTr("Parar")
+                        size: "sm"
+                        onClicked: backend.stopApp(root.machineId, modelData.sessionId)
+                    }
+                }
+            }
+            Text {
+                visible: backend.appsError.length > 0
+                text: backend.appsError
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMeta
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+        }
+        onClosed: backend.closeApps()
     }
 
     Shortcut {

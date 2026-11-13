@@ -2,7 +2,7 @@
 
 > Fonte única de configuração no daemon; GUI e CLI leem/escrevem as mesmas chaves via RPC
 > (`settings.*`). Arquivo: `~/.config/podstack/config.json` (0600), escrita atômica, schema
-> versionado. O schema central com as 86 chaves, defaults, enums e faixas vive em
+> versionado. O schema central com as 89 chaves, defaults, enums e faixas vive em
 > `src/core/Settings.cpp`; `Config::defaults()` é gerado a partir dele.
 
 ---
@@ -96,6 +96,9 @@ o conteúdo não é mesclado.
 | `machines.forwardSshAgent` | bool | `false` | não | Default de agent forwarding |
 | `machines.isolated` | bool | `false` | não | Default de isolamento |
 | `machines.autoSuspend` | bool | `false` | não | Suspende VMs ociosas (P2) |
+| `machines.apps.backend` | enum `auto\|x11\|xpra\|rail` | `auto` | não | Backend default de apps; `auto` usa xpra ≥ 4.0 no Linux e cai para x11 |
+| `machines.apps.audio` | bool | `true` | não | Áudio nas sessões xpra |
+| `machines.apps.shareFolder` | string | `""` | não | Pasta read-only para drive redirect do RAIL (vazio = desligado) |
 
 ### 2.6 Kubernetes
 

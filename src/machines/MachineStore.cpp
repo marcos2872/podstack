@@ -4,10 +4,15 @@
 
 #include "core/Paths.h"
 
+#include <QByteArray>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSet>
 
 #include <sqlite3.h>
 
@@ -73,30 +78,56 @@ MachineMeta metaFromRow(sqlite3_stmt *statement)
     meta.name = columnText(statement, 1);
     meta.distro = columnText(statement, 2);
     meta.distroVersion = columnText(statement, 3);
-    meta.arch = columnText(statement, 4);
-    meta.cpus = sqlite3_column_int(statement, 5);
-    meta.memoryBytes = sqlite3_column_int64(statement, 6);
-    meta.diskBytes = sqlite3_column_int64(statement, 7);
-    meta.diskPath = columnText(statement, 8);
-    meta.seedPath = columnText(statement, 9);
-    meta.sshPort = sqlite3_column_int(statement, 10);
-    meta.sshUser = columnText(statement, 11);
-    meta.sshKeyPath = columnText(statement, 12);
-    meta.state = columnText(statement, 13);
-    meta.isolated = sqlite3_column_int(statement, 14) != 0;
-    meta.isolateNetwork = sqlite3_column_int(statement, 15) != 0;
-    meta.forwardSshAgent = sqlite3_column_int(statement, 16) != 0;
-    meta.lastBootAt = columnText(statement, 17);
-    meta.createdAt = columnText(statement, 18);
-    meta.updatedAt = columnText(statement, 19);
-    meta.error = columnText(statement, 20);
+    meta.provisioner = columnText(statement, 4);
+    if (meta.provisioner.isEmpty()) {
+        meta.provisioner = QStringLiteral("linux");
+    }
+    meta.arch = columnText(statement, 5);
+    meta.cpus = sqlite3_column_int(statement, 6);
+    meta.memoryBytes = sqlite3_column_int64(statement, 7);
+    meta.diskBytes = sqlite3_column_int64(statement, 8);
+    meta.diskPath = columnText(statement, 9);
+    meta.seedPath = columnText(statement, 10);
+    meta.sshPort = sqlite3_column_int(statement, 11);
+    meta.sshUser = columnText(statement, 12);
+    meta.sshKeyPath = columnText(statement, 13);
+    meta.state = columnText(statement, 14);
+    meta.isolated = sqlite3_column_int(statement, 15) != 0;
+    meta.isolateNetwork = sqlite3_column_int(statement, 16) != 0;
+    meta.forwardSshAgent = sqlite3_column_int(statement, 17) != 0;
+    meta.lastBootAt = columnText(statement, 18);
+    meta.createdAt = columnText(statement, 19);
+    meta.updatedAt = columnText(statement, 20);
+    meta.error = columnText(statement, 21);
+    meta.windowsSsh = sqlite3_column_int(statement, 22) != 0;
+    meta.windowsEdition = columnText(statement, 23);
+    meta.installPending = sqlite3_column_int(statement, 24) != 0;
+    meta.installerIso = columnText(statement, 25);
+    meta.virtioWinIso = columnText(statement, 26);
+    meta.errorReason = columnText(statement, 27);
+    meta.guestReady = sqlite3_column_int(statement, 28) != 0;
+    const QString guestOs = columnText(statement, 29);
+    if (!guestOs.isEmpty()) {
+        meta.guestOs = QJsonDocument::fromJson(guestOs.toUtf8()).object();
+    }
+    const QString guestChannels = columnText(statement, 30);
+    if (!guestChannels.isEmpty()) {
+        const QJsonArray channels = QJsonDocument::fromJson(guestChannels.toUtf8()).array();
+        for (const QJsonValue &value : channels) {
+            if (value.isObject()) {
+                meta.guestChannels.append(GuestChannelInfo::fromJson(value.toObject()));
+            }
+        }
+    }
     return meta;
 }
 
 const char *kMachineColumns = R"SQL(
-SELECT id, name, distro, distro_version, arch, cpus, memory_bytes, disk_bytes, disk_path,
-       seed_path, ssh_port, ssh_user, ssh_key_path, state, isolated, isolate_network,
-       forward_ssh_agent, last_boot_at, created_at, updated_at, error
+SELECT id, name, distro, distro_version, provisioner, arch, cpus, memory_bytes, disk_bytes,
+       disk_path, seed_path, ssh_port, ssh_user, ssh_key_path, state, isolated, isolate_network,
+       forward_ssh_agent, last_boot_at, created_at, updated_at, error,
+       windows_ssh, windows_edition, install_pending, installer_iso, virtio_win_iso,
+       error_reason, guest_ready, guest_os, guest_channels
 FROM machines
 )SQL";
 
@@ -220,6 +251,7 @@ CREATE TABLE IF NOT EXISTS machines (
   name TEXT NOT NULL UNIQUE,
   distro TEXT NOT NULL,
   distro_version TEXT,
+  provisioner TEXT NOT NULL DEFAULT 'linux',
   arch TEXT NOT NULL,
   cpus INTEGER NOT NULL,
   memory_bytes INTEGER NOT NULL,
@@ -238,7 +270,16 @@ CREATE TABLE IF NOT EXISTS machines (
   last_boot_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  error TEXT
+  error TEXT,
+  windows_ssh INTEGER NOT NULL DEFAULT 0,
+  windows_edition TEXT,
+  install_pending INTEGER NOT NULL DEFAULT 0,
+  installer_iso TEXT,
+  virtio_win_iso TEXT,
+  error_reason TEXT,
+  guest_ready INTEGER NOT NULL DEFAULT 0,
+  guest_os TEXT,
+  guest_channels TEXT
 );
 CREATE TABLE IF NOT EXISTS machine_ports (
   id TEXT PRIMARY KEY,
@@ -286,6 +327,52 @@ CREATE INDEX IF NOT EXISTS idx_machines_state ON machines(state);
         }
         return false;
     }
+
+    // Migração aditiva: bancos criados antes do M9 não têm as colunas Windows.
+    QSet<QString> existingColumns;
+    sqlite3_stmt *columns = nullptr;
+    if (sqlite3_prepare_v2(m_db, "PRAGMA table_info(machines);", -1, &columns, nullptr) !=
+        SQLITE_OK) {
+        return fail(QStringLiteral("Falha ao inspecionar o schema de machines."), error);
+    }
+    while (sqlite3_step(columns) == SQLITE_ROW) {
+        const auto *name = sqlite3_column_text(columns, 1);
+        if (name) {
+            existingColumns.insert(QString::fromUtf8(reinterpret_cast<const char *>(name)));
+        }
+    }
+    sqlite3_finalize(columns);
+
+    const struct Migration {
+        const char *name;
+        const char *definition;
+    } migrations[] = {
+        {"provisioner", "TEXT NOT NULL DEFAULT 'linux'"},
+        {"windows_ssh", "INTEGER NOT NULL DEFAULT 0"},
+        {"windows_edition", "TEXT"},
+        {"install_pending", "INTEGER NOT NULL DEFAULT 0"},
+        {"installer_iso", "TEXT"},
+        {"virtio_win_iso", "TEXT"},
+        {"error_reason", "TEXT"},
+        {"guest_ready", "INTEGER NOT NULL DEFAULT 0"},
+        {"guest_os", "TEXT"},
+        {"guest_channels", "TEXT"},
+    };
+    for (const Migration &migration : migrations) {
+        if (existingColumns.contains(QString::fromLatin1(migration.name))) {
+            continue;
+        }
+        const QByteArray sql = QByteArrayLiteral("ALTER TABLE machines ADD COLUMN ") +
+                               migration.name + ' ' + migration.definition + ';';
+        if (!execSql(m_db, sql.constData(), &sqlError)) {
+            if (error) {
+                *error =
+                    Error::make(QStringLiteral("PODSTACK_DB_ERROR"),
+                                QStringLiteral("Falha ao migrar o schema de machines."), sqlError);
+            }
+            return false;
+        }
+    }
     return true;
 }
 
@@ -323,14 +410,18 @@ bool MachineStore::upsert(const MachineMeta &meta, Error *error)
 
     const char *machineSql = R"SQL(
 INSERT INTO machines
-(id, name, distro, distro_version, arch, cpus, memory_bytes, disk_bytes, disk_path,
+(id, name, distro, distro_version, provisioner, arch, cpus, memory_bytes, disk_bytes, disk_path,
  seed_path, ssh_port, ssh_user, ssh_key_path, state, isolated, isolate_network,
- forward_ssh_agent, last_boot_at, created_at, updated_at, error)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ forward_ssh_agent, last_boot_at, created_at, updated_at, error,
+ windows_ssh, windows_edition, install_pending, installer_iso, virtio_win_iso,
+ error_reason, guest_ready, guest_os, guest_channels)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
   distro = excluded.distro,
   distro_version = excluded.distro_version,
+  provisioner = excluded.provisioner,
   arch = excluded.arch,
   cpus = excluded.cpus,
   memory_bytes = excluded.memory_bytes,
@@ -347,7 +438,16 @@ ON CONFLICT(id) DO UPDATE SET
   last_boot_at = excluded.last_boot_at,
   created_at = excluded.created_at,
   updated_at = excluded.updated_at,
-  error = excluded.error
+  error = excluded.error,
+  windows_ssh = excluded.windows_ssh,
+  windows_edition = excluded.windows_edition,
+  install_pending = excluded.install_pending,
+  installer_iso = excluded.installer_iso,
+  virtio_win_iso = excluded.virtio_win_iso,
+  error_reason = excluded.error_reason,
+  guest_ready = excluded.guest_ready,
+  guest_os = excluded.guest_os,
+  guest_channels = excluded.guest_channels
 )SQL";
 
     bool ok = false;
@@ -360,23 +460,39 @@ ON CONFLICT(id) DO UPDATE SET
     bindText(machine.get(), 2, meta.name);
     bindText(machine.get(), 3, meta.distro);
     bindText(machine.get(), 4, meta.distroVersion);
-    bindText(machine.get(), 5, meta.arch);
-    sqlite3_bind_int(machine.get(), 6, meta.cpus);
-    sqlite3_bind_int64(machine.get(), 7, meta.memoryBytes);
-    sqlite3_bind_int64(machine.get(), 8, meta.diskBytes);
-    bindText(machine.get(), 9, meta.diskPath);
-    bindText(machine.get(), 10, meta.seedPath);
-    sqlite3_bind_int(machine.get(), 11, meta.sshPort);
-    bindText(machine.get(), 12, meta.sshUser);
-    bindText(machine.get(), 13, meta.sshKeyPath);
-    bindText(machine.get(), 14, meta.state);
-    sqlite3_bind_int(machine.get(), 15, meta.isolated ? 1 : 0);
-    sqlite3_bind_int(machine.get(), 16, meta.isolateNetwork ? 1 : 0);
-    sqlite3_bind_int(machine.get(), 17, meta.forwardSshAgent ? 1 : 0);
-    bindText(machine.get(), 18, meta.lastBootAt);
-    bindText(machine.get(), 19, meta.createdAt);
-    bindText(machine.get(), 20, meta.updatedAt);
-    bindText(machine.get(), 21, meta.error);
+    bindText(machine.get(), 5, meta.provisioner);
+    bindText(machine.get(), 6, meta.arch);
+    sqlite3_bind_int(machine.get(), 7, meta.cpus);
+    sqlite3_bind_int64(machine.get(), 8, meta.memoryBytes);
+    sqlite3_bind_int64(machine.get(), 9, meta.diskBytes);
+    bindText(machine.get(), 10, meta.diskPath);
+    bindText(machine.get(), 11, meta.seedPath);
+    sqlite3_bind_int(machine.get(), 12, meta.sshPort);
+    bindText(machine.get(), 13, meta.sshUser);
+    bindText(machine.get(), 14, meta.sshKeyPath);
+    bindText(machine.get(), 15, meta.state);
+    sqlite3_bind_int(machine.get(), 16, meta.isolated ? 1 : 0);
+    sqlite3_bind_int(machine.get(), 17, meta.isolateNetwork ? 1 : 0);
+    sqlite3_bind_int(machine.get(), 18, meta.forwardSshAgent ? 1 : 0);
+    bindText(machine.get(), 19, meta.lastBootAt);
+    bindText(machine.get(), 20, meta.createdAt);
+    bindText(machine.get(), 21, meta.updatedAt);
+    bindText(machine.get(), 22, meta.error);
+    sqlite3_bind_int(machine.get(), 23, meta.windowsSsh ? 1 : 0);
+    bindText(machine.get(), 24, meta.windowsEdition);
+    sqlite3_bind_int(machine.get(), 25, meta.installPending ? 1 : 0);
+    bindText(machine.get(), 26, meta.installerIso);
+    bindText(machine.get(), 27, meta.virtioWinIso);
+    bindText(machine.get(), 28, meta.errorReason);
+    sqlite3_bind_int(machine.get(), 29, meta.guestReady ? 1 : 0);
+    bindText(machine.get(), 30,
+             QString::fromUtf8(QJsonDocument(meta.guestOs).toJson(QJsonDocument::Compact)));
+    QJsonArray channelArray;
+    for (const GuestChannelInfo &channel : meta.guestChannels) {
+        channelArray.append(channel.toJson());
+    }
+    bindText(machine.get(), 31,
+             QString::fromUtf8(QJsonDocument(channelArray).toJson(QJsonDocument::Compact)));
 
     if (sqlite3_step(machine.get()) != SQLITE_DONE) {
         return abort(QStringLiteral("Falha ao gravar a machine."));

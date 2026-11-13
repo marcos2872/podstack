@@ -2,6 +2,8 @@
 
 #include "core/DiskUsage.h"
 #include "core/Error.h"
+#include "core/Logging.h"
+#include "core/Password.h"
 #include "core/Proxy.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
@@ -21,13 +23,16 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaMethod>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStringList>
-#include <QUrl>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantMap>
 #include <QtConcurrent>
+
+#include <utility>
 
 namespace PodStack {
 namespace {
@@ -52,6 +57,28 @@ double parsePercent(const QString &text)
     bool ok = false;
     const double value = copy.toDouble(&ok);
     return ok ? value : 0.0;
+}
+
+LaunchSpec appLaunchSpecFromJson(const QJsonObject &object)
+{
+    LaunchSpec spec;
+    spec.backend = object.value(QStringLiteral("backend")).toString();
+    spec.program = object.value(QStringLiteral("program")).toString();
+    for (const QJsonValue &value : object.value(QStringLiteral("args")).toArray()) {
+        spec.args.append(value.toString());
+    }
+    const QJsonObject env = object.value(QStringLiteral("env")).toObject();
+    for (auto it = env.constBegin(); it != env.constEnd(); ++it) {
+        spec.env.insert(it.key(), it.value().toString());
+    }
+    spec.knownHostsPath = object.value(QStringLiteral("knownHostsPath")).toString();
+    spec.sshPort = object.value(QStringLiteral("sshPort")).toInt();
+    spec.display = object.value(QStringLiteral("display")).toString();
+    spec.xpraVersion = object.value(QStringLiteral("xpraVersion")).toString();
+    spec.rdpFile = object.value(QStringLiteral("rdpFile")).toString();
+    spec.rdpSecretPath = object.value(QStringLiteral("rdpSecretPath")).toString();
+    spec.certFingerprint = object.value(QStringLiteral("certFingerprint")).toString();
+    return spec;
 }
 
 qint64 parseHumanBytes(const QString &text)
@@ -211,6 +238,76 @@ Backend::Backend(QObject *parent)
             &Backend::onSettingsActionFinished);
     connect(&m_machinesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachinesFinished);
+    connect(&m_appsWatcher, &QFutureWatcher<QJsonObject>::finished, this, &Backend::onAppsFinished);
+    connect(&m_appHost, &AppHost::clientExited, this, [this](const QString &sessionId) {
+        const QString machineId = m_appsMachineId;
+        if (!machineId.isEmpty()) {
+            (void) QtConcurrent::run([machineId, sessionId] {
+                RpcClient client;
+                Error ignored;
+                client.call(QStringLiteral("machines.apps.detach"),
+                            QJsonObject{{QStringLiteral("id"), machineId},
+                                        {QStringLiteral("sessionId"), sessionId}},
+                            &ignored, 15000);
+            });
+            refreshApps(machineId, false);
+        }
+    });
+    connect(&m_appHost, &AppHost::clientFailed, this,
+            [this](const QString &, const QString &message) {
+                m_appsError = message;
+                emit appsChanged();
+            });
+    connect(
+        &m_appsEventStream, &StreamClient::appEvent, this,
+        [this](const QString &method, const QJsonObject &payload) {
+            const QString sessionId = payload.value(QStringLiteral("sessionId")).toString();
+            if (sessionId.isEmpty()) {
+                return;
+            }
+            if (method.endsWith(QStringLiteral(".closed"))) {
+                for (int i = m_appSessions.size() - 1; i >= 0; --i) {
+                    if (m_appSessions.at(i).toMap().value(QStringLiteral("sessionId")).toString() ==
+                        sessionId) {
+                        m_appSessions.removeAt(i);
+                    }
+                }
+                m_appHost.stopLocal(sessionId);
+            } else {
+                bool replaced = false;
+                for (int i = 0; i < m_appSessions.size(); ++i) {
+                    if (m_appSessions.at(i).toMap().value(QStringLiteral("sessionId")).toString() ==
+                        sessionId) {
+                        m_appSessions[i] = payload.toVariantMap();
+                        replaced = true;
+                        break;
+                    }
+                }
+                if (!replaced) {
+                    m_appSessions.append(payload.toVariantMap());
+                }
+                if (method.endsWith(QStringLiteral(".started")) &&
+                    !m_appHost.isRunning(sessionId)) {
+                    const LaunchSpec spec =
+                        appLaunchSpecFromJson(payload.value(QStringLiteral("spec")).toObject());
+                    if (!spec.program.isEmpty()) {
+                        m_appHost.start(sessionId, spec);
+                    }
+                }
+            }
+            emit appsChanged();
+        });
+    connect(&m_appsEventStream, &StreamClient::error, this, [this](const QString &message) {
+        m_appsError = message;
+        m_appHost.shutdownAll();
+        emit appsChanged();
+    });
+    m_appsRefreshTimer.setInterval(2500);
+    connect(&m_appsRefreshTimer, &QTimer::timeout, this, [this] {
+        if (!m_appsMachineId.isEmpty() && !m_appsWatcher.isRunning()) {
+            refreshApps(m_appsMachineId, false);
+        }
+    });
     connect(&m_machineDistrosWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineDistrosFinished);
     connect(&m_machineInfoWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -235,6 +332,17 @@ Backend::Backend(QObject *parent)
             &Backend::onK8sForwardFinished);
     m_k8sTimer.setInterval(2000);
     connect(&m_k8sTimer, &QTimer::timeout, this, &Backend::refreshK8s);
+    m_machineRefreshTimer.setInterval(3000);
+    connect(&m_machineRefreshTimer, &QTimer::timeout, this, [this] {
+        for (const QVariant &item : std::as_const(m_machines)) {
+            if (item.toMap().value(QStringLiteral("state")).toString() ==
+                QStringLiteral("provisioning")) {
+                refreshMachines();
+                break;
+            }
+        }
+    });
+    m_machineRefreshTimer.start();
     connect(&m_machineSshWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             [this] {
                 const QJsonObject result = m_machineSshWatcher.result();
@@ -288,6 +396,40 @@ Backend::Backend(QObject *parent)
                     window->activateWindow();
                 }
             });
+
+    connect(&m_machineSpiceWatcher, &QFutureWatcher<QJsonObject>::finished, this, [this] {
+        const QJsonObject result = m_machineSpiceWatcher.result();
+        if (result.contains(QStringLiteral("error"))) {
+            const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+            m_lastError = errorObject.value(QStringLiteral("message")).toString();
+            if (m_lastError.isEmpty()) {
+                m_lastError = QStringLiteral("Falha ao abrir o console da machine.");
+            }
+            emit lastErrorChanged();
+            return;
+        }
+
+        const QString program = result.value(QStringLiteral("program")).toString();
+        const QJsonArray arguments = result.value(QStringLiteral("args")).toArray();
+        if (program.isEmpty()) {
+            m_lastError = QStringLiteral("Resposta inválida do console da machine.");
+            emit lastErrorChanged();
+            return;
+        }
+
+        QStringList viewerArguments;
+        viewerArguments.reserve(arguments.size());
+        for (const QJsonValue &value : arguments) {
+            viewerArguments.append(value.toString());
+        }
+
+        qint64 pid = 0;
+        if (!QProcess::startDetached(program, viewerArguments, QString(), &pid)) {
+            m_lastError = QStringLiteral("Não foi possível abrir o remote-viewer.");
+            emit lastErrorChanged();
+            qCWarning(lcCore) << "Falha ao abrir o console SPICE:" << program << viewerArguments;
+        }
+    });
 
     connect(&m_setupStream, &StreamClient::setupEvent, this,
             [this](const QJsonObject &event) { applySetupJob(event); });
@@ -2723,6 +2865,34 @@ void Backend::openMachineSsh(const QString &id)
     }));
 }
 
+QString Backend::generatePassword() const
+{
+    return PodStack::generatePassword();
+}
+
+void Backend::openMachineConsole(const QString &id)
+{
+    if (id.isEmpty()) {
+        m_lastError = QStringLiteral("Machine inválida.");
+        emit lastErrorChanged();
+        return;
+    }
+    if (m_machineSpiceWatcher.isRunning()) {
+        return;
+    }
+
+    m_machineSpiceWatcher.setFuture(QtConcurrent::run([id] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(QStringLiteral("machines.console.spice"),
+                                               QJsonObject{{QStringLiteral("id"), id}}, &error);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
 void Backend::listFiles(const QString &id, const QString &path)
 {
     if (m_filesWatcher.isRunning()) {
@@ -3349,6 +3519,138 @@ void Backend::setMachineAudio(const QString &id, bool enabled)
               180000);
 }
 
+void Backend::refreshApps(const QString &id, bool refresh)
+{
+    if (id.isEmpty()) {
+        return;
+    }
+    m_appsMachineId = id;
+    m_appsError.clear();
+    m_appsLoading = true;
+    emit appsChanged();
+    m_appsRefreshTimer.start();
+    if (m_appsSubscribedId != id) {
+        m_appsEventStream.subscribeApps(id);
+        m_appsSubscribedId = id;
+    }
+    startAppsRequest(QStringLiteral("machines.apps.list"),
+                     QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("refresh"), refresh}},
+                     QStringLiteral("list"));
+}
+
+void Backend::closeApps()
+{
+    m_appsRefreshTimer.stop();
+    m_appsEventStream.unsubscribe();
+    m_appsSubscribedId.clear();
+    m_appsMachineId.clear();
+    m_appsOp.clear();
+    m_appItems.clear();
+    m_appSessions.clear();
+    m_appsError.clear();
+    m_appsLoading = false;
+    emit appsChanged();
+}
+
+void Backend::launchApp(const QString &id, const QString &appId, const QString &backend)
+{
+    if (id.isEmpty() || appId.isEmpty()) {
+        return;
+    }
+    m_appsMachineId = id;
+    m_appsError.clear();
+    m_appsLoading = true;
+    emit appsChanged();
+    QJsonObject params{{QStringLiteral("id"), id},
+                       {QStringLiteral("appId"), appId},
+                       {QStringLiteral("consent"), true}};
+    if (!backend.trimmed().isEmpty()) {
+        params.insert(QStringLiteral("backend"), backend.trimmed());
+    }
+    startAppsRequest(QStringLiteral("machines.apps.launch"), params, QStringLiteral("launch"));
+}
+
+void Backend::stopApp(const QString &id, const QString &sessionId)
+{
+    if (id.isEmpty() || sessionId.isEmpty()) {
+        return;
+    }
+    m_appsError.clear();
+    m_appsPendingSessionId = sessionId;
+    startAppsRequest(
+        QStringLiteral("machines.apps.stop"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("sessionId"), sessionId}},
+        QStringLiteral("stop"));
+}
+
+void Backend::startAppsRequest(const QString &method, const QJsonObject &params, const QString &op)
+{
+    if (m_appsWatcher.isRunning()) {
+        return;
+    }
+    m_appsOp = op;
+    m_appsWatcher.setFuture(QtConcurrent::run([method, params] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(method, params, &error, 30000);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onAppsFinished()
+{
+    const QJsonObject result = m_appsWatcher.result();
+    m_appsLoading = false;
+    const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+    if (!errorObject.isEmpty()) {
+        m_appsError = errorObject.value(QStringLiteral("message")).toString();
+        const QString code = errorObject.value(QStringLiteral("code")).toString();
+        if (code == QStringLiteral("PODSTACK_IO_ERROR") ||
+            code == QStringLiteral("PODSTACK_ENGINE_UNAVAILABLE")) {
+            m_appHost.shutdownAll();
+        }
+        if (errorObject.value(QStringLiteral("remediation")).toString().size() > 0) {
+            m_appsError +=
+                QStringLiteral(" ") + errorObject.value(QStringLiteral("remediation")).toString();
+        }
+        emit appsChanged();
+        return;
+    }
+
+    if (m_appsOp == QStringLiteral("list")) {
+        m_appItems = result.value(QStringLiteral("items")).toArray().toVariantList();
+        m_appSessions = result.value(QStringLiteral("sessions")).toArray().toVariantList();
+        m_appsError.clear();
+        emit appsChanged();
+        return;
+    }
+
+    if (m_appsOp == QStringLiteral("launch")) {
+        const QString sessionId = result.value(QStringLiteral("sessionId")).toString();
+        const LaunchSpec spec =
+            appLaunchSpecFromJson(result.value(QStringLiteral("spec")).toObject());
+        if (sessionId.isEmpty() || !m_appHost.start(sessionId, spec)) {
+            m_appsError = QStringLiteral("Não foi possível iniciar o cliente do app.");
+        } else if (!m_appsMachineId.isEmpty()) {
+            refreshApps(m_appsMachineId, false);
+        }
+        emit appsChanged();
+        return;
+    }
+
+    if (m_appsOp == QStringLiteral("stop")) {
+        m_appHost.stopLocal(m_appsPendingSessionId);
+        m_appsPendingSessionId.clear();
+        if (!m_appsMachineId.isEmpty()) {
+            refreshApps(m_appsMachineId, false);
+        }
+        emit appsChanged();
+    }
+}
+
 void Backend::loadMachineInfo(const QString &id)
 {
     if (id.isEmpty()) {
@@ -3636,6 +3938,23 @@ void Backend::copyMachineLogs()
         clipboard->setText(m_machineLogLines.join(QLatin1Char('\n')));
     }
     emit actionFinished(true, {});
+}
+
+void Backend::copyText(const QString &text)
+{
+    if (text.isEmpty()) {
+        return;
+    }
+    if (QClipboard *clipboard = QGuiApplication::clipboard()) {
+        clipboard->setText(text);
+    }
+}
+
+void Backend::showEvent(const QString &message, const QString &kind)
+{
+    m_eventMessage = message;
+    m_eventKind = kind.isEmpty() ? QStringLiteral("info") : kind;
+    emit eventsChanged();
 }
 
 void Backend::machineLifecycle(const QString &action, const QString &id, bool force)
@@ -3981,10 +4300,16 @@ void Backend::createMachine(const QVariantMap &spec)
         return;
     }
 
-    const QString distro = spec.value(QStringLiteral("distro")).toString().trimmed();
-    if (distro.isEmpty()) {
+    const QString provisioner =
+        spec.value(QStringLiteral("provisioner"), QStringLiteral("linux")).toString().trimmed();
+    const bool windows = provisioner == QStringLiteral("windows");
+    QString distro = spec.value(QStringLiteral("distro")).toString().trimmed();
+    if (!windows && distro.isEmpty()) {
         fail(QStringLiteral("Informe a distro da machine."));
         return;
+    }
+    if (windows) {
+        distro = QStringLiteral("windows");
     }
     const bool isolated = spec.value(QStringLiteral("isolated")).toBool();
 
@@ -3996,6 +4321,20 @@ void Backend::createMachine(const QVariantMap &spec)
 
     const int memoryGiB = spec.value(QStringLiteral("memoryGiB"), 4).toInt();
     const int diskGiB = spec.value(QStringLiteral("diskGiB"), 20).toInt();
+    if (windows) {
+        if (cpus < 2) {
+            fail(QStringLiteral("Windows exige ao menos 2 vCPUs."));
+            return;
+        }
+        if (memoryGiB < 4) {
+            fail(QStringLiteral("Windows exige ao menos 4 GiB de memória."));
+            return;
+        }
+        if (diskGiB < 64) {
+            fail(QStringLiteral("Windows exige ao menos 64 GiB de disco."));
+            return;
+        }
+    }
     if (memoryGiB < 1) {
         fail(QStringLiteral("Memória insuficiente (mínimo 1 GiB)."));
         return;
@@ -4009,8 +4348,10 @@ void Backend::createMachine(const QVariantMap &spec)
     QJsonObject params;
     params.insert(QStringLiteral("name"), name);
     params.insert(QStringLiteral("distro"), distro);
+    params.insert(QStringLiteral("provisioner"),
+                  windows ? QStringLiteral("windows") : QStringLiteral("linux"));
     const QString version = spec.value(QStringLiteral("version")).toString().trimmed();
-    if (!version.isEmpty()) {
+    if (!version.isEmpty() && !windows) {
         params.insert(QStringLiteral("version"), version);
     }
     params.insert(QStringLiteral("cpus"), cpus);
@@ -4020,26 +4361,61 @@ void Backend::createMachine(const QVariantMap &spec)
     if (!user.isEmpty()) {
         params.insert(QStringLiteral("user"), user);
     }
-    const QString userData = spec.value(QStringLiteral("userData")).toString();
-    if (!userData.isEmpty()) {
-        params.insert(QStringLiteral("userData"), userData);
-    }
     const QString password = spec.value(QStringLiteral("password")).toString();
-    if (!password.isEmpty()) {
+    if (windows) {
+        const QString installerIso =
+            spec.value(QStringLiteral("installerIso")).toString().trimmed();
+        const QString virtioWinIso =
+            spec.value(QStringLiteral("virtioWinIso")).toString().trimmed();
+        if (installerIso.isEmpty()) {
+            fail(QStringLiteral("Selecione o ISO do Windows."));
+            return;
+        }
+        if (password.isEmpty()) {
+            fail(QStringLiteral("Informe ou gere a senha da conta Windows."));
+            return;
+        }
+        const QString answerFile = spec.value(QStringLiteral("answerFile")).toString().trimmed();
+        const QString edition = spec.value(QStringLiteral("windowsEdition")).toString().trimmed();
+        params.insert(QStringLiteral("installerIso"), installerIso);
+        if (!virtioWinIso.isEmpty()) {
+            params.insert(QStringLiteral("virtioWinIso"), virtioWinIso);
+        }
+        if (!answerFile.isEmpty()) {
+            params.insert(QStringLiteral("answerFile"), answerFile);
+        }
+        if (!edition.isEmpty()) {
+            params.insert(QStringLiteral("windowsEdition"), edition);
+        }
+        params.insert(QStringLiteral("windowsSsh"),
+                      spec.value(QStringLiteral("windowsSsh")).toBool());
         params.insert(QStringLiteral("password"), password);
+        params.insert(QStringLiteral("isolated"), isolated);
+        params.insert(QStringLiteral("isolateNetwork"),
+                      isolated || spec.value(QStringLiteral("isolateNetwork")).toBool());
+        params.insert(QStringLiteral("forwardSshAgent"), false);
+    } else {
+        const QString userData = spec.value(QStringLiteral("userData")).toString();
+        if (!userData.isEmpty()) {
+            params.insert(QStringLiteral("userData"), userData);
+        }
+        if (!password.isEmpty()) {
+            params.insert(QStringLiteral("password"), password);
+        }
+        params.insert(QStringLiteral("isolated"), isolated);
+        // O modo isolado implica rede restrita e sem SSH agent; o daemon reforça.
+        params.insert(QStringLiteral("isolateNetwork"),
+                      isolated || spec.value(QStringLiteral("isolateNetwork")).toBool());
+        params.insert(QStringLiteral("forwardSshAgent"),
+                      isolated ? false : spec.value(QStringLiteral("forwardSshAgent")).toBool());
     }
-    params.insert(QStringLiteral("isolated"), isolated);
-    // O modo isolado implica rede restrita e sem SSH agent; o daemon reforça.
-    params.insert(QStringLiteral("isolateNetwork"),
-                  isolated
-                      || spec.value(QStringLiteral("isolateNetwork")).toBool());
-    params.insert(QStringLiteral("forwardSshAgent"),
-                  isolated
-                      ? false
-                      : spec.value(QStringLiteral("forwardSshAgent")).toBool());
 
     QJsonArray mounts;
     const QString mountsText = spec.value(QStringLiteral("mountsText")).toString();
+    if (windows && !mountsText.trimmed().isEmpty()) {
+        fail(QStringLiteral("Mounts do host ainda não são suportados em machines Windows."));
+        return;
+    }
     const QStringList mountLines = mountsText.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     for (const QString &rawLine : mountLines) {
         const QString line = rawLine.trimmed();

@@ -27,6 +27,7 @@ target_link_libraries(test_caddy PRIVATE podstack_core Qt6::Network Qt6::Test)
 add_test(NAME caddy COMMAND test_caddy)
 
 qt_add_executable(test_rpc test_rpc.cpp MockPodmanServer.cpp MockHttpServer.cpp
+    MockGuestAgent.cpp
     ../src/daemon/ComposeManager.cpp)
 target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_k8s
     podstack_podman Qt6::Test
@@ -39,7 +40,7 @@ target_link_libraries(test_cli PRIVATE podstack_machines Qt6::Test Qt6::Network)
 add_dependencies(test_cli podstack podstackd)
 add_test(NAME cli COMMAND test_cli)
 
-qt_add_executable(test_gui test_gui.cpp MockPodmanServer.cpp)
+qt_add_executable(test_gui test_gui.cpp MockPodmanServer.cpp MockGuestAgent.cpp)
 target_link_libraries(test_gui PRIVATE podstack_gui_lib podstack_machines podstack_k8s
     Qt6::Test Qt6::Network)
 add_dependencies(test_gui podstackd)
@@ -84,6 +85,7 @@ target_link_libraries(test_notifications PRIVATE podstack_gui_lib Qt6::Test)
 add_test(NAME notifications COMMAND test_notifications)
 
 qt_add_executable(test_machines test_machines.cpp MockHttpServer.cpp MockQmpServer.cpp
+    MockGuestAgent.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/BuildStore.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/StatsCollector.cpp)
 target_link_libraries(test_machines PRIVATE podstack_machines podstack_k8s podstack_podman

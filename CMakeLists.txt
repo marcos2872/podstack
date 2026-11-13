@@ -50,6 +50,7 @@ add_library(podstack_core STATIC
     src/core/DiskUsage.cpp
     src/core/Error.cpp
     src/core/Ids.cpp
+    src/core/Password.cpp
     src/core/Paths.cpp
     src/core/Config.cpp
     src/core/Settings.cpp
@@ -85,6 +86,11 @@ add_library(podstack_machines STATIC
     src/machines/DistroRegistry.cpp
     src/machines/HttpDownloader.cpp
     src/machines/CloudImageCache.cpp
+    src/machines/VirtioWinCache.cpp
+    src/machines/GuestAgentClient.cpp
+    src/machines/GuestChannel.cpp
+    src/machines/GuestAppCatalog.cpp
+    src/machines/AppSessionManager.cpp
     src/machines/CloudInit.cpp
     src/machines/SshConfig.cpp
     src/machines/MachineMeta.cpp
@@ -93,6 +99,8 @@ add_library(podstack_machines STATIC
     src/machines/QmpClient.cpp
     src/machines/QemuRuntime.cpp
     src/machines/VirtiofsdProcess.cpp
+    src/machines/SwtpmProcess.cpp
+    src/machines/WindowsProvisioner.cpp
     src/machines/MachineManager.cpp
     src/machines/MachineArchive.cpp
     src/machines/MachineStats.cpp
@@ -179,6 +187,7 @@ target_link_libraries(podstack PRIVATE podstack_core Qt6::Network)
 # ---------------------------------------------------------------------------
 add_library(podstack_gui_lib STATIC
     src/gui/Autostart.cpp
+    src/gui/AppHost.cpp
     src/gui/Backend.cpp
     src/gui/ContainerDetailDialog.cpp
     src/gui/ContainerListModel.cpp

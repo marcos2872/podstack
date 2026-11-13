@@ -345,7 +345,7 @@ Checklist final:
 
 ## 15. RPC proposto (app)
 
-> Ainda não implementado. Sugestão para o daemon; alinhar com [`docs/api-rpc.md`](../../docs/api-rpc.md).
+> Ainda não implementado. Sugestão para o daemon; alinhar com [`docs/engineering/api-rpc.md`](../../docs/engineering/api-rpc.md).
 
 | Método | Params | Result |
 |---|---|---|

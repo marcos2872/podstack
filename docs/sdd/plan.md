@@ -1,6 +1,6 @@
 # Plano técnico — PodStack
 
-> Derivado do [`PRD.md`](PRD.md) e da [`spec.md`](spec.md). Define stack, componentes, contratos, concorrência, persistência, build e riscos. Decisões em [`adr/`](adr/).
+> Derivado do [`PRD.md`](PRD.md) e da [`spec.md`](spec.md). Define stack, componentes, contratos, concorrência, persistência, build e riscos. Decisões em [`adr/`](../adr).
 
 ---
 
@@ -245,18 +245,52 @@ qemu-system-x86_64 \
   vhost-user-fs-pci,chardev=vfs<N>,tag=<tag>`. Limite de 8 mounts e tags
   `[a-z0-9-]{1,32}` únicas (default `host<N>`).
 - Controle por QMP: `system_powerdown`, `quit`, `query-status`, `human-monitor-command`.
+- Windows (M9 — Fase 1): `-M q35,smm=on`, `-global driver=cfi.pflash01,property=secure,value=on`,
+  NVRAM `nvram.fd`, SPICE em socket Unix, `virtio-vga`/`usb-tablet` e `-tpmdev`/`tpm-crb,tpmdev=tpm0` com
+  `swtpm` por machine. O modelo completo está em
+  [`docs/specs/001-apps-remotos-vm/plan.md`](../specs/001-apps-remotos-vm/plan.md) §3.
 
 ### 7.2 Estado e metadados
 
-- `~/.local/share/podstack/machines/<id>/`: `disk.qcow2`, `seed.iso`, `meta.json`, `console.log`, `qmp.sock`, `id_ed25519`.
-- `meta.json`: distro, versão, arch, recursos, portas, mounts, isolamento, criação, último boot.
+- `~/.local/share/podstack/machines/<id>/`: `disk.qcow2`, `seed.iso`, `meta.json`, `console.log`, `qmp.sock`, `id_ed25519`; em Windows, também `nvram.fd`, `spice.sock`, `swtpm.sock` e `tpm/`.
+- `meta.json`: provisioner (`linux`/`windows`), distro, versão, arch, recursos, portas, mounts, isolamento, criação, último boot.
 - SQLite indexa para listagem rápida; `meta.json` é a fonte de verdade recuperável.
 
-### 7.3 Limitações
+### 7.3 Guest Windows (M9)
+
+- `provisioner` e os campos Windows (`windowsSsh`, `windowsEdition`, `installPending`,
+  `installerIso`, `virtioWinIso`) são persistidos em `meta.json` e no índice SQLite, com
+  migração aditiva por `PRAGMA table_info` + `ALTER TABLE`.
+- A criação Windows usa **ISO local** do Windows; o ISO do virtio-win pode ser local ou
+  baixado do manifesto embutido (HTTPS + SHA-256, cache `0600`; T9-08). Gera
+  `autounattend.xml`+`autounattend.iso` (`0600`), valida mínimos 2 vCPU/4 GiB/64 GiB e não
+  usa cloud-init/seed. `installPending` controla as mídias de instalação; o primeiro
+  stop limpa as mídias e o flag. `windowsEdition` (default `Windows 11 Pro`) escolhe
+  `/IMAGE/NAME`; `answerFile` próprio substitui o XML gerado.
+- Secure Boot: NVRAM por machine em `nvram.fd` (`0600`), CODE/VARS `secboot` descobertos por
+  candidatos Fedora/Ubuntu; Linux mantém `OVMF_VARS.fd`. Par incompatível retorna
+  `PODSTACK_VALIDATION`. O `-cpu host` recebe `hv_relaxed,hv_vpindex,hv_time,hv_synic,hv_stimer,
+  hv_reset,hv_frequencies`.
+- Console SPICE em socket Unix por machine; `machines.console.spice` devolve o spec e a GUI
+  lança o `remote-viewer` (sem `spice-gtk` no build).
+- TPM 2.0: `SwtpmProcess` (mesmo modelo do `VirtiofsdProcess`) sobe antes do QEMU, é adotado
+  por `cmdline` após restart do daemon e encerrado no stop/delete. `tpm/` é `0700` e os
+  arquivos de estado são `0600`.
+- Canal `agent` (T10-01 parcial): `qga.sock` + `virtio-serial` em toda machine,
+  `GuestAgentClient`/`GuestChannel`, `guestChannels`/`guestReady`/`guestOs`/`errorReason`
+  persistidos, Linux `ssh` primário (300 s) e Windows `agent` primário (10 min, sem timeout
+  durante `installPending`), limpeza das mídias dirigida pelo `guest-ping` e detecção
+  Home/Pro. Catálogo de apps/ícones e `origin=agent` em stats foram implementados na
+  T10-01 (M10); `AppSessionManager`/RPC de sessões na T10-00.
+- Limitações desta rodada: E2E Windows real e áudio (T9-06) pendentes, export Windows
+  retorna `PODSTACK_UNSUPPORTED` e mounts/agent forwarding são recusados.
+
+### 7.4 Limitações
 
 - Sem `/dev/kvm`: TCG lento (avisar; permitir desabilitar).
 - Sem snapshot no v1 (P2).
-- Sem console gráfico no v1 (serial/VNC P2).
+- Console gráfico apenas para Windows via SPICE (`remote-viewer`); Linux usa o console
+  serial. VNC não é suportado.
 
 ---
 

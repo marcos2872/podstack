@@ -1,7 +1,7 @@
 # Spec funcional — PodStack
 
 > Especificação derivada do [`PRD.md`](PRD.md). Define comportamento observável, estados, fluxos e critérios de aceite. Onde o PRD diz "o quê", esta spec diz "como se comporta".
-> Baseline de paridade: OrbStack 2.2.5 (ver [`reference/`](reference/)).
+> Baseline de paridade: OrbStack 2.2.5 (ver [`reference/`](../reference)).
 
 ---
 
@@ -81,7 +81,7 @@ Formato único:
 }
 ```
 
-- Códigos estáveis documentados em [`api-rpc.md`](api-rpc.md).
+- Códigos estáveis documentados em [`api-rpc.md`](../engineering/api-rpc.md).
 - A GUI mostra mensagem amigável + detalhe técnico expansível + ação sugerida.
 - Nunca exibir stack trace cru; log completo com correlação.
 
@@ -364,7 +364,7 @@ Formato único:
 
 ---
 
-## 7. Machines (VMs Linux)
+## 7. Machines (VMs Linux e Windows)
 
 ### 7.1 Criar máquina
 
@@ -429,7 +429,8 @@ Estados: `provisioning → running → stopping → stopped → starting → run
 - As validações são as mesmas de `machines.logs`: arquivo regular, sem symlink, caminho
   canônico confinado ao diretório da machine e path nunca exposto na resposta.
 - Os bytes são convertidos com `QString::fromUtf8` (lossy); o console é tratado como texto
-  UTF-8 aproximado, não como terminal interativo. Não há VNC nesta tarefa.
+  UTF-8 aproximado, não como terminal interativo. O console serial continua sendo o padrão
+  das machines Linux; machines Windows usam o console gráfico SPICE descrito em §7.9.
 - CLI: `machine console <id|nome> [--tail BYTES] [--no-follow]`; sem `--no-follow` usa o
   stream até Ctrl+C/erro, com `--no-follow` imprime o tail one-shot. GUI: a aba **Logs** do
   inspetor tem **Seguir console**, que concatena os deltas em um buffer de até ~512 KiB,
@@ -528,6 +529,10 @@ Host <name>.podstack <name>
   estado anterior da máquina exportada.
 - Snapshots internos do qcow2 não são preservados: o `qemu-img convert` produz um disco
   autocontido sem os snapshots, e o import/export `.tar.zst` também não os leva (§7.8).
+- NVRAM (`nvram.fd`), estado do TPM (`tpm/`) e `autounattend.xml` **não** entram no export;
+  o import cria uma NVRAM e um TPM vazios. Exportar machines Windows ainda retorna
+  `PODSTACK_UNSUPPORTED`; o `provisioner` e as ISOs só entrarão no manifesto quando o export
+  Windows for habilitado.
 
 ### 7.6 Limites e recursos
 
@@ -572,6 +577,125 @@ Host <name>.podstack <name>
 - Limitações: `qemu-img convert` (export e clone) não preserva snapshots internos, e o
   export/import `.tar.zst` também não os leva. O snapshot referencia o disco overlay (com
   backing da imagem cloud); manter o backing disponível é responsabilidade do cache de imagens.
+
+### 7.9 Guest Windows (M9)
+
+O M9 usa `provisioner: "windows"` no metadado (`linux` é o default). A criação Windows aceita
+`distro` ausente/`"windows"`, exige um **ISO local do Windows** (`installerIso`) e aceita um
+**ISO local do virtio-win** (`virtioWinIso`) **ou baixa o oficial** por manifesto e gera
+`autounattend.xml` + ISO de answer file. O PodStack nunca baixa/redistribui o Windows; o alvo
+testado é **Windows 11 Pro amd64** (`Home` instala, mas não habilita RAIL). `windowsEdition`
+(default `Windows 11 Pro`) escolhe a imagem via `/IMAGE/NAME`; um `answerFile` próprio
+substitui o XML gerado.
+
+- **Criação (T9-04/T9-04a/T9-08).** `machines.create`/`podstack machine create` exigem
+  `provisioner:"windows"`, `installerIso`, senha (a GUI/CLI gera se faltar; a CLI imprime a
+  senha uma vez e a GUI copia para o clipboard) e mínimos **2 vCPU / 4 GiB / 64 GiB**;
+  valores menores → `PODSTACK_VALIDATION`. Sem `virtioWinIso`, o job baixa o ISO oficial do
+  virtio-win (manifesto embutido com URL HTTPS, SHA-256 e tamanho), com progresso/
+  cancelamento e cache `0600` em `~/.local/share/podstack/virtio-win/`; versões antigas do
+  cache são removidas após a verificação. Falha de rede → `PODSTACK_DEPENDENCY_MISSING`
+  (`reason=download_failed`) com remediação para informar um ISO local; hash/tamanho
+  divergente → `PODSTACK_DOWNLOAD_FAILED` (`reason=checksum_mismatch`). Sem cloud-init/seed;
+  mounts e SSH agent forwarding são recusados. O XML (`0600`) tem partições GPT/EFI/MSR,
+  conta local, OOBE sem conta online, `DriverPaths` (`viostor`, `NetKVM`, `vioscsi`,
+  `viogpudo`, `Balloon`, `viorng`, `vioserial`), guest-tools (`virtio-win-gt-x64.msi`) e
+  qemu-ga (`guest-agent\qemu-ga-x86_64.msi`) e OpenSSH quando `windowsSsh`. O ISO do answer
+  file é anexado como CD-ROM junto ao instalador e ao virtio-win. O instalador usa
+  `usb-storage` com `bootindex=0` (o OVMF não inicializa o El Torito desse ISO pelo CD
+  IDE/AHCI); virtio-win e answer file ficam em CD-ROMs IDE. O prompt "Press any key to boot
+  from CD or DVD" é respondido automaticamente por `send-key` via QMP nos primeiros segundos.
+- **`installPending`.** Enquanto a instalação está pendente, o instalador (CD USB) e o
+  virtio-win/answer file (CD-ROMs IDE) são anexados; quando o `guest-ping` responde, o
+  PodStack remove `autounattend.xml`/`.iso`, limpa os caminhos das ISOs e o flag. O primeiro
+  `stop` continua sendo o fallback (e o próximo start boota do disco).
+- **Canal `agent` e provisionamento (T9-05/T10-01).** Toda machine sobe com
+  `virtio-serial-pci` + chardev `qga.sock` (`server=on,wait=off`) + `virtserialport
+  id=qga0,name=org.qemu.guest_agent.0` no `machineDir` (`0700`); não há TCP. O
+  `GuestAgentClient` fala JSON por linha com `guest-sync-delimited`/`0xFF` e oferece
+  `guest-ping`, `guest-get-osinfo`, `guest-info`, `guest-exec/status`,
+  `guest-network-get-interfaces` e `guest-file-*` (≤ 1 MiB). Linux usa `ssh` primário e
+  `agent` fallback (300 s sem SSH → `error`/`provisioning_timeout`); Windows usa `agent`
+  primário e `ssh` só com `windowsSsh:true` (10 min sem `guest-ping` → `error`/
+  `guest_unreachable`, **sem timeout enquanto `installPending=true`**). `guestChannels`,
+  `guestReady`, `guestOs` e `errorReason` são persistidos e expostos por `machines.get/list`.
+  `guest-get-osinfo` grava `family`, `version`, `edition` e `productName` (Home/Pro). O canal
+  reconecta o chardev na ordem `device_del qga0` → `chardev-remove qga` → `chardev-add qga`
+  → `device_add qga0`.
+- **Export/import.** Exportar machines Windows ainda retorna `PODSTACK_UNSUPPORTED` nesta
+  fase (o manifesto não carrega `provisioner` nem ISOs); clone só é permitido após concluir
+  a instalação.
+- **Console SPICE (T9-01).** Machines Windows sobem com
+  `-spice unix=on,addr=<machineDir>/spice.sock,disable-ticketing=on`, `virtio-vga`,
+  `qemu-xhci,id=usbconsole` e `usb-tablet,bus=usbconsole.0`, mantendo `-display none`.
+  O socket fica em `machineDir` (`0700`), é `0600` e nunca é exposto em TCP.
+  `machines.console.spice {id}` devolve `{program, args, socket}` para a **GUI** lançar o
+  `remote-viewer`; o daemon nunca executa o viewer. Viewer ausente →
+  `PODSTACK_DEPENDENCY_MISSING` (`reason=backend_missing`); machine Linux →
+  `PODSTACK_UNSUPPORTED`; machine parada ou socket ausente → `PODSTACK_CONFLICT`.
+- **OVMF Secure Boot (T9-02).** `-M q35,smm=on` +
+  `-global driver=cfi.pflash01,property=secure,value=on`; CODE read-only e NVRAM própria em
+  `<machineDir>/nvram.fd` (`0600`), copiada do template VARS na criação. Candidatos:
+  `/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd` + `OVMF_VARS.secboot.fd` (Fedora) e
+  `/usr/share/OVMF/OVMF_CODE_4M.secboot.fd` + `OVMF_VARS_4M.ms.fd` (Ubuntu). Par incompatível
+  → `PODSTACK_VALIDATION`; arquivo ausente → `PODSTACK_DEPENDENCY_MISSING`. Machines Linux
+  continuam com `OVMF_VARS.fd`.
+- **TPM 2.0 (T9-03).** `swtpm socket --tpm2 --tpmstate dir=<machineDir>/tpm,mode=0600
+  --ctrl type=unixio,path=<machineDir>/swtpm.sock,mode=0600` sobe antes do QEMU; o argv recebe
+  `-chardev socket,id=chrtpm,...`, `-tpmdev emulator,id=tpm0,chardev=chrtpm` e
+  `-device tpm-crb,tpmdev=tpm0`. O diretório `tpm/` é `0700`, os arquivos de estado são `0600` e o estado
+  sobrevive a stop/start. No restart do daemon o processo é adotado/reconciliado pelo socket;
+  no stop/delete é encerrado. Clone cria TPM novo; export/import não transporta o estado.
+  `swtpm` ausente → `PODSTACK_DEPENDENCY_MISSING` com remediação.
+- O caminho do binário `swtpm` pode ser sobrescrito por `PODSTACK_SWTPM_BINARY` (dev/teste).
+
+**Critérios (criação + Fase 1):**
+
+- [x] argv Windows vs. Linux testado (Secure Boot/hv_*, SPICE, TPM, ISOs USB/IDE).
+- [x] `nvram.fd`/`tpm/` com permissões restritas; estado do TPM sobrevive a restart.
+- [x] XML/ISO de answer file, `DriverPaths`, senha só no XML e mínimos validados.
+- [x] GUI/CLI criam Windows com `distro` ausente e validação inline.
+- [x] `machines.console.spice` valida provisioner/estado/socket e resolver do viewer
+  (aceita `provisioning` para diagnóstico da instalação).
+- [x] `qga.sock`/`guest-ping`, `guestChannels`/`guestReady`, timeouts Linux/Windows,
+  Home/Pro e remoção do answer file dirigida pelo agente (T9-05/T10-01).
+- [ ] E2E com Windows 11 real (instalação até o desktop, Secure Boot ativo, TPM 2.0 visível) —
+  depende de um ISO Windows.
+- [x] Download/cache do virtio-win (T9-08): manifesto HTTPS + SHA-256, progresso/
+  cancelamento, cache `0600`, remoção de versões antigas e fallback de ISO local.
+
+
+---
+
+### 7.10 Apps remotos (M10)
+
+O daemon é dono das sessões (`AppSessionManager` em memória, TTL de 60 s, idempotência por
+`(machineId, appId)` e eventos `machines.apps.session.*`); a **GUI** hospeda o cliente local
+(`AppHost`) a partir do `LaunchSpec` devolvido por `machines.apps.launch`. O contrato é
+`machines.apps.list/launch/stop/detach/subscribe/unsubscribe/trust`.
+
+- **Catálogo (T10-01).** `machines.apps.list` lê `.desktop` (Linux) ou o Start Menu (Windows)
+  via canal `agent`/SSH, com cache de 5 min, `refresh`, ícones base64 ≤ 256 KiB e
+  `runningSessions`; sem guest → `PODSTACK_GUEST_UNREACHABLE`/`guest_unreachable`.
+- **Backends.** `x11` usa `ssh -X` com a chave/porta da machine e `knownHostsPath` no state.
+  `xpra` (T10-03) usa `xpra seamless` com áudio conforme `machines.apps.audio`; `auto` usa
+  xpra ≥ 4.0 no Linux e cai para x11; 3.1.5 explícito gera warning `xpra_experimental`.
+  RAIL/FreeRDP depende do M9 e retorna `backend_unsupported`/`backend_missing` quando
+  indisponível, nunca degradando para x11.
+- **Ciclo de vida.** `stop`/`detach` são idempotentes; parar/deletar a machine encerra as
+  sessões; queda do RPC faz o `AppHost` executar `shutdownAll()`; a reconexão reconcilia via
+  `list`. `machines.apps.trust` fixa o fingerprint TOFU.
+- **Stats.** `machines.stats`/`stats.subscribe` tentam SSH e caem para `agent`, devolvendo
+  `origin`; `machines.get/list` expõem `origin`, `guestReady` e `guestChannels`.
+
+**Critérios:**
+
+- [x] `machines.apps.list` com itens/sessões/`cachedAt` e catálogo Linux/Windows.
+- [x] `launch` idempotente e `LaunchSpec` x11/xpra; `stop`/`detach`/`trust` e eventos.
+- [x] `AppHost` na GUI (spawn/stop/shutdown) e diálogo “Abrir app da VM”.
+- [x] `origin=agent` em stats/get/list.
+- [ ] RAIL/T10-03a e E2E Windows (dependem do ISO Windows).
+- [ ] xpra E2E ≤ 2 s e instalação no guest sob consentimento.
 
 ---
 
@@ -840,7 +964,7 @@ roteador; o PodStack não altera a rede do usuário nem usa root para isso.
 
 ### 13.3 Comandos
 
-Ver [`cli-parity.md`](cli-parity.md) para a tabela completa `orb` → `podstack`.
+Ver [`cli-parity.md`](../engineering/cli-parity.md) para a tabela completa `orb` → `podstack`.
 
 ---
 

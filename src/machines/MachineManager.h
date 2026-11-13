@@ -5,10 +5,13 @@
 #include "core/Error.h"
 #include "machines/CloudImageCache.h"
 #include "machines/DistroRegistry.h"
+#include "machines/GuestChannel.h"
 #include "machines/MachineMeta.h"
 #include "machines/MachineStore.h"
 #include "machines/QemuRuntime.h"
 #include "machines/SshConfig.h"
+#include "machines/SwtpmProcess.h"
+#include "machines/VirtioWinCache.h"
 #include "machines/VirtiofsdProcess.h"
 
 #include <QByteArray>
@@ -29,10 +32,16 @@ struct CreateMachineRequest {
     QString name;
     QString distro;
     QString version;
+    QString provisioner = QStringLiteral("linux"); // linux|windows
     QString arch;
     QString user;
     QString password;
     QString userData;
+    QString installerIso;   // provisioner windows: ISO local do Windows
+    QString virtioWinIso;   // provisioner windows: ISO local do virtio-win
+    QString answerFile;     // provisioner windows: autounattend.xml opcional
+    QString windowsEdition; // provisioner windows: edição do Windows
+    bool windowsSsh = false;
     int cpus = 2;
     qint64 memoryBytes = 4294967296LL;
     qint64 diskBytes = 21474836480LL;
@@ -51,6 +60,13 @@ struct SshInfo {
     bool forwardAgent = false;
 };
 
+/// Spec do console gráfico devolvido à GUI; o viewer nunca é lançado pelo daemon.
+struct SpiceConsoleSpec {
+    QString program;
+    QStringList args;
+    QString socket;
+};
+
 /// Recursos editáveis de uma machine já criada (campos ausentes não mudam).
 struct UpdateMachineRequest {
     std::optional<int> cpus;
@@ -66,16 +82,25 @@ public:
         QString storePath;      // vazio = podstack.db
         QString machinesRoot;   // vazio = Paths::machinesDir()
         QString imageCacheDir;  // vazio = Paths::cloudImagesDir()
+        QString virtioWinCacheDir;           // vazio = Paths::virtioWinCacheDir()
+        VirtioWinManifest virtioWinManifest; // url vazio = manifesto embutido
         QString qemuImgBinary;  // vazio = QStandardPaths
         QString sshKeygenBinary; // vazio = QStandardPaths
         QString virtiofsdBinary; // vazio = PODSTACK_VIRTIOFSD_BINARY/QStandardPaths
         QString sshConfigPath;   // vazio = PODSTACK_SSH_CONFIG ou ~/.ssh/config
         QString ovmfCodePath;   // vazio = autodetectar
         QString ovmfVarsPath;
+        QString ovmfSecbootCodePath; // vazio = autodetectar (provisioner windows)
+        QString ovmfSecbootVarsPath;
+        QString swtpmBinary; // vazio = PODSTACK_SWTPM_BINARY/QStandardPaths
         int sshPortStart = 32222;
         std::unique_ptr<QemuRuntime> runtime; // vazio = QemuProcessRuntime
         std::function<DistroImage(const QString &spec, const QString &arch, Error *)>
             resolveDistro;
+        /// Sonda injetável do canal de guest (vazio = QGA/SSH reais).
+        std::function<GuestProbeResult(const MachineMeta &)> guestProbe;
+        int linuxProvisioningTimeoutMs = 5 * 60 * 1000;
+        int windowsProvisioningTimeoutMs = 10 * 60 * 1000;
     };
 
     MachineManager();
@@ -84,6 +109,8 @@ public:
 
     static QStringList ovmfCodeCandidates();
     static QStringList ovmfVarsCandidates();
+    static QStringList ovmfSecbootCodeCandidates();
+    static QStringList ovmfSecbootVarsCandidates();
     static bool resolveOvmfPaths(QString *code, QString *vars,
                                  const QStringList &codeCandidates = {},
                                  const QStringList &varCandidates = {});
@@ -116,6 +143,8 @@ public:
     MachineMeta setAudioEnabled(const QString &idOrName, bool enabled, Error *error = nullptr);
     bool remove(const QString &idOrName, bool force, Error *error = nullptr);
     bool sshInfo(const QString &idOrName, SshInfo *info, Error *error = nullptr);
+    /// Spec do console SPICE para machines Windows iniciadas; o daemon nunca lança o viewer.
+    bool spiceConsole(const QString &idOrName, SpiceConsoleSpec *spec, Error *error = nullptr);
     /// Renomeia a machine, atualiza o bloco SSH e a máquina default do Config.
     MachineMeta rename(const QString &idOrName, const QString &newName, Error *error = nullptr);
     /// Cria uma cópia independente (disco próprio, chave/seed copiados e nova porta).
@@ -166,9 +195,12 @@ private:
                         QVector<MachinePort> *normalized, Error *error) const;
     bool startVirtiofs(const MachineMeta &meta, Error *error);
     bool stopVirtiofs(const QString &machineId, Error *error = nullptr);
+    bool startSwtpm(const MachineMeta &meta, Error *error);
+    bool stopSwtpm(const QString &machineId, Error *error = nullptr);
+    void reconcileSwtpm(const QVector<MachineMeta> &machines);
     QemuSpec specFor(const MachineMeta &meta, bool forStart, Error *error);
-    bool resolveFirmware(const QString &arch, const QString &machineDir, QString *codePath,
-                         QString *varsPath, Error *error);
+    bool resolveFirmware(const QString &arch, bool secureBoot, const QString &machineDir,
+                         QString *codePath, QString *varsPath, Error *error);
     bool createDisk(const QString &diskPath, const QString &backingPath, qint64 diskBytes,
                     Error *error);
     bool flattenDisk(const QString &diskPath, const QString &targetPath,
@@ -183,6 +215,12 @@ private:
     bool ensureSshKey(const QString &directory, const QString &name, QString *privatePath,
                       QString *publicKey, Error *error);
     bool persist(MachineMeta &meta, Error *error);
+    struct ProvisioningWatch;
+    GuestProbeResult probeGuest(const MachineMeta &meta);
+    bool initializeGuestState(MachineMeta &meta, const QemuSpec &spec, Error *error);
+    void startProvisioningWatch(const MachineMeta &meta, bool refreshOnly);
+    void stopProvisioningWatch(const QString &id);
+    void stopAllProvisioningWatches();
     std::shared_ptr<std::recursive_mutex> machineLock(const QString &id);
     bool tryLockMachine(const QString &id,
                         std::shared_ptr<std::recursive_mutex> *holder,
@@ -196,12 +234,17 @@ private:
     std::unique_ptr<QemuRuntime> m_runtime;
     MachineStore m_store;
     CloudImageCache m_cache;
+    VirtioWinCache m_virtioWin;
     SshConfig m_sshConfig;
     std::recursive_mutex m_virtiofsMutex;
     std::map<QString, std::map<QString, std::unique_ptr<VirtiofsdProcess>>> m_virtiofs;
+    std::recursive_mutex m_swtpmMutex;
+    std::map<QString, std::unique_ptr<SwtpmProcess>> m_swtpm;
     std::mutex m_machineLocksMutex;
     QHash<QString, std::shared_ptr<std::recursive_mutex>> m_machineLocks;
     std::mutex m_archiveMutex;
+    std::mutex m_provisioningMutex;
+    QHash<QString, std::shared_ptr<ProvisioningWatch>> m_provisioningWatches;
 };
 
 } // namespace PodStack

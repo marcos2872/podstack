@@ -3,6 +3,7 @@
 #include "machines/MachineStats.h"
 
 #include "daemon/StatsCollector.h"
+#include "machines/GuestChannel.h"
 
 #include <QByteArrayView>
 #include <QDateTime>
@@ -233,6 +234,64 @@ QJsonObject MachineStatsCollector::sample(const MachineMeta &machine, const SshI
         return {};
     }
 
+    return parseOutput(machine, machine.id, output, QStringLiteral("ssh"), error);
+}
+
+QJsonObject MachineStatsCollector::sampleAgent(const MachineMeta &machine,
+                                               const QString &agentSocketPath, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (machine.provisioner == QStringLiteral("windows")) {
+        if (error) {
+            Error unsupported =
+                Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                            QStringLiteral("Métricas via agent ainda não são suportadas no "
+                                           "Windows."),
+                            machine.id, QStringLiteral("Use SSH (windowsSsh) ou aguarde a M10."));
+            unsupported.reason = QStringLiteral("backend_unsupported");
+            *error = unsupported;
+        }
+        return {};
+    }
+    GuestChannel channel(agentSocketPath);
+    int exitCode = -1;
+    QByteArray output;
+    QByteArray stderrData;
+    Error execError;
+    if (!channel.exec(QStringLiteral("/bin/sh"),
+                      {QStringLiteral("-c"), QString::fromLatin1(kRemoteCommand)}, 30000, &exitCode,
+                      &output, &stderrData, &execError) ||
+        exitCode != 0) {
+        if (error) {
+            Error value = execError.code.isEmpty()
+                              ? Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                            QStringLiteral("O agente não retornou as métricas da "
+                                                           "machine."),
+                                            machine.id)
+                              : execError;
+            value.reason = QStringLiteral("guest_unreachable");
+            *error = value;
+        }
+        return {};
+    }
+    if (output.size() > kMaxOutputBytes) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("A resposta de métricas do agente é grande "
+                                                "demais."),
+                                 machine.id);
+        }
+        return {};
+    }
+    return parseOutput(machine, machine.id, output, QStringLiteral("agent"), error);
+}
+
+QJsonObject MachineStatsCollector::parseOutput(const MachineMeta &machine, const QString &key,
+                                               const QByteArray &output, const QString &origin,
+                                               Error *error)
+{
     const QByteArrayView memMarker(kMemMarker);
     const QByteArrayView netMarker(kNetMarker);
     const QByteArrayView diskMarker(kDiskMarker);
@@ -288,9 +347,6 @@ QJsonObject MachineStatsCollector::sample(const MachineMeta &machine, const SshI
     }
 
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    const QString key = machine.id.isEmpty()
-                            ? QStringLiteral("%1:%2").arg(ssh.host).arg(ssh.port)
-                            : machine.id;
     const Previous previous = m_previous.value(key);
     const double seconds =
         previous.timestampMs > 0 ? qMax(0.001, (now - previous.timestampMs) / 1000.0) : 0.0;
@@ -333,6 +389,7 @@ QJsonObject MachineStatsCollector::sample(const MachineMeta &machine, const SshI
     next.diskWrite = diskWrite;
     next.timestampMs = now;
     m_previous.insert(key, next);
+    result.insert(QStringLiteral("origin"), origin);
     return result;
 }
 

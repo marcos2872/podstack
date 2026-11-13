@@ -437,4 +437,4 @@ flowchart TD
 | `Shift` + clique | Seleciona intervalo |
 | `Enter`/clique | Ativa a linha/ação focada |
 
-No app QML: adicionar `Shortcut` para `/`, `Esc`, `Ctrl+F` (busca), `Ctrl+N` (novo), `Ctrl+R` (atualizar), conforme [`docs/ui-map.md`](../../docs/ui-map.md).
+No app QML: adicionar `Shortcut` para `/`, `Esc`, `Ctrl+F` (busca), `Ctrl+N` (novo), `Ctrl+R` (atualizar), conforme [`docs/engineering/ui-map.md`](../../docs/engineering/ui-map.md).

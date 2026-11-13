@@ -94,8 +94,13 @@ Não persistido. Cache em memória reconstruído por eventos.
 |---|---|---|
 | `id` | UUIDv7 | PK |
 | `name` | string | único |
-| `distro` | string | `ubuntu`, `debian`, ... |
+| `distro` | string | `ubuntu`, `debian`, ...; `windows` no provisioner Windows |
 | `distroVersion` | string? | `24.04`, `noble`, ... |
+| `provisioner` | enum | `linux` (default), `windows` |
+| `windowsSsh` | bool | instala/habilita OpenSSH no Windows |
+| `windowsEdition` | string? | imagem do ISO (default `Windows 11 Pro`) |
+| `installPending` | bool | anexa as ISOs de instalação enquanto true |
+| `installerIso` / `virtioWinIso` | string? | ISOs durante a instalação (Windows local; virtio-win local ou do cache; limpos no stop) |
 | `arch` | enum | `amd64`, `arm64` |
 | `cpus` | int | 1..N |
 | `memoryBytes` | int64 | ≥ 1 GiB |
@@ -113,8 +118,27 @@ Não persistido. Cache em memória reconstruído por eventos.
 | `lastBootAt` | timestamp? | |
 | `createdAt` / `updatedAt` | timestamp | RFC 3339 UTC com ms |
 | `error` | string? | último erro |
+| `errorReason` | string? | classificação estável (`guest_unreachable`, `provisioning_timeout`) |
+| `guestReady` | bool | canal primário já respondeu |
+| `guestOs` | object | `family`, `version`, `edition`, `productName` |
+| `guestChannels` | array | `{channel, role, version, lastSeenAt}` |
 
 > `httpPort`/`httpsPort` são colunas reservadas no esquema SQLite; o `meta.json` atual não as grava.
+>
+> O `provisioner` foi adicionado no M9. Bancos anteriores recebem a coluna por migração
+> aditiva (`PRAGMA table_info` + `ALTER TABLE ... DEFAULT 'linux'`), o mesmo valendo para as
+> colunas Windows (`windows_ssh`, `windows_edition`, `install_pending`, `installer_iso`,
+> `virtio_win_iso`) e de guest (`error_reason`, `guest_ready`, `guest_os`, `guest_channels`;
+> `guest_os`/`guest_channels` são JSON compacto). Machines Windows também têm `nvram.fd`
+> (NVRAM Secure Boot, `0600`), o diretório `tpm/` (`0700`, arquivos `0600`) e, durante a
+> instalação, `autounattend.xml`/`autounattend.iso` (`0600`); todos ficam fora do export
+> `.tar.zst`.
+>
+> **Catálogo e sessões de apps (T10-00/T10-01):** o catálogo (`GuestAppCatalog`) e as
+> `AppSession` vivem **em memória** no daemon; o catálogo tem TTL de 5 min e é invalidado no
+> `refresh`/stop, e as sessões têm TTL de 60 s renovado por `list`/`detach`. Nada disso é
+> gravado em `meta.json`/SQLite. Ícones do catálogo são base64 ≤ 256 KiB por item (orçamento
+> total de 4 MiB).
 
 ### 2.7 MachinePort / MachineMount
 
@@ -224,6 +248,7 @@ CREATE TABLE machines (
   name TEXT NOT NULL UNIQUE,
   distro TEXT NOT NULL,
   distro_version TEXT,
+  provisioner TEXT NOT NULL DEFAULT 'linux',
   arch TEXT NOT NULL,
   cpus INTEGER NOT NULL,
   memory_bytes INTEGER NOT NULL,
@@ -242,7 +267,16 @@ CREATE TABLE machines (
   last_boot_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  error TEXT
+  error TEXT,
+  windows_ssh INTEGER NOT NULL DEFAULT 0,
+  windows_edition TEXT,
+  install_pending INTEGER NOT NULL DEFAULT 0,
+  installer_iso TEXT,
+  virtio_win_iso TEXT,
+  error_reason TEXT,
+  guest_ready INTEGER NOT NULL DEFAULT 0,
+  guest_os TEXT,
+  guest_channels TEXT
 );
 
 CREATE TABLE machine_ports (

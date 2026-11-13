@@ -211,7 +211,7 @@ Regras de normalização:
 > `containers.create` e `containers.duplicate` aplicam `network.proxy`/`network.proxyExclude`
 > ao `env` do novo container, sem sobrescrever chaves definidas explicitamente pelo usuário
 > (ou herdadas do container duplicado). A configuração é lida na criação; containers
-> existentes exigem recriação. Ver [`settings.md`](settings.md) e [`spec.md`](spec.md) §6.3.
+> existentes exigem recriação. Ver [`settings.md`](settings.md) e [`spec.md`](../sdd/spec.md) §6.3.
 
 > **Portas e LAN:** sem `exposeLan`, cada `ports[]` sem `hostIp` explícito usa
 > `hostIp=127.0.0.1`; com `exposeLan:true`, o daemon força `hostIp=0.0.0.0` e chama
@@ -222,7 +222,7 @@ Regras de normalização:
 > retornam `PODSTACK_UNSUPPORTED` com a remediação de recriar o container. No firewalld as
 > regras são runtime (sem `--permanent`) e não sobrevivem a reload/restart; no ufw são
 > persistentes até `ClosePorts`/`ufw delete allow`. Ver
-> [`spec.md`](spec.md) §6.2 e [`security.md`](security.md) §4.2.
+> [`spec.md`](../sdd/spec.md) §6.2 e [`security.md`](security.md) §4.2.
 
 ### 4.3 `images.*`
 
@@ -272,15 +272,16 @@ Implementados na T4-03 (M4), T4-06, T4-07, T4-08, T4-10, T4-11, T4-12, T4-13 e
 T4-14: registry, listagem, inspeção, criação assíncrona, logs do console, ciclo de vida,
 mounts virtiofs, arquivos, clone/rename, limites de CPU/memória/disco, port forwarding,
 SSH agent e o modo isolado. A T4-04 adiciona `machines.ssh` (chave ed25519 e bloco
-gerenciado no `~/.ssh/config`). Os demais métodos continuam planejados para as tarefas
-seguintes.
+gerenciado no `~/.ssh/config`). O M9 (Fase 1) adiciona `provisioner`, Secure Boot, TPM 2.0
+e `machines.console.spice` para guests Windows. Os demais métodos continuam planejados para
+as tarefas seguintes.
 
 | Método | Params | Result |
 |---|---|---|
 | `machines.distros` | `{}` | `{items: DistroImage[]}` |
 | `machines.list` | `{}` | `{items: Machine[]}` |
 | `machines.get` | `{id}` | `Machine` (aceita ID ou nome) |
-| `machines.create` | `{name, distro, version?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, isolateNetwork?, forwardSshAgent?, mounts?, isolated?}` | `{jobId, subscriptionId}` (`JobRef` + `Subscription`) |
+| `machines.create` | `{name, distro, version?, provisioner?, installerIso?, virtioWinIso?, answerFile?, windowsEdition?, windowsSsh?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, isolateNetwork?, forwardSshAgent?, mounts?, isolated?}` | `{jobId, subscriptionId}` (`JobRef` + `Subscription`) |
 | `machines.cancel` | `{jobId}` | `{jobId, cancelled:true}` |
 | `machines.start` | `{id}` | `Machine` |
 | `machines.stop` | `{id, force?}` | `Machine` |
@@ -308,14 +309,22 @@ seguintes.
 | `machines.logs` | `{id, tail?}` | `{lines: string[]}` |
 | `machines.console.read` | `{id, tailBytes?}` | `{id, data}` (one-shot, UTF-8 aproximado) |
 | `machines.console` | `{id, tailBytes?}` | `{subscriptionId, id}` (stream serial) |
+| `machines.console.spice` | `{id}` | `{program, args, socket}` (spec do console gráfico Windows; a GUI lança o viewer) |
 | `machines.console.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 | `machines.ssh` | `{id}` | `{host, port, user, identityFile, forwardAgent}` |
 | `machines.files.list` | `{id, path?}` | `{path, items: MachineFile[]}` |
 | `machines.files.download` | `{id, path, destination}` | `{path, destination}` |
 | `machines.files.upload` | `{id, path, sourcePath}` | `{path, sourcePath, ok:true}` |
-| `machines.stats` | `{id}` | `MachineStats` (one-shot via SSH) |
+| `machines.stats` | `{id}` | `MachineStats` (one-shot via SSH, com fallback `agent`) |
 | `machines.stats.subscribe` | `{id, intervalSeconds?}` | `{subscriptionId, id}` |
 | `machines.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
+| `machines.apps.list` | `{id, refresh?}` | `{items:[{appId,name,icon,categories,desktopFile,exec,runningSessions}], sessions:[{sessionId,appId,backend,state,createdAt}], cachedAt}` |
+| `machines.apps.launch` | `{id, appId, backend?, consent?}` | `{sessionId, spec?, warnings?}` (idempotente por `(id, appId)`) |
+| `machines.apps.stop` | `{id, sessionId, force?}` | `{stopped:true}` |
+| `machines.apps.detach` | `{id, sessionId}` | `{detached:true}` (idempotente) |
+| `machines.apps.subscribe` | `{id?}` | `{subscriptionId}`; eventos `machines.apps.session.started|updated|closed` |
+| `machines.apps.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled:true}` |
+| `machines.apps.trust` | `{id, fingerprint}` | `{trusted:true}` |
 
 Snapshots de disco internos usam `machines.snapshots.*` (T4-16); o console serial usa
 `machines.console.read`/`machines.console` (abaixo), não VNC.
@@ -324,14 +333,22 @@ Snapshots de disco internos usam `machines.snapshots.*` (T4-16); o console seria
 interface Machine {
   id: string; name: string;
   distro: string; distroVersion: string; arch: "amd64"|"arm64";
+  provisioner: "linux"|"windows";
+  windowsSsh: boolean; windowsEdition: string; installPending: boolean;
+  installerIso: string; virtioWinIso: string;
   cpus: number; memoryBytes: number; diskBytes: number;
   diskPath: string; seedPath: string; sshKeyPath: string;
   sshPort: number; sshUser: string;
   state: "provisioning"|"starting"|"running"|"stopping"|"stopped"|"error"|"deleting"|"deleted";
   isolated: boolean; isolateNetwork: boolean; forwardSshAgent: boolean;
   lastBootAt: string; createdAt: string; updatedAt: string; error: string;
+  errorReason: string;
+  guestReady: boolean; guestOs: GuestOs; guestChannels: GuestChannel[];
+  origin: "ssh"|"agent"|"";
   ports: MachinePort[]; mounts: MachineMount[];
 }
+interface GuestOs { family: "linux"|"windows"; version: string; edition: string; productName: string }
+interface GuestChannel { channel: "ssh"|"agent"; role: "primary"|"fallback"; version: string; lastSeenAt: string }
 interface MachinePort { id: string; hostPort: number; guestPort: number; protocol: string; exposeLan: boolean; label: string }
 interface MachineMount { id: string; source: string; target: string; readOnly: boolean; tag: string }
 interface MachineSnapshot { id: string; name: string; sizeBytes: number; date: string }
@@ -339,13 +356,31 @@ interface MachineSnapshot { id: string; name: string; sizeBytes: number; date: s
 
 **Criação assíncrona.** `machines.create` valida os parâmetros de forma síncrona (nome RFC
 1123, CPUs 1..256, memória/disco ≥ 1 GiB, arquitetura e distro) e só então inicia o job.
-Progresso e resultado chegam como notificações:
+`provisioner` aceita `linux` (default) e `windows`. Para Windows, `distro` é
+ausente/`"windows"`, `installerIso` é obrigatório e `virtioWinIso` é **opcional** (ISO
+local absoluto/legível). Sem `virtioWinIso`, o job baixa o ISO oficial do virtio-win por um
+manifesto embutido (URL HTTPS + SHA-256 + tamanho), com cache `0600` em
+`~/.local/share/podstack/virtio-win/` e remoção das versões antigas; a senha é obrigatória
+(a GUI/CLI gera quando o usuário não informa),
+`windowsEdition` default é `Windows 11 Pro`, os mínimos são **2 vCPU/4 GiB/64 GiB** e mounts/
+agent forwarding são recusados; `answerFile` opcional substitui o XML gerado. O job gera
+`autounattend.xml`/`autounattend.iso` (`0600`) e anexa o instalador como CD USB
+(`bootindex=0`) e virtio-win/answer file como CD-ROMs IDE; o prompt "Press any key" é
+respondido automaticamente via QMP (`send-key`) durante a instalação
+enquanto `installPending=true`. Progresso e resultado chegam como notificações:
 
-- `machines.delta {jobId, stage, progress}` — `stage` é `image`, `disk`, `seed`, `starting`
-  ou `running`; `progress` vai de 0 a 100.
+- `machines.delta {jobId, stage, progress}` — `stage` é `image`, `virtio-win`,
+  `virtio-win-verify`, `disk`, `seed`, `unattend`, `starting` ou `running`; `progress` vai
+  de 0 a 100.
 - `machines.done {jobId, machine?, error?}` — `machine` é o objeto `Machine` em caso de
   sucesso; `error` é um `ErrorData` (mesmo formato de `data` dos erros) em caso de falha,
   inclusive `PODSTACK_CANCELLED`.
+
+Falha de rede/HTTP no download do virtio-win encerra o job com
+`PODSTACK_DEPENDENCY_MISSING` (`reason=download_failed`) e remediação para informar um ISO
+local (`--virtio-win-iso`/campo da GUI); hash ou tamanho divergente →
+`PODSTACK_DOWNLOAD_FAILED` (`reason=checksum_mismatch`). Um ISO local informado tem
+precedência e não é copiado para o cache.
 
 `machines.cancel` apenas sinaliza o job; o cancelamento é observado no próximo checkpoint
 (download, disco, seed ou início) e o job termina com `machines.done`/`PODSTACK_CANCELLED`.
@@ -512,6 +547,59 @@ Erros: `PODSTACK_NOT_FOUND` (machine inexistente) e `PODSTACK_IO_ERROR` (symlink
 não regular, fora do diretório ou ilegível). Uma machine sem `console.log` é válida: o
 read devolve `data:""` e o subscribe começa com um delta vazio.
 
+**Criação Windows (T9-04).** Erros síncronos: `PODSTACK_VALIDATION` para ISO
+ausente/ilegível ou XML inválido; `PODSTACK_INVALID_PARAMS` para senha vazia/curta,
+mounts/agent forwarding ou mínimos; `PODSTACK_UNSUPPORTED`
+(`reason:"backend_unsupported"`) para `arch!="amd64"`. Enquanto
+`installPending=true`, o start exige que as ISOs e o answer file ainda existam
+(`PODSTACK_IO_ERROR` com remediação). O primeiro `stop` limpa `autounattend.xml`/`.iso`, os
+caminhos das ISOs e `installPending`; o próximo start boota do disco. Exportar machine
+Windows retorna `PODSTACK_UNSUPPORTED` nesta fase. `PODSTACK_SWTPM_BINARY` e
+`PODSTACK_REMOTE_VIEWER` sobrescrevem os binários em dev/teste.
+
+**Canais de guest (T10-01/T9-05).** `machines.create`/`machines.start` retornam a machine
+em `provisioning` enquanto o canal primário não responde; a transição para `running` é
+assíncrona e aparece no próximo `machines.get/list`. Linux usa `ssh` como primário e
+`agent` como fallback; Windows usa `agent` como primário e `ssh` apenas com
+`windowsSsh:true`. `guestChannels` lista `{channel, role, version, lastSeenAt}`;
+`guestReady` só fica `true` quando o primário respondeu. Windows com `installPending=true`
+não arma o timeout de 10 min durante a instalação; depois dela, 10 min sem `guest-ping`
+levam a `error` com `errorReason:"guest_unreachable"`. Linux tem timeout de 300 s →
+`error`/`errorReason:"provisioning_timeout"`. Quando o agente Windows responde, o PodStack
+remove `autounattend.xml`/`.iso`, limpa `installerIso`/`virtioWinIso` e zera
+`installPending`; `guest-get-osinfo` preenche `guestOs` (`family`, `version`, `edition`,
+`productName`) e detecta Home/Pro. O canal `agent` usa um socket Unix
+`<machineDir>/qga.sock` (`virtio-serial`, porta `org.qemu.guest_agent.0`), nunca TCP.
+
+**Console SPICE (T9-01).** `machines.console.spice {id}` atende apenas machines com
+`provisioner:"windows"` e estado `running` ou `provisioning` (o console é a saída de
+diagnóstico enquanto o agente não responde); devolve
+`{program:"remote-viewer", args:["spice+unix://<machineDir>/spice.sock"], socket:"<machineDir>/spice.sock"}`
+para a **GUI** lançar o viewer (o daemon nunca executa processos gráficos). O socket é Unix,
+`0600`, fica no `machineDir` (`0700`) e não há SPICE em TCP. Erros: `PODSTACK_UNSUPPORTED`
+(machine Linux/sem console), `PODSTACK_CONFLICT` (machine parada ou socket ainda ausente) e
+`PODSTACK_DEPENDENCY_MISSING` com `reason:"backend_missing"` quando o `remote-viewer` não está
+instalado (`PODSTACK_REMOTE_VIEWER` sobrescreve o binário em dev/teste).
+
+**Apps de machines (T10-00/T10-01).** `machines.apps.list` consulta o catálogo do guest
+(`/usr/share/applications` e `~/.local/share/applications` no Linux; Start Menu no Windows),
+com cache por machine de **5 min** e `cachedAt`; `refresh:true` ignora o cache. Cada item tem
+`appId` estável (`desktopFile`), `name`, `icon` (base64 de PNG/SVG/ICO ≤ 256 KiB, vazio quando
+não resolvido), `categories`, `exec` e `runningSessions`. O agente é obrigatório: sem
+`guest-ping` → `PODSTACK_GUEST_UNREACHABLE` (`reason=guest_unreachable`).
+
+`machines.apps.launch` é idempotente por `(id, appId)` e devolve o mesmo `sessionId` enquanto
+a sessão existir. Nesta fase o backend disponível é **`x11`** (Linux): o `LaunchSpec` usa
+`ssh -X` com a chave/porta da machine, `knownHostsPath` em `<machineDir>/known_hosts` e o
+`exec` do app. `xpra`/`rail` retornam `PODSTACK_DEPENDENCY_MISSING`/`PODSTACK_UNSUPPORTED`
+até a T10-03. As sessões vivem na memória do daemon (`AppSessionManager`), com TTL de 60 s
+renovado por `list`/`detach`, e eventos `machines.apps.session.started|updated|closed` para
+os assinantes de `machines.apps.subscribe`. `stop`/`detach` são idempotentes; `stop` de
+session inexistente → `PODSTACK_SESSION_NOT_FOUND` (`reason=session_not_found`).
+`machines.apps.trust` valida um SHA-256 de 64 hex e fixa o fingerprint em memória nesta fase
+(a persistência em `MachineMeta`/TOFU completo fica na T10-03). `machines.get/list` expõem
+`origin` (`ssh`|`agent`), derivado do primeiro `guestChannels`.
+
 **SSH.** `machines.ssh` resolve ID ou nome, exige que a chave privada da machine exista
 (`0600`, reparada se necessário), garante o bloco gerenciado em `~/.ssh/config` e devolve
 `{host:"127.0.0.1", port, user, identityFile, forwardAgent}`. O bloco é idempotente e não
@@ -561,13 +649,16 @@ interface MachineStats {
   netRx: number; netTx: number;
   diskRead: number; diskWrite: number;
   diskUsed: number; diskTotal: number; diskPercent: number;
+  origin: "ssh"|"agent";
 }
 ```
 
 `machines.stats.subscribe` repete a coleta a cada `intervalSeconds` (1..10, default 2) em
 background e devolve `{subscriptionId, id}`. Cada amostra chega como
 `machines.stats.delta {subscriptionId, id, ...MachineStats}`; em falha o daemon envia
-`machines.stats.error {subscriptionId, id, error}` e encerra a subscription. O cancelamento
+`machines.stats.error {subscriptionId, id, error}` e encerra a subscription. `machines.stats`
+tenta SSH e, se a chave/porta não responder, cai para o canal `agent`
+(`guest-exec /bin/sh`); `origin` indica o canal usado. O cancelamento
 usa `machines.stats.unsubscribe {subscriptionId}` como as demais subscriptions. Erros:
 `PODSTACK_CONFLICT` (machine não está `running`), `PODSTACK_UNSUPPORTED` (cliente SSH
 ausente), `PODSTACK_TIMEOUT`, `PODSTACK_IO_ERROR` (SSH/chave/resposta inválida) e os erros
@@ -921,6 +1012,7 @@ Todas usam `method: "<canal>.delta"` e `params.subscriptionId`.
 | -32009 | `PODSTACK_HELPER_REQUIRED` | 409 | operação exige helper |
 | -32010 | `PODSTACK_UNSUPPORTED` | 501 | recurso não suportado no ambiente |
 | -32011 | `PODSTACK_CONSENT_REQUIRED` | 409 | ação destrutiva exige confirmação explícita |
+| -32012 | `PODSTACK_DEPENDENCY_MISSING` | 424 | binário/pacote/backend ausente; `data.reason` classifica (ex.: `backend_missing`) |
 
 Regras:
 
