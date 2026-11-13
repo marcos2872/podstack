@@ -2082,7 +2082,7 @@ void CliTest::configCommands()
     result = run(
         {QStringLiteral("config"), QStringLiteral("get"), QStringLiteral("network.httpPort")}, env);
     QCOMPARE(result.code, 0);
-    QCOMPARE(result.out.trimmed(), QStringLiteral("8080"));
+    QCOMPARE(result.out.trimmed(), QStringLiteral("47080"));
 
     result = run({QStringLiteral("config"), QStringLiteral("set"),
                   QStringLiteral("app.theme"), QStringLiteral("dark")},

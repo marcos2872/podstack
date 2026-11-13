@@ -1085,7 +1085,11 @@ Item {
     AppDialog {
         id: removeDockerDialog
         title: qsTr("Remover o Docker?")
+        width: Math.min(520, setupWindow.width - 48)
         onOpened: backend.setupLoadDockerImpact()
+
+        contentItem: ColumnLayout {
+            spacing: 12
 
         Text {
             Layout.fillWidth: true
@@ -1105,6 +1109,7 @@ Item {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontBody
             wrapMode: Text.WordWrap
+        }
         }
 
         footer: AppFooter {

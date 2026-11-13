@@ -33,7 +33,7 @@ para desenvolver ou contribuir, leia o [`AGENTS.md`](../../AGENTS.md).
 
 Outras limitações desta versão:
 
-- O proxy de domínios usa `network.httpPort`/`network.httpsPort` (8080/8443 por padrão). A ativação
+- O proxy de domínios usa `network.httpPort`/`network.httpsPort` (47080/47443 por padrão). A ativação
   das portas 80/443 pelo helper existe na API privilegiada, mas não é acionada pela GUI/CLI em
   0.1.3.
 - A confiança na CA local e a instalação do drop-in de `*.podstack.local` ainda não têm um fluxo

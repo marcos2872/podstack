@@ -648,7 +648,7 @@ Host <name>.podstack <name>
 
 - Qualquer nome sob `.localhost` resolve para 127.0.0.1/::1 via systemd-resolved ou glibc.
 - `HttpProxy` (daemon) escuta **somente em loopback** (`127.0.0.1` e, quando
-  disponível, `::1`) em `network.httpPort` (default 8080) e encaminha por `Host`.
+  disponível, `::1`) em `network.httpPort` (default 47080) e encaminha por `Host`.
 - Mapeamento: `nome.localhost` → container `nome` na **primeira porta TCP
   publicada** (`[ip:]porta->porta/tcp`); sem porta publicada → 404.
 - `network.bridge=false` desabilita o proxy. `network.exposeLan=true` (opt-in,
@@ -702,7 +702,7 @@ Domains=~podstack.local
 
 - Caddy filho do daemon, ativado por `network.https` (default `false`), com CA
   interna e certificados on-demand para `*.localhost` e `*.podstack.local` na
-  `network.httpsPort` (default 8443).
+  `network.httpsPort` (default 47443).
 - O Caddyfile é gerado pelo daemon (`<data>/podstack/caddy/Caddyfile`), usa
   storage próprio (`<data>/podstack/caddy/storage`), `skip_install_trust` e
   encaminha o HTTP para o `HttpProxy` em `127.0.0.1:<network.httpPort>`; o

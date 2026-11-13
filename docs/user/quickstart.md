@@ -67,7 +67,7 @@ curl -I http://web.localhost:8080/
 ```
 
 O nome usado no domínio é o nome do container. A porta na URL é a porta do proxy
-(`network.httpPort`, 8080 por padrão), não a porta interna do container. Se o container não publicar
+(`network.httpPort`, 47080 por padrão), não a porta interna do container. Se o container não publicar
 nenhuma porta TCP, o proxy responde 404 com a lista de serviços; publique a porta na criação.
 
 O mesmo mapeamento usa a primeira porta publicada quando há várias. Para forçar uma porta específica,

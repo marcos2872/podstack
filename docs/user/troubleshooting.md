@@ -299,8 +299,8 @@ podstack config get network.httpsPort
 podstack ps
 ```
 
-O proxy HTTP escuta em loopback na `network.httpPort` (8080). O HTTPS, quando habilitado, escuta na
-`network.httpsPort` (8443). A URL usa a porta do proxy, não a porta interna do container.
+O proxy HTTP escuta em loopback na `network.httpPort` (47080). O HTTPS, quando habilitado, escuta na
+`network.httpsPort` (47443). A URL usa a porta do proxy, não a porta interna do container.
 
 - **404**: o container não tem porta TCP publicada, ou o nome não corresponde a um container. Publique
   a porta na criação (o Podman rootless não publica portas depois do create; T6-10).
