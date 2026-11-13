@@ -239,8 +239,10 @@ caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
 #### Runtime e ciclo de vida
 
 O `QemuProcessRuntime` (`src/machines/QemuRuntime.{h,cpp}`) inicia o binário
-resolvido por `QStandardPaths::findExecutable` com `QProcess::startDetached` e
-`-daemonize`, sem shell. A execução é considerada viva quando há um pidfile
+resolvido por `QStandardPaths::findExecutable` através do `ProcessScope`
+(`systemd-run --user --scope`), com `QProcess::startDetached` como fallback
+quando o systemd de usuário não está disponível, sem shell. A execução é
+considerada viva quando há um pidfile
 (limite de 64 bytes) cujo PID existe em `/proc/<pid>/cmdline` com o marcador
 `podstack:<machineId>`; isso evita aceitar um PID reciclado. Se o pidfile sumir
 ou ficar inválido, o runtime varre `/proc` e usa o processo do mesmo uid cujo
@@ -259,6 +261,13 @@ processo e encerra processos com `podstack:<id>` sem machine no store, desde
 que pertençam ao `machinesRoot` desta instalação (SIGTERM, espera curta,
 SIGKILL). O filtro por uid e diretório impede que um daemon de teste ou outra
 instalação do usuário mate QEMUs alheios.
+
+QEMU e virtiofsd rodam em **scopes transientes** (`podstack-machine-<id>.scope`
+e `podstack-virtiofsd-<hash>.scope`) criados por `systemd-run --user --scope`,
+fora do cgroup do `podstack.service`. Parar ou reiniciar o daemon não os mata;
+o `MachineManager::reconcile` os readota pelo cmdline. `KillMode=process` na
+unit é apenas defesa em profundidade para um filho que ainda esteja no cgroup
+do serviço — não move processos de cgroup.
 
 O `MachineManager` (`src/machines/MachineManager.{h,cpp}`) orquestra o
 provisionamento: valida nome RFC 1123 (1..63, `[a-z0-9-]`), CPUs (1..256),

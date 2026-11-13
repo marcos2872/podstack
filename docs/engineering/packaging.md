@@ -93,6 +93,7 @@ ExecStart=/usr/libexec/podstack/podstackd
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=20
+KillMode=process
 Environment=QT_LOGGING_RULES=podstack.*=false
 
 # hardening
@@ -108,6 +109,12 @@ MemoryDenyWriteExecute=yes
 ```
 
 > Ajustar `ProtectHome`/`ReadWritePaths` para permitir mounts de projetos (ou relaxar para `read-only` + portal).
+
+QEMU e virtiofsd não pertencem ao cgroup do serviço: são iniciados em scopes
+transientes (`systemd-run --user --scope`, units `podstack-machine-<id>.scope`
+e `podstack-virtiofsd-<hash>.scope`). `KillMode=process` é defesa em
+profundidade para eventuais filhos que permaneçam no cgroup; não move
+processos de cgroup nem substitui o scope.
 
 ### 3.3 Habilitação
 

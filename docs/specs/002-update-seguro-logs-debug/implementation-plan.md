@@ -1,7 +1,7 @@
 # Plano de implementação — 002 Atualização segura e logs de debug
 
-> **Status:** aprovado para execução (2026-11-13) — **Fase 0 (promoção ao SDD) concluída em
-> 2026-11-13**; nenhum código implementado ainda.
+> **Status:** aprovado para execução (2026-11-13) — **Fase 0 (promoção ao SDD) e Fase 1
+> (T-UPD-00, scopes das machines) concluídas em 2026-11-13**; demais fases sem código.
 > **Escopo:** spec inteira (`T-UPD-00…04`, `T-LOG-01…03`, `T-E2E-01`, `T-DOC-01`).
 > **Base:** [`spec.md`](spec.md), [`plan.md`](plan.md) e [`tasks.md`](tasks.md).
 

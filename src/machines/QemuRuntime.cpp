@@ -3,13 +3,13 @@
 #include "machines/QemuRuntime.h"
 
 #include "core/Logging.h"
+#include "machines/ProcessScope.h"
 #include "machines/QmpClient.h"
 
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
-#include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStandardPaths>
@@ -328,10 +328,15 @@ bool QemuProcessRuntime::start(const QemuSpec &spec, Error *error)
     QFile::remove(spec.qmpSocketPath);
 
     qint64 launchedPid = 0;
-    if (!QProcess::startDetached(executable, arguments, QString(), &launchedPid)) {
+    QString launchFailure;
+    const QString scopeUnit = ProcessScope::unitName(QStringLiteral("podstack-machine"),
+                                                     spec.machineId);
+    if (!ProcessScope::startDetached(scopeUnit, executable, arguments, &launchedPid,
+                                     &launchFailure)) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível iniciar o QEMU."), executable);
+                                 QStringLiteral("Não foi possível iniciar o QEMU."), executable,
+                                 launchFailure);
         }
         return false;
     }
