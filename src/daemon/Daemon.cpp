@@ -2272,10 +2272,9 @@ QJsonObject Daemon::systemDoctor()
 QJsonObject Daemon::systemReport(const QJsonObject &params, Error *error)
 {
     const Config config = Config::load();
-    const bool redact = config.get(QStringLiteral("diagnostics.redact")).toBool(true);
     const bool includeLogs =
         params.value(QStringLiteral("includeLogs"))
-            .toBool(config.get(QStringLiteral("diagnostics.includeLogs")).toBool(true));
+            .toBool(config.get(QStringLiteral("diagnostics.includeLogs")).toBool(false));
 
     QJsonObject report;
     report.insert(QStringLiteral("generatedAt"),
@@ -2287,18 +2286,18 @@ QJsonObject Daemon::systemReport(const QJsonObject &params, Error *error)
     report.insert(QStringLiteral("controlSocket"), Paths::controlSocket());
 
     const QJsonObject settings = config.flatValues();
-    report.insert(QStringLiteral("settings"), redact ? Redaction::json(settings) : settings);
+    report.insert(QStringLiteral("settings"), Redaction::json(settings));
     report.insert(QStringLiteral("doctor"), systemDoctor());
 
     if (includeLogs) {
         QJsonArray logs;
-        QFile file(Paths::stateDir() + QStringLiteral("/logs/podstackd.log"));
+        QFile file(Paths::stateDir() + QStringLiteral("/logs/podstackd.jsonl"));
         if (file.open(QIODevice::ReadOnly)) {
             const QStringList lines =
                 QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
             const int start = qMax(0, lines.size() - 200);
             for (int index = start; index < lines.size(); ++index) {
-                logs.append(redact ? Redaction::text(lines.at(index)) : lines.at(index));
+                logs.append(Redaction::text(lines.at(index)));
             }
         }
         report.insert(QStringLiteral("logs"), logs);
@@ -4413,6 +4412,7 @@ QJsonObject Daemon::settingsSet(const QJsonObject &params, Error *error)
     const SettingDef *definition = Settings::find(key);
     const bool restartRequired = definition && definition->restartRequired
                                  && !(previous == value);
+    Logging::reload();
     QJsonObject result;
     result.insert(QStringLiteral("values"), config.flatValues());
     result.insert(QStringLiteral("restartRequired"), restartRequired);

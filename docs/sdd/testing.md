@@ -38,6 +38,7 @@
 - State machines: container/machine/cluster/job (todas as transições + inválidas).
 - Erros: mapeamento Libpod → `PodstackError` (tabela de casos).
 - Config: merge, migração, validação, campos desconhecidos preservados.
+- Logging: JSON Lines com campos obrigatórios, nível em runtime (`PODSTACK_LOG_LEVEL`/setting), redaction incondicional, fila limitada com drop-oldest, rotação diária e por tamanho, retenção de 7 dias, teto total e `rotateAtStart`; `test_logging`.
 
 ### 2.2 PodmanClient
 
@@ -225,8 +226,8 @@ plataforma continua no Libpod e não usa o override.
 | `test_gui` | `backendMachineStats` | `startMachineStats` popula `machineStats` e os quatro históricos via fake SSH do daemon; `stopMachineStats` encerra o stream e limpa o erro; erro de stream de machine não vaza para `lastError` (inspector de containers) |
 | `test_gui` | `backendMachineFiles` | `refreshMachineFiles` sem machine/id inexistente, download/upload inexistente → `machineFilesError` (sem tocar `lastError`); machine semeada + SSH falso popula `machineFiles`/`machineFilesPath`, download grava em `~/Downloads` isolado pelo `user-dirs.dirs` do teste, upload envia e atualiza a listagem, nome com `..` é rejeitado antes do RPC |
 
-| `test_core` | `configSchemaCoversDocumentedKeys`, `configValidation`, `configResetPreservesSetup`, `redactionHidesSecrets` | schema com 86 chaves únicas (defaults iguais a `Config::get`, `network.proxy` secret, `engine.mode` restart), validação de tipo/enum/faixa/CIDR/proxy/lista/timestamp e reset por chave + reset total preservando `schemaVersion`/`setup.*`; redaction de Authorization/token/senha/credenciais em URL |
-| `test_rpc` | `settingsFlow`, `systemReportRedactsSettings` | `settings.schema` (83), `settings.get` (todas/uma), `settings.set` bool/string/lista, rejeição de chave/tipo/enum/faixa (`PODSTACK_VALIDATION`) e params ausentes (`PODSTACK_INVALID_PARAMS`), `restartRequired` em `engine.mode`, reset por chave e all preservando `setup.completed`; `system.report` grava arquivo 0600 com `path/bytes/sha256` e segredos redigidos |
+| `test_core` | `configSchemaCoversDocumentedKeys`, `configValidation`, `configResetPreservesSetup`, `redactionHidesSecrets` | schema com 88 chaves únicas (defaults iguais a `Config::get`, `network.proxy` secret, `engine.mode` restart), validação de tipo/enum/faixa/CIDR/proxy/lista/timestamp e reset por chave + reset total preservando `schemaVersion`/`setup.*`; redaction de Authorization/token/senha/credenciais em URL |
+| `test_rpc` | `settingsFlow`, `systemReportRedactsSettings` | `settings.schema` (88), `settings.get` (todas/uma), `settings.set` bool/string/lista, rejeição de chave/tipo/enum/faixa (`PODSTACK_VALIDATION`) e params ausentes (`PODSTACK_INVALID_PARAMS`), `restartRequired` em `engine.mode`, reset por chave e all preservando `setup.completed`; `system.report` grava arquivo 0600 com `path/bytes/sha256` e segredos redigidos |
 | `test_cli` | `configCommands`, `reportCommand` | `config show/get/set/add/remove/reset/schema`, `--json`, listas com vírgula, erro de faixa/enum, `--yes` obrigatório sem TTY e reset total; `report` humano/`--json`/`--include-logs` e opção inválida |
 | `test_gui` | `backendTheme`, `backendSettings`, `backendProxy`, `backendTray` | `refreshSettings` popula schema/valores, `setSetting`/`resetSetting` via RPC, erro de validação em `settingsError`, tema/proxy/tray assíncronos, `app.fontScale` válido/ inválido e autostart aplicado após o RPC |
 
@@ -595,7 +596,7 @@ Todo PR/tarefa anexa:
 | Scriptlets | `preinst`/`postinst`/`postrm`/`prerm` e `%pre`/`%preun`/`%post`/`%posttrans` com processos falsos em container via `tests/packaging/test-scriptlets.sh` (`systemctl`/`loginctl`/`pkill`/`pgrep` falsos); fallback sem systemd; falha após `%pre`; `unmask` com retry; corrida de socket activation; trap de limpeza; CTest `package_scriptlets` |
 | Machines/cgroup | `ProcessScope` monta `systemd-run --user --scope` e cai para execução direta sem systemd; QEMU em `podstack-machine-<id>.scope` e virtiofsd em `podstack-virtiofsd-<hash>.scope` (cgroup real quando o user manager existe); reconciliação de órfãos após restart |
 | Exit codes/JSON | `update --check` 0/1/2/3/6/8/9 e `update --install` 0/1/2/6/8/9; `--json` com `error.code`; recusa de downgrade/chave customizada; cancelamento/timeout |
-| Logs core | JSON Lines, nomes correntes/rotacionados (`-YYYYMMDD[-N]`), rotação diária/por tamanho, timer da meia-noite, 8º dia removido, 1–30 dias, 10 MB/200 MB, `0600`/`0700`, `flock`, concorrência daemon+CLI, fila cheia/drop-oldest, `kill -9`, redaction com `diagnostics.redact=false` |
+| Logs core | `test_logging`: JSON Lines, nomes correntes/rotacionados (`-YYYYMMDD[-N]`), rotação diária/por tamanho, timer da meia-noite, 8º dia removido, 1–30 dias, 10 MB/200 MB, `0600`/`0700`, `flock`, concorrência daemon+CLI, fila cheia/drop-oldest, `kill -9`, redaction com `diagnostics.redact=false` |
 | Logs root | `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` `0750`/`0640`, `uid`/`jobId` por linha, redaction de token na saída de `apt`/`dnf`, `GetLogs` uid A/B/negado/jobId, cap 1 MiB, rate limit; app não lê root |
 | CLI/GUI | `system logs` filtros/`--follow`/`--since`/`--level`/`--component`/`--json`/`--export`/`--clear`, filtro inválido 2, export `0600` canonicalizado/sem symlink, “Ver log”, leitura em worker/modelo virtualizado, i18n/`Accessible.name`, `qmllint` |
 | Report | vazio, volumetria, caps 10.000 linhas/componente e 5 MB, redaction incondicional, `diagnostics.includeLogs=false` |

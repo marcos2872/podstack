@@ -2075,7 +2075,7 @@ void CliTest::configCommands()
     QJsonParseError parseError{};
     QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().size(), 86);
+    QCOMPARE(document.object().size(), 88);
     QCOMPARE(document.object().value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
 
@@ -2174,7 +2174,7 @@ void CliTest::configCommands()
     QCOMPARE(result.code, 0);
     document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 86);
+    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 88);
 
     result =
         run({QStringLiteral("config"), QStringLiteral("reset"), QStringLiteral("app.theme")}, env);

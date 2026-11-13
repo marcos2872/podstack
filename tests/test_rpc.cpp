@@ -3589,7 +3589,7 @@ void RpcTest::settingsFlow()
     const QJsonObject schema = client.call(QStringLiteral("settings.schema"), {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     const QJsonArray definitions = schema.value(QStringLiteral("schema")).toArray();
-    QCOMPARE(definitions.size(), 86);
+    QCOMPARE(definitions.size(), 88);
     bool engineRestart = false;
     bool proxySecret = false;
     for (const QJsonValue &value : definitions) {
@@ -3609,7 +3609,7 @@ void RpcTest::settingsFlow()
     const QJsonObject all = client.call(QStringLiteral("settings.get"), {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     const QJsonObject defaults = all.value(QStringLiteral("values")).toObject();
-    QCOMPARE(defaults.size(), 86);
+    QCOMPARE(defaults.size(), 88);
     QCOMPARE(defaults.value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
     QCOMPARE(defaults.value(QStringLiteral("app.theme")).toString(), QStringLiteral("system"));

@@ -195,7 +195,7 @@ rootless; o M6 está concluído no código.
 
 ## M7 — Desktop, settings, updates
 
-> **Status (2026-11-11):** M7 concluído no código. Settings (86 chaves), tema/escala,
+> **Status (2026-11-11):** M7 concluído no código. Settings (88 chaves), tema/escala,
 > tray (SNI, submenus de Machines/Kubernetes, Activity Monitor, “Verificar atualizações”),
 > notificações (falha/OOM/unhealthy/update/disco), updates assinados, diagnóstico/report,
 > setup/onboarding, coexistência e remoção opt-in do Docker, restauração de UI e atalhos.
@@ -204,7 +204,7 @@ rootless; o M6 está concluído no código.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T7-01 | P0 | Settings GUI + CLI (schema, validação, sync) | T0-09 | Chaves equivalentes — ✅ implementado: schema central de 86 chaves (`src/core/Settings.cpp`), `settings.get/set/reset/schema` no daemon, CLI `podstack config` e GUI modal por categoria com validação; `test_core`/`test_rpc`/`test_cli`/`test_gui` verdes |
+| T7-01 | P0 | Settings GUI + CLI (schema, validação, sync) | T0-09 | Chaves equivalentes — ✅ implementado: schema central de 88 chaves (`src/core/Settings.cpp`), `settings.get/set/reset/schema` no daemon, CLI `podstack config` e GUI modal por categoria com validação; `test_core`/`test_rpc`/`test_cli`/`test_gui` verdes |
 | T7-02 | P0 | Tema claro/escuro + escala de fonte | T0-11 | ✅ — `app.theme` (`system`/`dark`/`light`) é reaplicado em runtime e reage ao `colorScheme` do sistema; `app.fontScale` (80–150, default 100) multiplica os tokens de tipografia do `Theme.qml`. Schema passou a 83 chaves. Evidência: `test_core/configSchemaCoversDocumentedKeys` (83), `test_gui/backendTheme` (120 aplicado, 200 rejeitado) e `test_terminal/mainWindowQml` (UI carrega). |
 | T7-03 | P1 | Bandeja SNI + menu de contexto | T0-11 | ✅ — Abrir, Containers por projeto, **Machines** (iniciar/parar/reiniciar/detalhe/SSH), **Kubernetes** (estado + abrir), Activity Monitor, Settings e Sair; fechar esconde, instância única e `openViewRequested` ligado à navegação da janela. Evidência: `test_tray/machinesSubmenu` e `kubernetesSubmenu`, `test_terminal/mainWindowQml`; `ctest` 17/17. |
 | T7-04 | P1 | Activity Monitor (gráficos + `podstack top`) | T1-07 | Dados corretos — implementado (`system.stats.subscribe` + `ActivityMonitorWindow` + `podstack top [--once|--interval|--json|--plain]`); `test_cli::topCommand` |
@@ -286,12 +286,12 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 ## TX-16 — Logs de debug e retenção
 
-> **Status (2026-11-13): planejado.** Requisitos `FR-LOG-001…009`/`NFR-LOG-001…003`; decisão
-> ADR-0012; `FR-SYS-009` detalhado.
+> **Status (2026-11-13): T-LOG-01 concluída; T-LOG-02/03 planejadas.** Requisitos
+> `FR-LOG-001…009`/`NFR-LOG-001…003`; decisão ADR-0012; `FR-SYS-009` detalhado.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T-LOG-01 | P0 | Núcleo: `qInstallMessageHandler` assíncrono com writer thread/fila limitada, JSON Lines, arquivo por processo, `LogWriter`/`LogRotation`, `0600`/`0700`, rotação diária/por tamanho, timer da meia-noite, retenção 7 dias, `advanced.logMaxBytes`, teto 200 MB, `advanced.logLevel` em runtime, `PODSTACK_LOG_LEVEL`, redaction incondicional; aplicar em daemon/GUI/CLI/QML. | — | Rotação/retenção no 8º dia, nomes/sequência, JSON, redaction com `diagnostics.redact=false`, permissões, UI não bloqueada, nível em runtime, concorrência daemon+CLI e `kill -9`; settings/schema atualizados. |
+| T-LOG-01 | P0 | Núcleo: `qInstallMessageHandler` assíncrono com writer thread/fila limitada, JSON Lines, arquivo por processo, `LogWriter`/`LogRotation`, `0600`/`0700`, rotação diária/por tamanho, timer da meia-noite, retenção 7 dias, `advanced.logMaxBytes`, teto 200 MB, `advanced.logLevel` em runtime, `PODSTACK_LOG_LEVEL`, redaction incondicional; aplicar em daemon/GUI/CLI/QML. | — | ✅ — `Logging`/`LogWriter`/`LogRotation` (`src/core/`), `advanced.logLevel` exposto e runtime, `logRetentionDays`/`logMaxBytes` no schema/GUI, `PODSTACK_LOG_LEVEL` e `--verbose`; `test_logging` cobre JSON, níveis, redaction, reload, rotação diária/por tamanho, retenção/teto, `rotateAtStart` e fila cheia/drop-oldest; `test_core/loggingInit`; `system.report` lê `podstackd.jsonl` com redaction e `diagnostics.includeLogs=false`. `ctest`: 19/19; cobertura 80,7%. |
 | T-LOG-02 | P0 | Persistir setup jobs no log do daemon; logs root por operação em `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` via wrapper com redaction; scriptlets com `JOB_ID`/`UID`; `tmpfiles.d`/logrotate/SELinux; `GetLogs {jobId?}` escopado ao uid; report com caps e `diagnostics.includeLogs=false`; backend do `--clear`; migrar/remover `podstackd.log`. | T-LOG-01 | Erro de setup/helper visível após restart; permissões root; `GetLogs` uid A não vê B/negado/jobId; report vazio/volumetria; `--clear` backend; token redigido; legado migrado. |
 | T-LOG-03 | P0 | CLI `system logs [--follow\|--since\|--level\|--component\|--json\|--export\|--clear]`; página/diálogo de logs na GUI (filtro, follow, abrir pasta, exportar, limpar, “Exportar diagnóstico”); “Ver log” no erro de setup/update; worker/modelo virtualizado; i18n/`Accessible.name`. | T-LOG-01/02 | 7 dias acessíveis/filtráveis/exportáveis; `--export` `0600` canonicalizado; `--json` schema/golden; filtro inválido 2; `--clear` CLI/GUI; “Ver log”; `qmllint`; sem I/O no thread da UI. |
 | T-E2E-01 | P0 | Matriz de atualização/logs: Ubuntu 24.04/26.04 e Fedora; 0.1.3→0.1.4 manual com machine rodando; 0.1.4→0.1.5 assistido; falhas de download/assinatura/unpack/`postinst`/após `%pre`; restart do helper; dois usuários + lock; timeouts; 7 dias/rotação; uid A/B; containers/machines intactos; SSH/Tuxee/Flatpak documentados. | T-UPD-00…04, T-LOG-01…03 | Evidência por VM; PIDs antigos ausentes; OVMF; machines/containers intactos; logs e exit codes (install sem 3); cobertura ≥ 80%. |

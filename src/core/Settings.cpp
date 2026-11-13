@@ -448,8 +448,9 @@ const QVector<SettingDef> &definitions()
         // limpar o valor para desligar a checagem.
         updatePublicKey.nullable = true;
         list.append(updatePublicKey);
-        list.append(makeBool(QStringLiteral("diagnostics.includeLogs"), true,
-                             QStringLiteral("Avançado"), QStringLiteral("Inclui logs no report.")));
+        list.append(makeBool(QStringLiteral("diagnostics.includeLogs"), false,
+                             QStringLiteral("Avançado"),
+                             QStringLiteral("Inclui logs no report (opt-in).")));
         list.append(makeBool(QStringLiteral("diagnostics.redact"), true, QStringLiteral("Avançado"),
                              QStringLiteral("Redige segredos no report.")));
         list.append(makeBool(QStringLiteral("telemetry.enabled"), false,
@@ -483,7 +484,13 @@ const QVector<SettingDef> &definitions()
                               QStringLiteral("info"), QStringLiteral("debug"),
                               QStringLiteral("trace")},
                              QStringLiteral("Avançado"),
-                             QStringLiteral("Nível de log do daemon."), true));
+                             QStringLiteral("Nível de log do app (aplicado em runtime).")));
+        list.append(makeInt(QStringLiteral("advanced.logRetentionDays"), 7, 1, 30,
+                            QStringLiteral("Avançado"),
+                            QStringLiteral("Retenção dos logs do app em dias.")));
+        list.append(makeInt64(QStringLiteral("advanced.logMaxBytes"), 10485760LL, 1048576LL,
+                              1073741824LL, QStringLiteral("Avançado"),
+                              QStringLiteral("Tamanho máximo de cada arquivo de log do app.")));
         list.append(makeInt(QStringLiteral("advanced.jobRetentionDays"), 7, 1, 3650,
                             QStringLiteral("Avançado"),
                             QStringLiteral("Retenção de jobs em dias.")));
@@ -552,7 +559,6 @@ const QVector<SettingDef> &definitions()
             QStringLiteral("advanced.helper.enabled"),
             QStringLiteral("advanced.dns.install"),
             QStringLiteral("advanced.ca.install"),
-            QStringLiteral("advanced.logLevel"),
             QStringLiteral("advanced.jobRetentionDays"),
             QStringLiteral("advanced.buildLogRetentionDays"),
             QStringLiteral("advanced.cloudImageCacheBytes"),

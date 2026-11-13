@@ -713,7 +713,7 @@ logado.
 
 | Método | Params | Result |
 |---|---|---|
-| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 86 chaves; com `key`, um único item |
+| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 88 chaves; com `key`, um único item |
 | `settings.set` | `{key, value}` | `{values, key, restartRequired}` — `value` é validado antes de salvar |
 | `settings.reset` | `{key?}` | `{values, restartRequired}` — sem `key`, restaura todos |
 | `settings.schema` | `{}` | `{schema:[{key,type,default,category,description,restartRequired,secret,nullable,enum?,min?,max?}]}` |

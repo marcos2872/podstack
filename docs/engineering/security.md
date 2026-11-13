@@ -326,7 +326,7 @@ encerra a janela da instância já em execução.
 - [x] Socket `0600`, dir `0700`, `SO_PEERCRED` testado. Evidência: `test_rpc`/`test_single_instance`; o smoke de instalação limpa confere o modo `600` do socket.
 - [x] Helper sem `Exec`/shell e métodos allowlisted. Evidência: `test_setup` cobre `InstallPackages`/`RemovePackages` e ações inválidas; o binário não expõe execução arbitrária.
 - [ ] Polkit real do helper validado em máquina limpa. Pendente: o smoke em container não roda systemd como PID 1; falta exercitar autorização e negação reais.
-- [x] Redaction validada com fixtures contendo tokens. Evidência: `test_core/redactionHidesSecrets` e `test_rpc/systemReportRedactsSettings`.
+- [x] Redaction validada com fixtures contendo tokens. Evidência: `test_core/redactionHidesSecrets`, `test_logging/redaction` (sink de arquivo com `diagnostics.redact=false`) e `test_rpc/systemReportRedactsSettings`.
 - [x] Path traversal testado (files, import/export). Evidência: `test_machines/machineFiles`, rejeição de hosts/paths no `test_http_proxy` e testes de `MachineArchive`.
 - [x] CA/DNS install/remove idempotentes e reversíveis. Evidência: `test_setup/CaTrust`, `DnsZone` e `test_dns`.
 - [x] Update com assinatura inválida rejeitado. Evidência: `test_core/updateSignature*` e `test_rpc/updatesCheck`.

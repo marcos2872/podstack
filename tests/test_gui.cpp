@@ -1484,7 +1484,7 @@ void GuiTest::backendSettings()
     QSignalSpy restartSpy(&backend, &PodStack::Backend::pendingRestartKeysChanged);
 
     backend.refreshSettings();
-    QTRY_COMPARE(backend.settingsSchema().size(), 86);
+    QTRY_COMPARE(backend.settingsSchema().size(), 88);
     QVERIFY(schemaSpy.count() > 0);
     QVERIFY(backend.settingsValues().contains(QStringLiteral("engine.mode")));
     QVERIFY(valuesSpy.count() > 0);

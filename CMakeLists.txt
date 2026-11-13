@@ -55,6 +55,8 @@ add_library(podstack_core STATIC
     src/core/Settings.cpp
     src/core/DiskSpace.cpp
     src/core/Logging.cpp
+    src/core/LogRotation.cpp
+    src/core/LogWriter.cpp
     src/core/Redaction.cpp
     src/core/Proxy.cpp
     src/core/UpdateManifest.cpp

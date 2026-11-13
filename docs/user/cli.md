@@ -335,7 +335,7 @@ baixo; `system emulation` mostra a arquitetura do host e handlers `binfmt`/FEX.
 | `podstack config schema` | `--json` |
 
 - `config` sem subcomando é o mesmo que `config show`.
-- O schema tem 86 chaves; `config schema --json` devolve tipo, default, enum, faixa e
+- O schema tem 88 chaves; `config schema --json` devolve tipo, default, enum, faixa e
   `restartRequired`.
 - `config set` valida tipo/faixa/enum no daemon; valor inválido não é salvo. Se a chave exigir
   reinício, o comando avisa; reinicie o daemon com `systemctl --user restart podstack.service`.

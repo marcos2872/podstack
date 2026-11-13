@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "core/Config.h"
+#include "core/Logging.h"
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
@@ -28,6 +29,7 @@ int main(int argc, char *argv[])
     QGuiApplication::setOrganizationName(QStringLiteral("PodStack"));
     QGuiApplication::setApplicationVersion(QStringLiteral(PODSTACK_VERSION));
     QGuiApplication::setDesktopFileName(QStringLiteral("dev.podstack.PodStack"));
+    PodStack::Logging::init(false);
 
     const QString language =
         PodStack::Config::load().get(QStringLiteral("app.language")).toString();
@@ -69,6 +71,8 @@ int main(int argc, char *argv[])
     PodStack::Autostart::syncFromConfig();
 
     PodStack::Backend backend;
+    QObject::connect(&backend, &PodStack::Backend::settingsChanged, &app,
+                     []() { PodStack::Logging::reload(); });
     PodStack::TrayController tray;
     PodStack::NotificationService notifications;
     notifications.setTrayIcon(tray.trayIcon());
