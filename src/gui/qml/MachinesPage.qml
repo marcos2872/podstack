@@ -27,6 +27,7 @@ ColumnLayout {
     property bool snapshotActionPending: false
     property string pendingSnapshotAction: ""
     property string pendingSnapshotName: ""
+    property bool windowsProvisioner: false
 
     signal machineExpandRequested(string id, int tab)
 
@@ -331,6 +332,9 @@ ColumnLayout {
         if (stage === "seed") {
             return qsTr("Gerando seed cloud-init…")
         }
+        if (stage === "unattend") {
+            return qsTr("Gerando o answer file do Windows…")
+        }
         if (stage === "starting") {
             return qsTr("Iniciando QEMU…")
         }
@@ -389,16 +393,43 @@ ColumnLayout {
         return stage
     }
 
-    function createRequested() {        const index = distroSelect.currentIndex
+    function createRequested() {
+        const cpus = Number(machineCpus.text || machinesPage.defaultCpus)
+        const memoryGiB = Number(machineMemory.text || machinesPage.defaultMemoryGiB)
+        const diskGiB = Number(machineDisk.text || machinesPage.defaultDiskGiB)
+
+        if (machinesPage.windowsProvisioner) {
+            backend.createMachine({
+                name: machineName.text,
+                provisioner: "windows",
+                distro: "windows",
+                installerIso: machineWindowsIso.text,
+                virtioWinIso: machineVirtioWinIso.text,
+                answerFile: machineAnswerFile.text,
+                windowsEdition: machineWindowsEdition.text,
+                windowsSsh: windowsSshBox.checked,
+                cpus: cpus,
+                memoryGiB: memoryGiB,
+                diskGiB: diskGiB,
+                user: machineUser.text,
+                password: machineWindowsPassword.text,
+                isolated: isolatedBox.checked,
+                isolateNetwork: isolateNetworkBox.checked
+            })
+            return
+        }
+
+        const index = distroSelect.currentIndex
         const distro = index >= 0 && index < backend.machineDistros.length
                        ? backend.machineDistros[index] : ({})
         backend.createMachine({
             name: machineName.text,
+            provisioner: "linux",
             distro: distro.distro || "",
             version: distro.version || "",
-            cpus: Number(machineCpus.text || machinesPage.defaultCpus),
-            memoryGiB: Number(machineMemory.text || machinesPage.defaultMemoryGiB),
-            diskGiB: Number(machineDisk.text || machinesPage.defaultDiskGiB),
+            cpus: cpus,
+            memoryGiB: memoryGiB,
+            diskGiB: diskGiB,
             user: machineUser.text,
             password: machinePassword.text,
             userData: machineUserData.text,
@@ -441,7 +472,16 @@ ColumnLayout {
                 isolateNetworkBox.checked = machinesPage.defaultIsolated
                 forwardSshAgentBox.checked = !machinesPage.defaultIsolated
                                             && machinesPage.defaultForwardSshAgent
+                provisionerSelect.currentIndex = 0
+                machinesPage.windowsProvisioner = false
                 distroSelect.currentIndex = 0
+                machineWindowsIso.text = ""
+                machineVirtioWinIso.text = ""
+                machineAnswerFile.text = ""
+                machineWindowsEdition.text = "Windows 11 Pro"
+                machineWindowsPassword.text = ""
+                windowsSshBox.checked = false
+                showWindowsPassword.checked = false
                 backend.resetMachineCreateState()
                 backend.refreshMachineDistros()
                 createDialog.open()
@@ -623,6 +663,10 @@ ColumnLayout {
                 return
             }
             if (backend.machineJobKind === "create") {
+                if (machinesPage.windowsProvisioner && machineWindowsPassword.text.length > 0) {
+                    backend.copyText(machineWindowsPassword.text)
+                    backend.showEvent(qsTr("Machine Windows criada. A senha da conta foi copiada para a área de transferência."), "info")
+                }
                 createDialog.close()
             } else if (backend.machineJobKind === "export") {
                 exportDialog.close()
@@ -724,10 +768,41 @@ ColumnLayout {
                     enabled: !backend.machineCreateActive
                 }
 
-                Text { text: qsTr("Distro"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                Text { text: qsTr("Sistema"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                AppSelect {
+                    id: provisionerSelect
+                    Layout.fillWidth: true
+                    model: [qsTr("Linux"), qsTr("Windows 11")]
+                    enabled: !backend.machineCreateActive
+                    currentIndex: 0
+                    onCurrentIndexChanged: {
+                        machinesPage.windowsProvisioner = currentIndex === 1
+                        if (machinesPage.windowsProvisioner) {
+                            machineCpus.text = "2"
+                            machineMemory.text = "4"
+                            machineDisk.text = "64"
+                            if (machineWindowsPassword.text.length === 0) {
+                                machineWindowsPassword.text = backend.generatePassword()
+                            }
+                        } else {
+                            machineCpus.text = String(machinesPage.defaultCpus)
+                            machineMemory.text = String(machinesPage.defaultMemoryGiB)
+                            machineDisk.text = String(machinesPage.defaultDiskGiB)
+                        }
+                    }
+                }
+
+                Text {
+                    visible: !machinesPage.windowsProvisioner
+                    text: qsTr("Distro")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                }
                 AppSelect {
                     id: distroSelect
                     Layout.fillWidth: true
+                    visible: !machinesPage.windowsProvisioner
                     model: machinesPage.distroLabels
                     enabled: !backend.machineCreateActive
                     currentIndex: model.length > 0 ? 0 : -1
@@ -768,17 +843,148 @@ ColumnLayout {
                     enabled: !backend.machineCreateActive
                 }
 
-                Text { text: qsTr("Senha do usuário"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                Text {
+                    visible: !machinesPage.windowsProvisioner
+                    text: qsTr("Senha do usuário")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                }
                 FormField {
                     id: machinePassword
                     Layout.fillWidth: true
+                    visible: !machinesPage.windowsProvisioner
                     echoMode: TextInput.Password
                     placeholderText: qsTr("opcional; gravada só como hash")
                     enabled: !backend.machineCreateActive
                 }
+
+                Text {
+                    visible: machinesPage.windowsProvisioner
+                    text: qsTr("ISO do Windows")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                }
+                PathField {
+                    id: machineWindowsIso
+                    Layout.fillWidth: true
+                    visible: machinesPage.windowsProvisioner
+                    placeholderText: "/home/voce/Win11_24H2.iso"
+                    title: qsTr("Selecionar o ISO do Windows")
+                    filter: qsTr("Imagens ISO (*.iso)")
+                    enabled: !backend.machineCreateActive
+                }
+
+                Text {
+                    visible: machinesPage.windowsProvisioner
+                    text: qsTr("ISO do virtio-win")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                }
+                PathField {
+                    id: machineVirtioWinIso
+                    Layout.fillWidth: true
+                    visible: machinesPage.windowsProvisioner
+                    placeholderText: "/home/voce/virtio-win.iso"
+                    title: qsTr("Selecionar o ISO do virtio-win")
+                    filter: qsTr("Imagens ISO (*.iso)")
+                    enabled: !backend.machineCreateActive
+                }
+
+                Text {
+                    visible: machinesPage.windowsProvisioner
+                    text: qsTr("Answer file (opcional)")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                }
+                PathField {
+                    id: machineAnswerFile
+                    Layout.fillWidth: true
+                    visible: machinesPage.windowsProvisioner
+                    placeholderText: "/home/voce/autounattend.xml"
+                    title: qsTr("Selecionar o answer file")
+                    filter: qsTr("XML (*.xml)")
+                    enabled: !backend.machineCreateActive
+                }
+
+                Text {
+                    visible: machinesPage.windowsProvisioner
+                    text: qsTr("Edição")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                }
+                FormField {
+                    id: machineWindowsEdition
+                    Layout.fillWidth: true
+                    visible: machinesPage.windowsProvisioner
+                    text: "Windows 11 Pro"
+                    placeholderText: "Windows 11 Pro"
+                    enabled: !backend.machineCreateActive
+                }
+
+                Text {
+                    visible: machinesPage.windowsProvisioner
+                    text: qsTr("Senha do Windows")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                }
+                RowLayout {
+                    visible: machinesPage.windowsProvisioner
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    FormField {
+                        id: machineWindowsPassword
+                        Layout.fillWidth: true
+                        echoMode: showWindowsPassword.checked ? TextInput.Normal : TextInput.Password
+                        placeholderText: qsTr("mínimo 8 caracteres")
+                        enabled: !backend.machineCreateActive
+                    }
+                    ActionButton {
+                        text: qsTr("Gerar")
+                        size: "sm"
+                        variant: "secondary"
+                        enabled: !backend.machineCreateActive
+                        onClicked: machineWindowsPassword.text = backend.generatePassword()
+                        Accessible.name: qsTr("Gerar uma senha para a conta Windows")
+                    }
+                }
+
+                FormCheck {
+                    id: showWindowsPassword
+                    Layout.columnSpan: 2
+                    visible: machinesPage.windowsProvisioner
+                    text: qsTr("Mostrar a senha")
+                    enabled: !backend.machineCreateActive
+                }
+
+                FormCheck {
+                    id: windowsSshBox
+                    Layout.columnSpan: 2
+                    visible: machinesPage.windowsProvisioner
+                    text: qsTr("Instalar e habilitar o OpenSSH no Windows")
+                    enabled: !backend.machineCreateActive
+                }
+
+                Text {
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    visible: machinesPage.windowsProvisioner
+                    text: qsTr("O PodStack não distribui o Windows. Use um ISO e uma licença próprios; o alvo testado é Windows 11 Pro. Home funciona no console, mas não habilita apps remotos.")
+                    color: Theme.textTertiary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    wrapMode: Text.WordWrap
+                }
             }
 
             Text {
+                visible: !machinesPage.windowsProvisioner
                 text: qsTr("user-data (cloud-config)")
                 color: Theme.textSecondary
                 font.family: Theme.fontFamily
@@ -789,6 +995,7 @@ ColumnLayout {
                 id: machineUserData
                 Layout.fillWidth: true
                 Layout.preferredHeight: 84
+                visible: !machinesPage.windowsProvisioner
                 enabled: !backend.machineCreateActive
                 placeholderText: "#cloud-config\nruncmd:\n  - echo pronto"
                 color: Theme.textPrimary
@@ -824,6 +1031,7 @@ ColumnLayout {
             }
 
             Text {
+                visible: !machinesPage.windowsProvisioner
                 text: qsTr("Mounts do host (origem:destino[:ro], um por linha)")
                 color: Theme.textSecondary
                 font.family: Theme.fontFamily
@@ -834,6 +1042,7 @@ ColumnLayout {
                 id: machineMounts
                 Layout.fillWidth: true
                 Layout.preferredHeight: 64
+                visible: !machinesPage.windowsProvisioner
                 enabled: !backend.machineCreateActive && !isolatedBox.checked
                 placeholderText: "/home/voce/projetos:/mnt/podstack/projetos\n/dados:/dados:ro"
                 color: Theme.textPrimary
@@ -861,6 +1070,7 @@ ColumnLayout {
 
             FormCheck {
                 id: forwardSshAgentBox
+                visible: !machinesPage.windowsProvisioner
                 text: qsTr("Encaminhar o SSH agent")
                 enabled: !backend.machineCreateActive && !isolatedBox.checked
             }
@@ -925,7 +1135,11 @@ ColumnLayout {
                 text: qsTr("Criar")
                 variant: "primary"
                 enabled: !backend.machineCreateActive && machineName.text.length > 0
-                         && machinesPage.distroLabels.length > 0
+                         && (machinesPage.windowsProvisioner
+                             ? machineWindowsIso.text.length > 0
+                               && machineVirtioWinIso.text.length > 0
+                               && machineWindowsPassword.text.length >= 8
+                             : machinesPage.distroLabels.length > 0)
                 onClicked: machinesPage.createRequested()
             }
         }

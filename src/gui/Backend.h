@@ -363,6 +363,10 @@ public:
     Q_INVOKABLE void copyMachineLogs();
     Q_INVOKABLE void openMachineSsh(const QString &id);
     Q_INVOKABLE void openMachineConsole(const QString &id);
+    Q_INVOKABLE QString generatePassword() const;
+    Q_INVOKABLE void copyText(const QString &text);
+    Q_INVOKABLE void showEvent(const QString &message,
+                               const QString &kind = QStringLiteral("info"));
     Q_INVOKABLE void machineLifecycle(const QString &action, const QString &id,
                                       bool force = false);
     Q_INVOKABLE void removeMachine(const QString &id, bool force);

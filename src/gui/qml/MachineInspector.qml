@@ -472,6 +472,8 @@ Rectangle {
             // Terminal; no overlay a aba já está visível e este atalho some.
             ActionButton {
                 visible: !root.showTerminalTab
+                         && (root.machine.provisioner !== "windows"
+                             || root.machine.windowsSsh === true)
                 text: qsTr("SSH")
                 iconName: "terminal"
                 size: "sm"

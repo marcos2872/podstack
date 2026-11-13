@@ -59,6 +59,7 @@ private slots:
     void kubeCommands();
     void machineLifecycleCommands();
     void machineCreateForwardAgent();
+    void machineCreateWindows();
     void machineSsh();
     void machinePorts();
     void machineSnapshots();
@@ -1161,6 +1162,119 @@ void CliTest::machineCreateForwardAgent()
     QCOMPARE(captured.value(QStringLiteral("forwardSshAgent")).toBool(), true);
     QCOMPARE(captured.value(QStringLiteral("isolateNetwork")).toBool(), true);
     QCOMPARE(captured.value(QStringLiteral("isolated")).toBool(), true);
+}
+
+void CliTest::machineCreateWindows()
+{
+    const QProcessEnvironment baseEnv = environment(m_controlSocket);
+    const QString socketPath = m_testDataDir + QStringLiteral("/fake-win-create.sock");
+    QLocalServer server;
+    QVERIFY2(server.listen(socketPath), qPrintable(server.errorString()));
+
+    QJsonObject captured;
+    connect(&server, &QLocalServer::newConnection, &server, [&] {
+        while (QLocalSocket *socket = server.nextPendingConnection()) {
+            auto handleRequest = [&, socket] {
+                QByteArray buffer =
+                    socket->property("podstackCliBuffer").toByteArray() + socket->readAll();
+                const int newline = buffer.indexOf('\n');
+                if (newline < 0) {
+                    socket->setProperty("podstackCliBuffer", buffer);
+                    return;
+                }
+                const QJsonObject request = QJsonDocument::fromJson(buffer.left(newline)).object();
+                captured = request.value(QStringLiteral("params")).toObject();
+
+                const QJsonObject subscribed{
+                    {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                    {QStringLiteral("id"), request.value(QStringLiteral("id"))},
+                    {QStringLiteral("result"), QJsonObject{{QStringLiteral("subscriptionId"),
+                                                            QStringLiteral("fake-subscription")}}}};
+                const QJsonObject done{
+                    {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                    {QStringLiteral("method"), QStringLiteral("machines.done")},
+                    {QStringLiteral("params"),
+                     QJsonObject{
+                         {QStringLiteral("jobId"), QStringLiteral("fake-job")},
+                         {QStringLiteral("machine"),
+                          QJsonObject{{QStringLiteral("id"), QStringLiteral("fake-id")},
+                                      {QStringLiteral("state"), QStringLiteral("running")}}}}}};
+                QByteArray response =
+                    QJsonDocument(subscribed).toJson(QJsonDocument::Compact) + '\n';
+                response += QJsonDocument(done).toJson(QJsonDocument::Compact) + '\n';
+                socket->write(response);
+                socket->flush();
+            };
+            connect(socket, &QLocalSocket::readyRead, socket, handleRequest);
+            if (socket->bytesAvailable() > 0) {
+                handleRequest();
+            }
+        }
+    });
+
+    QProcessEnvironment env = baseEnv;
+    env.insert(QStringLiteral("PODSTACK_CONTROL_SOCKET"), socketPath);
+
+    QProcess process;
+    process.setProcessEnvironment(env);
+    process.setProcessChannelMode(QProcess::SeparateChannels);
+    process.start(cliPath(),
+                  {QStringLiteral("machine"), QStringLiteral("create"), QStringLiteral("win-cli"),
+                   QStringLiteral("--provisioner"), QStringLiteral("windows"),
+                   QStringLiteral("--iso"), QStringLiteral("/tmp/win.iso"),
+                   QStringLiteral("--virtio-win-iso"), QStringLiteral("/tmp/virtio-win.iso")});
+    QVERIFY(process.waitForStarted(3000));
+    QElapsedTimer timer;
+    timer.start();
+    while (process.state() != QProcess::NotRunning && timer.elapsed() < 15000) {
+        QTest::qWait(10);
+    }
+    if (process.state() != QProcess::NotRunning) {
+        process.kill();
+        process.waitForFinished(1000);
+    }
+    QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 0);
+    const QString output = QString::fromUtf8(process.readAllStandardOutput());
+    QVERIFY(output.contains(QStringLiteral("senha do Windows:")));
+    QCOMPARE(captured.value(QStringLiteral("provisioner")).toString(), QStringLiteral("windows"));
+    QCOMPARE(captured.value(QStringLiteral("distro")).toString(), QStringLiteral("windows"));
+    QCOMPARE(captured.value(QStringLiteral("installerIso")).toString(),
+             QStringLiteral("/tmp/win.iso"));
+    QCOMPARE(captured.value(QStringLiteral("virtioWinIso")).toString(),
+             QStringLiteral("/tmp/virtio-win.iso"));
+    QCOMPARE(captured.value(QStringLiteral("diskBytes")).toInteger(),
+             64LL * 1024LL * 1024LL * 1024LL);
+    QCOMPARE(captured.value(QStringLiteral("memoryBytes")).toInteger(),
+             4LL * 1024LL * 1024LL * 1024LL);
+    QVERIFY(captured.value(QStringLiteral("password")).toString().size() >= 20);
+
+    QProcess stdinProcess;
+    stdinProcess.setProcessEnvironment(env);
+    stdinProcess.setProcessChannelMode(QProcess::SeparateChannels);
+    stdinProcess.start(cliPath(),
+                       {QStringLiteral("machine"), QStringLiteral("create"),
+                        QStringLiteral("win-cli-2"), QStringLiteral("--provisioner"),
+                        QStringLiteral("windows"), QStringLiteral("--iso"),
+                        QStringLiteral("/tmp/win.iso"), QStringLiteral("--virtio-win-iso"),
+                        QStringLiteral("/tmp/virtio-win.iso"), QStringLiteral("--password-stdin")});
+    QVERIFY(stdinProcess.waitForStarted(3000));
+    stdinProcess.write("MinhaSenha123\n");
+    stdinProcess.closeWriteChannel();
+    timer.restart();
+    while (stdinProcess.state() != QProcess::NotRunning && timer.elapsed() < 15000) {
+        QTest::qWait(10);
+    }
+    if (stdinProcess.state() != QProcess::NotRunning) {
+        stdinProcess.kill();
+        stdinProcess.waitForFinished(1000);
+    }
+    QCOMPARE(stdinProcess.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(stdinProcess.exitCode(), 0);
+    QVERIFY(!QString::fromUtf8(stdinProcess.readAllStandardOutput())
+                 .contains(QStringLiteral("senha do Windows:")));
+    QCOMPARE(captured.value(QStringLiteral("password")).toString(),
+             QStringLiteral("MinhaSenha123"));
 }
 
 void CliTest::machineSsh()

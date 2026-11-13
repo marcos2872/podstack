@@ -3,6 +3,7 @@
 #include "core/DiskUsage.h"
 #include "core/Error.h"
 #include "core/Logging.h"
+#include "core/Password.h"
 #include "core/Proxy.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
@@ -2759,6 +2760,11 @@ void Backend::openMachineSsh(const QString &id)
     }));
 }
 
+QString Backend::generatePassword() const
+{
+    return PodStack::generatePassword();
+}
+
 void Backend::openMachineConsole(const QString &id)
 {
     if (id.isEmpty()) {
@@ -3697,6 +3703,23 @@ void Backend::copyMachineLogs()
     emit actionFinished(true, {});
 }
 
+void Backend::copyText(const QString &text)
+{
+    if (text.isEmpty()) {
+        return;
+    }
+    if (QClipboard *clipboard = QGuiApplication::clipboard()) {
+        clipboard->setText(text);
+    }
+}
+
+void Backend::showEvent(const QString &message, const QString &kind)
+{
+    m_eventMessage = message;
+    m_eventKind = kind.isEmpty() ? QStringLiteral("info") : kind;
+    emit eventsChanged();
+}
+
 void Backend::machineLifecycle(const QString &action, const QString &id, bool force)
 {
     if (id.isEmpty()
@@ -4040,10 +4063,16 @@ void Backend::createMachine(const QVariantMap &spec)
         return;
     }
 
-    const QString distro = spec.value(QStringLiteral("distro")).toString().trimmed();
-    if (distro.isEmpty()) {
+    const QString provisioner =
+        spec.value(QStringLiteral("provisioner"), QStringLiteral("linux")).toString().trimmed();
+    const bool windows = provisioner == QStringLiteral("windows");
+    QString distro = spec.value(QStringLiteral("distro")).toString().trimmed();
+    if (!windows && distro.isEmpty()) {
         fail(QStringLiteral("Informe a distro da machine."));
         return;
+    }
+    if (windows) {
+        distro = QStringLiteral("windows");
     }
     const bool isolated = spec.value(QStringLiteral("isolated")).toBool();
 
@@ -4055,6 +4084,20 @@ void Backend::createMachine(const QVariantMap &spec)
 
     const int memoryGiB = spec.value(QStringLiteral("memoryGiB"), 4).toInt();
     const int diskGiB = spec.value(QStringLiteral("diskGiB"), 20).toInt();
+    if (windows) {
+        if (cpus < 2) {
+            fail(QStringLiteral("Windows exige ao menos 2 vCPUs."));
+            return;
+        }
+        if (memoryGiB < 4) {
+            fail(QStringLiteral("Windows exige ao menos 4 GiB de memória."));
+            return;
+        }
+        if (diskGiB < 64) {
+            fail(QStringLiteral("Windows exige ao menos 64 GiB de disco."));
+            return;
+        }
+    }
     if (memoryGiB < 1) {
         fail(QStringLiteral("Memória insuficiente (mínimo 1 GiB)."));
         return;
@@ -4068,8 +4111,10 @@ void Backend::createMachine(const QVariantMap &spec)
     QJsonObject params;
     params.insert(QStringLiteral("name"), name);
     params.insert(QStringLiteral("distro"), distro);
+    params.insert(QStringLiteral("provisioner"),
+                  windows ? QStringLiteral("windows") : QStringLiteral("linux"));
     const QString version = spec.value(QStringLiteral("version")).toString().trimmed();
-    if (!version.isEmpty()) {
+    if (!version.isEmpty() && !windows) {
         params.insert(QStringLiteral("version"), version);
     }
     params.insert(QStringLiteral("cpus"), cpus);
@@ -4079,26 +4124,63 @@ void Backend::createMachine(const QVariantMap &spec)
     if (!user.isEmpty()) {
         params.insert(QStringLiteral("user"), user);
     }
-    const QString userData = spec.value(QStringLiteral("userData")).toString();
-    if (!userData.isEmpty()) {
-        params.insert(QStringLiteral("userData"), userData);
-    }
     const QString password = spec.value(QStringLiteral("password")).toString();
-    if (!password.isEmpty()) {
+    if (windows) {
+        const QString installerIso =
+            spec.value(QStringLiteral("installerIso")).toString().trimmed();
+        const QString virtioWinIso =
+            spec.value(QStringLiteral("virtioWinIso")).toString().trimmed();
+        if (installerIso.isEmpty()) {
+            fail(QStringLiteral("Selecione o ISO do Windows."));
+            return;
+        }
+        if (virtioWinIso.isEmpty()) {
+            fail(QStringLiteral("Selecione o ISO do virtio-win."));
+            return;
+        }
+        if (password.isEmpty()) {
+            fail(QStringLiteral("Informe ou gere a senha da conta Windows."));
+            return;
+        }
+        const QString answerFile = spec.value(QStringLiteral("answerFile")).toString().trimmed();
+        const QString edition = spec.value(QStringLiteral("windowsEdition")).toString().trimmed();
+        params.insert(QStringLiteral("installerIso"), installerIso);
+        params.insert(QStringLiteral("virtioWinIso"), virtioWinIso);
+        if (!answerFile.isEmpty()) {
+            params.insert(QStringLiteral("answerFile"), answerFile);
+        }
+        if (!edition.isEmpty()) {
+            params.insert(QStringLiteral("windowsEdition"), edition);
+        }
+        params.insert(QStringLiteral("windowsSsh"),
+                      spec.value(QStringLiteral("windowsSsh")).toBool());
         params.insert(QStringLiteral("password"), password);
+        params.insert(QStringLiteral("isolated"), isolated);
+        params.insert(QStringLiteral("isolateNetwork"),
+                      isolated || spec.value(QStringLiteral("isolateNetwork")).toBool());
+        params.insert(QStringLiteral("forwardSshAgent"), false);
+    } else {
+        const QString userData = spec.value(QStringLiteral("userData")).toString();
+        if (!userData.isEmpty()) {
+            params.insert(QStringLiteral("userData"), userData);
+        }
+        if (!password.isEmpty()) {
+            params.insert(QStringLiteral("password"), password);
+        }
+        params.insert(QStringLiteral("isolated"), isolated);
+        // O modo isolado implica rede restrita e sem SSH agent; o daemon reforça.
+        params.insert(QStringLiteral("isolateNetwork"),
+                      isolated || spec.value(QStringLiteral("isolateNetwork")).toBool());
+        params.insert(QStringLiteral("forwardSshAgent"),
+                      isolated ? false : spec.value(QStringLiteral("forwardSshAgent")).toBool());
     }
-    params.insert(QStringLiteral("isolated"), isolated);
-    // O modo isolado implica rede restrita e sem SSH agent; o daemon reforça.
-    params.insert(QStringLiteral("isolateNetwork"),
-                  isolated
-                      || spec.value(QStringLiteral("isolateNetwork")).toBool());
-    params.insert(QStringLiteral("forwardSshAgent"),
-                  isolated
-                      ? false
-                      : spec.value(QStringLiteral("forwardSshAgent")).toBool());
 
     QJsonArray mounts;
     const QString mountsText = spec.value(QStringLiteral("mountsText")).toString();
+    if (windows && !mountsText.trimmed().isEmpty()) {
+        fail(QStringLiteral("Mounts do host ainda não são suportados em machines Windows."));
+        return;
+    }
     const QStringList mountLines = mountsText.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     for (const QString &rawLine : mountLines) {
         const QString line = rawLine.trimmed();
