@@ -2,11 +2,15 @@
 
 #include "machines/AppSessionManager.h"
 
+#include "core/Config.h"
 #include "core/Ids.h"
 #include "core/Paths.h"
 
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QStandardPaths>
 
 #include <chrono>
 #include <utility>
@@ -108,12 +112,62 @@ void AppSessionManager::emitEvent(const QString &method, const QJsonObject &payl
     }
 }
 
+QString AppSessionManager::xpraVersion()
+{
+    QString binary = qEnvironmentVariable("PODSTACK_XPRA_BINARY").trimmed();
+    if (binary.isEmpty()) {
+        binary = QStandardPaths::findExecutable(QStringLiteral("xpra"));
+    }
+    if (binary.isEmpty()) {
+        return {};
+    }
+    QProcess process;
+    process.setProcessChannelMode(QProcess::SeparateChannels);
+    process.start(binary, {QStringLiteral("--version")});
+    if (!process.waitForStarted(3000) || !process.waitForFinished(3000)) {
+        process.kill();
+        return {};
+    }
+    const QString output = QString::fromUtf8(process.readAllStandardOutput()) +
+                           QString::fromUtf8(process.readAllStandardError());
+    static const QRegularExpression versionPattern(QStringLiteral("(\\d+)\\.(\\d+)(?:\\.(\\d+))?"));
+    const QRegularExpressionMatch match = versionPattern.match(output);
+    if (!match.hasMatch()) {
+        return {};
+    }
+    return QStringLiteral("%1.%2.%3")
+        .arg(match.captured(1), match.captured(2),
+             match.captured(3).isEmpty() ? QStringLiteral("0") : match.captured(3));
+}
+
+bool AppSessionManager::versionAtLeast(const QString &version, int major, int minor)
+{
+    const QStringList parts = version.split(QLatin1Char('.'));
+    if (parts.size() < 2) {
+        return false;
+    }
+    const int valueMajor = parts.at(0).toInt();
+    const int valueMinor = parts.at(1).toInt();
+    return valueMajor > major || (valueMajor == major && valueMinor >= minor);
+}
+
 QString AppSessionManager::resolveBackend(const MachineMeta &machine, const QString &requested)
 {
-    const QString value = requested.trimmed().toLower();
+    QString value = requested.trimmed().toLower();
+    if (value.isEmpty()) {
+        value = Config::load()
+                    .get(QStringLiteral("machines.apps.backend"))
+                    .toString()
+                    .trimmed()
+                    .toLower();
+    }
     if (value.isEmpty() || value == QStringLiteral("auto")) {
-        return machine.provisioner == QStringLiteral("windows") ? QStringLiteral("rail")
-                                                                 : QStringLiteral("x11");
+        if (machine.provisioner == QStringLiteral("windows")) {
+            return QStringLiteral("rail");
+        }
+        const QString version = xpraVersion();
+        return (!version.isEmpty() && versionAtLeast(version, 4, 0)) ? QStringLiteral("xpra")
+                                                                     : QStringLiteral("x11");
     }
     return value;
 }
@@ -129,11 +183,74 @@ bool AppSessionManager::buildLaunchSpec(const MachineMeta &machine, const GuestA
         return false;
     }
     *spec = {};
+    if (backend == QStringLiteral("xpra")) {
+        if (machine.provisioner == QStringLiteral("windows")) {
+            Error unsupported =
+                Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                            QStringLiteral("xpra não é suportado em guests Windows."), machine.id);
+            unsupported.reason = QStringLiteral("backend_unsupported");
+            if (error) {
+                *error = unsupported;
+            }
+            return false;
+        }
+        if (machine.sshKeyPath.isEmpty() || machine.sshPort <= 0 || app.exec.isEmpty()) {
+            Error unreachable = Error::make(
+                QStringLiteral("PODSTACK_GUEST_UNREACHABLE"),
+                QStringLiteral("A machine não tem SSH/executável para abrir o app."), machine.id);
+            unreachable.reason = QStringLiteral("guest_unreachable");
+            if (error) {
+                *error = unreachable;
+            }
+            return false;
+        }
+        QString program = qEnvironmentVariable("PODSTACK_XPRA_BINARY").trimmed();
+        if (program.isEmpty()) {
+            program = QStandardPaths::findExecutable(QStringLiteral("xpra"));
+        }
+        if (program.isEmpty()) {
+            Error missing = Error::make(
+                QStringLiteral("PODSTACK_DEPENDENCY_MISSING"),
+                QStringLiteral("O xpra não foi encontrado no host."), QStringLiteral("xpra"),
+                QStringLiteral("Instale xpra (Fedora) ou use backend=x11."));
+            missing.reason = QStringLiteral("backend_missing");
+            if (error) {
+                *error = missing;
+            }
+            return false;
+        }
+        const QString directory = Paths::machineDir(machine.id);
+        spec->backend = QStringLiteral("xpra");
+        spec->program = program;
+        spec->knownHostsPath = directory + QStringLiteral("/known_hosts");
+        spec->sshPort = machine.sshPort;
+        spec->xpraVersion = xpraVersion();
+        const QString audio = Config::load().get(QStringLiteral("machines.apps.audio")).toBool(true)
+                                  ? QStringLiteral("yes")
+                                  : QStringLiteral("no");
+        const QString sshCommand =
+            QStringLiteral("ssh -i %1 -o IdentitiesOnly=yes -o UserKnownHostsFile=%2 -p %3")
+                .arg(machine.sshKeyPath, spec->knownHostsPath, QString::number(machine.sshPort));
+        spec->args = {
+            QStringLiteral("seamless"),
+            QStringLiteral("ssh://%1@127.0.0.1:%2/")
+                .arg(machine.sshUser, QString::number(machine.sshPort)),
+            QStringLiteral("--ssh"),
+            sshCommand,
+            QStringLiteral("--start-child"),
+            app.exec,
+            QStringLiteral("--exit-with-children"),
+            QStringLiteral("--clipboard=yes"),
+            QStringLiteral("--notifications=yes"),
+            QStringLiteral("--audio=%1").arg(audio),
+        };
+        return true;
+    }
     if (backend != QStringLiteral("x11")) {
-        Error unsupported = Error::make(
-            QStringLiteral("PODSTACK_UNSUPPORTED"),
-            QStringLiteral("O backend solicitado ainda não está disponível."), backend,
-            QStringLiteral("Use x11 nesta fase; xpra/rail chegam na T10-03."));
+        Error unsupported =
+            Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                        QStringLiteral("O backend solicitado ainda não está disponível."), backend,
+                        QStringLiteral("Use x11/xpra nesta fase; rail chega na T10-03."));
         unsupported.reason = QStringLiteral("backend_unsupported");
         if (error) {
             *error = unsupported;
@@ -185,9 +302,12 @@ bool AppSessionManager::buildLaunchSpec(const MachineMeta &machine, const GuestA
 
 AppSession AppSessionManager::launch(const MachineMeta &machine, const GuestApp &app,
                                      const QString &backend, bool consent, LaunchSpec *spec,
-                                     Error *error)
+                                     Error *error, QJsonArray *warnings)
 {
     Q_UNUSED(consent);
+    if (warnings) {
+        *warnings = QJsonArray();
+    }
     if (error) {
         *error = {};
     }
@@ -211,15 +331,26 @@ AppSession AppSessionManager::launch(const MachineMeta &machine, const GuestApp 
 
     const QString resolved = resolveBackend(machine, backend);
     if (resolved == QStringLiteral("xpra")) {
-        Error missing = Error::make(
-            QStringLiteral("PODSTACK_DEPENDENCY_MISSING"),
-            QStringLiteral("O backend xpra ainda não foi implementado."), resolved,
-            QStringLiteral("Use x11 nesta fase; xpra chega na T10-03."));
-        missing.reason = QStringLiteral("backend_missing");
-        if (error) {
-            *error = missing;
+        const QString version = xpraVersion();
+        if (version.isEmpty() || !versionAtLeast(version, 3, 1)) {
+            Error missing =
+                Error::make(QStringLiteral("PODSTACK_DEPENDENCY_MISSING"),
+                            QStringLiteral("O xpra não está instalado no host ou é antigo demais."),
+                            version, QStringLiteral("Instale xpra ≥ 4.0 ou use backend=x11."));
+            missing.reason = QStringLiteral("backend_missing");
+            if (error) {
+                *error = missing;
+            }
+            return {};
         }
-        return {};
+        if (!versionAtLeast(version, 4, 0) && warnings) {
+            warnings->append(QJsonObject{
+                {QStringLiteral("reason"), QStringLiteral("xpra_experimental")},
+                {QStringLiteral("message"),
+                 QStringLiteral("xpra %1 é experimental; auto usa x11 abaixo de 4.0.")
+                     .arg(version)},
+            });
+        }
     }
     if (resolved == QStringLiteral("rail")) {
         Error unsupported = Error::make(

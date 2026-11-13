@@ -2351,9 +2351,10 @@ QJsonObject Daemon::appLaunch(const QJsonObject &params, Error *error)
     }
 
     LaunchSpec spec;
-    const AppSession session =
-        m_appSessions.launch(machine, app, params.value(QStringLiteral("backend")).toString(),
-                             params.value(QStringLiteral("consent")).toBool(), &spec, error);
+    QJsonArray warnings;
+    const AppSession session = m_appSessions.launch(
+        machine, app, params.value(QStringLiteral("backend")).toString(),
+        params.value(QStringLiteral("consent")).toBool(), &spec, error, &warnings);
     if (session.sessionId.isEmpty()) {
         return {};
     }
@@ -2361,7 +2362,7 @@ QJsonObject Daemon::appLaunch(const QJsonObject &params, Error *error)
     QJsonObject result;
     result.insert(QStringLiteral("sessionId"), session.sessionId);
     result.insert(QStringLiteral("spec"), spec.toJson());
-    result.insert(QStringLiteral("warnings"), QJsonArray());
+    result.insert(QStringLiteral("warnings"), warnings);
     return result;
 }
 

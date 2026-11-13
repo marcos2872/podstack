@@ -216,6 +216,32 @@ Backend::Backend(QObject *parent)
             &Backend::onSettingsActionFinished);
     connect(&m_machinesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachinesFinished);
+    connect(&m_appsWatcher, &QFutureWatcher<QJsonObject>::finished, this, &Backend::onAppsFinished);
+    connect(&m_appHost, &AppHost::clientExited, this, [this](const QString &sessionId) {
+        const QString machineId = m_appsMachineId;
+        if (!machineId.isEmpty()) {
+            (void) QtConcurrent::run([machineId, sessionId] {
+                RpcClient client;
+                Error ignored;
+                client.call(QStringLiteral("machines.apps.detach"),
+                            QJsonObject{{QStringLiteral("id"), machineId},
+                                        {QStringLiteral("sessionId"), sessionId}},
+                            &ignored, 15000);
+            });
+            refreshApps(machineId, false);
+        }
+    });
+    connect(&m_appHost, &AppHost::clientFailed, this,
+            [this](const QString &, const QString &message) {
+                m_appsError = message;
+                emit appsChanged();
+            });
+    m_appsRefreshTimer.setInterval(2500);
+    connect(&m_appsRefreshTimer, &QTimer::timeout, this, [this] {
+        if (!m_appsMachineId.isEmpty() && !m_appsWatcher.isRunning()) {
+            refreshApps(m_appsMachineId, false);
+        }
+    });
     connect(&m_machineDistrosWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachineDistrosFinished);
     connect(&m_machineInfoWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -3425,6 +3451,148 @@ void Backend::setMachineAudio(const QString &id, bool enabled)
     runAction(QStringLiteral("machines.audio.set"),
               QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("enabled"), enabled}},
               180000);
+}
+
+void Backend::refreshApps(const QString &id, bool refresh)
+{
+    if (id.isEmpty()) {
+        return;
+    }
+    m_appsMachineId = id;
+    m_appsError.clear();
+    m_appsLoading = true;
+    emit appsChanged();
+    m_appsRefreshTimer.start();
+    startAppsRequest(QStringLiteral("machines.apps.list"),
+                     QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("refresh"), refresh}},
+                     QStringLiteral("list"));
+}
+
+void Backend::closeApps()
+{
+    m_appsRefreshTimer.stop();
+    m_appsMachineId.clear();
+    m_appsOp.clear();
+    m_appItems.clear();
+    m_appSessions.clear();
+    m_appsError.clear();
+    m_appsLoading = false;
+    emit appsChanged();
+}
+
+void Backend::launchApp(const QString &id, const QString &appId, const QString &backend)
+{
+    if (id.isEmpty() || appId.isEmpty()) {
+        return;
+    }
+    m_appsMachineId = id;
+    m_appsError.clear();
+    m_appsLoading = true;
+    emit appsChanged();
+    QJsonObject params{{QStringLiteral("id"), id},
+                       {QStringLiteral("appId"), appId},
+                       {QStringLiteral("consent"), true}};
+    if (!backend.trimmed().isEmpty()) {
+        params.insert(QStringLiteral("backend"), backend.trimmed());
+    }
+    startAppsRequest(QStringLiteral("machines.apps.launch"), params, QStringLiteral("launch"));
+}
+
+void Backend::stopApp(const QString &id, const QString &sessionId)
+{
+    if (id.isEmpty() || sessionId.isEmpty()) {
+        return;
+    }
+    m_appsError.clear();
+    m_appsPendingSessionId = sessionId;
+    startAppsRequest(
+        QStringLiteral("machines.apps.stop"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("sessionId"), sessionId}},
+        QStringLiteral("stop"));
+}
+
+void Backend::startAppsRequest(const QString &method, const QJsonObject &params, const QString &op)
+{
+    if (m_appsWatcher.isRunning()) {
+        return;
+    }
+    m_appsOp = op;
+    m_appsWatcher.setFuture(QtConcurrent::run([method, params] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(method, params, &error, 30000);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onAppsFinished()
+{
+    const QJsonObject result = m_appsWatcher.result();
+    m_appsLoading = false;
+    const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+    if (!errorObject.isEmpty()) {
+        m_appsError = errorObject.value(QStringLiteral("message")).toString();
+        const QString code = errorObject.value(QStringLiteral("code")).toString();
+        if (code == QStringLiteral("PODSTACK_IO_ERROR") ||
+            code == QStringLiteral("PODSTACK_ENGINE_UNAVAILABLE")) {
+            m_appHost.shutdownAll();
+        }
+        if (errorObject.value(QStringLiteral("remediation")).toString().size() > 0) {
+            m_appsError +=
+                QStringLiteral(" ") + errorObject.value(QStringLiteral("remediation")).toString();
+        }
+        emit appsChanged();
+        return;
+    }
+
+    if (m_appsOp == QStringLiteral("list")) {
+        m_appItems = result.value(QStringLiteral("items")).toArray().toVariantList();
+        m_appSessions = result.value(QStringLiteral("sessions")).toArray().toVariantList();
+        m_appsError.clear();
+        emit appsChanged();
+        return;
+    }
+
+    if (m_appsOp == QStringLiteral("launch")) {
+        const QString sessionId = result.value(QStringLiteral("sessionId")).toString();
+        const QJsonObject specObject = result.value(QStringLiteral("spec")).toObject();
+        LaunchSpec spec;
+        spec.backend = specObject.value(QStringLiteral("backend")).toString();
+        spec.program = specObject.value(QStringLiteral("program")).toString();
+        for (const QJsonValue &value : specObject.value(QStringLiteral("args")).toArray()) {
+            spec.args.append(value.toString());
+        }
+        const QJsonObject env = specObject.value(QStringLiteral("env")).toObject();
+        for (auto it = env.constBegin(); it != env.constEnd(); ++it) {
+            spec.env.insert(it.key(), it.value().toString());
+        }
+        spec.knownHostsPath = specObject.value(QStringLiteral("knownHostsPath")).toString();
+        spec.sshPort = specObject.value(QStringLiteral("sshPort")).toInt();
+        spec.display = specObject.value(QStringLiteral("display")).toString();
+        spec.xpraVersion = specObject.value(QStringLiteral("xpraVersion")).toString();
+        spec.rdpFile = specObject.value(QStringLiteral("rdpFile")).toString();
+        spec.rdpSecretPath = specObject.value(QStringLiteral("rdpSecretPath")).toString();
+        spec.certFingerprint = specObject.value(QStringLiteral("certFingerprint")).toString();
+        if (sessionId.isEmpty() || !m_appHost.start(sessionId, spec)) {
+            m_appsError = QStringLiteral("Não foi possível iniciar o cliente do app.");
+        } else if (!m_appsMachineId.isEmpty()) {
+            refreshApps(m_appsMachineId, false);
+        }
+        emit appsChanged();
+        return;
+    }
+
+    if (m_appsOp == QStringLiteral("stop")) {
+        m_appHost.stopLocal(m_appsPendingSessionId);
+        m_appsPendingSessionId.clear();
+        if (!m_appsMachineId.isEmpty()) {
+            refreshApps(m_appsMachineId, false);
+        }
+        emit appsChanged();
+    }
 }
 
 void Backend::loadMachineInfo(const QString &id)

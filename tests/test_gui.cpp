@@ -1,6 +1,8 @@
+#include "MockGuestAgent.h"
 #include "MockPodmanServer.h"
 
 #include "core/Config.h"
+#include "gui/AppHost.h"
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
@@ -49,6 +51,8 @@ private slots:
     void backendKubernetesEnabledError();
     void backendKubernetesDisableJob();
     void backendMachines();
+    void backendApps();
+    void appHost();
     void backendMachineStats();
     void backendMachineConsole();
     void backendMachineFiles();
@@ -714,6 +718,118 @@ void GuiTest::backendCatalog()
     QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 15, 5000);
     QCOMPARE(actionSpy.last().at(0).toBool(), true);
     QDir(hostDir).removeRecursively();
+}
+
+void GuiTest::backendApps()
+{
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("gui-apps-1");
+    meta.name = QStringLiteral("gui-apps");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.provisioner = QStringLiteral("linux");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32224;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/gui-apps");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString directory = m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(directory));
+    MockGuestAgent agent(directory + QStringLiteral("/qga.sock"));
+    QVERIFY(agent.isListening());
+    agent.setExecOutput(QByteArrayLiteral("__PODSTACK_SIG__gui\n"
+                                          "__PODSTACK_FILE__/usr/share/applications/foo.desktop\n"
+                                          "[Desktop Entry]\n"
+                                          "Type=Application\n"
+                                          "Name=Foo\n"
+                                          "Exec=foo\n"
+                                          "__PODSTACK_ICON__\n"));
+
+    const QString fakeBin = m_testDataDir + QStringLiteral("/fake-app-bin");
+    QVERIFY(QDir().mkpath(fakeBin));
+    QVERIFY(QFile::setPermissions(fakeBin, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                               QFileDevice::ExeOwner));
+    const QString fakeSsh = fakeBin + QStringLiteral("/ssh");
+    QFile script(fakeSsh);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\nsleep 5\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", fakeBin.toUtf8() + ':' + previousPath);
+    const auto restorePath = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
+    PodStack::Backend backend;
+    QSignalSpy appsSpy(&backend, &PodStack::Backend::appsChanged);
+    backend.refreshApps(meta.id);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.appItems().size() == 1, 5000);
+    QVERIFY(backend.appsError().isEmpty());
+    const QString appId =
+        backend.appItems().at(0).toMap().value(QStringLiteral("appId")).toString();
+    QVERIFY(!appId.isEmpty());
+
+    backend.launchApp(meta.id, appId, QStringLiteral("x11"));
+    QTRY_VERIFY_WITH_TIMEOUT(backend.appSessions().size() == 1, 5000);
+    const QString sessionId =
+        backend.appSessions().at(0).toMap().value(QStringLiteral("sessionId")).toString();
+    QVERIFY(!sessionId.isEmpty());
+
+    backend.stopApp(meta.id, sessionId);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.appSessions().isEmpty(), 5000);
+
+    backend.closeApps();
+    QVERIFY(backend.appItems().isEmpty());
+    Q_UNUSED(appsSpy);
+    Q_UNUSED(restorePath);
+}
+
+void GuiTest::appHost()
+{
+    PodStack::AppHost host;
+    QSignalSpy exitedSpy(&host, &PodStack::AppHost::clientExited);
+    QSignalSpy failedSpy(&host, &PodStack::AppHost::clientFailed);
+
+    QVERIFY(!host.start(QString(), PodStack::LaunchSpec{}));
+    PodStack::LaunchSpec missing;
+    missing.program = QStringLiteral("/nonexistent/podstack-app");
+    QVERIFY(!host.start(QStringLiteral("missing"), missing));
+    QCOMPARE(failedSpy.count(), 1);
+    host.stopLocal(QStringLiteral("missing"));
+    host.shutdownAll();
+
+    PodStack::LaunchSpec spec;
+    spec.backend = QStringLiteral("x11");
+    spec.program = QStringLiteral("/bin/sh");
+    spec.args = {QStringLiteral("-c"), QStringLiteral("sleep 5")};
+    QVERIFY(host.start(QStringLiteral("session-1"), spec));
+    QVERIFY(host.isRunning(QStringLiteral("session-1")));
+    QCOMPARE(host.sessionIds().size(), 1);
+    QVERIFY(!host.start(QStringLiteral("session-1"), spec));
+
+    host.stopLocal(QStringLiteral("session-1"));
+    QVERIFY(!host.isRunning(QStringLiteral("session-1")));
+
+    spec.args = {QStringLiteral("-c"), QStringLiteral("sleep 0.2")};
+    exitedSpy.clear();
+    QVERIFY(host.start(QStringLiteral("session-2"), spec));
+    QTRY_COMPARE_WITH_TIMEOUT(exitedSpy.count(), 1, 5000);
+    QVERIFY(!host.isRunning(QStringLiteral("session-2")));
+
+    spec.args = {QStringLiteral("-c"), QStringLiteral("sleep 5")};
+    QVERIFY(host.start(QStringLiteral("session-3"), spec));
+    QVERIFY(host.start(QStringLiteral("session-4"), spec));
+    host.shutdownAll();
+    QVERIFY(host.sessionIds().isEmpty());
+    Q_UNUSED(failedSpy);
 }
 
 void GuiTest::backendMachines()
@@ -1507,7 +1623,7 @@ void GuiTest::backendSettings()
     QSignalSpy restartSpy(&backend, &PodStack::Backend::pendingRestartKeysChanged);
 
     backend.refreshSettings();
-    QTRY_COMPARE(backend.settingsSchema().size(), 86);
+    QTRY_COMPARE(backend.settingsSchema().size(), 89);
     QVERIFY(schemaSpy.count() > 0);
     QVERIFY(backend.settingsValues().contains(QStringLiteral("engine.mode")));
     QVERIFY(valuesSpy.count() > 0);

@@ -143,9 +143,28 @@
   `(machineId, appId)`, TTL de 60 s, `stop`/`detach`, `reconcileMachine` no stop/delete,
   eventos `machines.apps.session.started|updated|closed` e `trust` de fingerprint.
 - RPC `machines.apps.list/launch/stop/detach/subscribe/unsubscribe/trust` no daemon.
-- Backend disponível nesta fase: `x11` (`LaunchSpec` `ssh -X` com chave/porta e
-  `knownHostsPath`); `xpra`/`rail` retornam `backend_missing`/`backend_unsupported` até a
-  T10-03. A GUI/`AppHost` (T10-02) ainda não consome as sessões.
+- Backend x11/xpra e `LaunchSpec`; RAIL fica para a T10-03. A GUI consome as sessões via
+  `AppHost` (T10-02).
+
+### T10-02 — AppHost/GUI/CLI
+- `src/gui/AppHost.*`: spawn/supervisão do cliente local (`QProcess`), `stopLocal`,
+  `shutdownAll`, sinais `clientExited`/`clientFailed`.
+- `Backend`: `appItems`/`appSessions`/`appsLoading`/`appsError`, `refreshApps`,
+  `launchApp`, `stopApp`, `closeApps`, polling de 2,5 s e `shutdownAll` em erro de
+  RPC; o `LaunchSpec` devolvido pelo daemon é convertido e passado ao `AppHost`.
+- QML: botão **Abrir app** no Inspector (Linux) e diálogo com busca, catálogo, sessões
+  abertas e **Parar**.
+- CLI: `podstack machine apps list <machine>` (texto/`--json`); `launch`/`stop` retornam
+  `PODSTACK_GUI_REQUIRED` (`reason=gui_required`), pois o cliente precisa da sessão gráfica.
+
+### T10-03 (parcial) — xpra
+- Settings `machines.apps.backend/audio/shareFolder` (86 → 89 chaves).
+- Descoberta de `xpra`/`PODSTACK_XPRA_BINARY` com versão; `auto` usa xpra ≥ 4.0 no Linux e
+  cai para x11; `xpra` explícito 3.1.5 aceito com warning `xpra_experimental`.
+- `LaunchSpec` xpra (`xpra seamless ssh://… --ssh … --start-child … --exit-with-children
+  --clipboard --notifications --audio`) e áudio via setting.
+- **Pendente:** RAIL/FreeRDP, drive redirect, TOFU persistido, broker de sessão única
+  (T10-03a) e instalação do xpra no guest sob consentimento.
 
 ## O que falta (em ordem sugerida)
 
@@ -169,10 +188,9 @@
    - Windows 11 25H2 pode exigir conta Microsoft no OOBE; o XML usa conta local
      + `HideOnlineAccountScreens`. Se falhar, ajustar o OOBE/BypassNRO.
 2. **T9-06.** Validar áudio Windows (`intel-hda` duplex + PipeWire) no E2E.
-3. **T10-02/T10-03.** `AppHost` na GUI (spawn/supervisão de xpra/FreeRDP, diálogo
-   “Abrir app da VM”, CLI `machine apps`) e backends xpra/RAIL. O catálogo, as sessões e o
-   contrato RPC da T10-00/T10-01 já estão prontos; `xpra`/`rail` retornam
-   `backend_missing`/`backend_unsupported` até lá.
+3. **T10-03a/T10-03.** Spike RAIL/RDP com Windows 11 Pro e backend RAIL/FreeRDP; a parte
+   xpra e o `AppHost` da T10-02 já estão prontos. A instalação do xpra no guest sob
+   consentimento e o E2E ≤ 2 s também faltam.
 4. **Export/import Windows.** Levar `provisioner` no manifesto, tratar seed
    opcional e NVRAM/TPM fora do arquivo; habilitar export depois.
 5. **M10.** Apps remotos (xpra/RAIL); RAIL depende de T9-05 (canal já pronto).
@@ -213,7 +231,7 @@
 
 - `cmake --build --preset dev`: ok, sem warnings novos.
 - `ctest --preset dev`: **17/17** testes passando.
-- Cobertura (`gcovr`, gate 80%): **80,2%** de linhas (26407/32931). A T9-08
+- Cobertura (`gcovr`, gate 80%): **80,1%** de linhas (26682/33308). A T9-08
   partiu de 79,8% e as T10-00/T10-01/T9-05/T9-07 subiram o gate
   (`GuestAgentClient.cpp` 90%, `GuestChannel.cpp` 97%, `GuestAppCatalog.cpp` 86%,
   `AppSessionManager.cpp` 86%).

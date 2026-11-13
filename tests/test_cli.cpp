@@ -60,6 +60,7 @@ private slots:
     void machineLifecycleCommands();
     void machineCreateForwardAgent();
     void machineCreateWindows();
+    void machineAppsGuiRequired();
     void machineSsh();
     void machinePorts();
     void machineSnapshots();
@@ -1302,6 +1303,16 @@ void CliTest::machineCreateWindows()
     QVERIFY(captured.value(QStringLiteral("password")).toString().size() >= 20);
 }
 
+void CliTest::machineAppsGuiRequired()
+{
+    const CliResult result =
+        run({QStringLiteral("machine"), QStringLiteral("apps"), QStringLiteral("launch"),
+             QStringLiteral("vm"), QStringLiteral("firefox")},
+            environment(m_controlSocket));
+    QCOMPARE(result.code, 1);
+    QVERIFY(result.err.contains(QStringLiteral("GUI")));
+}
+
 void CliTest::machineSsh()
 {
     const QProcessEnvironment env = environment(m_controlSocket);
@@ -2214,7 +2225,7 @@ void CliTest::configCommands()
     QJsonParseError parseError{};
     QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().size(), 86);
+    QCOMPARE(document.object().size(), 89);
     QCOMPARE(document.object().value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
 
@@ -2313,7 +2324,7 @@ void CliTest::configCommands()
     QCOMPARE(result.code, 0);
     document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 86);
+    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 89);
 
     result =
         run({QStringLiteral("config"), QStringLiteral("reset"), QStringLiteral("app.theme")}, env);

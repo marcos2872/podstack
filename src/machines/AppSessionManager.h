@@ -68,7 +68,8 @@ public:
     void setEventCallback(EventCallback callback);
 
     AppSession launch(const MachineMeta &machine, const GuestApp &app, const QString &backend,
-                      bool consent, LaunchSpec *spec, Error *error = nullptr);
+                      bool consent, LaunchSpec *spec, Error *error = nullptr,
+                      QJsonArray *warnings = nullptr);
     bool stop(const QString &machineId, const QString &sessionId, bool force, Error *error);
     bool detach(const QString &machineId, const QString &sessionId, Error *error);
     QList<AppSession> sessions(const QString &machineId);
@@ -82,6 +83,8 @@ private:
     void emitEvent(const QString &method, const QJsonObject &payload);
     void ttlLoop();
     static QString resolveBackend(const MachineMeta &machine, const QString &requested);
+    static QString xpraVersion();
+    static bool versionAtLeast(const QString &version, int major, int minor);
     static bool buildLaunchSpec(const MachineMeta &machine, const GuestApp &app,
                                 const QString &backend, LaunchSpec *spec, Error *error);
 

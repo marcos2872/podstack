@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gui/AppHost.h"
 #include "gui/StreamClient.h"
 
 #include <QFutureWatcher>
@@ -127,6 +128,10 @@ class Backend : public QObject {
                NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString machineCreateError READ machineCreateError
                NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QVariantList appItems READ appItems NOTIFY appsChanged)
+    Q_PROPERTY(QVariantList appSessions READ appSessions NOTIFY appsChanged)
+    Q_PROPERTY(bool appsLoading READ appsLoading NOTIFY appsChanged)
+    Q_PROPERTY(QString appsError READ appsError NOTIFY appsChanged)
     Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
     Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
     Q_PROPERTY(bool setupCompleted READ setupCompleted NOTIFY setupChanged)
@@ -223,6 +228,10 @@ public:
     QString buildStatus() const { return m_buildStatus; }
     QString activeBuildId() const { return m_activeBuildId; }
     QVariantList machines() const { return m_machines; }
+    QVariantList appItems() const { return m_appItems; }
+    QVariantList appSessions() const { return m_appSessions; }
+    bool appsLoading() const { return m_appsLoading; }
+    QString appsError() const { return m_appsError; }
     QVariantList machineDistros() const { return m_machineDistros; }
     QVariantMap machineInfo() const { return m_machineInfo; }
     QVariantList machineSerialPorts() const { return m_machineSerialPorts; }
@@ -346,6 +355,11 @@ public:
     Q_INVOKABLE void attachMachineUsbDevice(const QString &id, int bus, int address);
     Q_INVOKABLE void detachMachineUsbDevice(const QString &id, int bus, int address);
     Q_INVOKABLE void setMachineAudio(const QString &id, bool enabled);
+    Q_INVOKABLE void refreshApps(const QString &id, bool refresh = false);
+    Q_INVOKABLE void closeApps();
+    Q_INVOKABLE void launchApp(const QString &id, const QString &appId,
+                               const QString &backend = QString());
+    Q_INVOKABLE void stopApp(const QString &id, const QString &sessionId);
     Q_INVOKABLE void loadMachineLogs(const QString &id, int tail = 200);
     Q_INVOKABLE void startMachineStats(const QString &id);
     Q_INVOKABLE void stopMachineStats();
@@ -441,6 +455,7 @@ public:
 
 signals:
     void containersChanged(const QVariantList &items);
+    void appsChanged();
     void actionStateChanged();
     void stateChanged();
     void lastErrorChanged();
@@ -516,6 +531,8 @@ private:
     void setSettingsError(const QString &error);
     void applySettingsValues(const QVariantMap &values);
     void onMachinesFinished();
+    void onAppsFinished();
+    void startAppsRequest(const QString &method, const QJsonObject &params, const QString &op);
     void onMachineDistrosFinished();
     void onMachineInfoFinished();
     void onMachineSerialFinished();
@@ -566,6 +583,7 @@ private:
     QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
     QFutureWatcher<QJsonObject> m_machineSpiceWatcher;
+    QFutureWatcher<QJsonObject> m_appsWatcher;
     QFutureWatcher<QJsonObject> m_k8sStatusWatcher;
     QFutureWatcher<QJsonObject> m_k8sPodsWatcher;
     QFutureWatcher<QJsonObject> m_k8sServicesWatcher;
@@ -662,6 +680,7 @@ private:
     QString m_k8sJobError;
     QTimer m_k8sTimer;
     QTimer m_machineRefreshTimer;
+    QTimer m_appsRefreshTimer;
     bool m_pullActive = false;
     QString m_pullStatus;
     QVariantMap m_diskUsage;
@@ -674,6 +693,14 @@ private:
     QString m_buildStatus;
     QString m_activeBuildId;
     QVariantList m_machines;
+    QVariantList m_appItems;
+    QVariantList m_appSessions;
+    QString m_appsMachineId;
+    QString m_appsError;
+    QString m_appsOp;
+    QString m_appsPendingSessionId;
+    bool m_appsLoading = false;
+    AppHost m_appHost;
     QVariantList m_machineDistros;
     QVariantMap m_machineInfo;
     QVariantList m_machineSerialPorts;

@@ -209,7 +209,7 @@ const QVector<SettingDef> &definitions()
 {
     static const QVector<SettingDef> defs = [] {
         QVector<SettingDef> list;
-        list.reserve(86);
+        list.reserve(89);
 
         // Geral
         list.append(makeBool(QStringLiteral("app.startAtLogin"), false,
@@ -343,6 +343,18 @@ const QVector<SettingDef> &definitions()
         list.append(makeBool(QStringLiteral("machines.autoSuspend"), false,
                              QStringLiteral("Máquinas"),
                              QStringLiteral("Suspende VMs ociosas.")));
+        list.append(makeEnum(QStringLiteral("machines.apps.backend"), QStringLiteral("auto"),
+                             {QStringLiteral("auto"), QStringLiteral("x11"), QStringLiteral("xpra"),
+                              QStringLiteral("rail")},
+                             QStringLiteral("Máquinas"),
+                             QStringLiteral("Backend default de apps das machines.")));
+        list.append(makeBool(QStringLiteral("machines.apps.audio"), true,
+                             QStringLiteral("Máquinas"),
+                             QStringLiteral("Áudio nas sessões xpra.")));
+        list.append(makeString(QStringLiteral("machines.apps.shareFolder"), QString(),
+                               QStringLiteral("Máquinas"),
+                               QStringLiteral("Pasta read-only para drive redirect do RAIL "
+                                              "(vazio = desligado).")));
         list.append(makeBool(QStringLiteral("ssh.exposePort"), false,
                              QStringLiteral("Máquinas"),
                              QStringLiteral("Expõe SSH na LAN."), true));

@@ -272,6 +272,23 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 ---
 
+## M10 — Apps remotos (P1, v1.x)
+
+> Promovido da spec [`docs/specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/tasks.md).
+> Requisitos: FR-MAC-101…124 e NFR-MAC-001…008 (PRD §7.7/§7.8). ADR:
+> [`0011-apps-remotos-vm.md`](../adr/0011-apps-remotos-vm.md). RAIL depende do E2E Windows
+> (T9-05/T9-06).
+
+| ID | P | Tarefa | Dep | Conclusão |
+|---|---|---|---|---|
+| T10-00 | P1 | `AppSessionManager` no daemon + RPC `machines.apps.*`, eventos, lock por `(machineId, appId)`, TTL de 60 s, reconciliação e `trust`. | T4-03, T4-05 | ✅ código — `list/launch/stop/detach/subscribe/unsubscribe/trust`, idempotência, eventos, TTL e backend x11 testados (`appSessionManager`, `test_rpc/appsFlow`); xpra/rail na T10-03 |
+| T10-01 | P1 | `GuestChannel` + catálogo de apps + `origin` em stats/get/list. | T4-03, T4-05 | ✅ código — qga/SSH, catálogo Linux/Windows com cache de 5 min e ícones, `origin=agent` em stats; testes `guestAppCatalog*`, `machineStatsAgent`, `guestChannel*` |
+| T10-02 | P1 | `AppHost` na GUI, diálogo “Abrir app da VM”, CLI `machine apps`, queda do RPC. | T10-00, T10-01, T4-04 | 🟡 código — `AppHost` (spawn/stop/shutdown), diálogo com busca/sessões, CLI `apps list` e `launch/stop` → `GUI_REQUIRED`; `test_gui/appHost`/`backendApps`; reconciliação por polling de 2,5 s e `shutdownAll` em erro de RPC; subscribe de eventos dedicado pendente |
+| T10-03a | P1 | Spike RAIL/RDP com Windows 11 Pro (2 apps, `quser`, TOFU, Home/Pro). | T9-05 | ⏳ bloqueado pelo ISO Windows/E2E |
+| T10-03 | P1 | Backends xpra (Linux) e RAIL (Windows) + X11 legado; settings, consentimento, catálogo Start Menu, clipboard, drive redirect, TOFU, broker de sessão única. | T10-00…T10-02, T10-03a (RAIL) | 🟡 parcial — xpra host (`auto`/3.1.5 warning, `LaunchSpec`, áudio) e settings; RAIL/FreeRDP/T10-03a e instalação no guest pendentes |
+
+---
+
 ## Transversais
 
 | ID | P | Tarefa | Conclusão |

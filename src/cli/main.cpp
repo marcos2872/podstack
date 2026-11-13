@@ -1622,6 +1622,9 @@ void printMachineUsage(QTextStream &stream)
            << "  console <id|nome> [--tail BYTES] [--no-follow] [--json]\n"
            << "                          Lê o console serial (follow por padrão; --json\n"
            << "                          só com --no-follow)\n"
+           << "  apps list <id|nome> [--json]\n"
+           << "                          Lista os apps do guest (catálogo)\n"
+           << "  apps launch|stop ...    Exige a GUI (PODSTACK_GUI_REQUIRED)\n"
            << "  create DISTRO[:VER] NOME [--cpus N] [--memory 4G] [--disk 20G]\n"
            << "         [--user U] [--user-data ARQUIVO] [--isolate-network]\n"
            << "         [--forward-ssh-agent] [--isolated]\n"
@@ -4496,6 +4499,66 @@ int commandKube(const QStringList &args)
     return kExitUsage;
 }
 
+int machineAppsCommand(const QStringList &args)
+{
+    if (args.size() < 3) {
+        err() << "Uso: podstack machine apps <list|launch|stop> <machine> [appId|sessionId] "
+                 "[--json]\n";
+        return kExitUsage;
+    }
+    const QString action = args.at(1);
+    const QString machine = args.at(2);
+    const bool json = args.contains(QStringLiteral("--json"));
+
+    if (action == QStringLiteral("list")) {
+        PodStack::RpcClient client;
+        PodStack::Error error;
+        const QJsonObject result =
+            client.call(QStringLiteral("machines.apps.list"),
+                        QJsonObject{{QStringLiteral("id"), machine}}, &error);
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        if (json) {
+            out() << QJsonDocument(result).toJson(QJsonDocument::Compact) << '\n';
+            return kExitOk;
+        }
+        const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+        if (items.isEmpty()) {
+            out() << "nenhum app encontrado\n";
+        }
+        for (const QJsonValue &value : items) {
+            const QJsonObject item = value.toObject();
+            out() << item.value(QStringLiteral("name")).toString() << "  "
+                  << item.value(QStringLiteral("appId")).toString() << '\n';
+        }
+        const QJsonArray sessions = result.value(QStringLiteral("sessions")).toArray();
+        if (!sessions.isEmpty()) {
+            out() << "sessões:\n";
+            for (const QJsonValue &value : sessions) {
+                const QJsonObject session = value.toObject();
+                out() << "  " << session.value(QStringLiteral("sessionId")).toString() << "  "
+                      << session.value(QStringLiteral("appId")).toString() << "  "
+                      << session.value(QStringLiteral("backend")).toString() << "  "
+                      << session.value(QStringLiteral("state")).toString() << '\n';
+            }
+        }
+        return kExitOk;
+    }
+
+    if (action == QStringLiteral("launch") || action == QStringLiteral("stop")) {
+        PodStack::Error error = PodStack::Error::make(
+            QStringLiteral("PODSTACK_GUI_REQUIRED"),
+            QStringLiteral("Abrir/parar apps exige a GUI (o cliente roda na sessão gráfica)."),
+            action, QStringLiteral("Abra o PodStack e use “Abrir app” na machine."));
+        error.reason = QStringLiteral("gui_required");
+        return fail(error);
+    }
+
+    err() << "comando de apps desconhecido: " << action << '\n';
+    return kExitUsage;
+}
+
 int commandMachine(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -4545,6 +4608,9 @@ int commandMachine(const QStringList &args)
     }
     if (subcommand == QStringLiteral("update")) {
         return machineUpdateCommand(args);
+    }
+    if (subcommand == QStringLiteral("apps")) {
+        return machineAppsCommand(args);
     }
     if (subcommand == QStringLiteral("port") || subcommand == QStringLiteral("ports")) {
         return machinePortCommand(args.mid(1));

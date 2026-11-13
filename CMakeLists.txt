@@ -187,6 +187,7 @@ target_link_libraries(podstack PRIVATE podstack_core Qt6::Network)
 # ---------------------------------------------------------------------------
 add_library(podstack_gui_lib STATIC
     src/gui/Autostart.cpp
+    src/gui/AppHost.cpp
     src/gui/Backend.cpp
     src/gui/ContainerDetailDialog.cpp
     src/gui/ContainerListModel.cpp

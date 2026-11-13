@@ -309,6 +309,50 @@ O concorrente direto é o **Podman Desktop**; a referência de polimento é o Or
 | FR-MAC-014 | Console serial/VNC para troubleshooting. | P2 | Acessível quando SSH falha. |
 | FR-MAC-015 | Snapshots de disco. | P2 | Criar/restaurar snapshot. |
 
+#### 7.7.1 Guest Windows e apps remotos (`FR-MAC-101…124`, NFR-MAC-001…008)
+
+> Promovido da spec [`docs/specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/spec.md)
+> (M9/M10, P1/v1.x). ADR: [`0011-apps-remotos-vm.md`](../adr/0011-apps-remotos-vm.md).
+
+| ID | Requisito | P |
+|---|---|---|
+| FR-MAC-101 | Canais de guest plugáveis `ssh`/`agent`, papéis primary/fallback e `guestChannels`/`guestReady` em `machines.get`. | P1 |
+| FR-MAC-102 | `agent` via qemu-guest-agent sobre virtio-serial; `guest-ping` sem rede no guest. | P1 |
+| FR-MAC-103 | `agent` executa comandos e arquivos ≤ 1 MiB; transferência de usuário continua no `scp`. | P1 |
+| FR-MAC-104 | `agent` informa IP/SO (`guest-network-get-interfaces`, `guest-get-osinfo`). | P1 |
+| FR-MAC-105 | `provisioning` → `running` só com o primário (Linux SSH 300 s; Windows agent 10 min); campos opcionais, sem novo estado. | P1 |
+| FR-MAC-106 | `auto`: Linux SSH primário/agent fallback; Windows agent primário/SSH opt-in; falha classificada. | P1 |
+| FR-MAC-107 | xpra seamless com janela nativa por app em Linux X11. | P1 |
+| FR-MAC-108 | Backends gráficos opcionais no host; `auto` xpra ≥ 4.0 ou x11; 3.1.5 explícito com warning; RAIL sem FreeRDP → `DEPENDENCY_MISSING`. | P1 |
+| FR-MAC-109 | X11 forwarding legado preservado. | P1 |
+| FR-MAC-110 | Clientes de app rodam na sessão gráfica do usuário, nunca no daemon/embutidos no QML. | P1 |
+| FR-MAC-111 | Console SPICE Unix + `remote-viewer` lançado pela GUI; daemon nunca abre display. | P1 |
+| FR-MAC-112 | OVMF Secure Boot por VM (`nvram.fd` 0600); Linux mantém `OVMF_VARS.fd`. | P1 |
+| FR-MAC-113 | TPM 2.0 por VM com `swtpm` e estado 0600; clone regenera, export não transporta. | P1 |
+| FR-MAC-114 | Criação Windows com ISO local, `answerFile?`, `windowsSsh?`, mínimos 2 vCPU/4 GiB/64 GiB, `autounattend` e senha só no XML; `virtioWinIso` opcional (download/cache T9-08). | P1 |
+| FR-MAC-115 | Drivers virtio + qemu-guest-agent no provisionamento; `windowsSsh` instala OpenSSH; `guestReady` dirige o estado. | P1 |
+| FR-MAC-116 | Áudio Windows `intel-hda` duplex + PipeWire por VM. | P1 |
+| FR-MAC-117 | Machines Windows oferecem o backend `rail` (RDP RemoteApp), condicionado ao M9. | P1 |
+| FR-MAC-118 | O host mantém uma sessão RDP por machine e lança apps adicionais nela. | P1 |
+| FR-MAC-119 | Senha RDP nunca em argv/log/`meta.json`; TOFU SHA-256 em `MachineMeta` e conexão só em `127.0.0.1`; mismatch → `CERT_MISMATCH`/`trust` re-pina. | P1 |
+| FR-MAC-120 | Windows Home não oferece `rail`; edição detectada por `guest-get-osinfo` e a UI explica. | P1 |
+| FR-MAC-121 | Contrato `machines.apps.list/launch/stop/detach/subscribe/unsubscribe/trust`; catálogo + sessões + `cachedAt`. | P1 |
+| FR-MAC-122 | Erros estáveis `PODSTACK_*` + `reason` (backend_missing, guest_unreachable, app_not_found, session_conflict, session_not_found, backend_unsupported, gui_required, cert_mismatch, consent_required, provisioning_timeout). | P1 |
+| FR-MAC-123 | `machines.get/list` com `origin`/`guestReady`/`guestChannels`; `stats` com `origin`, funcionando com rede bloqueada via agent. | P1 |
+| FR-MAC-124 | Stop/delete/queda do daemon/RPC encerram sessões e clientes locais sem órfãos; TTL de 60 s e reconciliação. | P1 |
+
+| ID | NFR | Critério |
+|---|---|---|
+| NFR-MAC-001 | Abertura de app já instalado ≤ 2 s (Fedora 43/44, host local, sem swap; Ubuntu 24.04 com xpra 3.1.5 é experimental e não entra no gate). | E2E medido. |
+| NFR-MAC-002 | Nenhuma credencial em argv/log/`meta.json`; `rdpSecretPath` lido pelo `AppHost` e passado por stdin. | `/proc/<pid>/cmdline` inspecionado. |
+| NFR-MAC-003 | `qga.sock`/`spice.sock`/`swtpm.sock` em `machineDir` (0700); TPM/`nvram.fd`/`rdp.secret` 0600; sessão 0700; RDP só em 127.0.0.1. | Testes de permissão. |
+| NFR-MAC-004 | Ausência de backend gráfico não impede a machine; X11/SSH continuam; Linux `auto`→x11; Windows RAIL → `DEPENDENCY_MISSING`. | Testes de degradação. |
+| NFR-MAC-005 | Zero regressão nos 17 binários de teste; gate de cobertura de 80% mantido. | CI. |
+| NFR-MAC-006 | Setup descobre dependências por candidatos por distro, sem pacote inexistente; cobre Fedora 44, Ubuntu 24.04/26.04. | `test_setup`/clean-install. |
+| NFR-MAC-007 | Instalação padrão entrega QEMU/OVMF/swtpm/virtiofsd/SPICE/áudio; xpra/FreeRDP/remote-viewer opcionais; único download de host é o virtio-win; xpra no guest sob consentimento. | Matriz por distro. |
+| NFR-MAC-008 | M9/RAIL x86_64-only; host aarch64 ou guest ARM → `UNSUPPORTED`/`backend_unsupported`. | Teste de arquitetura. |
+
+
 ### 7.8 Kubernetes (`FR-K8S`)
 
 | ID | Requisito | Prioridade | Critério de aceite |

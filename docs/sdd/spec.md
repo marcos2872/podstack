@@ -667,6 +667,38 @@ substitui o XML gerado.
 
 ---
 
+### 7.10 Apps remotos (M10)
+
+O daemon é dono das sessões (`AppSessionManager` em memória, TTL de 60 s, idempotência por
+`(machineId, appId)` e eventos `machines.apps.session.*`); a **GUI** hospeda o cliente local
+(`AppHost`) a partir do `LaunchSpec` devolvido por `machines.apps.launch`. O contrato é
+`machines.apps.list/launch/stop/detach/subscribe/unsubscribe/trust`.
+
+- **Catálogo (T10-01).** `machines.apps.list` lê `.desktop` (Linux) ou o Start Menu (Windows)
+  via canal `agent`/SSH, com cache de 5 min, `refresh`, ícones base64 ≤ 256 KiB e
+  `runningSessions`; sem guest → `PODSTACK_GUEST_UNREACHABLE`/`guest_unreachable`.
+- **Backends.** `x11` usa `ssh -X` com a chave/porta da machine e `knownHostsPath` no state.
+  `xpra` (T10-03) usa `xpra seamless` com áudio conforme `machines.apps.audio`; `auto` usa
+  xpra ≥ 4.0 no Linux e cai para x11; 3.1.5 explícito gera warning `xpra_experimental`.
+  RAIL/FreeRDP depende do M9 e retorna `backend_unsupported`/`backend_missing` quando
+  indisponível, nunca degradando para x11.
+- **Ciclo de vida.** `stop`/`detach` são idempotentes; parar/deletar a machine encerra as
+  sessões; queda do RPC faz o `AppHost` executar `shutdownAll()`; a reconexão reconcilia via
+  `list`. `machines.apps.trust` fixa o fingerprint TOFU.
+- **Stats.** `machines.stats`/`stats.subscribe` tentam SSH e caem para `agent`, devolvendo
+  `origin`; `machines.get/list` expõem `origin`, `guestReady` e `guestChannels`.
+
+**Critérios:**
+
+- [x] `machines.apps.list` com itens/sessões/`cachedAt` e catálogo Linux/Windows.
+- [x] `launch` idempotente e `LaunchSpec` x11/xpra; `stop`/`detach`/`trust` e eventos.
+- [x] `AppHost` na GUI (spawn/stop/shutdown) e diálogo “Abrir app da VM”.
+- [x] `origin=agent` em stats/get/list.
+- [ ] RAIL/T10-03a e E2E Windows (dependem do ISO Windows).
+- [ ] xpra E2E ≤ 2 s e instalação no guest sob consentimento.
+
+---
+
 ## 8. Kubernetes
 
 ### 8.1 Habilitar

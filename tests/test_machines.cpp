@@ -11833,6 +11833,47 @@ void MachinesTest::appSessionManager()
     manager.trust(machine.id, QString(64, QLatin1Char('a')));
     QCOMPARE(manager.trustedFingerprint(machine.id), QString(64, QLatin1Char('a')));
 
+    const QString fakeXpra = m_root + QStringLiteral("/xpra-fake.sh");
+    QVERIFY(
+        writeTestFile(fakeXpra, QByteArrayLiteral("#!/bin/sh\necho 'xpra v4.2.0'\n"),
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    const QByteArray previousXpra = qgetenv("PODSTACK_XPRA_BINARY");
+    const auto restoreXpra = qScopeGuard([previousXpra] {
+        if (previousXpra.isEmpty()) {
+            qunsetenv("PODSTACK_XPRA_BINARY");
+        } else {
+            qputenv("PODSTACK_XPRA_BINARY", previousXpra);
+        }
+    });
+    qputenv("PODSTACK_XPRA_BINARY", fakeXpra.toUtf8());
+    LaunchSpec xpraSpec;
+    QJsonArray warnings;
+    error = {};
+    const AppSession xpraSession =
+        manager.launch(machine, app, QStringLiteral("xpra"), false, &xpraSpec, &error, &warnings);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(xpraSpec.backend, QStringLiteral("xpra"));
+    QCOMPARE(xpraSpec.program, fakeXpra);
+    QVERIFY(xpraSpec.args.contains(QStringLiteral("seamless")));
+    QVERIFY(xpraSpec.args.contains(QStringLiteral("--exit-with-children")));
+    QVERIFY(warnings.isEmpty());
+    error = {};
+    QVERIFY(manager.stop(machine.id, xpraSession.sessionId, false, &error));
+
+    QVERIFY(
+        writeTestFile(fakeXpra, QByteArrayLiteral("#!/bin/sh\necho 'xpra v3.1.5'\n"),
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    warnings = {};
+    error = {};
+    const AppSession legacySession =
+        manager.launch(machine, app, QStringLiteral("xpra"), false, &xpraSpec, &error, &warnings);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(warnings.size(), 1);
+    QCOMPARE(warnings.at(0).toObject().value(QStringLiteral("reason")).toString(),
+             QStringLiteral("xpra_experimental"));
+    QVERIFY(manager.stop(machine.id, legacySession.sessionId, false, &error));
+    Q_UNUSED(restoreXpra);
+
     // TTL: sem heartbeat/list, a sessão é encerrada após o TTL.
     error = {};
     (void) manager.launch(machine, app, QStringLiteral("x11"), false, &spec, &error);
@@ -11855,6 +11896,7 @@ void MachinesTest::appSessionManager()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_GUEST_UNREACHABLE"));
 
     error = {};
+    qputenv("PODSTACK_XPRA_BINARY", "/nonexistent/podstack-xpra");
     QVERIFY(manager.launch(machine, app, QStringLiteral("xpra"), false, &spec, &error)
                 .sessionId.isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_DEPENDENCY_MISSING"));
