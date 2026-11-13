@@ -94,11 +94,6 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
             return {};
         }
     }
-    if (spec.bootOnceCdrom && spec.installerIsoPath.isEmpty() && spec.driverIsoPath.isEmpty() &&
-        spec.unattendIsoPath.isEmpty()) {
-        invalid(error, QStringLiteral("O boot pelo CD-ROM exige uma ISO configurada."));
-        return {};
-    }
     if (!absolutePath(spec.qmpSocketPath)) {
         invalid(error, QStringLiteral("O caminho do socket QMP deve ser absoluto."),
                 spec.qmpSocketPath);
@@ -233,7 +228,7 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
          << (spec.kvm ? QStringLiteral("kvm") : QStringLiteral("tcg"));
     QString cpu = spec.kvm ? QStringLiteral("host") : QStringLiteral("max");
     if (spec.kvm && spec.secureBoot) {
-        cpu += QStringLiteral(",hv_relaxed,hv_vpindex,hv_synic,hv_stimer,hv_reset,"
+        cpu += QStringLiteral(",hv_relaxed,hv_vpindex,hv_time,hv_synic,hv_stimer,hv_reset,"
                               "hv_frequencies");
     }
     args << QStringLiteral("-cpu") << cpu;
@@ -249,7 +244,17 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
         args << QStringLiteral("-drive")
              << QStringLiteral("file=%1,format=raw,if=virtio,readonly=on").arg(spec.seedPath);
     }
-    for (const QString &isoPath : isoPaths) {
+    if (!spec.installerIsoPath.isEmpty()) {
+        // OVMF não inicializa o El Torito do ISO Windows pelo CD IDE/AHCI;
+        // o mesmo ISO boota como CD USB (usb-storage) com bootindex.
+        args << QStringLiteral("-device") << QStringLiteral("qemu-xhci,id=usbmedia");
+        args << QStringLiteral("-drive")
+             << QStringLiteral("if=none,id=installer,file=%1,media=cdrom,readonly=on")
+                    .arg(spec.installerIsoPath);
+        args << QStringLiteral("-device")
+             << QStringLiteral("usb-storage,drive=installer,bus=usbmedia.0,bootindex=0");
+    }
+    for (const QString &isoPath : {spec.driverIsoPath, spec.unattendIsoPath}) {
         if (isoPath.isEmpty()) {
             continue;
         }
@@ -311,10 +316,7 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
         args << QStringLiteral("-chardev")
              << QStringLiteral("socket,id=chrtpm,path=%1").arg(spec.tpmSocketPath);
         args << QStringLiteral("-tpmdev") << QStringLiteral("emulator,id=tpm0,chardev=chrtpm");
-        args << QStringLiteral("-device") << QStringLiteral("tpm-tis");
-    }
-    if (spec.bootOnceCdrom) {
-        args << QStringLiteral("-boot") << QStringLiteral("once=d");
+        args << QStringLiteral("-device") << QStringLiteral("tpm-tis,tpmdev=tpm0");
     }
     args << QStringLiteral("-daemonize");
     args << QStringLiteral("-pidfile") << spec.pidFile;

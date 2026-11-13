@@ -246,7 +246,7 @@ qemu-system-x86_64 \
   `[a-z0-9-]{1,32}` únicas (default `host<N>`).
 - Controle por QMP: `system_powerdown`, `quit`, `query-status`, `human-monitor-command`.
 - Windows (M9 — Fase 1): `-M q35,smm=on`, `-global driver=cfi.pflash01,property=secure,value=on`,
-  NVRAM `nvram.fd`, SPICE em socket Unix, `virtio-vga`/`usb-tablet` e `-tpmdev`/`tpm-tis` com
+  NVRAM `nvram.fd`, SPICE em socket Unix, `virtio-vga`/`usb-tablet` e `-tpmdev`/`tpm-tis,tpmdev=tpm0` com
   `swtpm` por machine. O modelo completo está em
   [`docs/specs/001-apps-remotos-vm/plan.md`](../specs/001-apps-remotos-vm/plan.md) §3.
 
@@ -263,12 +263,12 @@ qemu-system-x86_64 \
   migração aditiva por `PRAGMA table_info` + `ALTER TABLE`.
 - A criação Windows usa **ISOs locais** do Windows e do virtio-win, gera
   `autounattend.xml`+`autounattend.iso` (`0600`), valida mínimos 2 vCPU/4 GiB/64 GiB e não
-  usa cloud-init/seed. `installPending` controla `-boot once=d` e os três CD-ROMs; o primeiro
+  usa cloud-init/seed. `installPending` controla as mídias de instalação; o primeiro
   stop limpa as mídias e o flag. `windowsEdition` (default `Windows 11 Pro`) escolhe
   `/IMAGE/NAME`; `answerFile` próprio substitui o XML gerado.
 - Secure Boot: NVRAM por machine em `nvram.fd` (`0600`), CODE/VARS `secboot` descobertos por
   candidatos Fedora/Ubuntu; Linux mantém `OVMF_VARS.fd`. Par incompatível retorna
-  `PODSTACK_VALIDATION`. O `-cpu host` recebe `hv_relaxed,hv_vpindex,hv_synic,hv_stimer,
+  `PODSTACK_VALIDATION`. O `-cpu host` recebe `hv_relaxed,hv_vpindex,hv_time,hv_synic,hv_stimer,
   hv_reset,hv_frequencies`.
 - Console SPICE em socket Unix por machine; `machines.console.spice` devolve o spec e a GUI
   lança o `remote-viewer` (sem `spice-gtk` no build).

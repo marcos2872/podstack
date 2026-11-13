@@ -595,12 +595,14 @@ a imagem via `/IMAGE/NAME`; um `answerFile` próprio substitui o XML gerado.
   OOBE sem conta online, `DriverPaths` (`viostor`, `NetKVM`, `vioscsi`, `viogpudo`, `Balloon`,
   `viorng`, `vioserial`), guest-tools (`virtio-win-gt-x64.msi`) e qemu-ga
   (`guest-agent\qemu-ga-x86_64.msi`) e OpenSSH quando `windowsSsh`. O ISO do answer
-  file é anexado como CD-ROM junto ao instalador e ao virtio-win, com `-boot once=d` e
-  enlightenments `hv_*` no `-cpu host`.
-- **`installPending`.** Enquanto a instalação está pendente, os três CD-ROMs são anexados e
-  `-boot once=d` vale; no primeiro `stop` o PodStack limpa `autounattend.xml`/`.iso`, os
-  caminhos das ISOs e o flag, e o próximo start boota do disco. A remoção dirigida por
-  `guest-ping` fica para a T9-05.
+  file é anexado como CD-ROM junto ao instalador e ao virtio-win. O instalador usa
+  `usb-storage` com `bootindex=0` (o OVMF não inicializa o El Torito desse ISO pelo CD
+  IDE/AHCI); virtio-win e answer file ficam em CD-ROMs IDE. O prompt "Press any key to boot
+  from CD or DVD" é respondido automaticamente por `send-key` via QMP nos primeiros segundos.
+- **`installPending`.** Enquanto a instalação está pendente, o instalador (CD USB) e o
+  virtio-win/answer file (CD-ROMs IDE) são anexados; no primeiro `stop` o PodStack limpa
+  `autounattend.xml`/`.iso`, os caminhos das ISOs e o flag, e o próximo start boota do disco.
+  A remoção dirigida por `guest-ping` fica para a T9-05.
 - **Export/import.** Exportar machines Windows ainda retorna `PODSTACK_UNSUPPORTED` nesta
   fase (o manifesto não carrega `provisioner` nem ISOs); clone só é permitido após concluir
   a instalação.
@@ -622,7 +624,7 @@ a imagem via `/IMAGE/NAME`; um `answerFile` próprio substitui o XML gerado.
 - **TPM 2.0 (T9-03).** `swtpm socket --tpm2 --tpmstate dir=<machineDir>/tpm,mode=0600
   --ctrl type=unixio,path=<machineDir>/swtpm.sock,mode=0600` sobe antes do QEMU; o argv recebe
   `-chardev socket,id=chrtpm,...`, `-tpmdev emulator,id=tpm0,chardev=chrtpm` e
-  `-device tpm-tis`. O diretório `tpm/` é `0700`, os arquivos de estado são `0600` e o estado
+  `-device tpm-tis,tpmdev=tpm0`. O diretório `tpm/` é `0700`, os arquivos de estado são `0600` e o estado
   sobrevive a stop/start. No restart do daemon o processo é adotado/reconciliado pelo socket;
   no stop/delete é encerrado. Clone cria TPM novo; export/import não transporta o estado.
   `swtpm` ausente → `PODSTACK_DEPENDENCY_MISSING` com remediação.
@@ -630,7 +632,7 @@ a imagem via `/IMAGE/NAME`; um `answerFile` próprio substitui o XML gerado.
 
 **Critérios (criação + Fase 1):**
 
-- [x] argv Windows vs. Linux testado (Secure Boot/hv_*, SPICE, TPM, ISOs, `-boot once=d`).
+- [x] argv Windows vs. Linux testado (Secure Boot/hv_*, SPICE, TPM, ISOs USB/IDE).
 - [x] `nvram.fd`/`tpm/` com permissões restritas; estado do TPM sobrevive a restart.
 - [x] XML/ISO de answer file, `DriverPaths`, senha só no XML e mínimos validados.
 - [x] GUI/CLI criam Windows com `distro` ausente e validação inline.

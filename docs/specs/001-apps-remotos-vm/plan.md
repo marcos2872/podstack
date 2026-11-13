@@ -204,7 +204,7 @@ M9 não entrega apps: entrega console, firmware, TPM, provisionamento, drivers/a
 - Defaults validados no backend, não em setting global: `cpus >= 2`, `memoryBytes >= 4 GiB`, `diskBytes >= 64 GiB`. Valores omitidos usam esses mínimos; valores menores → `PODSTACK_VALIDATION`. O default global `machines.diskBytes` (20 GiB) não muda.
 - `password` é o valor fornecido pelo cliente; se ausente, é gerado (20+ caracteres) e usado apenas no `autounattend.xml` (`0600`). Nunca em `meta.json`, log ou argv.
 - `autounattend.xml` é gerado em `machineDir` (`0600`) com conta local, OOBE, fuso, `DriverPaths` para `virtio-win.iso`, `FirstLogonCommands` para `virtio-win-guest-tools`/qemu-ga (e OpenSSH quando `windowsSsh:true`) e é **apagado após a instalação**; fica **fora do export**. `answerFile` do usuário é copiado para `machineDir` com `0600`, validado como XML e apagado após uso.
-- `virtio-win.iso` vem do cache de T9-08; `-cdrom` do instalador + `-drive` do virtio-win, ambos read-only. `-boot once=d` garante que o ISO sai da ordem de boot após a instalação, sem manter o instalador como boot default.
+- `virtio-win.iso` vem do cache de T9-08; o instalador é anexado como CD USB (`usb-storage` + `bootindex=0`) porque o OVMF não inicializa o El Torito desse ISO pelo CD IDE/AHCI; o virtio-win e o answer file ficam em CD-ROMs IDE read-only. O daemon responde ao prompt "Press any key to boot from CD or DVD" com `send-key` via QMP.
 - Enlightenments `hv_*` (relaxed, vpindex, synic, stimer, reset, frequencies) no mesmo argv.
 - Sem cloud-init/seed; `seedPath` não é usado.
 

@@ -349,7 +349,9 @@ ausente/`"windows"`, `installerIso` e `virtioWinIso` são obrigatórios (ISOs lo
 absolutos/legíveis), a senha é obrigatória (a GUI/CLI gera quando o usuário não informa),
 `windowsEdition` default é `Windows 11 Pro`, os mínimos são **2 vCPU/4 GiB/64 GiB** e mounts/
 agent forwarding são recusados; `answerFile` opcional substitui o XML gerado. O job gera
-`autounattend.xml`/`autounattend.iso` (`0600`) e anexa os três CD-ROMs com `-boot once=d`
+`autounattend.xml`/`autounattend.iso` (`0600`) e anexa o instalador como CD USB
+(`bootindex=0`) e virtio-win/answer file como CD-ROMs IDE; o prompt "Press any key" é
+respondido automaticamente via QMP (`send-key`) durante a instalação
 enquanto `installPending=true`. Progresso e resultado chegam como notificações:
 
 - `machines.delta {jobId, stage, progress}` — `stage` é `image`, `disk`, `seed`, `starting`
@@ -523,9 +525,10 @@ Erros: `PODSTACK_NOT_FOUND` (machine inexistente) e `PODSTACK_IO_ERROR` (symlink
 não regular, fora do diretório ou ilegível). Uma machine sem `console.log` é válida: o
 read devolve `data:""` e o subscribe começa com um delta vazio.
 
-**Criação Windows (T9-04).** Erros síncronos: `PODSTACK_INVALID_PARAMS` para ISO
-ausente/ilegível, senha vazia/curta, XML inválido, mounts/agent forwarding ou mínimos;
-`PODSTACK_UNSUPPORTED` (`reason:"backend_unsupported"`) para `arch!="amd64"`. Enquanto
+**Criação Windows (T9-04).** Erros síncronos: `PODSTACK_VALIDATION` para ISO
+ausente/ilegível ou XML inválido; `PODSTACK_INVALID_PARAMS` para senha vazia/curta,
+mounts/agent forwarding ou mínimos; `PODSTACK_UNSUPPORTED`
+(`reason:"backend_unsupported"`) para `arch!="amd64"`. Enquanto
 `installPending=true`, o start exige que as ISOs e o answer file ainda existam
 (`PODSTACK_IO_ERROR` com remediação). O primeiro `stop` limpa `autounattend.xml`/`.iso`, os
 caminhos das ISOs e `installPending`; o próximo start boota do disco. Exportar machine

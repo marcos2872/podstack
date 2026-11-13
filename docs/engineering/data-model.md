@@ -99,7 +99,7 @@ Não persistido. Cache em memória reconstruído por eventos.
 | `provisioner` | enum | `linux` (default), `windows` |
 | `windowsSsh` | bool | instala/habilita OpenSSH no Windows |
 | `windowsEdition` | string? | imagem do ISO (default `Windows 11 Pro`) |
-| `installPending` | bool | anexa ISOs e `-boot once=d` enquanto true |
+| `installPending` | bool | anexa as ISOs de instalação enquanto true |
 | `installerIso` / `virtioWinIso` | string? | ISOs locais durante a instalação (limpos no stop) |
 | `arch` | enum | `amd64`, `arm64` |
 | `cpus` | int | 1..N |

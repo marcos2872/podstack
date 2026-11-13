@@ -1260,7 +1260,7 @@ void RpcTest::machinesFlow()
     windowsInvalid.insert(QStringLiteral("name"), QStringLiteral("win-missing-iso"));
     windowsInvalid.insert(QStringLiteral("installerIso"), QString());
     client.call(QStringLiteral("machines.create"), windowsInvalid, &windowsMissingIso);
-    QCOMPARE(windowsMissingIso.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QCOMPARE(windowsMissingIso.code, QStringLiteral("PODSTACK_VALIDATION"));
 
     PodStack::Error windowsMissingPassword;
     windowsInvalid = windowsBase;

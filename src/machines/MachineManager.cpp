@@ -9,6 +9,7 @@
 #include "core/Proxy.h"
 #include "machines/CloudInit.h"
 #include "machines/MachineArchive.h"
+#include "machines/QmpClient.h"
 #include "machines/SerialPorts.h"
 #include "machines/UsbDevices.h"
 #include "machines/WindowsProvisioner.h"
@@ -29,6 +30,8 @@
 #include <QTemporaryDir>
 #include <QTimeZone>
 
+#include <chrono>
+#include <thread>
 #include <utility>
 
 namespace PodStack {
@@ -207,6 +210,31 @@ void restrictSpiceSocket(const QemuSpec &spec)
         return;
     }
     QFile::setPermissions(spec.spiceSocketPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+}
+
+/// O boot manager do ISO Windows mostra "Press any key to boot from CD or DVD"
+/// e cai no disco/PXE se ninguém pressionar. Envia espaços via QMP durante os
+/// primeiros segundos para o instalador assumir, sem bloquear o start.
+void sendWindowsBootKeys(const QString &qmpSocketPath)
+{
+    std::thread([qmpSocketPath] {
+        QmpClient client(qmpSocketPath);
+        Error error;
+        if (!client.connect(&error)) {
+            return;
+        }
+        QJsonArray keys;
+        keys.append(QJsonObject{{QStringLiteral("type"), QStringLiteral("qcode")},
+                                {QStringLiteral("data"), QStringLiteral("spc")}});
+        const QJsonObject arguments{{QStringLiteral("keys"), keys}};
+        for (int attempt = 0; attempt < 12; ++attempt) {
+            QJsonObject result;
+            Error sendError;
+            client.execute(QStringLiteral("send-key"), arguments, &result, &sendError);
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        client.disconnect();
+    }).detach();
 }
 
 /// Encerra a fase de instalação Windows: o próximo start boota do disco e as
@@ -431,9 +459,6 @@ bool MachineManager::validate(const CreateMachineRequest &request, Error *error)
             return fails(error,
                          invalidParams(QStringLiteral("A senha do Windows deve ter ao menos 8 "
                                                       "caracteres.")));
-        }
-        if (request.windowsEdition.trimmed().isEmpty()) {
-            return fails(error, invalidParams(QStringLiteral("Informe a edição do Windows.")));
         }
         if (!WindowsProvisioner::validateInstallerIso(request.installerIso, error)) {
             return false;
@@ -2172,7 +2197,6 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
             spec.installerIsoPath = meta.installerIso;
             spec.driverIsoPath = meta.virtioWinIso;
             spec.unattendIsoPath = directory + QStringLiteral("/autounattend.iso");
-            spec.bootOnceCdrom = true;
         }
     }
 
@@ -2560,6 +2584,9 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         return meta;
     }
     restrictSpiceSocket(spec);
+    if (meta.provisioner == QStringLiteral("windows") && meta.installPending) {
+        sendWindowsBootKeys(spec.qmpSocketPath);
+    }
 
     meta.state = QStringLiteral("running");
     meta.error.clear();
@@ -2684,6 +2711,9 @@ MachineMeta MachineManager::start(const QString &idOrName, Error *error)
         return meta;
     }
     restrictSpiceSocket(spec);
+    if (meta.provisioner == QStringLiteral("windows") && meta.installPending) {
+        sendWindowsBootKeys(spec.qmpSocketPath);
+    }
 
     meta.state = QStringLiteral("running");
     meta.error.clear();

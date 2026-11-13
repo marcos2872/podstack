@@ -2744,7 +2744,7 @@ void MachinesTest::qemuCommandSecureBoot()
     QCOMPARE(valueAfter(args, QStringLiteral("-M")), QStringLiteral("q35,smm=on"));
     QCOMPARE(valueAfter(args, QStringLiteral("-global")),
              QStringLiteral("driver=cfi.pflash01,property=secure,value=on"));
-    QVERIFY(valueAfter(args, QStringLiteral("-cpu")).contains(QStringLiteral("hv_relaxed")));
+    QVERIFY(valueAfter(args, QStringLiteral("-cpu")).contains(QStringLiteral("hv_time")));
     QVERIFY(valueAfter(args, QStringLiteral("-cpu")).contains(QStringLiteral("hv_synic")));
 
     spec.secureBoot = false;
@@ -2801,7 +2801,7 @@ void MachinesTest::qemuCommandTpm()
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QVERIFY(args.contains(QStringLiteral("socket,id=chrtpm,path=%1").arg(spec.tpmSocketPath)));
     QVERIFY(args.contains(QStringLiteral("emulator,id=tpm0,chardev=chrtpm")));
-    QVERIFY(args.contains(QStringLiteral("tpm-tis")));
+    QVERIFY(args.contains(QStringLiteral("tpm-tis,tpmdev=tpm0")));
 
     QemuSpec relative = spec;
     relative.tpmSocketPath = QStringLiteral("swtpm.sock");
@@ -2817,15 +2817,18 @@ void MachinesTest::qemuCommandWindowsMedia()
     spec.installerIsoPath = m_root + QStringLiteral("/iso/windows.iso");
     spec.driverIsoPath = m_root + QStringLiteral("/iso/virtio-win.iso");
     spec.unattendIsoPath = m_root + QStringLiteral("/iso/autounattend.iso");
-    spec.bootOnceCdrom = true;
 
     PodStack::Error error;
     const QStringList args = QemuCommand::arguments(spec, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
-    for (const QString &iso : {spec.installerIsoPath, spec.driverIsoPath, spec.unattendIsoPath}) {
+    QVERIFY(args.contains(QStringLiteral("if=none,id=installer,file=%1,media=cdrom,readonly=on")
+                              .arg(spec.installerIsoPath)));
+    QVERIFY(
+        args.contains(QStringLiteral("usb-storage,drive=installer,bus=usbmedia.0,bootindex=0")));
+    for (const QString &iso : {spec.driverIsoPath, spec.unattendIsoPath}) {
         QVERIFY(args.contains(QStringLiteral("file=%1,if=ide,media=cdrom,readonly=on").arg(iso)));
     }
-    QCOMPARE(valueAfter(args, QStringLiteral("-boot")), QStringLiteral("once=d"));
+    QVERIFY(!args.contains(QStringLiteral("-boot")));
     QVERIFY(!args.contains(
         QStringLiteral("file=%1,format=raw,if=virtio,readonly=on").arg(spec.seedPath)));
 
@@ -2837,15 +2840,9 @@ void MachinesTest::qemuCommandWindowsMedia()
     QVERIFY(!noSeedArgs.contains(QStringLiteral("-boot")));
 
     QemuSpec relative = spec;
-    relative.driverIsoPath = QStringLiteral("virtio-win.iso");
+    relative.installerIsoPath = QStringLiteral("windows.iso");
     error = {};
     QVERIFY(QemuCommand::arguments(relative, &error).isEmpty());
-    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
-
-    QemuSpec bootWithoutMedia = qemuSpec(m_root);
-    bootWithoutMedia.bootOnceCdrom = true;
-    error = {};
-    QVERIFY(QemuCommand::arguments(bootWithoutMedia, &error).isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
@@ -6072,7 +6069,6 @@ void MachinesTest::machineManagerWindowsCreate()
     QVERIFY(QFileInfo(directory + QStringLiteral("/tpm")).isDir());
 
     QVERIFY(fake->lastSpec.secureBoot);
-    QVERIFY(fake->lastSpec.bootOnceCdrom);
     QCOMPARE(fake->lastSpec.installerIsoPath, windowsIso);
     QCOMPARE(fake->lastSpec.driverIsoPath, virtioIso);
     QCOMPARE(fake->lastSpec.unattendIsoPath, answerIso);
@@ -6122,7 +6118,6 @@ void MachinesTest::machineManagerWindowsCreate()
     const MachineMeta restarted = manager.start(meta.id, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(restarted.state, QStringLiteral("running"));
-    QVERIFY(!fake->lastSpec.bootOnceCdrom);
     QVERIFY(fake->lastSpec.installerIsoPath.isEmpty());
     QVERIFY(fake->lastSpec.driverIsoPath.isEmpty());
     QVERIFY(fake->lastSpec.unattendIsoPath.isEmpty());
