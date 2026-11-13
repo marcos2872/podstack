@@ -27,6 +27,7 @@ target_link_libraries(test_caddy PRIVATE podstack_core Qt6::Network Qt6::Test)
 add_test(NAME caddy COMMAND test_caddy)
 
 qt_add_executable(test_rpc test_rpc.cpp MockPodmanServer.cpp MockHttpServer.cpp
+    MockGuestAgent.cpp
     ../src/daemon/ComposeManager.cpp)
 target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_k8s
     podstack_podman Qt6::Test

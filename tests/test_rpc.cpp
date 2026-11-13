@@ -1,7 +1,9 @@
+#include "MockGuestAgent.h"
 #include "MockHttpServer.h"
 #include "MockPodmanServer.h"
 #include "UpdateTestUtils.h"
 
+#include "core/Paths.h"
 #include "core/RpcClient.h"
 #include "core/RpcStream.h"
 #include "daemon/ComposeManager.h"
@@ -50,6 +52,7 @@ private slots:
     void machineDevicesFlow();
     void machineSnapshots();
     void machineStats();
+    void appsFlow();
     void machineFiles();
     void machineInvalidOperations();
     void k8sStatusAndValidation();
@@ -2293,6 +2296,153 @@ void RpcTest::machineStats()
     QVERIFY(store.remove(meta.id));
     QFile::remove(meta.sshKeyPath);
     QDir().rmdir(QFileInfo(meta.sshKeyPath).absolutePath());
+}
+
+void RpcTest::appsFlow()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
+    PodStack::Error storeError;
+    QVERIFY2(store.open(&storeError), qPrintable(storeError.message));
+
+    PodStack::MachineMeta meta;
+    meta.id = QStringLiteral("apps-machine-1");
+    meta.name = QStringLiteral("apps-demo");
+    meta.distro = QStringLiteral("ubuntu");
+    meta.distroVersion = QStringLiteral("24.04");
+    meta.arch = QStringLiteral("amd64");
+    meta.state = QStringLiteral("running");
+    meta.provisioner = QStringLiteral("linux");
+    meta.sshUser = QStringLiteral("podstack");
+    meta.sshPort = 32223;
+    meta.sshKeyPath = m_testDataDir + QStringLiteral("/keys/apps-id_ed25519");
+    meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
+    meta.updatedAt = meta.createdAt;
+    QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
+
+    const QString directory = m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    QVERIFY(QDir().mkpath(directory));
+    MockGuestAgent agent(directory + QStringLiteral("/qga.sock"));
+    QVERIFY(agent.isListening());
+    agent.setExecOutput(QByteArrayLiteral("__PODSTACK_SIG__abc\n"
+                                          "__PODSTACK_FILE__/usr/share/applications/foo.desktop\n"
+                                          "[Desktop Entry]\n"
+                                          "Type=Application\n"
+                                          "Name=Foo\n"
+                                          "Exec=foo --open\n"
+                                          "Categories=Utility;\n"
+                                          "__PODSTACK_ICON__\n"));
+
+    error = {};
+    const QJsonObject listed = client.call(QStringLiteral("machines.apps.list"),
+                                           QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(listed.value(QStringLiteral("items")).toArray().size(), 1);
+    QCOMPARE(listed.value(QStringLiteral("sessions")).toArray().size(), 0);
+    QVERIFY(!listed.value(QStringLiteral("cachedAt")).toString().isEmpty());
+    const QString appId = listed.value(QStringLiteral("items"))
+                              .toArray()
+                              .at(0)
+                              .toObject()
+                              .value(QStringLiteral("appId"))
+                              .toString();
+    QVERIFY(!appId.isEmpty());
+
+    error = {};
+    const QJsonObject launched =
+        client.call(QStringLiteral("machines.apps.launch"),
+                    QJsonObject{{QStringLiteral("id"), meta.id},
+                                {QStringLiteral("appId"), appId},
+                                {QStringLiteral("backend"), QStringLiteral("x11")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QString sessionId = launched.value(QStringLiteral("sessionId")).toString();
+    QVERIFY(!sessionId.isEmpty());
+    const QJsonObject spec = launched.value(QStringLiteral("spec")).toObject();
+    QCOMPARE(spec.value(QStringLiteral("backend")).toString(), QStringLiteral("x11"));
+    QCOMPARE(spec.value(QStringLiteral("program")).toString(), QStringLiteral("ssh"));
+    QCOMPARE(spec.value(QStringLiteral("sshPort")).toInt(), 32223);
+
+    error = {};
+    const QJsonObject again =
+        client.call(QStringLiteral("machines.apps.launch"),
+                    QJsonObject{{QStringLiteral("id"), meta.id},
+                                {QStringLiteral("appId"), appId},
+                                {QStringLiteral("backend"), QStringLiteral("x11")}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(again.value(QStringLiteral("sessionId")).toString(), sessionId);
+
+    error = {};
+    const QJsonObject active = client.call(QStringLiteral("machines.apps.list"),
+                                           QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(active.value(QStringLiteral("sessions")).toArray().size(), 1);
+    QCOMPARE(active.value(QStringLiteral("items"))
+                 .toArray()
+                 .at(0)
+                 .toObject()
+                 .value(QStringLiteral("runningSessions"))
+                 .toInt(),
+             1);
+
+    error = {};
+    QVERIFY(client
+                .call(QStringLiteral("machines.apps.detach"),
+                      QJsonObject{{QStringLiteral("id"), meta.id},
+                                  {QStringLiteral("sessionId"), sessionId}},
+                      &error)
+                .value(QStringLiteral("detached"))
+                .toBool());
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    error = {};
+    const QJsonObject stopped = client.call(
+        QStringLiteral("machines.apps.stop"),
+        QJsonObject{{QStringLiteral("id"), meta.id}, {QStringLiteral("sessionId"), sessionId}},
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(stopped.value(QStringLiteral("stopped")).toBool());
+
+    error = {};
+    client.call(
+        QStringLiteral("machines.apps.stop"),
+        QJsonObject{{QStringLiteral("id"), meta.id}, {QStringLiteral("sessionId"), sessionId}},
+        &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_SESSION_NOT_FOUND"));
+
+    error = {};
+    const QJsonObject subscribed =
+        client.call(QStringLiteral("machines.apps.subscribe"),
+                    QJsonObject{{QStringLiteral("id"), meta.id}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    const QString subscriptionId = subscribed.value(QStringLiteral("subscriptionId")).toString();
+    QVERIFY(!subscriptionId.isEmpty());
+    error = {};
+    client.call(QStringLiteral("machines.apps.unsubscribe"),
+                QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    error = {};
+    client.call(QStringLiteral("machines.apps.unsubscribe"),
+                QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    client.call(QStringLiteral("machines.apps.trust"),
+                QJsonObject{{QStringLiteral("id"), meta.id},
+                            {QStringLiteral("fingerprint"), QStringLiteral("bad")}},
+                &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    error = {};
+    const QJsonObject trusted =
+        client.call(QStringLiteral("machines.apps.trust"),
+                    QJsonObject{{QStringLiteral("id"), meta.id},
+                                {QStringLiteral("fingerprint"), QString(64, QLatin1Char('a'))}},
+                    &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(trusted.value(QStringLiteral("trusted")).toBool());
 }
 
 void RpcTest::machineInvalidOperations()

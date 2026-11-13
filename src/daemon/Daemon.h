@@ -7,7 +7,9 @@
 #include "daemon/SetupManager.h"
 #include "daemon/UpdateChecker.h"
 #include "k8s/K8sManager.h"
+#include "machines/AppSessionManager.h"
 #include "machines/CloudImageCache.h"
+#include "machines/GuestAppCatalog.h"
 #include "machines/MachineManager.h"
 #include "machines/MachineStats.h"
 #include "podman/PodmanClient.h"
@@ -128,6 +130,15 @@ private:
                                         Error *error);
     QJsonObject machineSsh(const QJsonObject &params, Error *error);
     QJsonObject machineStats(const QJsonObject &params, Error *error);
+    QJsonObject collectMachineStats(const MachineMeta &machine, MachineStatsCollector *collector,
+                                    Error *error);
+    QJsonObject appList(const QJsonObject &params, Error *error);
+    QJsonObject appLaunch(const QJsonObject &params, Error *error);
+    QJsonObject appStop(const QJsonObject &params, Error *error);
+    QJsonObject appDetach(const QJsonObject &params, Error *error);
+    QJsonObject appSubscribe(const QJsonObject &params, const Notify &notify, Error *error);
+    QJsonObject appUnsubscribe(const QJsonObject &params, Error *error);
+    QJsonObject appTrust(const QJsonObject &params, Error *error);
     QJsonObject subscribeMachineStats(const QJsonObject &params, const Notify &notify,
                                       Error *error);
     QJsonObject machineFilesList(const QJsonObject &params, Error *error);
@@ -178,6 +189,8 @@ private:
     UpdateChecker m_updates;
     HelperClient m_helper;
     MachineManager m_machines;
+    GuestAppCatalog m_appCatalog;
+    AppSessionManager m_appSessions;
     K8sManager m_k8s;
     MachineStatsCollector m_machineStats;
     CloudImageCache m_cloudImages;
@@ -191,11 +204,14 @@ private:
     QHash<QString, QString> m_k8sSubscriptions; // jobId -> subscriptionId
     QHash<QString, std::shared_ptr<Subscription>> m_k8sForwards;
     std::mutex m_settingsMutex;
+    std::mutex m_appSubscriptionsMutex;
+    QHash<QString, Notify> m_appSubscriptions;
     int m_nextSubscription = 1;
     int m_nextBuild = 1;
     int m_nextMachineJob = 1;
     int m_nextK8sJob = 1;
     int m_nextK8sForward = 1;
+    int m_nextAppSubscription = 1;
 };
 
 } // namespace PodStack

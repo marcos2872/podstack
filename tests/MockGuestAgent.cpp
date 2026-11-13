@@ -148,6 +148,12 @@ void MockGuestAgent::setExecPid(int pid)
     m_execPid = pid;
 }
 
+void MockGuestAgent::setExecOutput(const QByteArray &output)
+{
+    QMutexLocker locker(&m_mutex);
+    m_execOutput = output;
+}
+
 void MockGuestAgent::setFileOpenError(bool enabled)
 {
     QMutexLocker locker(&m_mutex);
@@ -290,7 +296,10 @@ void MockGuestAgent::handleLine(QLocalSocket *socket, const QByteArray &line)
                                                       {QStringLiteral("signal"), 9}}}});
             return;
         }
-        const QByteArray output = QByteArrayLiteral("ok");
+        const QByteArray output = [this] {
+            QMutexLocker locker(&m_mutex);
+            return m_execOutput;
+        }();
         sendJson(socket, QJsonObject{{QStringLiteral("return"),
                                       QJsonObject{{QStringLiteral("exited"), true},
                                                   {QStringLiteral("exitcode"), 0},

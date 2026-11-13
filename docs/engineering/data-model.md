@@ -133,6 +133,12 @@ Não persistido. Cache em memória reconstruído por eventos.
 > (NVRAM Secure Boot, `0600`), o diretório `tpm/` (`0700`, arquivos `0600`) e, durante a
 > instalação, `autounattend.xml`/`autounattend.iso` (`0600`); todos ficam fora do export
 > `.tar.zst`.
+>
+> **Catálogo e sessões de apps (T10-00/T10-01):** o catálogo (`GuestAppCatalog`) e as
+> `AppSession` vivem **em memória** no daemon; o catálogo tem TTL de 5 min e é invalidado no
+> `refresh`/stop, e as sessões têm TTL de 60 s renovado por `list`/`detach`. Nada disso é
+> gravado em `meta.json`/SQLite. Ícones do catálogo são base64 ≤ 256 KiB por item (orçamento
+> total de 4 MiB).
 
 ### 2.7 MachinePort / MachineMount
 

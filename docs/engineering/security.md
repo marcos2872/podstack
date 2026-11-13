@@ -199,6 +199,11 @@ encerra a janela da instância já em execução.
   em worker threads, com timeouts curtos por comando. `guest-exec` **não** é exposto por RPC
   nesta rodada: é API interna do `GuestChannel` (scripts de setup/consultas), com timeout e
   saída que não é logada. `guest-file-*` é limitado a 1 MiB por arquivo.
+- Catálogo/sessões de apps (T10-00/T10-01): `GuestAppCatalog` executa scripts fixos no guest
+  (`/bin/sh`/PowerShell) e transfere ícones ≤ 256 KiB; o conteúdo não é logado. O
+  `AppSessionManager` mantém sessões em memória e o `LaunchSpec` x11 usa `ssh -X` com a chave
+  da machine (`knownHostsPath` no state), sem senha em argv. `machines.apps.trust` fixa o
+  fingerprint em memória nesta fase; a persistência TOFU em `MachineMeta` fica na T10-03.
 - TPM 2.0 (M9): o daemon inicia o `swtpm` com `--tpmstate dir=...` e
   `--ctrl type=unixio,path=...`, ambos em `machineDir`; o diretório `tpm/` é `0700` e os
   arquivos de estado são `0600`. O estado do TPM e a NVRAM Secure Boot não entram no export

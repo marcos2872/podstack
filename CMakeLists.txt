@@ -89,6 +89,8 @@ add_library(podstack_machines STATIC
     src/machines/VirtioWinCache.cpp
     src/machines/GuestAgentClient.cpp
     src/machines/GuestChannel.cpp
+    src/machines/GuestAppCatalog.cpp
+    src/machines/AppSessionManager.cpp
     src/machines/CloudInit.cpp
     src/machines/SshConfig.cpp
     src/machines/MachineMeta.cpp

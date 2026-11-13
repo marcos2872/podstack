@@ -29,6 +29,8 @@
 >
 > **Status T9-05/T9-07 (2026-11-13):** ✅ código — `GuestAgentClient`/`GuestChannel` (QGA sobre `qga.sock`, `guest-ping`, `guest-get-osinfo`, `guest-exec`, arquivos ≤ 1 MiB, rede), watcher de `provisioning` com timeout Linux 300 s/Windows 10 min (sem timeout durante `installPending`), `guestChannels`/`guestReady`/`guestOs`/`errorReason` em `meta.json`/SQLite/RPC, limpeza das mídias dirigida pelo agente, Home/Pro, reconexão QMP e checks/dependências de host (`swtpm`, SPICE, áudio) testados. **T10-01 parcial:** catálogo/ícones e `origin=agent` em stats continuam na M10.
 >
+> **Status T10-01 (2026-11-13):** ✅ código — catálogo Linux (`.desktop`) e Windows (Start Menu) com cache de 5 min, ícones base64 ≤ 256 KiB, `GuestAppCatalog`, `origin` em `machines.get/list` e fallback `agent` em `machines.stats`/`stats.subscribe`. **T10-00:** ✅ código — `AppSessionManager` com `launch/stop/detach`, idempotência por `(machineId, appId)`, TTL de 60 s, eventos `machines.apps.session.*`, `subscribe/unsubscribe/trust` e backend `x11` (LaunchSpec `ssh -X`). **Pendentes M10:** backend `xpra`/RAIL (T10-03), `AppHost`/UI/CLI (T10-02) e o spike T10-03a.
+>
 > **Pendências:** E2E Windows real (instalação/desktop/Secure Boot/TPM), T9-06 (áudio) e execução do `clean-install-check.sh --deb` em Ubuntu 24.04/26.04.
 
 ---

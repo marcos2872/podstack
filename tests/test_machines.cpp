@@ -9,10 +9,12 @@
 #include "core/Paths.h"
 #include "daemon/BuildStore.h"
 #include "k8s/K8sManager.h"
+#include "machines/AppSessionManager.h"
 #include "machines/CloudImageCache.h"
 #include "machines/CloudInit.h"
 #include "machines/DistroRegistry.h"
 #include "machines/GuestAgentClient.h"
+#include "machines/GuestAppCatalog.h"
 #include "machines/GuestChannel.h"
 #include "machines/HttpDownloader.h"
 #include "machines/MachineArchive.h"
@@ -63,6 +65,8 @@
 #include <thread>
 #include <unistd.h>
 
+using PodStack::AppSession;
+using PodStack::AppSessionManager;
 using PodStack::BuildRecord;
 using PodStack::BuildStore;
 using PodStack::CloudImageCache;
@@ -72,6 +76,8 @@ using PodStack::CreateMachineRequest;
 using PodStack::DistroImage;
 using PodStack::DistroRegistry;
 using PodStack::GuestAgentClient;
+using PodStack::GuestApp;
+using PodStack::GuestAppCatalog;
 using PodStack::GuestChannel;
 using PodStack::GuestChannelInfo;
 using PodStack::GuestProbeResult;
@@ -79,6 +85,7 @@ using PodStack::HttpDownloader;
 using PodStack::K8sCluster;
 using PodStack::K8sManager;
 using PodStack::K8sStore;
+using PodStack::LaunchSpec;
 using PodStack::MachineArchive;
 using PodStack::MachineArchiveManifest;
 using PodStack::MachineFiles;
@@ -1091,6 +1098,11 @@ private slots:
     void sshConfigErrors();
     void machineManagerSsh();
     void machineStats();
+    void machineStatsAgent();
+    void guestAppCatalog();
+    void guestAppCatalogWindows();
+    void guestAppCatalogErrors();
+    void appSessionManager();
     void machineStatsErrors();
     void machineFiles();
     void machineFilesErrors();
@@ -11524,6 +11536,7 @@ void MachinesTest::machineStats()
     PodStack::Error error;
     const QJsonObject first = collector.sample(meta, info, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(first.value(QStringLiteral("origin")).toString(), QStringLiteral("ssh"));
     QCOMPARE(first.value(QStringLiteral("cpuPercent")).toDouble(), 0.0);
     QCOMPARE(first.value(QStringLiteral("memUsed")).toInteger(), 1073741824LL);
     QCOMPARE(first.value(QStringLiteral("memTotal")).toInteger(), 2147483648LL);
@@ -11603,6 +11616,266 @@ void MachinesTest::machineStats()
     QVERIFY(collector.sample(meta, info, &error).isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
     qunsetenv("PODSTACK_SSH_BINARY");
+}
+
+void MachinesTest::machineStatsAgent()
+{
+    MockGuestAgent agent;
+    QVERIFY(agent.isListening());
+    const QByteArray output =
+        QByteArrayLiteral("cpu  100 0 100 800 0 0 0 0\n"
+                          "__PODSTACK_MEM__\n"
+                          "MemTotal:        2097152 kB\n"
+                          "MemAvailable:    1048576 kB\n"
+                          "__PODSTACK_NET__\n"
+                          "Inter-|   Receive |  Transmit\n"
+                          " face |bytes packets\n"
+                          "  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\n"
+                          "__PODSTACK_DISK__\n"
+                          "   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\n"
+                          "__PODSTACK_DF__\n"
+                          "Filesystem 1B-blocks Used Available Capacity Mounted on\n"
+                          "/dev/vda1 10000000000 2500000000 7500000000 25% /\n");
+    agent.setExecOutput(output);
+
+    MachineMeta meta;
+    meta.id = QStringLiteral("stats-agent");
+    meta.name = QStringLiteral("stats-agent");
+    meta.state = QStringLiteral("running");
+
+    MachineStatsCollector collector;
+    PodStack::Error error;
+    const QJsonObject sample = collector.sampleAgent(meta, agent.socketPath(), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(sample.value(QStringLiteral("origin")).toString(), QStringLiteral("agent"));
+    QCOMPARE(sample.value(QStringLiteral("memUsed")).toInteger(), 1073741824LL);
+    QCOMPARE(sample.value(QStringLiteral("memTotal")).toInteger(), 2147483648LL);
+    QCOMPARE(sample.value(QStringLiteral("diskUsed")).toInteger(), 2500000000LL);
+}
+
+void MachinesTest::guestAppCatalog()
+{
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000000070");
+    const QString directory = PodStack::Paths::machineDir(id);
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+    MockGuestAgent agent(directory + QStringLiteral("/qga.sock"));
+    QVERIFY(agent.isListening());
+    agent.setFileContent(QByteArrayLiteral("PNG"));
+    const QByteArray output =
+        QByteArrayLiteral("__PODSTACK_SIG__abc\n"
+                          "__PODSTACK_FILE__/usr/share/applications/foo.desktop\n"
+                          "[Desktop Entry]\n"
+                          "Type=Application\n"
+                          "Name=Foo\n"
+                          "Exec=foo --open %U\n"
+                          "Icon=foo\n"
+                          "Categories=Utility;Development;\n"
+                          "__PODSTACK_ICON__/usr/share/icons/foo.png\n"
+                          "__PODSTACK_FILE__/usr/share/applications/hidden.desktop\n"
+                          "[Desktop Entry]\n"
+                          "Type=Application\n"
+                          "Name=Hidden\n"
+                          "Exec=hidden\n"
+                          "NoDisplay=true\n"
+                          "__PODSTACK_ICON__\n");
+    agent.setExecOutput(output);
+
+    MachineMeta meta;
+    meta.id = id;
+    meta.name = QStringLiteral("catalog");
+    meta.state = QStringLiteral("running");
+
+    GuestAppCatalog catalog;
+    PodStack::Error error;
+    const QJsonArray items = catalog.list(meta, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(items.size(), 1);
+    const QJsonObject item = items.at(0).toObject();
+    QCOMPARE(item.value(QStringLiteral("name")).toString(), QStringLiteral("Foo"));
+    QCOMPARE(item.value(QStringLiteral("exec")).toString(), QStringLiteral("foo --open"));
+    QCOMPARE(item.value(QStringLiteral("categories")).toArray().size(), 2);
+    QCOMPARE(item.value(QStringLiteral("icon")).toString(),
+             QString::fromLatin1(QByteArrayLiteral("PNG").toBase64()));
+    QCOMPARE(agent.requestCount(QStringLiteral("guest-exec")), 1);
+
+    const QJsonArray cached = catalog.list(meta, false, &error);
+    QCOMPARE(cached.size(), 1);
+    QCOMPARE(agent.requestCount(QStringLiteral("guest-exec")), 1);
+    const QJsonArray refreshed = catalog.list(meta, true, &error);
+    QCOMPARE(refreshed.size(), 1);
+    QCOMPARE(agent.requestCount(QStringLiteral("guest-exec")), 2);
+}
+
+void MachinesTest::guestAppCatalogWindows()
+{
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000000071");
+    const QString directory = PodStack::Paths::machineDir(id);
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+    MockGuestAgent agent(directory + QStringLiteral("/qga.sock"));
+    QVERIFY(agent.isListening());
+    agent.setExecOutput(QByteArrayLiteral(
+        "[{\"name\":\"Notepad\",\"path\":\"C:\\\\Start\\\\Notepad.lnk\","
+        "\"target\":\"C:\\\\Windows\\\\notepad.exe\",\"args\":\"\",\"icon\":\"\"}]"));
+
+    MachineMeta meta;
+    meta.id = id;
+    meta.name = QStringLiteral("catalog-win");
+    meta.provisioner = QStringLiteral("windows");
+    meta.state = QStringLiteral("running");
+
+    GuestAppCatalog catalog;
+    PodStack::Error error;
+    const QJsonArray items = catalog.list(meta, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(items.size(), 1);
+    const QJsonObject item = items.at(0).toObject();
+    QCOMPARE(item.value(QStringLiteral("name")).toString(), QStringLiteral("Notepad"));
+    QCOMPARE(item.value(QStringLiteral("exec")).toString(),
+             QStringLiteral("C:\\Windows\\notepad.exe"));
+}
+
+void MachinesTest::guestAppCatalogErrors()
+{
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000000073");
+    const QString directory = PodStack::Paths::machineDir(id);
+    QDir(directory).removeRecursively();
+    QVERIFY(QDir().mkpath(directory));
+
+    MachineMeta meta;
+    meta.id = id;
+    meta.name = QStringLiteral("catalog-none");
+    meta.state = QStringLiteral("running");
+
+    GuestAppCatalog catalog;
+    PodStack::Error error;
+    QVERIFY(catalog.list(meta, false, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DEPENDENCY_MISSING"));
+    QCOMPARE(error.reason, QStringLiteral("guest_unreachable"));
+
+    MockGuestAgent agent(directory + QStringLiteral("/qga.sock"));
+    QVERIFY(agent.isListening());
+    agent.setExecOutput(QByteArrayLiteral("sem marcadores"));
+    const QJsonArray linuxItems = catalog.list(meta, true, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(linuxItems.isEmpty());
+
+    meta.provisioner = QStringLiteral("windows");
+    agent.setExecOutput(QByteArrayLiteral("not-json"));
+    const QJsonArray windowsItems = catalog.list(meta, true, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(windowsItems.isEmpty());
+}
+
+void MachinesTest::appSessionManager()
+{
+    AppSessionManager manager(1000);
+    QString startedMethod;
+    QString closedMethod;
+    manager.setEventCallback([&](const QString &method, const QJsonObject &) {
+        if (method == QStringLiteral("machines.apps.session.started")) {
+            startedMethod = method;
+        } else if (method == QStringLiteral("machines.apps.session.closed")) {
+            closedMethod = method;
+        }
+    });
+
+    MachineMeta machine = testMachine(QStringLiteral("0190f0f0-0000-7000-8000-000000000072"),
+                                      QStringLiteral("app-session"));
+    machine.state = QStringLiteral("running");
+    machine.sshKeyPath = m_root + QStringLiteral("/id_ed25519");
+    machine.sshPort = 32222;
+
+    GuestApp app;
+    app.appId = QStringLiteral("desktop:/usr/share/applications/foo.desktop");
+    app.name = QStringLiteral("Foo");
+    app.exec = QStringLiteral("foo --open");
+    app.desktopFile = QStringLiteral("/usr/share/applications/foo.desktop");
+
+    LaunchSpec spec;
+    PodStack::Error error;
+    const AppSession first =
+        manager.launch(machine, app, QStringLiteral("x11"), false, &spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!first.sessionId.isEmpty());
+    QCOMPARE(first.state, QStringLiteral("running"));
+    QCOMPARE(startedMethod, QStringLiteral("machines.apps.session.started"));
+    QCOMPARE(spec.backend, QStringLiteral("x11"));
+    QCOMPARE(spec.program, QStringLiteral("ssh"));
+    QVERIFY(spec.args.contains(app.exec));
+    QCOMPARE(spec.sshPort, 32222);
+
+    LaunchSpec secondSpec;
+    error = {};
+    const AppSession second =
+        manager.launch(machine, app, QStringLiteral("x11"), false, &secondSpec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(second.sessionId, first.sessionId);
+
+    QCOMPARE(manager.sessions(machine.id).size(), 1);
+    QCOMPARE(manager.sessionsJson(machine.id).size(), 1);
+
+    error = {};
+    QVERIFY(manager.stop(machine.id, first.sessionId, false, &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(closedMethod, QStringLiteral("machines.apps.session.closed"));
+    QVERIFY(manager.sessions(machine.id).isEmpty());
+
+    error = {};
+    QVERIFY(!manager.stop(machine.id, first.sessionId, false, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_SESSION_NOT_FOUND"));
+    QCOMPARE(error.reason, QStringLiteral("session_not_found"));
+
+    error = {};
+    QVERIFY(manager.detach(machine.id, QStringLiteral("missing"), &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    manager.trust(machine.id, QString(64, QLatin1Char('a')));
+    QCOMPARE(manager.trustedFingerprint(machine.id), QString(64, QLatin1Char('a')));
+
+    // TTL: sem heartbeat/list, a sessão é encerrada após o TTL.
+    error = {};
+    (void) manager.launch(machine, app, QStringLiteral("x11"), false, &spec, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QTest::qWait(2500);
+    QCOMPARE(manager.sessions(machine.id).size(), 0);
+
+    MachineMeta stopped = machine;
+    stopped.state = QStringLiteral("stopped");
+    error = {};
+    QVERIFY(manager.launch(stopped, app, QStringLiteral("x11"), false, &spec, &error)
+                .sessionId.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_GUEST_UNREACHABLE"));
+
+    MachineMeta noKey = machine;
+    noKey.sshKeyPath.clear();
+    error = {};
+    QVERIFY(manager.launch(noKey, app, QStringLiteral("x11"), false, &spec, &error)
+                .sessionId.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_GUEST_UNREACHABLE"));
+
+    error = {};
+    QVERIFY(manager.launch(machine, app, QStringLiteral("xpra"), false, &spec, &error)
+                .sessionId.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_DEPENDENCY_MISSING"));
+    QCOMPARE(error.reason, QStringLiteral("backend_missing"));
+
+    error = {};
+    QVERIFY(manager.launch(machine, app, QStringLiteral("rail"), false, &spec, &error)
+                .sessionId.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    MachineMeta windows = machine;
+    windows.provisioner = QStringLiteral("windows");
+    error = {};
+    QVERIFY(manager.launch(windows, app, QStringLiteral("x11"), false, &spec, &error)
+                .sessionId.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UNSUPPORTED"));
+
+    manager.reconcileMachine(machine.id);
+    QVERIFY(manager.sessions(machine.id).isEmpty());
+    QVERIFY(manager.sessionsJson(QStringLiteral("other")).isEmpty());
+    QVERIFY(manager.trustedFingerprint(QStringLiteral("other")).isEmpty());
 }
 
 void MachinesTest::machineStatsErrors()

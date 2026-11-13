@@ -315,9 +315,16 @@ as tarefas seguintes.
 | `machines.files.list` | `{id, path?}` | `{path, items: MachineFile[]}` |
 | `machines.files.download` | `{id, path, destination}` | `{path, destination}` |
 | `machines.files.upload` | `{id, path, sourcePath}` | `{path, sourcePath, ok:true}` |
-| `machines.stats` | `{id}` | `MachineStats` (one-shot via SSH) |
+| `machines.stats` | `{id}` | `MachineStats` (one-shot via SSH, com fallback `agent`) |
 | `machines.stats.subscribe` | `{id, intervalSeconds?}` | `{subscriptionId, id}` |
 | `machines.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
+| `machines.apps.list` | `{id, refresh?}` | `{items:[{appId,name,icon,categories,desktopFile,exec,runningSessions}], sessions:[{sessionId,appId,backend,state,createdAt}], cachedAt}` |
+| `machines.apps.launch` | `{id, appId, backend?, consent?}` | `{sessionId, spec?, warnings?}` (idempotente por `(id, appId)`) |
+| `machines.apps.stop` | `{id, sessionId, force?}` | `{stopped:true}` |
+| `machines.apps.detach` | `{id, sessionId}` | `{detached:true}` (idempotente) |
+| `machines.apps.subscribe` | `{id?}` | `{subscriptionId}`; eventos `machines.apps.session.started|updated|closed` |
+| `machines.apps.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled:true}` |
+| `machines.apps.trust` | `{id, fingerprint}` | `{trusted:true}` |
 
 Snapshots de disco internos usam `machines.snapshots.*` (T4-16); o console serial usa
 `machines.console.read`/`machines.console` (abaixo), não VNC.
@@ -337,6 +344,7 @@ interface Machine {
   lastBootAt: string; createdAt: string; updatedAt: string; error: string;
   errorReason: string;
   guestReady: boolean; guestOs: GuestOs; guestChannels: GuestChannel[];
+  origin: "ssh"|"agent"|"";
   ports: MachinePort[]; mounts: MachineMount[];
 }
 interface GuestOs { family: "linux"|"windows"; version: string; edition: string; productName: string }
@@ -573,6 +581,25 @@ para a **GUI** lançar o viewer (o daemon nunca executa processos gráficos). O 
 `PODSTACK_DEPENDENCY_MISSING` com `reason:"backend_missing"` quando o `remote-viewer` não está
 instalado (`PODSTACK_REMOTE_VIEWER` sobrescreve o binário em dev/teste).
 
+**Apps de machines (T10-00/T10-01).** `machines.apps.list` consulta o catálogo do guest
+(`/usr/share/applications` e `~/.local/share/applications` no Linux; Start Menu no Windows),
+com cache por machine de **5 min** e `cachedAt`; `refresh:true` ignora o cache. Cada item tem
+`appId` estável (`desktopFile`), `name`, `icon` (base64 de PNG/SVG/ICO ≤ 256 KiB, vazio quando
+não resolvido), `categories`, `exec` e `runningSessions`. O agente é obrigatório: sem
+`guest-ping` → `PODSTACK_GUEST_UNREACHABLE` (`reason=guest_unreachable`).
+
+`machines.apps.launch` é idempotente por `(id, appId)` e devolve o mesmo `sessionId` enquanto
+a sessão existir. Nesta fase o backend disponível é **`x11`** (Linux): o `LaunchSpec` usa
+`ssh -X` com a chave/porta da machine, `knownHostsPath` em `<machineDir>/known_hosts` e o
+`exec` do app. `xpra`/`rail` retornam `PODSTACK_DEPENDENCY_MISSING`/`PODSTACK_UNSUPPORTED`
+até a T10-03. As sessões vivem na memória do daemon (`AppSessionManager`), com TTL de 60 s
+renovado por `list`/`detach`, e eventos `machines.apps.session.started|updated|closed` para
+os assinantes de `machines.apps.subscribe`. `stop`/`detach` são idempotentes; `stop` de
+session inexistente → `PODSTACK_SESSION_NOT_FOUND` (`reason=session_not_found`).
+`machines.apps.trust` valida um SHA-256 de 64 hex e fixa o fingerprint em memória nesta fase
+(a persistência em `MachineMeta`/TOFU completo fica na T10-03). `machines.get/list` expõem
+`origin` (`ssh`|`agent`), derivado do primeiro `guestChannels`.
+
 **SSH.** `machines.ssh` resolve ID ou nome, exige que a chave privada da machine exista
 (`0600`, reparada se necessário), garante o bloco gerenciado em `~/.ssh/config` e devolve
 `{host:"127.0.0.1", port, user, identityFile, forwardAgent}`. O bloco é idempotente e não
@@ -622,13 +649,16 @@ interface MachineStats {
   netRx: number; netTx: number;
   diskRead: number; diskWrite: number;
   diskUsed: number; diskTotal: number; diskPercent: number;
+  origin: "ssh"|"agent";
 }
 ```
 
 `machines.stats.subscribe` repete a coleta a cada `intervalSeconds` (1..10, default 2) em
 background e devolve `{subscriptionId, id}`. Cada amostra chega como
 `machines.stats.delta {subscriptionId, id, ...MachineStats}`; em falha o daemon envia
-`machines.stats.error {subscriptionId, id, error}` e encerra a subscription. O cancelamento
+`machines.stats.error {subscriptionId, id, error}` e encerra a subscription. `machines.stats`
+tenta SSH e, se a chave/porta não responder, cai para o canal `agent`
+(`guest-exec /bin/sh`); `origin` indica o canal usado. O cancelamento
 usa `machines.stats.unsubscribe {subscriptionId}` como as demais subscriptions. Erros:
 `PODSTACK_CONFLICT` (machine não está `running`), `PODSTACK_UNSUPPORTED` (cliente SSH
 ausente), `PODSTACK_TIMEOUT`, `PODSTACK_IO_ERROR` (SSH/chave/resposta inválida) e os erros

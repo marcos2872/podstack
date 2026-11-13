@@ -129,6 +129,24 @@
   `scripts/build-deb.sh` e `packaging/deb/control` idem.
 - `scripts/clean-install-check.sh --deb` cobre Ubuntu 24.04/26.04.
 
+### T10-01 — catálogo e stats `origin`
+- `GuestAppCatalog` (`src/machines/GuestAppCatalog.*`): lista `.desktop` em
+  `/usr/share/applications`/`~/.local/share/applications` e o Start Menu do Windows via
+  `guest-exec`; ignora `NoDisplay`/`Hidden`/`Terminal`, remove `%`-codes do `Exec`, lê
+  `Categories` e transfere ícones ≤ 256 KiB por `guest-file-read` (base64, orçamento 4 MiB).
+- Cache por machine com TTL de 5 min; `refresh:true` ignora; `cachedAt` volta no RPC.
+- `machines.stats`/`stats.subscribe` tentam SSH e caem para o canal `agent` (`guest-exec
+  /bin/sh`), devolvendo `origin:"ssh"|"agent"`. `machines.get/list` também expõem `origin`.
+
+### T10-00 — AppSessionManager
+- `src/machines/AppSessionManager.*`: sessões em memória, idempotência por
+  `(machineId, appId)`, TTL de 60 s, `stop`/`detach`, `reconcileMachine` no stop/delete,
+  eventos `machines.apps.session.started|updated|closed` e `trust` de fingerprint.
+- RPC `machines.apps.list/launch/stop/detach/subscribe/unsubscribe/trust` no daemon.
+- Backend disponível nesta fase: `x11` (`LaunchSpec` `ssh -X` com chave/porta e
+  `knownHostsPath`); `xpra`/`rail` retornam `backend_missing`/`backend_unsupported` até a
+  T10-03. A GUI/`AppHost` (T10-02) ainda não consome as sessões.
+
 ## O que falta (em ordem sugerida)
 
 1. **E2E real do Windows** (parcialmente executado em 2026-11-13).
@@ -151,9 +169,10 @@
    - Windows 11 25H2 pode exigir conta Microsoft no OOBE; o XML usa conta local
      + `HideOnlineAccountScreens`. Se falhar, ajustar o OOBE/BypassNRO.
 2. **T9-06.** Validar áudio Windows (`intel-hda` duplex + PipeWire) no E2E.
-3. **T10-01 completo (M10).** Catálogo de apps Linux/Windows com TTL de 5 min,
-   ícones ≤ 1 MiB e `origin=agent` em `machines.stats`; o canal `agent` já está
-   pronto.
+3. **T10-02/T10-03.** `AppHost` na GUI (spawn/supervisão de xpra/FreeRDP, diálogo
+   “Abrir app da VM”, CLI `machine apps`) e backends xpra/RAIL. O catálogo, as sessões e o
+   contrato RPC da T10-00/T10-01 já estão prontos; `xpra`/`rail` retornam
+   `backend_missing`/`backend_unsupported` até lá.
 4. **Export/import Windows.** Levar `provisioner` no manifesto, tratar seed
    opcional e NVRAM/TPM fora do arquivo; habilitar export depois.
 5. **M10.** Apps remotos (xpra/RAIL); RAIL depende de T9-05 (canal já pronto).
@@ -194,17 +213,21 @@
 
 - `cmake --build --preset dev`: ok, sem warnings novos.
 - `ctest --preset dev`: **17/17** testes passando.
-- Cobertura (`gcovr`, gate 80%): **80,2%** de linhas (25806/32185). A T9-08
-  partiu de 79,8% e a T10-01/T9-05/T9-07 subiram o gate (`GuestAgentClient.cpp`
-  90%, `GuestChannel.cpp` 97%).
+- Cobertura (`gcovr`, gate 80%): **80,2%** de linhas (26407/32931). A T9-08
+  partiu de 79,8% e as T10-00/T10-01/T9-05/T9-07 subiram o gate
+  (`GuestAgentClient.cpp` 90%, `GuestChannel.cpp` 97%, `GuestAppCatalog.cpp` 86%,
+  `AppSessionManager.cpp` 86%).
 - `clang-format` 22.1.8 via `clang-format-diff` (linhas alteradas) e `clang-tidy`
   22.1.8 nos arquivos alterados: limpos.
   (Não há `clang-tools-extra` instalado no host; use
   `uvx --from clang-format==22.1.8` / `uvx --from clang-tidy==22.1.8`.)
 - `qmllint`: sem erros; warnings de `Theme`/acesso não qualificado são
   preexistentes no QML.
-- T10-01/T9-05: `guestAgentClient`, `guestAgentErrors`, `guestChannelWrappers`,
-  `guestChannelPingReconnect`, `guestChannelReconnectFailures`,
+- T10-01/T10-00: `guestAppCatalog`, `guestAppCatalogWindows`,
+  `guestAppCatalogErrors`, `appSessionManager` e `test_rpc/appsFlow` passam
+  (catálogo Linux/Windows, cache, ícones, `origin=agent` em stats, sessões
+  idempotentes, eventos, TTL, `subscribe/unsubscribe/trust`).
+- T10-01/T9-05: `guestChannelPingReconnect`, `guestChannelReconnectFailures`,
   `guestChannelErrors`, `qemuCommandGuestAgent`,
   `machineManagerGuestProvisioning`, `machineManagerGuestTimeout`,
   `machineManagerGuestProbeFailure`, `machineManagerWindowsGuest`,

@@ -34,6 +34,7 @@ public:
     void setSilentCommand(const QString &command);
     void setExecSignal(bool enabled);
     void setExecPid(int pid);
+    void setExecOutput(const QByteArray &output);
     void setFileOpenError(bool enabled);
     void setFileWriteCount(int count);
     QByteArray writtenData() const;
@@ -59,6 +60,7 @@ private:
     QString m_silentCommand;
     bool m_execSignal = false;
     int m_execPid = 1;
+    QByteArray m_execOutput = QByteArrayLiteral("ok");
     bool m_fileOpenError = false;
     int m_fileWriteCount = -1;
     QHash<QString, int> m_counts;

@@ -267,6 +267,15 @@ reconecta o chardev via QMP (`device_del qga0` → `chardev-remove qga` → `cha
 `guestReady`, `guestOs`, `guestChannels` e transita para `running`, ou grava
 `error`/`errorReason` (`provisioning_timeout`/`guest_unreachable`).
 
+O `GuestAppCatalog` (`src/machines/GuestAppCatalog.{h,cpp}`) lê `.desktop` no Linux e o Start
+Menu no Windows via `guest-exec`, transferindo ícones pequenos por `guest-file-*`, com cache
+por machine de 5 min e `refresh` explícito. O `AppSessionManager`
+(`src/machines/AppSessionManager.{h,cpp}`) é o dono das sessões de apps no daemon: mantém
+`AppSession` em memória, faz `launch` idempotente por `(machineId, appId)`, TTL de 60 s,
+`stop`/`detach` e reconciliação no stop/delete da machine; o `LaunchSpec` (x11 nesta fase)
+vai na resposta e a GUI (`AppHost`, T10-02) lança o cliente local. Eventos
+`machines.apps.session.*` são entregues aos assinantes de `machines.apps.subscribe`.
+
 #### Runtime e ciclo de vida
 
 O `QemuProcessRuntime` (`src/machines/QemuRuntime.{h,cpp}`) inicia o binário

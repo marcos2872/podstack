@@ -206,6 +206,8 @@ QJsonObject MachineMeta::toJson() const
     object.insert(QStringLiteral("errorReason"), errorReason);
     object.insert(QStringLiteral("guestReady"), guestReady);
     object.insert(QStringLiteral("guestOs"), guestOs);
+    object.insert(QStringLiteral("origin"),
+                  guestChannels.isEmpty() ? QString() : guestChannels.first().channel);
     QJsonArray channelArray;
     for (const GuestChannelInfo &channel : guestChannels) {
         channelArray.append(channel.toJson());

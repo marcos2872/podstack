@@ -280,7 +280,8 @@ qemu-system-x86_64 \
   `GuestAgentClient`/`GuestChannel`, `guestChannels`/`guestReady`/`guestOs`/`errorReason`
   persistidos, Linux `ssh` primário (300 s) e Windows `agent` primário (10 min, sem timeout
   durante `installPending`), limpeza das mídias dirigida pelo `guest-ping` e detecção
-  Home/Pro. Catálogo de apps/ícones e `origin=agent` em stats ficam para a M10.
+  Home/Pro. Catálogo de apps/ícones e `origin=agent` em stats foram implementados na
+  T10-01 (M10); `AppSessionManager`/RPC de sessões na T10-00.
 - Limitações desta rodada: E2E Windows real e áudio (T9-06) pendentes, export Windows
   retorna `PODSTACK_UNSUPPORTED` e mounts/agent forwarding são recusados.
 
