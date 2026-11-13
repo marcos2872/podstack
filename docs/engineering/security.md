@@ -198,6 +198,15 @@ encerra a janela da instância já em execução.
   `--ctrl type=unixio,path=...`, ambos em `machineDir`; o diretório `tpm/` é `0700` e os
   arquivos de estado são `0600`. O estado do TPM e a NVRAM Secure Boot não entram no export
   `.tar.zst` (um import cria TPM/NVRAM vazios) e não são expostos em log/RPC.
+- Criação Windows (M9): a senha da conta local existe apenas no `autounattend.xml` (`0600`)
+  e no ISO de answer file (`0600`), nunca no `meta.json`, SQLite, log ou argv. O
+  `autounattend.xml`/`.iso` são removidos no primeiro `stop` (a remoção por `guest-ping` fica
+  na T9-05) e ficam fora do export. A CLI imprime a senha gerada uma única vez; a GUI a copia
+  para o clipboard ao concluir.
+- ISO do Windows/virtio-win: caminhos locais absolutos, validados como arquivo `.iso`
+  legível; o PodStack não baixa nem redistribui o Windows. As ISOs são anexadas read-only e
+  os caminhos são limpos no stop. Um `answerFile` próprio é validado como XML antes de virar
+  o CD-ROM de answer file e substitui o XML gerado (incluindo a injeção da chave SSH).
 - Proxy: a URL de `network.proxy` pode conter usuário/senha. Ela **nunca** é registrada em
   log, ecoada em erro de validação ou incluída em diagnóstico; os erros são genéricos. O
   `config.json` é `0600`, e as variáveis vão ao container/machine pelo ambiente/cloud-init,

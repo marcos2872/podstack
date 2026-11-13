@@ -281,7 +281,7 @@ as tarefas seguintes.
 | `machines.distros` | `{}` | `{items: DistroImage[]}` |
 | `machines.list` | `{}` | `{items: Machine[]}` |
 | `machines.get` | `{id}` | `Machine` (aceita ID ou nome) |
-| `machines.create` | `{name, distro, version?, provisioner?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, isolateNetwork?, forwardSshAgent?, mounts?, isolated?}` | `{jobId, subscriptionId}` (`JobRef` + `Subscription`) |
+| `machines.create` | `{name, distro, version?, provisioner?, installerIso?, virtioWinIso?, answerFile?, windowsEdition?, windowsSsh?, arch?, cpus?, memoryBytes?, diskBytes?, user?, password?, userData?, isolateNetwork?, forwardSshAgent?, mounts?, isolated?}` | `{jobId, subscriptionId}` (`JobRef` + `Subscription`) |
 | `machines.cancel` | `{jobId}` | `{jobId, cancelled:true}` |
 | `machines.start` | `{id}` | `Machine` |
 | `machines.stop` | `{id, force?}` | `Machine` |
@@ -327,6 +327,8 @@ interface Machine {
   id: string; name: string;
   distro: string; distroVersion: string; arch: "amd64"|"arm64";
   provisioner: "linux"|"windows";
+  windowsSsh: boolean; windowsEdition: string; installPending: boolean;
+  installerIso: string; virtioWinIso: string;
   cpus: number; memoryBytes: number; diskBytes: number;
   diskPath: string; seedPath: string; sshKeyPath: string;
   sshPort: number; sshUser: string;
@@ -342,8 +344,13 @@ interface MachineSnapshot { id: string; name: string; sizeBytes: number; date: s
 
 **Criação assíncrona.** `machines.create` valida os parâmetros de forma síncrona (nome RFC
 1123, CPUs 1..256, memória/disco ≥ 1 GiB, arquitetura e distro) e só então inicia o job.
-`provisioner` aceita `linux` (default) e `windows`; nesta versão a criação Windows ainda
-retorna `PODSTACK_UNSUPPORTED` (T9-04). Progresso e resultado chegam como notificações:
+`provisioner` aceita `linux` (default) e `windows`. Para Windows, `distro` é
+ausente/`"windows"`, `installerIso` e `virtioWinIso` são obrigatórios (ISOs locais
+absolutos/legíveis), a senha é obrigatória (a GUI/CLI gera quando o usuário não informa),
+`windowsEdition` default é `Windows 11 Pro`, os mínimos são **2 vCPU/4 GiB/64 GiB** e mounts/
+agent forwarding são recusados; `answerFile` opcional substitui o XML gerado. O job gera
+`autounattend.xml`/`autounattend.iso` (`0600`) e anexa os três CD-ROMs com `-boot once=d`
+enquanto `installPending=true`. Progresso e resultado chegam como notificações:
 
 - `machines.delta {jobId, stage, progress}` — `stage` é `image`, `disk`, `seed`, `starting`
   ou `running`; `progress` vai de 0 a 100.
@@ -515,6 +522,15 @@ respeita `machines.console.unsubscribe {subscriptionId}` como as demais subscrip
 Erros: `PODSTACK_NOT_FOUND` (machine inexistente) e `PODSTACK_IO_ERROR` (symlink, arquivo
 não regular, fora do diretório ou ilegível). Uma machine sem `console.log` é válida: o
 read devolve `data:""` e o subscribe começa com um delta vazio.
+
+**Criação Windows (T9-04).** Erros síncronos: `PODSTACK_INVALID_PARAMS` para ISO
+ausente/ilegível, senha vazia/curta, XML inválido, mounts/agent forwarding ou mínimos;
+`PODSTACK_UNSUPPORTED` (`reason:"backend_unsupported"`) para `arch!="amd64"`. Enquanto
+`installPending=true`, o start exige que as ISOs e o answer file ainda existam
+(`PODSTACK_IO_ERROR` com remediação). O primeiro `stop` limpa `autounattend.xml`/`.iso`, os
+caminhos das ISOs e `installPending`; o próximo start boota do disco. Exportar machine
+Windows retorna `PODSTACK_UNSUPPORTED` nesta fase. `PODSTACK_SWTPM_BINARY` e
+`PODSTACK_REMOTE_VIEWER` sobrescrevem os binários em dev/teste.
 
 **Console SPICE (T9-01).** `machines.console.spice {id}` atende apenas machines com
 `provisioner:"windows"` e estado `running`; devolve

@@ -236,9 +236,18 @@ recebido. A montagem da linha de comando fica em `QemuCommand`
 (`src/machines/QemuCommand.{h,cpp}`), que valida arquitetura, CPUs, memória,
 caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
 Para guests Windows (M9), o mesmo construtor emite `-machine q35,smm=on` +
-`-global cfi.pflash01.secure=on`, o `-spice unix=on,...` com `virtio-vga`/`usb-tablet`
-e o trio `-chardev chrtpm`/`-tpmdev emulator`/`-device tpm-tis`; `-display none`
-permanece.
+`-global cfi.pflash01.secure=on`, o `-spice unix=on,...` com `virtio-vga`/`usb-tablet`,
+o trio `-chardev chrtpm`/`-tpmdev emulator`/`-device tpm-tis` e, enquanto
+`installPending`, os três CD-ROMs (instalador, virtio-win e answer file) com
+`-boot once=d`; `-display none` permanece. `-cpu host` recebe os enlightenments
+`hv_relaxed,hv_vpindex,hv_synic,hv_stimer,hv_reset,hv_frequencies`.
+
+O `WindowsProvisioner` (`src/machines/WindowsProvisioner.{h,cpp}`) valida as ISOs locais
+e o answer file, gera `autounattend.xml` (partições GPT/EFI/MSR, conta local, OOBE,
+`DriverPaths` e FirstLogonCommands) e um ISO pequeno com o XML. O `MachineManager` usa
+`installPending` para anexar as mídias apenas durante a instalação e limpa
+`autounattend.xml`/`.iso` e os caminhos das ISOs no primeiro stop; o próximo start
+boota do disco.
 
 #### Runtime e ciclo de vida
 

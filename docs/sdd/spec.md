@@ -530,8 +530,9 @@ Host <name>.podstack <name>
 - Snapshots internos do qcow2 não são preservados: o `qemu-img convert` produz um disco
   autocontido sem os snapshots, e o import/export `.tar.zst` também não os leva (§7.8).
 - NVRAM (`nvram.fd`), estado do TPM (`tpm/`) e `autounattend.xml` **não** entram no export;
-  o import cria uma NVRAM e um TPM vazios. O `provisioner` só será levado no manifesto quando
-  a criação Windows (T9-04) for implementada.
+  o import cria uma NVRAM e um TPM vazios. Exportar machines Windows ainda retorna
+  `PODSTACK_UNSUPPORTED`; o `provisioner` e as ISOs só entrarão no manifesto quando o export
+  Windows for habilitado.
 
 ### 7.6 Limites e recursos
 
@@ -577,12 +578,32 @@ Host <name>.podstack <name>
   export/import `.tar.zst` também não os leva. O snapshot referencia o disco overlay (com
   backing da imagem cloud); manter o backing disponível é responsabilidade do cache de imagens.
 
-### 7.9 Guest Windows (M9 — Fase 1)
+### 7.9 Guest Windows (M9)
 
-O M9 usa `provisioner: "windows"` no metadado (`linux` é o default). Nesta fase o código
-entrega console, firmware e TPM; a criação Windows (installerIso/autounattend) chega na
-T9-04 e **ainda não é aceita** por `machines.create` (retorna `PODSTACK_UNSUPPORTED`).
+O M9 usa `provisioner: "windows"` no metadado (`linux` é o default). A criação Windows aceita
+`distro` ausente/`"windows"`, exige um **ISO local do Windows** (`installerIso`) e um **ISO
+local do virtio-win** (`virtioWinIso`) e gera `autounattend.xml` + ISO de answer file. O
+PodStack nunca baixa/redistribui o Windows; o alvo testado é **Windows 11 Pro amd64**
+(`Home` instala, mas não habilita RAIL). `windowsEdition` (default `Windows 11 Pro`) escolhe
+a imagem via `/IMAGE/NAME`; um `answerFile` próprio substitui o XML gerado.
 
+- **Criação (T9-04/T9-04a).** `machines.create`/`podstack machine create` exigem
+  `provisioner:"windows"`, `installerIso`, `virtioWinIso`, senha (a GUI/CLI gera se faltar;
+  a CLI imprime a senha uma vez e a GUI copia para o clipboard) e mínimos **2 vCPU / 4 GiB /
+  64 GiB**; valores menores → `PODSTACK_VALIDATION`. Sem cloud-init/seed; mounts e SSH
+  agent forwarding são recusados. O XML (`0600`) tem partições GPT/EFI/MSR, conta local,
+  OOBE sem conta online, `DriverPaths` (`viostor`, `NetKVM`, `vioscsi`, `viogpudo`, `Balloon`,
+  `viorng`, `vioserial`), guest-tools (`virtio-win-gt-x64.msi`) e qemu-ga
+  (`guest-agent\qemu-ga-x86_64.msi`) e OpenSSH quando `windowsSsh`. O ISO do answer
+  file é anexado como CD-ROM junto ao instalador e ao virtio-win, com `-boot once=d` e
+  enlightenments `hv_*` no `-cpu host`.
+- **`installPending`.** Enquanto a instalação está pendente, os três CD-ROMs são anexados e
+  `-boot once=d` vale; no primeiro `stop` o PodStack limpa `autounattend.xml`/`.iso`, os
+  caminhos das ISOs e o flag, e o próximo start boota do disco. A remoção dirigida por
+  `guest-ping` fica para a T9-05.
+- **Export/import.** Exportar machines Windows ainda retorna `PODSTACK_UNSUPPORTED` nesta
+  fase (o manifesto não carrega `provisioner` nem ISOs); clone só é permitido após concluir
+  a instalação.
 - **Console SPICE (T9-01).** Machines Windows sobem com
   `-spice unix=on,addr=<machineDir>/spice.sock,disable-ticketing=on`, `virtio-vga`,
   `qemu-xhci,id=usbconsole` e `usb-tablet,bus=usbconsole.0`, mantendo `-display none`.
@@ -607,12 +628,17 @@ T9-04 e **ainda não é aceita** por `machines.create` (retorna `PODSTACK_UNSUPP
   `swtpm` ausente → `PODSTACK_DEPENDENCY_MISSING` com remediação.
 - O caminho do binário `swtpm` pode ser sobrescrito por `PODSTACK_SWTPM_BINARY` (dev/teste).
 
-**Critérios (Fase 1):**
+**Critérios (criação + Fase 1):**
 
-- [x] argv Windows vs. Linux testado (Secure Boot, SPICE, TPM) e `-display none` preservado.
-- [x] `nvram.fd` e diretório `tpm/` com permissões restritas; estado do TPM sobrevive a restart.
+- [x] argv Windows vs. Linux testado (Secure Boot/hv_*, SPICE, TPM, ISOs, `-boot once=d`).
+- [x] `nvram.fd`/`tpm/` com permissões restritas; estado do TPM sobrevive a restart.
+- [x] XML/ISO de answer file, `DriverPaths`, senha só no XML e mínimos validados.
+- [x] GUI/CLI criam Windows com `distro` ausente e validação inline.
 - [x] `machines.console.spice` valida provisioner/estado/socket e resolver do viewer.
-- [ ] E2E com Windows 11 real (Secure Boot ativo, TPM 2.0 visível) — depende da T9-04.
+- [ ] E2E com Windows 11 real (instalação até o desktop, Secure Boot ativo, TPM 2.0 visível) —
+  depende de um ISO Windows e da T9-05.
+- [ ] Remoção do answer file por `guest-ping` e detecção Home/Pro — T9-05.
+- [ ] Download/cache do virtio-win — T9-08; nesta fase o ISO é local.
 
 
 ---

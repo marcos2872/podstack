@@ -256,19 +256,28 @@ qemu-system-x86_64 \
 - `meta.json`: provisioner (`linux`/`windows`), distro, versão, arch, recursos, portas, mounts, isolamento, criação, último boot.
 - SQLite indexa para listagem rápida; `meta.json` é a fonte de verdade recuperável.
 
-### 7.3 Guest Windows (M9 — Fase 1)
+### 7.3 Guest Windows (M9)
 
-- `provisioner` é persistido em `meta.json` e no índice SQLite (`provisioner TEXT NOT NULL
-  DEFAULT 'linux'`; migração aditiva por `PRAGMA table_info` + `ALTER TABLE`). A criação
-  Windows (`installerIso`/`autounattend`/mínimos) fica para a T9-04.
+- `provisioner` e os campos Windows (`windowsSsh`, `windowsEdition`, `installPending`,
+  `installerIso`, `virtioWinIso`) são persistidos em `meta.json` e no índice SQLite, com
+  migração aditiva por `PRAGMA table_info` + `ALTER TABLE`.
+- A criação Windows usa **ISOs locais** do Windows e do virtio-win, gera
+  `autounattend.xml`+`autounattend.iso` (`0600`), valida mínimos 2 vCPU/4 GiB/64 GiB e não
+  usa cloud-init/seed. `installPending` controla `-boot once=d` e os três CD-ROMs; o primeiro
+  stop limpa as mídias e o flag. `windowsEdition` (default `Windows 11 Pro`) escolhe
+  `/IMAGE/NAME`; `answerFile` próprio substitui o XML gerado.
 - Secure Boot: NVRAM por machine em `nvram.fd` (`0600`), CODE/VARS `secboot` descobertos por
   candidatos Fedora/Ubuntu; Linux mantém `OVMF_VARS.fd`. Par incompatível retorna
-  `PODSTACK_VALIDATION`.
+  `PODSTACK_VALIDATION`. O `-cpu host` recebe `hv_relaxed,hv_vpindex,hv_synic,hv_stimer,
+  hv_reset,hv_frequencies`.
 - Console SPICE em socket Unix por machine; `machines.console.spice` devolve o spec e a GUI
   lança o `remote-viewer` (sem `spice-gtk` no build).
 - TPM 2.0: `SwtpmProcess` (mesmo modelo do `VirtiofsdProcess`) sobe antes do QEMU, é adotado
   por `cmdline` após restart do daemon e encerrado no stop/delete. `tpm/` é `0700` e os
   arquivos de estado são `0600`.
+- Limitações desta rodada: sem download do virtio-win (T9-08; ISO local), sem `guest-ping`/
+  `guestOs` (T9-05), export Windows retorna `PODSTACK_UNSUPPORTED` e mounts/agent forwarding
+  são recusados.
 
 ### 7.4 Limitações
 

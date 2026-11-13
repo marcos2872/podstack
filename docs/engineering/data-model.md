@@ -97,6 +97,10 @@ Não persistido. Cache em memória reconstruído por eventos.
 | `distro` | string | `ubuntu`, `debian`, ...; `windows` no provisioner Windows |
 | `distroVersion` | string? | `24.04`, `noble`, ... |
 | `provisioner` | enum | `linux` (default), `windows` |
+| `windowsSsh` | bool | instala/habilita OpenSSH no Windows |
+| `windowsEdition` | string? | imagem do ISO (default `Windows 11 Pro`) |
+| `installPending` | bool | anexa ISOs e `-boot once=d` enquanto true |
+| `installerIso` / `virtioWinIso` | string? | ISOs locais durante a instalação (limpos no stop) |
 | `arch` | enum | `amd64`, `arm64` |
 | `cpus` | int | 1..N |
 | `memoryBytes` | int64 | ≥ 1 GiB |
@@ -118,9 +122,11 @@ Não persistido. Cache em memória reconstruído por eventos.
 > `httpPort`/`httpsPort` são colunas reservadas no esquema SQLite; o `meta.json` atual não as grava.
 >
 > O `provisioner` foi adicionado no M9. Bancos anteriores recebem a coluna por migração
-> aditiva (`PRAGMA table_info` + `ALTER TABLE ... DEFAULT 'linux'`). Machines Windows também
-> têm `nvram.fd` (NVRAM Secure Boot, `0600`) e o diretório `tpm/` (`0700`, arquivos `0600`);
-> ambos ficam fora do export `.tar.zst`.
+> aditiva (`PRAGMA table_info` + `ALTER TABLE ... DEFAULT 'linux'`), o mesmo valendo para as
+> colunas Windows (`windows_ssh`, `windows_edition`, `install_pending`, `installer_iso`,
+> `virtio_win_iso`). Machines Windows também têm `nvram.fd` (NVRAM Secure Boot, `0600`),
+> o diretório `tpm/` (`0700`, arquivos `0600`) e, durante a instalação,
+> `autounattend.xml`/`autounattend.iso` (`0600`); todos ficam fora do export `.tar.zst`.
 
 ### 2.7 MachinePort / MachineMount
 
@@ -249,7 +255,12 @@ CREATE TABLE machines (
   last_boot_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  error TEXT
+  error TEXT,
+  windows_ssh INTEGER NOT NULL DEFAULT 0,
+  windows_edition TEXT,
+  install_pending INTEGER NOT NULL DEFAULT 0,
+  installer_iso TEXT,
+  virtio_win_iso TEXT
 );
 
 CREATE TABLE machine_ports (

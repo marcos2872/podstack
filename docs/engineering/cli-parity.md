@@ -38,7 +38,7 @@
 
 | `orb` | `podstack` | Flags | Notas Linux | Status |
 |---|---|---|---|---|
-| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` | `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network`, `--forward-ssh-agent`, `--isolated` | QEMU/KVM + cloud-init; sem Rosetta. Senha via GUI/JSON-RPC (nunca argv); mounts via GUI/JSON-RPC na T4-07; `--arch` e flags de mounts no CLI ficam pendentes (T4-07) | ✅ T4-03 (SSH/chave na T4-04; mounts na T4-07; agent na T4-13; isolado na T4-14) |
+| `create DISTRO[:VER] [NAME]` | `machine create DISTRO[:VER] NOME` / `machine create NOME --provisioner windows` | Linux: `--cpus`, `--memory`, `--disk`, `--user`, `--user-data`, `--isolate-network`, `--forward-ssh-agent`, `--isolated`. Windows: `--iso`, `--virtio-win-iso`, `--answer-file`, `--edition`, `--windows-ssh`, `--password-stdin`, `--memory`, `--disk`, `--isolated` | QEMU/KVM + cloud-init (Linux) ou unattended (Windows). Windows exige ISOs locais, mínimo 2 vCPU/4 GiB/64 GiB e senha (gerada e impressa uma vez se `--password-stdin` faltar); sem mounts/agent forwarding; `--arch` e flags de mounts no CLI ficam pendentes (T4-07) | ✅ Linux T4-03/T4-07/T4-13/T4-14; ✅ Windows T9-04a |
 | `start [MACHINE...]` | `machine start <id\|nome>` | — | Uma machine por vez nesta etapa | ✅ T4-03 |
 | `stop [MACHINE...]` | `machine stop <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
 | `restart [MACHINE...]` | `machine restart <id\|nome>` | `--force` | Aceita `--json` | ✅ T4-03 |
@@ -80,12 +80,17 @@
 > (alias `machine ssh`), `export`/`import`, `rename`, `clone`, `default`, `update`,
 > `port ls/add/rm`, `files ls`, `pull` e `push`. A criação aceita `--cpus`, `--memory`
 > (bytes ou K/M/G/T), `--disk`, `--user`, `--user-data ARQUIVO`, `--isolate-network`,
-> `--forward-ssh-agent` e `--isolated` (sem mounts/agent, rede restrita e SSH local);
-> `machine update` aceita `--forward-agent`/`--no-forward-agent`,
-> `machine console` segue o serial por padrão (`--no-follow` para one-shot e `--json` só
-> nesse modo) e `machine ssh` acrescenta `-A` quando o agent está encaminhado. A senha continua **fora**
-> de argv (visível em `ps`/histórico) e o acesso padrão é por chave ed25519 gerada pelo
-> daemon. `files`, `pull` e `push` usam SSH/SCP reais (o daemon nunca abre shell local).
+> `--forward-ssh-agent` e `--isolated` (sem mounts/agent, rede restrita e SSH local).
+> Com `--provisioner windows` o comando aceita um único posicional (nome), exige `--iso` e
+> `--virtio-win-iso` locais e aceita `--answer-file`, `--edition`, `--windows-ssh` e
+> `--password-stdin`; sem a senha na stdin o CLI gera uma e a imprime uma única vez. Windows
+> não aceita mounts nem agent forwarding nesta fase. `machine update` aceita
+> `--forward-agent`/`--no-forward-agent`, `machine console` segue o serial por padrão
+> (`--no-follow` para one-shot e `--json` só nesse modo) e `machine ssh` acrescenta `-A`
+> quando o agent está encaminhado. A senha Linux continua **fora** de argv (visível em
+> `ps`/histórico) e o acesso padrão é por chave ed25519 gerada pelo daemon; a senha Windows
+> só entra no `autounattend.xml`. `files`, `pull` e `push` usam SSH/SCP reais (o daemon nunca
+> abre shell local).
 
 ### 2.2 Serviços e sistema
 
@@ -326,6 +331,9 @@ Apenas IDs ou nomes, um por linha.
 # criar máquina
 podstack machine create ubuntu:24.04 dev --cpus 2 --memory 4G --disk 20G
 podstack machine create debian:12 sandbox --isolated
+podstack machine create win11 --provisioner windows \
+  --iso ~/Downloads/Windows11_Client_x64_pt-br_26300_9457.iso \
+  --virtio-win-iso ~/Downloads/virtio-win-0.1.302.iso --windows-ssh
 podstack machine port add dev --host 8080 --guest 80 --label web
 podstack machine port add dev --host 5353 --guest 53 --udp --lan
 podstack machine port ls dev
