@@ -252,9 +252,20 @@ informado: baixa o manifesto embutido (HTTPS + SHA-256 + tamanho) para
 `~/.local/share/podstack/virtio-win/` (`0700`, arquivos `0600`), com `.part`/rename
 atômico, lock por arquivo, verificação de hash e limpeza das versões antigas; o job de
 criação emite os estágios `virtio-win` e `virtio-win-verify`. O `MachineManager` usa
-`installPending` para anexar as mídias apenas durante a instalação e limpa
-`autounattend.xml`/`.iso` e os caminhos das ISOs no primeiro stop; o próximo start
-boota do disco.
+`installPending` para anexar as mídias apenas durante a instalação; quando o canal `agent`
+responde, `clearWindowsInstall` remove `autounattend.xml`/`.iso`, limpa os caminhos das ISOs
+e o flag (o primeiro `stop` continua como fallback), e o próximo start boota do disco.
+
+O `GuestAgentClient` (`src/machines/GuestAgentClient.{h,cpp}`) fala o protocolo JSON do
+qemu-guest-agent por linha, com `guest-sync-delimited`/`0xFF`, timeouts e comandos de
+liveness, SO, execução, rede e arquivos pequenos (≤ 1 MiB). O `GuestChannel`
+(`src/machines/GuestChannel.{h,cpp}`) resolve `ssh`/`agent`, sonda o SSH existente e
+reconecta o chardev via QMP (`device_del qga0` → `chardev-remove qga` → `chardev-add qga` →
+`device_add qga0`). O `MachineManager` mantém um watcher por machine em `provisioning`
+(thread própria, join no stop/delete/destructor): Linux espera SSH por 300 s e Windows espera
+`guest-ping` por 10 min (sem timeout enquanto `installPending=true`); ao responder, grava
+`guestReady`, `guestOs`, `guestChannels` e transita para `running`, ou grava
+`error`/`errorReason` (`provisioning_timeout`/`guest_unreachable`).
 
 #### Runtime e ciclo de vida
 
@@ -292,7 +303,8 @@ para testes), garante a imagem no `CloudImageCache`, cria o qcow2 com
 diretório da machine em `0600`, grava o seed NoCloud e escolhe a primeira
 porta SSH livre a partir de `sshPortStart` (bind em `127.0.0.1`, até 20
 tentativas, ignorando portas já registradas). Os estados seguem
-`provisioning → starting → running → stopping → stopped`; qualquer falha
+`provisioning → starting → provisioning → running → stopping → stopped` (o segundo
+`provisioning` é a espera pelo canal de guest); qualquer falha
 persiste `error` no `meta.json` e no SQLite, e o create remove disco, seed e
 OVMF vars parciais, mantendo o diretório com `meta.json`/`console.log` para
 diagnóstico.

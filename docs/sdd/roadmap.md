@@ -242,11 +242,11 @@ RPM/DEB/Flatpak, CRIU e emulação binfmt/FEX).
 
 ### M9 — Guest Windows (P1, v1.x)
 
-**Status:** T9-01…T9-04a e T9-08 implementadas em código em 2026-11-13 — console SPICE, OVMF
-Secure Boot, TPM 2.0, criação Windows (ISO local do Windows + `autounattend`) e
-download/cache do virtio-win (manifesto HTTPS/SHA-256, cache `0600`), com testes de argv/XML/
-estado/erros. Pendentes: T9-05 (agente/`guest-ping`/Home-Pro), T9-06 (áudio) e T9-07
-(empacotamento). O E2E com Windows real depende da T9-05. Escopo completo em
+**Status:** T9-01…T9-05, T9-07 e T9-08 implementadas em código em 2026-11-13 — console SPICE,
+OVMF Secure Boot, TPM 2.0, criação Windows (ISO local do Windows + `autounattend`),
+download/cache do virtio-win, canal `agent` (`qga.sock`/`guest-ping`/`guest-get-osinfo`),
+provisionamento Linux/Windows com timeout, Home/Pro e dependências de host no empacotamento.
+Pendentes: T9-06 (áudio) e o E2E com Windows real. Escopo completo em
 [`../specs/001-apps-remotos-vm/`](../specs/001-apps-remotos-vm/spec.md). M9 não bloqueia o
 v1.0; RAIL (M10) depende de T9-05.
 

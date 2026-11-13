@@ -118,15 +118,21 @@ Não persistido. Cache em memória reconstruído por eventos.
 | `lastBootAt` | timestamp? | |
 | `createdAt` / `updatedAt` | timestamp | RFC 3339 UTC com ms |
 | `error` | string? | último erro |
+| `errorReason` | string? | classificação estável (`guest_unreachable`, `provisioning_timeout`) |
+| `guestReady` | bool | canal primário já respondeu |
+| `guestOs` | object | `family`, `version`, `edition`, `productName` |
+| `guestChannels` | array | `{channel, role, version, lastSeenAt}` |
 
 > `httpPort`/`httpsPort` são colunas reservadas no esquema SQLite; o `meta.json` atual não as grava.
 >
 > O `provisioner` foi adicionado no M9. Bancos anteriores recebem a coluna por migração
 > aditiva (`PRAGMA table_info` + `ALTER TABLE ... DEFAULT 'linux'`), o mesmo valendo para as
 > colunas Windows (`windows_ssh`, `windows_edition`, `install_pending`, `installer_iso`,
-> `virtio_win_iso`). Machines Windows também têm `nvram.fd` (NVRAM Secure Boot, `0600`),
-> o diretório `tpm/` (`0700`, arquivos `0600`) e, durante a instalação,
-> `autounattend.xml`/`autounattend.iso` (`0600`); todos ficam fora do export `.tar.zst`.
+> `virtio_win_iso`) e de guest (`error_reason`, `guest_ready`, `guest_os`, `guest_channels`;
+> `guest_os`/`guest_channels` são JSON compacto). Machines Windows também têm `nvram.fd`
+> (NVRAM Secure Boot, `0600`), o diretório `tpm/` (`0700`, arquivos `0600`) e, durante a
+> instalação, `autounattend.xml`/`autounattend.iso` (`0600`); todos ficam fora do export
+> `.tar.zst`.
 
 ### 2.7 MachinePort / MachineMount
 
@@ -260,7 +266,11 @@ CREATE TABLE machines (
   windows_edition TEXT,
   install_pending INTEGER NOT NULL DEFAULT 0,
   installer_iso TEXT,
-  virtio_win_iso TEXT
+  virtio_win_iso TEXT,
+  error_reason TEXT,
+  guest_ready INTEGER NOT NULL DEFAULT 0,
+  guest_os TEXT,
+  guest_channels TEXT
 );
 
 CREATE TABLE machine_ports (

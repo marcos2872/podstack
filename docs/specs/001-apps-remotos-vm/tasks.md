@@ -26,6 +26,10 @@
 **Bloqueios duros:** Windows Home não habilita RAIL; GPU/3D exige VFIO (fora); Windows ARM e host aarch64 fora (M9/RAIL são x86_64-only, NFR-MAC-008).
 
 > **Status T9-08 (2026-11-13):** ✅ código — manifesto embutido (0.1.302, URL HTTPS, SHA-256 e tamanho), cache `0700`/`0600` em `~/.local/share/podstack/virtio-win/`, progresso/cancelamento no job de criação, limpeza de versões antigas, fallback de ISO local e erros `PODSTACK_DEPENDENCY_MISSING`/`PODSTACK_DOWNLOAD_FAILED` testados. A criação Windows aceita `virtioWinIso` vazio na GUI, CLI e RPC.
+>
+> **Status T9-05/T9-07 (2026-11-13):** ✅ código — `GuestAgentClient`/`GuestChannel` (QGA sobre `qga.sock`, `guest-ping`, `guest-get-osinfo`, `guest-exec`, arquivos ≤ 1 MiB, rede), watcher de `provisioning` com timeout Linux 300 s/Windows 10 min (sem timeout durante `installPending`), `guestChannels`/`guestReady`/`guestOs`/`errorReason` em `meta.json`/SQLite/RPC, limpeza das mídias dirigida pelo agente, Home/Pro, reconexão QMP e checks/dependências de host (`swtpm`, SPICE, áudio) testados. **T10-01 parcial:** catálogo/ícones e `origin=agent` em stats continuam na M10.
+>
+> **Pendências:** E2E Windows real (instalação/desktop/Secure Boot/TPM), T9-06 (áudio) e execução do `clean-install-check.sh --deb` em Ubuntu 24.04/26.04.
 
 ---
 

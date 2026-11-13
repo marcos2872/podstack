@@ -326,6 +326,7 @@ bool QemuProcessRuntime::start(const QemuSpec &spec, Error *error)
     // Um pidfile/socket remanescente de uma execução anterior não deve impedir o boot.
     QFile::remove(spec.pidFile);
     QFile::remove(spec.qmpSocketPath);
+    QFile::remove(spec.guestAgentSocketPath);
 
     qint64 launchedPid = 0;
     if (!QProcess::startDetached(executable, arguments, QString(), &launchedPid)) {

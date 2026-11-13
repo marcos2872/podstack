@@ -32,6 +32,8 @@
 #include <QVariantMap>
 #include <QtConcurrent>
 
+#include <utility>
+
 namespace PodStack {
 namespace {
 
@@ -238,6 +240,17 @@ Backend::Backend(QObject *parent)
             &Backend::onK8sForwardFinished);
     m_k8sTimer.setInterval(2000);
     connect(&m_k8sTimer, &QTimer::timeout, this, &Backend::refreshK8s);
+    m_machineRefreshTimer.setInterval(3000);
+    connect(&m_machineRefreshTimer, &QTimer::timeout, this, [this] {
+        for (const QVariant &item : std::as_const(m_machines)) {
+            if (item.toMap().value(QStringLiteral("state")).toString() ==
+                QStringLiteral("provisioning")) {
+                refreshMachines();
+                break;
+            }
+        }
+    });
+    m_machineRefreshTimer.start();
     connect(&m_machineSshWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             [this] {
                 const QJsonObject result = m_machineSshWatcher.result();

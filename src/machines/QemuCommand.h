@@ -49,8 +49,9 @@ struct QemuSpec {
     QString ovmfCodePath;
     QString ovmfVarsPath;
     bool secureBoot = false;
-    QString spiceSocketPath; // vazio = sem console SPICE
-    QString tpmSocketPath;   // vazio = sem TPM 2.0
+    QString spiceSocketPath;      // vazio = sem console SPICE
+    QString tpmSocketPath;        // vazio = sem TPM 2.0
+    QString guestAgentSocketPath; // vazio = sem qemu-guest-agent (virtio-serial)
     QString installerIsoPath; // ISO do instalador Windows (provisioner windows)
     QString driverIsoPath;    // ISO do virtio-win (provisioner windows)
     QString unattendIsoPath;  // ISO com autounattend.xml (provisioner windows)

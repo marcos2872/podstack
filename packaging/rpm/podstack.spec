@@ -30,6 +30,18 @@ Requires:       qtermwidget
 Requires:       qt6-qtsvg
 Requires:       openssh-clients
 Requires:       polkit
+Requires:       qemu-kvm
+Requires:       qemu-system-x86-core
+Requires:       qemu-system-aarch64-core
+Requires:       qemu-img
+Requires:       virtiofsd
+Requires:       edk2-ovmf
+Requires:       qemu-ui-spice-core
+Requires:       qemu-audio-pipewire
+Requires:       swtpm
+Recommends:     freerdp
+Recommends:     xpra
+Recommends:     virt-viewer
 Requires(post): policycoreutils
 Requires(postun): policycoreutils
 # A partir de 0.1.1 o helper é parte do pacote principal; substitui o

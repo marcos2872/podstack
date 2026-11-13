@@ -4,8 +4,11 @@
 
 #include <QByteArray>
 #include <QHash>
+#include <QJsonObject>
 #include <QMutex>
+#include <QPair>
 #include <QString>
+#include <QVector>
 
 #include <atomic>
 
@@ -49,6 +52,9 @@ public:
 
     int commandCount(const QString &command) const;
     int connectionCount() const;
+    /// Comandos recebidos, na ordem, com os argumentos (para validar sequências QMP).
+    QVector<QPair<QString, QJsonObject>> commands() const;
+    void clearCommands();
 
 private:
     struct Behavior {
@@ -74,6 +80,7 @@ private:
     bool m_noGreeting = false;
     bool m_quitSendsReturn = false;
     QHash<QString, int> m_commandCounts;
+    QVector<QPair<QString, QJsonObject>> m_commands;
     int m_connections = 0;
 
     std::atomic_bool m_stop{false};

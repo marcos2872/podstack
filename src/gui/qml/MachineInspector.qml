@@ -452,6 +452,7 @@ Rectangle {
                 size: "sm"
                 enabled: root.machineId.length > 0 && root.machineState !== "running"
                          && root.machineState !== "starting"
+                         && root.machineState !== "provisioning"
                          && backend.actionActive === false
                          && backend.machineCreateActive === false
                 onClicked: backend.machineLifecycle("start", root.machineId)
@@ -462,7 +463,8 @@ Rectangle {
                 size: "sm"
                 enabled: root.machineId.length > 0
                          && (root.machineState === "running"
-                             || root.machineState === "starting")
+                             || root.machineState === "starting"
+                             || root.machineState === "provisioning")
                          && backend.actionActive === false
                          && backend.machineCreateActive === false
                 onClicked: backend.machineLifecycle("stop", root.machineId, false)
@@ -489,7 +491,9 @@ Rectangle {
                 text: qsTr("Console")
                 iconName: "external"
                 size: "sm"
-                enabled: root.machineId.length > 0 && root.machineState === "running"
+                enabled: root.machineId.length > 0
+                         && (root.machineState === "running"
+                             || root.machineState === "provisioning")
                          && backend.actionActive === false
                 onClicked: backend.openMachineConsole(root.machineId)
                 Accessible.name: qsTr("Abrir o console gráfico da machine")
@@ -707,6 +711,21 @@ Rectangle {
 
                         Text { text: qsTr("SSH"); color: Theme.textTertiary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMicro }
                         Text { Layout.fillWidth: true; text: root.machine.ssh || "-"; color: Theme.textSecondary; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMeta; elide: Text.ElideRight }
+
+                        Text { text: qsTr("Guest"); color: Theme.textTertiary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMicro }
+                        Text {
+                            Layout.fillWidth: true
+                            text: {
+                                if (root.machine.guestOs && root.machine.guestOs.productName) {
+                                    return root.machine.guestOs.productName
+                                }
+                                return root.machine.guestReady ? qsTr("pronto") : qsTr("aguardando agente/SSH")
+                            }
+                            color: Theme.textSecondary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMeta
+                            elide: Text.ElideRight
+                        }
 
                         Text { text: qsTr("Criada"); color: Theme.textTertiary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMicro }
                         Text { Layout.fillWidth: true; text: root.machine.createdAt || "-"; color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta; elide: Text.ElideRight }

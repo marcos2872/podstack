@@ -194,15 +194,20 @@ encerra a janela da instância já em execução.
   (`0700`, socket `0600`) e usa `disable-ticketing=on`; não há SPICE em TCP nem exposição na
   LAN. `machines.console.spice` apenas devolve o spec ao cliente e a **GUI** lança o
   `remote-viewer`; o daemon nunca executa o viewer.
+- Canal `agent` (M9/T10-01): o chardev `qga.sock` também fica no `machineDir` (`0700`, criado
+  pelo QEMU) e usa `virtio-serial`; não há TCP. O `GuestAgentClient` só é usado pelo daemon
+  em worker threads, com timeouts curtos por comando. `guest-exec` **não** é exposto por RPC
+  nesta rodada: é API interna do `GuestChannel` (scripts de setup/consultas), com timeout e
+  saída que não é logada. `guest-file-*` é limitado a 1 MiB por arquivo.
 - TPM 2.0 (M9): o daemon inicia o `swtpm` com `--tpmstate dir=...` e
   `--ctrl type=unixio,path=...`, ambos em `machineDir`; o diretório `tpm/` é `0700` e os
   arquivos de estado são `0600`. O estado do TPM e a NVRAM Secure Boot não entram no export
   `.tar.zst` (um import cria TPM/NVRAM vazios) e não são expostos em log/RPC.
 - Criação Windows (M9): a senha da conta local existe apenas no `autounattend.xml` (`0600`)
   e no ISO de answer file (`0600`), nunca no `meta.json`, SQLite, log ou argv. O
-  `autounattend.xml`/`.iso` são removidos no primeiro `stop` (a remoção por `guest-ping` fica
-  na T9-05) e ficam fora do export. A CLI imprime a senha gerada uma única vez; a GUI a copia
-  para o clipboard ao concluir.
+  `autounattend.xml`/`.iso` são removidos quando o `guest-ping` responde (o primeiro `stop`
+  é o fallback) e ficam fora do export. A CLI imprime a senha gerada uma única vez; a GUI a
+  copia para o clipboard ao concluir.
 - ISO do Windows/virtio-win: o caminho do Windows é local absoluto, validado como arquivo
   `.iso` legível; o PodStack não baixa nem redistribui o Windows. O virtio-win pode ser
   informado localmente ou baixado do manifesto embutido (ver acima). As ISOs são anexadas

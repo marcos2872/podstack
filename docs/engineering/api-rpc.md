@@ -335,8 +335,12 @@ interface Machine {
   state: "provisioning"|"starting"|"running"|"stopping"|"stopped"|"error"|"deleting"|"deleted";
   isolated: boolean; isolateNetwork: boolean; forwardSshAgent: boolean;
   lastBootAt: string; createdAt: string; updatedAt: string; error: string;
+  errorReason: string;
+  guestReady: boolean; guestOs: GuestOs; guestChannels: GuestChannel[];
   ports: MachinePort[]; mounts: MachineMount[];
 }
+interface GuestOs { family: "linux"|"windows"; version: string; edition: string; productName: string }
+interface GuestChannel { channel: "ssh"|"agent"; role: "primary"|"fallback"; version: string; lastSeenAt: string }
 interface MachinePort { id: string; hostPort: number; guestPort: number; protocol: string; exposeLan: boolean; label: string }
 interface MachineMount { id: string; source: string; target: string; readOnly: boolean; tag: string }
 interface MachineSnapshot { id: string; name: string; sizeBytes: number; date: string }
@@ -545,8 +549,23 @@ caminhos das ISOs e `installPending`; o próximo start boota do disco. Exportar 
 Windows retorna `PODSTACK_UNSUPPORTED` nesta fase. `PODSTACK_SWTPM_BINARY` e
 `PODSTACK_REMOTE_VIEWER` sobrescrevem os binários em dev/teste.
 
+**Canais de guest (T10-01/T9-05).** `machines.create`/`machines.start` retornam a machine
+em `provisioning` enquanto o canal primário não responde; a transição para `running` é
+assíncrona e aparece no próximo `machines.get/list`. Linux usa `ssh` como primário e
+`agent` como fallback; Windows usa `agent` como primário e `ssh` apenas com
+`windowsSsh:true`. `guestChannels` lista `{channel, role, version, lastSeenAt}`;
+`guestReady` só fica `true` quando o primário respondeu. Windows com `installPending=true`
+não arma o timeout de 10 min durante a instalação; depois dela, 10 min sem `guest-ping`
+levam a `error` com `errorReason:"guest_unreachable"`. Linux tem timeout de 300 s →
+`error`/`errorReason:"provisioning_timeout"`. Quando o agente Windows responde, o PodStack
+remove `autounattend.xml`/`.iso`, limpa `installerIso`/`virtioWinIso` e zera
+`installPending`; `guest-get-osinfo` preenche `guestOs` (`family`, `version`, `edition`,
+`productName`) e detecta Home/Pro. O canal `agent` usa um socket Unix
+`<machineDir>/qga.sock` (`virtio-serial`, porta `org.qemu.guest_agent.0`), nunca TCP.
+
 **Console SPICE (T9-01).** `machines.console.spice {id}` atende apenas machines com
-`provisioner:"windows"` e estado `running`; devolve
+`provisioner:"windows"` e estado `running` ou `provisioning` (o console é a saída de
+diagnóstico enquanto o agente não responde); devolve
 `{program:"remote-viewer", args:["spice+unix://<machineDir>/spice.sock"], socket:"<machineDir>/spice.sock"}`
 para a **GUI** lançar o viewer (o daemon nunca executa processos gráficos). O socket é Unix,
 `0600`, fica no `machineDir` (`0700`) e não há SPICE em TCP. Erros: `PODSTACK_UNSUPPORTED`

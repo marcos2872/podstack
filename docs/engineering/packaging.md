@@ -10,11 +10,21 @@
 
 | Pacote | Conteúdo | Dependências |
 |---|---|---|
-| `podstack` | GUI, CLI, daemon, QML, ícones, `.desktop`, AppStream | Qt 6.4+ (6.10 no Fedora 43+; 6.4 no Ubuntu 24.04), qtermwidget 2.0.0 vendorizado no DEB, libcurl, libarchive, libxcrypt, sqlite, podman ≥ 4.9 (5.8 recomendado), openssh-clients |
+| `podstack` | GUI, CLI, daemon, QML, ícones, `.desktop`, AppStream | Qt 6.4+ (6.10 no Fedora 43+; 6.4 no Ubuntu 24.04), qtermwidget 2.0.0 vendorizado no DEB, libcurl, libarchive, libxcrypt, sqlite, podman ≥ 4.9 (5.8 recomendado), openssh-clients; QEMU/OVMF/`swtpm`/virtiofsd/SPICE/áudio conforme §2 |
 | `podstack-helper` | helper root, unit system, polkit, módulo SELinux | systemd, polkit, policycoreutils |
 | `podstack-devel` (opcional) | headers/libs para plugins | — |
 
-**Recomenda (não exige):** `qemu-kvm`, `qemu-img`, `cloud-utils` (cloud-localds), `virtiofsd`, `caddy`, `k3s`, `docker-compose` (provider Compose).
+**Dependências de host do M9 (obrigatórias):**
+
+- Fedora: `qemu-kvm`, `qemu-system-x86-core`, `qemu-system-aarch64-core`, `qemu-img`,
+  `virtiofsd`, `edk2-ovmf`, `qemu-ui-spice-core`, `qemu-audio-pipewire`, `swtpm`.
+- Ubuntu 24.04/26.04: `qemu-system-x86`, `qemu-system-arm`, `qemu-utils`, `virtiofsd`,
+  `ovmf`, `qemu-efi-aarch64`, `qemu-system-modules-spice`, `qemu-system-gui`, `swtpm`.
+
+**Recomenda (opcional):** `freerdp`/`freerdp3-x11`, `xpra` (apenas 24.04), `virt-viewer`
+(console SPICE), `caddy`, `k3s`, `docker-compose` (provider Compose). Nenhum backend
+gráfico entra em `Depends`/`Requires`; `xpra` nunca em `Depends`.
+O ISO do virtio-win é a única dependência baixada sob demanda (T9-08).
 
 ---
 
@@ -549,10 +559,11 @@ obrigatória). Para habilitar updates, importe a chave privada minisign, publiqu
 ## 12. Instalação limpa (checklist)
 
 **Automatizado:** [`scripts/clean-install-check.sh`](../../scripts/clean-install-check.sh) roda
-em container Fedora 44 descartável (via Podman) e cobre instalação do RPM principal e do
-`podstack-helper`; presença de binários, units systemd de usuário, unit/polkit do helper e
-módulo SELinux; metainfo + `appstreamcli validate`; daemon com socket `0600`; `podstack
-status` e `podstack doctor`. O [`packaging.yml`](../../.github/workflows/packaging.yml) executa o build do RPM em container
+em container descartável (via Podman): sem flag, Fedora 44 com o RPM principal e o
+`podstack-helper`; com `--deb`, Ubuntu 24.04 com `apt-get install ./podstack_*.deb`. Cobre
+binários, units systemd de usuário, unit/polkit do helper, módulo SELinux (RPM), metainfo +
+`appstreamcli validate`, daemon com socket `0600`, `podstack status` e `podstack doctor`.
+O [`packaging.yml`](../../.github/workflows/packaging.yml) executa o build do RPM em container
 Fedora 44 e o build do DEB em container Ubuntu 24.04 em PRs que alteram `packaging/**`,
 `scripts/build-*`, `scripts/clean-install-check.sh`, `CMakeLists.txt`, `third_party/**` ou
 `release.yml`.

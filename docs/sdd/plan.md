@@ -276,8 +276,13 @@ qemu-system-x86_64 \
 - TPM 2.0: `SwtpmProcess` (mesmo modelo do `VirtiofsdProcess`) sobe antes do QEMU, é adotado
   por `cmdline` após restart do daemon e encerrado no stop/delete. `tpm/` é `0700` e os
   arquivos de estado são `0600`.
-- Limitações desta rodada: sem `guest-ping`/`guestOs` (T9-05), export Windows retorna
-  `PODSTACK_UNSUPPORTED` e mounts/agent forwarding são recusados.
+- Canal `agent` (T10-01 parcial): `qga.sock` + `virtio-serial` em toda machine,
+  `GuestAgentClient`/`GuestChannel`, `guestChannels`/`guestReady`/`guestOs`/`errorReason`
+  persistidos, Linux `ssh` primário (300 s) e Windows `agent` primário (10 min, sem timeout
+  durante `installPending`), limpeza das mídias dirigida pelo `guest-ping` e detecção
+  Home/Pro. Catálogo de apps/ícones e `origin=agent` em stats ficam para a M10.
+- Limitações desta rodada: E2E Windows real e áudio (T9-06) pendentes, export Windows
+  retorna `PODSTACK_UNSUPPORTED` e mounts/agent forwarding são recusados.
 
 ### 7.4 Limitações
 

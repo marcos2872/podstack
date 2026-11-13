@@ -5,6 +5,7 @@
 #include "core/Error.h"
 #include "machines/CloudImageCache.h"
 #include "machines/DistroRegistry.h"
+#include "machines/GuestChannel.h"
 #include "machines/MachineMeta.h"
 #include "machines/MachineStore.h"
 #include "machines/QemuRuntime.h"
@@ -96,6 +97,10 @@ public:
         std::unique_ptr<QemuRuntime> runtime; // vazio = QemuProcessRuntime
         std::function<DistroImage(const QString &spec, const QString &arch, Error *)>
             resolveDistro;
+        /// Sonda injetável do canal de guest (vazio = QGA/SSH reais).
+        std::function<GuestProbeResult(const MachineMeta &)> guestProbe;
+        int linuxProvisioningTimeoutMs = 5 * 60 * 1000;
+        int windowsProvisioningTimeoutMs = 10 * 60 * 1000;
     };
 
     MachineManager();
@@ -210,6 +215,12 @@ private:
     bool ensureSshKey(const QString &directory, const QString &name, QString *privatePath,
                       QString *publicKey, Error *error);
     bool persist(MachineMeta &meta, Error *error);
+    struct ProvisioningWatch;
+    GuestProbeResult probeGuest(const MachineMeta &meta);
+    bool initializeGuestState(MachineMeta &meta, const QemuSpec &spec, Error *error);
+    void startProvisioningWatch(const MachineMeta &meta, bool refreshOnly);
+    void stopProvisioningWatch(const QString &id);
+    void stopAllProvisioningWatches();
     std::shared_ptr<std::recursive_mutex> machineLock(const QString &id);
     bool tryLockMachine(const QString &id,
                         std::shared_ptr<std::recursive_mutex> *holder,
@@ -232,6 +243,8 @@ private:
     std::mutex m_machineLocksMutex;
     QHash<QString, std::shared_ptr<std::recursive_mutex>> m_machineLocks;
     std::mutex m_archiveMutex;
+    std::mutex m_provisioningMutex;
+    QHash<QString, std::shared_ptr<ProvisioningWatch>> m_provisioningWatches;
 };
 
 } // namespace PodStack

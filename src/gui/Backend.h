@@ -661,6 +661,7 @@ private:
     int m_k8sJobProgress = 0;
     QString m_k8sJobError;
     QTimer m_k8sTimer;
+    QTimer m_machineRefreshTimer;
     bool m_pullActive = false;
     QString m_pullStatus;
     QVariantMap m_diskUsage;

@@ -9,8 +9,8 @@ Rules-Requires-Root: no
 
 Package: podstack
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, podman (>= 4.9), systemd, polkitd, openssh-client, libcurl4t64, libcurl3t64-gnutls, libqt6sql6-sqlite, qt6-qpa-plugins, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, qml6-module-qtquick-dialogs, qml6-module-qt5compat-graphicaleffects
-Recommends: qemu-kvm, qemu-utils, virtiofsd, caddy, docker-compose-v2 | docker-compose, gnome-shell-extension-appindicator
+Depends: ${shlibs:Depends}, ${misc:Depends}, podman (>= 4.9), systemd, polkitd, openssh-client, libcurl4t64, libcurl3t64-gnutls, libqt6sql6-sqlite, qt6-qpa-plugins, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, qml6-module-qtquick-dialogs, qml6-module-qt5compat-graphicaleffects, qemu-system-x86, qemu-system-arm, qemu-utils, virtiofsd, ovmf, qemu-efi-aarch64, qemu-system-modules-spice, qemu-system-gui, swtpm
+Recommends: freerdp3-x11, virt-viewer, caddy, docker-compose-v2 | docker-compose, gnome-shell-extension-appindicator
 Description: Native desktop for Podman containers, VMs and Kubernetes
  PodStack provides containers, images, volumes, networks, Compose projects,
  QEMU/KVM machines, Kubernetes and local HTTPS domains in one native Linux

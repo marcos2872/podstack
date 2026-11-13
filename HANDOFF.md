@@ -93,6 +93,42 @@
 - GUI: campo “ISO do virtio-win (opcional)”, vazio baixa automaticamente; CLI
   omite `--virtio-win-iso`; `Backend`/QML mostram os novos estágios.
 
+### T10-01 (parcial) / T9-05 — canal `agent` e provisionamento
+- Toda machine sobe com `virtio-serial-pci,id=virtserial0`, chardev
+  `qga.sock` (`server=on,wait=off`) e `virtserialport,id=qga0,chardev=qga,
+  name=org.qemu.guest_agent.0`; o socket fica no `machineDir` (`0700`), nunca em TCP.
+- `GuestAgentClient` fala JSON por linha com `guest-sync-delimited`/`0xFF`:
+  `guest-ping`, `guest-get-osinfo`, `guest-info`, `guest-exec/status`,
+  `guest-network-get-interfaces` e `guest-file-*` (≤ 1 MiB).
+- `GuestChannel` resolve Linux (`ssh` primário, `agent` fallback) e Windows
+  (`agent` primário, `ssh` só com `windowsSsh:true`) e reconecta o chardev na
+  ordem `device_del qga0` → `chardev-remove qga` → `chardev-add qga` →
+  `device_add qga0`.
+- `MachineManager` mantém um watcher por machine em `provisioning` (thread
+  própria, join no stop/delete/destructor): Linux 300 s sem SSH →
+  `error`/`provisioning_timeout`; Windows 10 min sem `guest-ping` →
+  `error`/`guest_unreachable`, **sem timeout enquanto `installPending=true`**.
+- No ready: `guestReady=true`, `guestOs` (`family/version/edition/productName`),
+  `guestChannels`, `state=running`; para Windows com `installPending`, remove
+  `autounattend.xml/.iso`, limpa as ISOs e o flag.
+- `guestChannels`/`guestReady`/`guestOs`/`errorReason` persistem em `meta.json`
+  e SQLite (migração aditiva) e saem em `machines.get/list`.
+- GUI: linha **Guest** no Inspector, estágios `provisioning`, Stop habilitado e
+  Console SPICE liberado em `provisioning`; timer de 3 s atualiza machines em
+  `provisioning`.
+- Testes: `MockGuestAgent`, `guestAgentClient`, `guestChannelReconnect`,
+  `qemuCommandGuestAgent`, `machineManagerGuestProvisioning`,
+  `machineManagerGuestTimeout` e `machineManagerWindowsGuest`.
+
+### T9-07 — dependências de host
+- `qemuPackagesForManager()` corrigido (`qemu-system-x86-core`/
+  `qemu-system-aarch64-core` no Fedora) e listas com SPICE/áudio/`swtpm`.
+- Checks novos no `SetupManager`: `swtpm`, `spice` e `qemu-audio` (módulos por
+  candidatos Fedora/Ubuntu), com remediação por distro.
+- RPM `Requires`/`Recommends` e DEB `Depends`/`Recommends` atualizados;
+  `scripts/build-deb.sh` e `packaging/deb/control` idem.
+- `scripts/clean-install-check.sh --deb` cobre Ubuntu 24.04/26.04.
+
 ## O que falta (em ordem sugerida)
 
 1. **E2E real do Windows** (parcialmente executado em 2026-11-13).
@@ -114,17 +150,13 @@
      não estiver em pt-BR, ajuste o locale ou use um `answerFile` próprio.
    - Windows 11 25H2 pode exigir conta Microsoft no OOBE; o XML usa conta local
      + `HideOnlineAccountScreens`. Se falhar, ajustar o OOBE/BypassNRO.
-2. **T9-05 (bloqueada por T10-01).** Implementar o canal `agent`/`GuestChannel`
-   (T10-01), `guest-ping`, `guest-get-osinfo` (`guestOs`/Home-Pro), timeout de
-   10 min e remoção do answer file dirigida pelo agente. Hoje a machine vai
-   para `running` assim que o QEMU sobe.
-3. **T9-06.** Validar áudio Windows (`intel-hda` duplex + PipeWire) no E2E.
-4. **T9-07.** Empacotamento (`Requires`/`Depends` de QEMU/OVMF/swtpm/SPICE),
-   checks no `SetupManager` + `test_setup`, `scripts/clean-install-check.sh`
-   para DEB e correção de `qemuPackagesForManager()`.
-5. **Export/import Windows.** Levar `provisioner` no manifesto, tratar seed
+2. **T9-06.** Validar áudio Windows (`intel-hda` duplex + PipeWire) no E2E.
+3. **T10-01 completo (M10).** Catálogo de apps Linux/Windows com TTL de 5 min,
+   ícones ≤ 1 MiB e `origin=agent` em `machines.stats`; o canal `agent` já está
+   pronto.
+4. **Export/import Windows.** Levar `provisioner` no manifesto, tratar seed
    opcional e NVRAM/TPM fora do arquivo; habilitar export depois.
-6. **M10.** Apps remotos (xpra/RAIL); RAIL depende de T9-05.
+5. **M10.** Apps remotos (xpra/RAIL); RAIL depende de T9-05 (canal já pronto).
 
 ## Gotchas descobertos no primeiro teste real
 
@@ -147,22 +179,43 @@
   `disk.qcow2`, `nvram.fd` e os sockets, mas mantém o `meta.json` em `error`.
   A machine precisa ser removida e recriada; não há retry reaproveitando o
   disco. Considere mudar isso para preservar o disco em falha de start.
+- **qga.sock sem agente:** o QEMU cria o chardev `qga.sock` no boot, mesmo sem
+  `qemu-ga` no guest. Um `guest-ping` nesse estado fica pendurado até o timeout;
+  as sondas usam 1,5 s e só tentam reconectar via QMP quando `guestReady` já era
+  verdadeiro.
+- **`provisioning` agora é assíncrono:** `create/start` retornam antes de o
+  canal primário responder. Linux espera SSH (300 s) e Windows `guest-ping`
+  (10 min); a UI é atualizada por polling de 3 s. Não espere `running` imediato
+  em scripts/CLI.
+- **Instalação Windows >10 min:** enquanto `installPending=true` não há
+  timeout. Depois do stop/start pós-instalação, o timeout de 10 min vale.
 
 ## Evidência da última rodada
 
 - `cmake --build --preset dev`: ok, sem warnings novos.
 - `ctest --preset dev`: **17/17** testes passando.
-- Cobertura (`gcovr`, gate 80%): **79,9%** de linhas (25024/31328); o baseline
-  da branch antes da T9-08 era **79,8%** (24990/31328), então o gate de 80% já
-  falhava — a T9-08 não o reduziu (`VirtioWinCache.cpp` ficou em 90%).
+- Cobertura (`gcovr`, gate 80%): **80,2%** de linhas (25806/32185). A T9-08
+  partiu de 79,8% e a T10-01/T9-05/T9-07 subiram o gate (`GuestAgentClient.cpp`
+  90%, `GuestChannel.cpp` 97%).
 - `clang-format` 22.1.8 via `clang-format-diff` (linhas alteradas) e `clang-tidy`
-  22.1.8 em `VirtioWinCache.cpp`: limpos.
+  22.1.8 nos arquivos alterados: limpos.
   (Não há `clang-tools-extra` instalado no host; use
   `uvx --from clang-format==22.1.8` / `uvx --from clang-tidy==22.1.8`.)
 - `qmllint`: sem erros; warnings de `Theme`/acesso não qualificado são
   preexistentes no QML.
-- T9-08 (cache): `./build/dev/tests/test_machines virtioWinCache* machineManagerWindowsDownload*
-  machineManagerWindowsValidation` passam; `virtioWinCacheIntegration` com o ISO real
+- T10-01/T9-05: `guestAgentClient`, `guestAgentErrors`, `guestChannelWrappers`,
+  `guestChannelPingReconnect`, `guestChannelReconnectFailures`,
+  `guestChannelErrors`, `qemuCommandGuestAgent`,
+  `machineManagerGuestProvisioning`, `machineManagerGuestTimeout`,
+  `machineManagerGuestProbeFailure`, `machineManagerWindowsGuest`,
+  `machineManagerWindowsAgentHome`, `machineManagerWindowsProbeFailure` e
+  `machineManagerLinuxAgentFallback` passam. `MockGuestAgent` cobre
+  ping/osinfo/exec/arquivos/rede, erros e timeouts.
+- T9-07: `test_setup` 40/40; listas RPM/DEB e checks `swtpm`/`spice`/
+  `qemu-audio` cobertos. `scripts/clean-install-check.sh --deb` foi
+  implementado e validado com `bash -n`, mas não executado em container nesta
+  sessão.
+- T9-08 (cache): `virtioWinCacheIntegration` com o ISO real
   (877.373.440 bytes) servido por HTTP local: **PASS**, SHA-256
   `303f7ae4…949d` confere, cache `0700` e ISO/sidecar `0600`. O download externo pelo
   fedorapeople estagnou no host desta sessão; o hash/tamanho foram conferidos no arquivo
@@ -181,8 +234,9 @@
 - Criação Windows: `4b9cff9` (backend), `cebf1ca` (GUI/CLI), `a6d9647`
   (docs) e `43c71cf` (primeira versão desta nota).
 - Ajuste pós-E2E (QEMU 10.2/USB/QMP): `fd63fbe`.
-- T9-08 (download/cache do virtio-win): commit `feat(machines): ...` desta
-  rodada; ver o `git log` para o hash.
+- T9-08 (download/cache do virtio-win): `8aa1e76`.
+- T10-01 (canal `agent`)/T9-05/T9-07 + CI: commit `feat(machines): ...`
+  desta rodada; ver o `git log` para o hash.
 
 Nada foi enviado ao remoto. Antes de continuar, rode `git status` e leia
 [`docs/sdd/tasks.md`](docs/sdd/tasks.md) para confirmar o estado.

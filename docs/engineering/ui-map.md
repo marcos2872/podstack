@@ -149,8 +149,10 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
   do card lateral abre o mesmo overlay já na aba **Terminal**. **Portas** abre o diálogo de
   port forwarding da machine. Machines com `provisioner = "windows"` mostram o botão
   **Console**, que chama `machines.console.spice` e lança o `remote-viewer` em janela
-  própria (habilitado apenas com a machine `running`; viewer ausente exibe o erro no toast).
-  O botão **SSH** fica oculto em Windows sem `windowsSsh`.
+  própria (habilitado com a machine `running` **ou `provisioning`**, para diagnosticar a
+  instalação; viewer ausente exibe o erro no toast). O botão **SSH** fica oculto em Windows
+  sem `windowsSsh`. Em `provisioning`, **Stop** fica habilitado e **Start** desabilitado; a
+  linha **Guest** do Info mostra `guestOs.productName`/`guestReady`.
 - Grid de metadados: ID, portas publicadas, estado, criado e saúde.
 - Ações: abrir no navegador, copiar ID, revelar no gerenciador.
 - **Exposição LAN (T2-15):** na célula de portas, o botão alterna **“Expor na LAN”** /
@@ -315,7 +317,8 @@ Ações da GUI no M3: criar container (diálogo), start/stop/restart/pause/unpau
 | Criar container | imagem, nome, comando, portas, env, volumes, workdir, user, flags, recursos, expor na LAN | imagem existente/pull; nome único; portas válidas; helper para LAN |
 | Criar rede | nome, driver, subnet4, gateway, IPv6, labels | CIDR válido; sem sobreposição |
 | Criar máquina | distro/versão, nome, CPU/mem/disco, user, user-data, modo isolado, mounts (`origem:destino[:ro]`, até 8), isolar rede, SSH agent | recursos mínimos; nome único; YAML válido; mounts absolutos/existentes e tags seguras; isolado desabilita/limpa mounts e agent, marca/desabilita “Isolar a rede” e envia `isolated` |
-| Criar máquina Windows | seletor Linux/Windows, ISO do Windows, ISO do virtio-win **opcional** (vazio = download automático do ISO oficial ~877 MB, com verificação SHA-256), answer file opcional, edição, senha + **Gerar**/mostrar, `windowsSsh`, aviso de licença | mínimo 2 vCPU/4 GiB/64 GiB; ISO do Windows `.iso` absoluto/legível; ISO do virtio-win local, se informado; senha ≥ 8; answer file XML válido; Windows recusa mounts/agent forwarding; a senha é copiada para o clipboard ao concluir |
+| Criar máquina Windows | seletor Linux/Windows, ISO do Windows, ISO do virtio-win **opcional** (vazio = download automático do ISO oficial ~877 MB, com verificação SHA-256), answer file opcional, edição, senha + **Gerar**/mostrar, `windowsSsh`, aviso de licença | mínimo 2 vCPU/4 GiB/64 GiB; ISO do Windows `.iso` absoluto/legível; ISO do virtio-win local, se informado; senha ≥ 8; answer file XML válido; Windows recusa mounts/agent forwarding; a senha é copiada para o clipboard ao concluir; a criação termina em `provisioning` até o `guest-ping` |
+| Guest (Info) | linha com `guestOs.productName`/`guestReady` e canais vistos | `provisioning` mostra “aguardando agente/SSH”; timeout vira `error` com `errorReason` |
 | SSH agent (Info) | checkbox “Encaminhar SSH agent” + aviso de segurança | máquina fora de `provisioning`/`deleting`; persiste e sincroniza sem reiniciar |
 | Clonar máquina | novo nome; progresso (`stopping`/`disk`/`copy`/`metadata`/`starting`) | nome único; RFC 1123 |
 | Exportar máquina | arquivo `.tar.zst`, substituir | caminho absoluto; padrão em `~/Downloads/<nome>.tar.zst` |

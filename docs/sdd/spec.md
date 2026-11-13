@@ -606,9 +606,22 @@ substitui o XML gerado.
   IDE/AHCI); virtio-win e answer file ficam em CD-ROMs IDE. O prompt "Press any key to boot
   from CD or DVD" é respondido automaticamente por `send-key` via QMP nos primeiros segundos.
 - **`installPending`.** Enquanto a instalação está pendente, o instalador (CD USB) e o
-  virtio-win/answer file (CD-ROMs IDE) são anexados; no primeiro `stop` o PodStack limpa
-  `autounattend.xml`/`.iso`, os caminhos das ISOs e o flag, e o próximo start boota do disco.
-  A remoção dirigida por `guest-ping` fica para a T9-05.
+  virtio-win/answer file (CD-ROMs IDE) são anexados; quando o `guest-ping` responde, o
+  PodStack remove `autounattend.xml`/`.iso`, limpa os caminhos das ISOs e o flag. O primeiro
+  `stop` continua sendo o fallback (e o próximo start boota do disco).
+- **Canal `agent` e provisionamento (T9-05/T10-01).** Toda machine sobe com
+  `virtio-serial-pci` + chardev `qga.sock` (`server=on,wait=off`) + `virtserialport
+  id=qga0,name=org.qemu.guest_agent.0` no `machineDir` (`0700`); não há TCP. O
+  `GuestAgentClient` fala JSON por linha com `guest-sync-delimited`/`0xFF` e oferece
+  `guest-ping`, `guest-get-osinfo`, `guest-info`, `guest-exec/status`,
+  `guest-network-get-interfaces` e `guest-file-*` (≤ 1 MiB). Linux usa `ssh` primário e
+  `agent` fallback (300 s sem SSH → `error`/`provisioning_timeout`); Windows usa `agent`
+  primário e `ssh` só com `windowsSsh:true` (10 min sem `guest-ping` → `error`/
+  `guest_unreachable`, **sem timeout enquanto `installPending=true`**). `guestChannels`,
+  `guestReady`, `guestOs` e `errorReason` são persistidos e expostos por `machines.get/list`.
+  `guest-get-osinfo` grava `family`, `version`, `edition` e `productName` (Home/Pro). O canal
+  reconecta o chardev na ordem `device_del qga0` → `chardev-remove qga` → `chardev-add qga`
+  → `device_add qga0`.
 - **Export/import.** Exportar machines Windows ainda retorna `PODSTACK_UNSUPPORTED` nesta
   fase (o manifesto não carrega `provisioner` nem ISOs); clone só é permitido após concluir
   a instalação.
@@ -642,10 +655,12 @@ substitui o XML gerado.
 - [x] `nvram.fd`/`tpm/` com permissões restritas; estado do TPM sobrevive a restart.
 - [x] XML/ISO de answer file, `DriverPaths`, senha só no XML e mínimos validados.
 - [x] GUI/CLI criam Windows com `distro` ausente e validação inline.
-- [x] `machines.console.spice` valida provisioner/estado/socket e resolver do viewer.
+- [x] `machines.console.spice` valida provisioner/estado/socket e resolver do viewer
+  (aceita `provisioning` para diagnóstico da instalação).
+- [x] `qga.sock`/`guest-ping`, `guestChannels`/`guestReady`, timeouts Linux/Windows,
+  Home/Pro e remoção do answer file dirigida pelo agente (T9-05/T10-01).
 - [ ] E2E com Windows 11 real (instalação até o desktop, Secure Boot ativo, TPM 2.0 visível) —
-  depende de um ISO Windows e da T9-05.
-- [ ] Remoção do answer file por `guest-ping` e detecção Home/Pro — T9-05.
+  depende de um ISO Windows.
 - [x] Download/cache do virtio-win (T9-08): manifesto HTTPS + SHA-256, progresso/
   cancelamento, cache `0600`, remoção de versões antigas e fallback de ISO local.
 

@@ -99,6 +99,11 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
                 spec.qmpSocketPath);
         return {};
     }
+    if (!spec.guestAgentSocketPath.isEmpty() && !absolutePath(spec.guestAgentSocketPath)) {
+        invalid(error, QStringLiteral("O caminho do socket do agente deve ser absoluto."),
+                spec.guestAgentSocketPath);
+        return {};
+    }
     if (!absolutePath(spec.consoleLogPath)) {
         invalid(error, QStringLiteral("O caminho do console deve ser absoluto."),
                 spec.consoleLogPath);
@@ -287,6 +292,15 @@ QStringList QemuCommand::arguments(const QemuSpec &spec, Error *error)
          << QStringLiteral("socket,id=qmp,path=%1,server=on,wait=off").arg(spec.qmpSocketPath);
     args << QStringLiteral("-mon") << QStringLiteral("chardev=qmp,mode=control");
     args << QStringLiteral("-monitor") << QStringLiteral("none");
+    if (!spec.guestAgentSocketPath.isEmpty()) {
+        args << QStringLiteral("-device") << QStringLiteral("virtio-serial-pci,id=virtserial0");
+        args << QStringLiteral("-chardev")
+             << QStringLiteral("socket,id=qga,path=%1,server=on,wait=off")
+                    .arg(spec.guestAgentSocketPath);
+        args << QStringLiteral("-device")
+             << QStringLiteral("virtserialport,id=qga0,chardev=qga,"
+                               "name=org.qemu.guest_agent.0");
+    }
     args << QStringLiteral("-display") << QStringLiteral("none");
     if (!spec.spiceSocketPath.isEmpty()) {
         args << QStringLiteral("-spice")

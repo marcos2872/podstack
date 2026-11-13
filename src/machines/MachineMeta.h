@@ -28,6 +28,17 @@ struct MachineMount {
     QString tag;
 };
 
+/// Canal de guest disponível para uma machine (SSH ou qemu-guest-agent).
+struct GuestChannelInfo {
+    QString channel; // ssh|agent
+    QString role;    // primary|fallback
+    QString version;
+    QString lastSeenAt;
+
+    QJsonObject toJson() const;
+    static GuestChannelInfo fromJson(const QJsonObject &object);
+};
+
 /// Snapshot interno do qcow2 (não há tabela SQLite; metadados vêm do qemu-img).
 struct MachineSnapshot {
     QString id;
@@ -51,7 +62,7 @@ struct MachineUsbDevice {
 };
 
 /// Metadados persistidos de uma machine. Timestamps em RFC 3339 UTC com milissegundos.
-struct MachineMeta {
+struct MachineMeta { // NOLINT(clang-analyzer-optin.performance.Padding)
     QString id;
     QString name;
     QString distro;
@@ -84,6 +95,10 @@ struct MachineMeta {
     QString virtioWinIso;        // ISO do virtio-win fornecida pelo usuário (instalação pendente)
     bool windowsSsh = false;     // instala/habilita OpenSSH no answer file
     bool installPending = false; // anexa as mídias de instalação somente enquanto true
+    QString errorReason;         // classificação estável do último erro (ex.: guest_unreachable)
+    bool guestReady = false;     // canal primário já respondeu e a machine está running
+    QJsonObject guestOs;         // family/version/edition/productName via guest-get-osinfo
+    QVector<GuestChannelInfo> guestChannels; // canais vistos (primário/fallback)
     QJsonObject toJson() const;
     static MachineMeta fromJson(const QJsonObject &object);
 };

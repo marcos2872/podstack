@@ -344,6 +344,9 @@ ColumnLayout {
         if (stage === "starting") {
             return qsTr("Iniciando QEMU…")
         }
+        if (stage === "provisioning") {
+            return qsTr("Aguardando o canal de guest…")
+        }
         if (stage === "running") {
             return qsTr("Aguardando a machine ficar pronta…")
         }

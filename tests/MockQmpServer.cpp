@@ -180,6 +180,19 @@ int MockQmpServer::connectionCount() const
     return m_connections;
 }
 
+QVector<QPair<QString, QJsonObject>> MockQmpServer::commands() const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_commands;
+}
+
+void MockQmpServer::clearCommands()
+{
+    QMutexLocker locker(&m_mutex);
+    m_commands.clear();
+    m_commandCounts.clear();
+}
+
 MockQmpServer::Behavior MockQmpServer::behaviorFor(const QString &command)
 {
     QMutexLocker locker(&m_mutex);
@@ -211,6 +224,10 @@ void MockQmpServer::handleLine(QLocalSocket *socket, const QByteArray &line)
     const QJsonObject request = document.object();
     const QString command = request.value(QStringLiteral("execute")).toString();
     const QJsonValue id = request.value(QStringLiteral("id"));
+    {
+        QMutexLocker locker(&m_mutex);
+        m_commands.append({command, request.value(QStringLiteral("arguments")).toObject()});
+    }
     const Behavior behavior = behaviorFor(command);
 
     if (command == QStringLiteral("quit")) {
