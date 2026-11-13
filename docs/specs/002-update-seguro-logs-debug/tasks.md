@@ -1,7 +1,7 @@
 # Tarefas — 002 Atualização segura e logs de debug
 
-> Derivado de [`plan.md`](plan.md). **Ainda não estão em [`../../sdd/tasks.md`](../../sdd/tasks.md)** —
-> a promoção ocorre após aprovação (§Promoção).
+> Derivado de [`plan.md`](plan.md). **Promovidas para [`../../sdd/tasks.md`](../../sdd/tasks.md)
+> como TX-15/TX-16 em 2026-11-13**; este arquivo permanece como registro da proposta.
 > Legenda: `T-<área>-<NN>` · **P** = prioridade · **Dep** = dependências.
 
 ---
@@ -83,13 +83,13 @@ flowchart LR
 
 ## Promoção
 
-Quando aprovada, esta proposta promove:
+**Promoção realizada em 2026-11-13:**
 
-- `FR-UPD-006…016`, `FR-LOG-001…009`, `NFR-UPD-001…004` e `NFR-LOG-001…003` para
-  [`../../sdd/PRD.md`](../../sdd/PRD.md);
-- os fluxos de atualização/logs para uma **nova seção** de [`../../sdd/spec.md`](../../sdd/spec.md)
-  (não reutilizar §3.3/§7/§11, que são logs de container, machines e domínios);
-- as decisões de arquitetura para [`../../sdd/plan.md`](../../sdd/plan.md) e **ADR-0012**;
-- as tarefas `T-UPD-*`/`T-LOG-*`/`T-E2E-01`/`T-DOC-01` para [`../../sdd/tasks.md`](../../sdd/tasks.md)
-  como **TX-15/TX-16**;
-- os testes para [`../../sdd/testing.md`](../../sdd/testing.md).
+- `FR-UPD-006…016`, `FR-LOG-001…009`, `NFR-UPD-001…004` e `NFR-LOG-001…003` estão em
+  [`../../sdd/PRD.md`](../../sdd/PRD.md) (§7.17, §7.19, §8.7 e §8.8), com `FR-SYS-009` detalhado;
+- os fluxos de atualização/logs estão na **§15** de [`../../sdd/spec.md`](../../sdd/spec.md)
+  (logs de container, machines e domínios continuam em §3.3/§7/§11);
+- as decisões estão em [`../../sdd/plan.md`](../../sdd/plan.md) §15 e no **ADR-0012**;
+- as tarefas `T-UPD-*`/`T-LOG-*`/`T-E2E-01`/`T-DOC-01` estão em
+  [`../../sdd/tasks.md`](../../sdd/tasks.md) como **TX-15/TX-16**;
+- os testes estão em [`../../sdd/testing.md`](../../sdd/testing.md) §16.

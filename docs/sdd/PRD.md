@@ -212,7 +212,7 @@ O concorrente direto é o **Podman Desktop**; a referência de polimento é o Or
 | FR-SYS-006 | Inicialização automática no login, configurável. | P0 | `app.start_at_login` cria/remove autostart. |
 | FR-SYS-007 | Sair da GUI pode parar containers/daemon conforme preferência do usuário. | P1 | `app.wait_for_container_stop` respeitado. |
 | FR-SYS-008 | Múltiplas janelas e abas, com estado restaurado entre sessões. | P1 | Reabrir restaura janelas/abas selecionadas. |
-| FR-SYS-009 | Logs estruturados com rotação e redaction. | P0 | `~/.local/state/podstack/logs/` com JSON; sem segredos. |
+| FR-SYS-009 | Logs estruturados do app (daemon/GUI/CLI/QML/setup/update), com rotação e redaction. | P0 | `~/.local/state/podstack/logs/` em JSON Lines por 7 dias, `0600`/`0700`, redaction incondicional; detalhes em `FR-LOG-001…009`. |
 | FR-SYS-010 | Modo "não perturbe"/pausa de notificações. | P2 | Notificações silenciadas. |
 | FR-SYS-011 | Telemetria opt-in por categoria (crash, uso, performance, erros), desligada por padrão. | P2 | Nenhum dado sai sem consentimento; cada categoria é independente. |
 
@@ -411,6 +411,17 @@ O concorrente direto é o **Podman Desktop**; a referência de polimento é o Or
 | FR-UPD-003 | Relatório de diagnóstico com prévia e redaction. | P1 | Usuário revisa antes de enviar. |
 | FR-UPD-004 | Licença/conta opcional (sem bloquear recursos básicos). | P2 | App funciona offline sem conta. |
 | FR-UPD-005 | Migração **opcional** de dados de Docker/Podman existente (imagens, volumes). | P2 | Prévia e rollback; não é pré-requisito para usar o PodStack. |
+| FR-UPD-006 | Em upgrade, o `preinst` (Debian) e o `%pre` (RPM) param `podstack.socket`/`podstack.service` de **todos** os usuários logados, aplicam máscara runtime no socket, encerram GUI/daemon/helper antes do unpack (SIGTERM + 3 s + SIGKILL) e usam trap de limpeza se não conseguirem parar; o runner `podstack update --install --runner` não é encerrado. | P0 | Upgrade 0.1.3→0.1.4 com o app aberto: `pgrep` sem PIDs antigos, socket não reativa daemon antigo; falha aborta com máscara/helper restaurados. |
+| FR-UPD-007 | O `postinst`/`%post` recarregam units, habilitam `podstack.socket`, removem a máscara runtime e **reinicializam** o `podstack-helper.service`; `postrm` (Debian) e `%posttrans` (RPM) restauram socket/helper nos abortos e validam `is-active`/versão. | P0 | Helper novo ativo após o upgrade; `abort-upgrade`/`abort-install` e falha após `%pre` restauram socket/helper sem restart manual. |
+| FR-UPD-008 | GUI e CLI oferecem `update --install` (com consentimento) a partir do check assinado; o runner baixa o manifesto de `updates.feedUrl` e o artefato em `~/.cache/podstack/updates/` (`0600`, TTL 6 h, `.part` + rename, limite 300 MB, timeout 15 min), validando canal, arquitetura, formato e versão antes de qualquer elevação. | P0 | Assinatura/SHA/identidade recusados antes do gerenciador; versão igual/downgrade e chave customizada recusadas com código estável. |
+| FR-UPD-009 | A instalação roda em runner destacado (`podstack update --install --runner`, `--manifest` interno), que para o socket/daemon, chama `StageUpdate`/`InstallUpdate` e faz polling de `GetUpdateStatus` com retry/backoff enquanto o helper reinicia. | P0 | GUI fecha, helper instala em unidade transiente, app reabre na versão nova; restart do helper no meio do `apt` não mata a instalação. |
+| FR-UPD-010 | Em falha, o helper é mantido/restaurado ativo, o runner religa GUI/daemon da versão instalada e registra estado/log; o `state.json` permite retomar ou limpar na próxima execução. | P0 | Falha simulada não deixa o app parado; causa no log; retomada via `GetUpdateStatus(jobId)`. |
+| FR-UPD-011 | O primeiro update de uma versão sem runner (0.1.3→0.1.4) é manual (`apt`/`dnf`), coberto pelos scripts do pacote; o runner entra a partir da 0.1.4. | P0 | Manual validado nas VMs; runner disponível na 0.1.4. |
+| FR-UPD-012 | O update é serializado por `flock` global em `/run/podstack/update.lock` mantido pela unidade transiente; o helper recusa `InstallUpdate` com unidade ativa e reconstrói o estado no start. | P1 | Dois usuários não sobrepõem updates; lock sobrevive ao restart do helper. |
+| FR-UPD-013 | O helper copia o artefato para staging root-owned em `/run/podstack/update/<uuid>/` com `O_NOFOLLOW`, valida assinatura com a chave de release embutida/root-owned, compara o SHA-256 ao manifesto e confere nome/versão/arch. | P0 | Path/symlink/dono/SHA/identidade divergentes não executam o gerenciador; wrapper grava estado/log do job. |
+| FR-UPD-014 | O helper allowlisted é a **única** fronteira root: `StageUpdate`, `InstallUpdate` e `GetUpdateStatus` com ações polkit, rate limit e auditoria; admissão serializada por `flock`. | P0 | Sem `Exec`/shell; uid via `GetConnectionUnixUser`; unidade transiente fora do cgroup do helper/sessão. |
+| FR-UPD-015 | A GUI sai antes da instalação; o progresso é comunicado por notificação nativa e `state.json`/`GetUpdateStatus`; ao reabrir, a GUI mostra o resultado e expõe “Ver log”. | P1 | `update --install` usa exit codes 0/1/2/6/8/9 (sem 3); `--json` com `error.code`; `gui-was-open`/`--relaunch` funcionam. |
+| FR-UPD-016 | Containers/Podman, machines e dados do usuário continuam intactos; QEMU/virtiofsd ficam em scope próprio para sair do cgroup do `podstack.service`. | P0 | Update com machine rodando: VM/mounts virtiofs vivos; reconciliação de órfãos cobre restart. |
 
 > **Decisão (2026-11-11):** FR-UPD-004 (licença/conta) e FR-UPD-005 (migração de dados) ficam
 > no pós-v1 (M8). O PodStack é offline por padrão e não exige conta; a migração permanece
@@ -428,6 +439,20 @@ O concorrente direto é o **Podman Desktop**; a referência de polimento é o Or
 | FR-SETUP-006 | Validação final com obrigatórios vs. opcionais e opção de abrir o app com avisos. | P0 | Obrigatórios ausentes são destacados; o usuário pode corrigir ou continuar. |
 | FR-SETUP-007 | Setup reexecutável por Settings e `podstack setup`; jobs com progresso, log, cancelamento e retry. | P1 | Fechar a janela não perde o job; reexecutar não repete ações já aplicadas. |
 | FR-SETUP-008 | Nenhuma operação privilegiada pela GUI: instalar/remover pacotes e remover Docker passam pelo helper allowlisted; o socket de usuário é habilitado pelo daemon. | P0 | Nenhum `sudo`/shell na GUI; cada operação tem consentimento e auditoria. |
+
+### 7.19 Logs do app e retenção (`FR-LOG`)
+
+| ID | Requisito | Prioridade | Critério de aceite |
+|---|---|---|---|
+| FR-LOG-001 | Daemon, GUI, CLI, QML/Qt, setup e update gravam logs estruturados JSON Lines em `~/.local/state/podstack/logs/` (`0600`, dir `0700`), em arquivo corrente por processo (`podstackd.jsonl`, `podstack-gui-<pid>.jsonl`, `podstack-cli-<pid>.jsonl`). | P0 | Linhas com timestamp, nível, categoria, processo, PID, thread, mensagem e contexto; nomes correntes sem data. |
+| FR-LOG-002 | O nível é configurável (`advanced.logLevel`: error/warn/info/debug/trace; default info) por setting/GUI/`PODSTACK_LOG_LEVEL`, exposto na GUI e aplicado em runtime. | P0 | Desligar debug vale imediatamente, sem restart nem rebuild. |
+| FR-LOG-003 | Rotação diária e por tamanho, retenção de **7 dias** (`advanced.logRetentionDays`, 1–30), limite por arquivo (`advanced.logMaxBytes`, 10 MB) e teto total de 200 MB; timer da meia-noite local e rotação no start. | P0 | 8º dia removido; nomes `<processo>-YYYYMMDD[-N].jsonl`; rotação por tamanho sob `flock`; disco não cresce sem limite. |
+| FR-LOG-004 | Logs root por operação em `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` (root, dir `0750`, arquivo `0640`), escritos pelo wrapper com redaction; `GetLogs {jobId?}` via D-Bus expõe somente operações do uid do chamador. | P1 | Scriptlets emitem `JOB_ID`/`UID` via `logger`; `GetLogs` com cap 1 MiB, rate limit e auditoria; app nunca lê root diretamente. |
+| FR-LOG-005 | O job de setup (ação, id, linhas, erro) é persistido no log do daemon e aparece em `podstack system logs`/GUI/report, sobrevivendo ao restart do daemon. | P0 | Após reiniciar o daemon, o erro do setup continua visível. |
+| FR-LOG-006 | `podstack system logs [--follow\|--since\|--level\|--component\|--json\|--export\|--clear]` e página/diálogo de logs na GUI acessam os 7 dias com contrato estável. | P0 | `--json` `{api:1, lines, truncated, files}`; filtro inválido retorna 2; `--export` `0600` canonicalizado; “Ver log” no erro de setup/update. |
+| FR-LOG-007 | Redaction **incondicional** (tokens, Authorization, senhas, URLs com credenciais, env sensível) em todos os sinks, logs root e report; `diagnostics.redact` não a desliga nesses caminhos. | P0 | Nenhum segredo em log mesmo com `diagnostics.redact=false`; wrapper filtra stdout/stderr; sem redirecionamento `append` do systemd. |
+| FR-LOG-008 | `system.report --include-logs` inclui os logs rotacionados do usuário e os logs do helper/update obtidos via `GetLogs` escopado, com caps (10.000 linhas/componente e 5 MB no total). | P1 | `diagnostics.includeLogs` default **false**; report redigido, sem upload. |
+| FR-LOG-009 | O usuário pode apagar os próprios logs (`--clear`/GUI com confirmação) e desligar debug sem restart; logs root só via `GetLogs` escopado. | P1 | `--clear` apaga só logs do usuário; uid A não vê uid B; logs de sistema/root fora das operações do uid não são expostos. |
 
 ---
 
@@ -494,6 +519,23 @@ O concorrente direto é o **Podman Desktop**; a referência de polimento é o Or
 | NFR-OBS-002 | `podstack doctor` cobre socket, Podman, DNS, portas, QEMU, kubeconfig. |
 | NFR-OBS-003 | Telemetria opt-in por categoria, anônima, desligada por padrão. |
 | NFR-OBS-004 | Códigos de erro estáveis documentados. |
+
+### 8.7 Atualização segura (`NFR-UPD`)
+
+| ID | Requisito |
+|---|---|
+| NFR-UPD-001 | Update com o app aberto não perde dados de usuário; a GUI salva `UiState` em SIGTERM/SIGINT; containers e machines continuam rodando. |
+| NFR-UPD-002 | Encerramento com SIGTERM e carência de 3 s; SIGKILL após; sem órfãos; `pgrep` limpo; socket activation não recria binário antigo. |
+| NFR-UPD-003 | Instalação verificada dentro do helper com a chave de release embutida/root-owned; falha de assinatura, SHA-256 divergente, versão ou identidade do pacote não executa o gerenciador. |
+| NFR-UPD-004 | Nenhum segredo no argv/log; polkit autentica e o helper obtém o uid por `GetConnectionUnixUser`; staging/dono/identidade validados; unidade transiente fora do cgroup da sessão. |
+
+### 8.8 Logs e debug (`NFR-LOG`)
+
+| ID | Requisito |
+|---|---|
+| NFR-LOG-001 | Logging não bloqueia a UI (> 16 ms): `qInstallMessageHandler` enfileira em writer thread com fila limitada (8192), drop-oldest e contador `dropped`; `O_APPEND`, flush a cada 1 s e em warn/error+, flush final no encerramento. |
+| NFR-LOG-002 | 7 dias por padrão; limites `advanced.logMaxBytes` (10 MB) e teto total 200 MB; `0600`/`0700` no usuário e `0640`/`0750` em `/var/log/podstack/jobs/<uid>/`; redaction incondicional; rotação atômica sob `flock` e arquivo por processo. |
+| NFR-LOG-003 | Custo de debug mensurável; o volume de debug não derruba o app; retenção e concorrência (daemon+CLI) verificadas; `kill -9` não corrompe arquivos já descarregados. |
 
 ---
 
@@ -589,6 +631,7 @@ Design tokens e componentes em [`ui-map.md`](../engineering/ui-map.md).
 | Q10 | **Resolvida:** Pods do Podman ficam no grupo **Engine**; o grupo **Kubernetes** é reservado para k3s/clusters (M5) | — | Produto | resolvido em 2026-11-08 |
 | Q11 | **Resolvida:** migração opcional de dados Docker/Podman fica para o **pós-v1 (M8)**; o Docker não é removido nem migrado automaticamente | — | Produto | resolvido em 2026-11-11 |
 | Q12 | **Resolvida:** **sem conta obrigatória**; o app funciona 100% offline e nenhum recurso básico depende de rede | — | Produto | resolvido em 2026-11-11 |
+| Q13 | **Resolvida (2026-11-13):** update em dois caminhos (scripts do pacote para `apt`/`dnf` manual; runner assistido a partir da 0.1.4) com o helper como única fronteira root; logs do app em JSON Lines com retenção de 7 dias e redaction incondicional | ADR-0012, TX-15/TX-16 | Produto/Arquitetura | resolvido em 2026-11-13 |
 
 ---
 

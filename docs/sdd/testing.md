@@ -575,3 +575,48 @@ Todo PR/tarefa anexa:
 - cobertura quando aplicável;
 - screenshot/log para E2E;
 - benchmark antes/depois para performance.
+
+---
+
+## 16. Atualização segura e logs (spec 002)
+
+> Requisitos `FR-UPD-006…016`, `FR-LOG-001…009`, `NFR-UPD`/`NFR-LOG`; decisão ADR-0012.
+> Scriptlets root são testados em container com justificativa registrada aqui; E2E reais dependem
+> das VMs 24.04/26.04/Fedora.
+
+### 16.1 Unitários e integração
+
+| Área | Casos |
+|---|---|
+| Manifesto/artefato | parse, assinatura Ed25519/minisign, SHA-256 divergente, nome/versão/arch errados, versão igual/downgrade, canal beta/stable, manifesto em cache e expirado |
+| Download/cache | `.part` + rename, 300 MB, disco cheio, timeout 15 min, interrupção, limpeza de versões antigas, `0600`/`0700` |
+| Runner/estado | `state.json` atômico, fases, `jobId`/`unit`/`stateDir`/`pid`/`boot_id`, JSON corrompido, retomada por `GetUpdateStatus`, `gui-was-open`/`--relaunch`, `kill -9` do runner |
+| Helper | `StageUpdate`/`InstallUpdate`/`GetUpdateStatus`, uid via `GetConnectionUnixUser`, `O_NOFOLLOW`, path/symlink/dono, staging `0700`, chave de release vs `updates.publicKey` customizada, TOCTOU, unidade ativa, admissão por `flock`, varredura no start, rate limit |
+| Scriptlets | `preinst`/`postinst`/`postrm`/`prerm` e `%pre`/`%preun`/`%post`/`%posttrans` com processos falsos em container; fallback sem systemd; falha após `%pre`; `unmask` com retry; corrida de socket activation; trap de limpeza |
+| Exit codes/JSON | `update --check` 0/1/2/3/6/8/9 e `update --install` 0/1/2/6/8/9; `--json` com `error.code`; recusa de downgrade/chave customizada; cancelamento/timeout |
+| Logs core | JSON Lines, nomes correntes/rotacionados (`-YYYYMMDD[-N]`), rotação diária/por tamanho, timer da meia-noite, 8º dia removido, 1–30 dias, 10 MB/200 MB, `0600`/`0700`, `flock`, concorrência daemon+CLI, fila cheia/drop-oldest, `kill -9`, redaction com `diagnostics.redact=false` |
+| Logs root | `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` `0750`/`0640`, `uid`/`jobId` por linha, redaction de token na saída de `apt`/`dnf`, `GetLogs` uid A/B/negado/jobId, cap 1 MiB, rate limit; app não lê root |
+| CLI/GUI | `system logs` filtros/`--follow`/`--since`/`--level`/`--component`/`--json`/`--export`/`--clear`, filtro inválido 2, export `0600` canonicalizado/sem symlink, “Ver log”, leitura em worker/modelo virtualizado, i18n/`Accessible.name`, `qmllint` |
+| Report | vazio, volumetria, caps 10.000 linhas/componente e 5 MB, redaction incondicional, `diagnostics.includeLogs=false` |
+
+### 16.2 E2E (VMs Ubuntu 24.04/26.04 e Fedora)
+
+1. 0.1.3 com GUI/daemon/helper abertos e **machine rodando** → `apt install ./podstack_0.1.4.deb`:
+   PIDs antigos ausentes; helper novo; socket não reativa daemon antigo; OVMF `ok`; containers e
+   QEMU/virtiofsd intactos.
+2. 0.1.4 → GUI “Atualizar” 0.1.5: runner, polkit, `StageUpdate`/`InstallUpdate`, unidade transiente,
+   restart do helper no meio do `apt` sem matar a instalação, GUI/daemon novos, log do update.
+3. Falha simulada (download/assinatura/unpack/`postinst`/após `%pre` RPM): helper/socket restaurados,
+   GUI/daemon instalados religados, log da causa, sem órfãos; próximo `update` oferece retomar/limpar.
+4. Logs: 7 arquivos diários, 8º removido, rotação por tamanho, `0600`/`0640`, debug em runtime,
+   setup/helper/update, token redigido, `--json`/`--export`/`--clear`, GUI/report, uid A não vê B.
+5. SSH/Tuxee/Flatpak: caminho manual documentado, erro claro do runner e detecção que desabilita o
+   update assistido.
+
+### 16.3 Portões
+
+- `ctest --preset dev` verde, cobertura ≥ 80% (gate bloqueante).
+- `clang-format --dry-run --Werror`, `clang-tidy` e `qmllint` nas áreas tocadas.
+- Nenhum segredo em argv/log; permissões `0600`/`0640`; helper como única fronteira root;
+  redaction incondicional; assinatura/SHA validados no helper.
+- `scripts/clean-install-check.sh` cobre upgrade real quando o ambiente permitir.

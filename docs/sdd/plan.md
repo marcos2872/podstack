@@ -78,6 +78,9 @@ flowchart LR
 | `podstackd` | usuário | estado, RPC, streams, proxy, DNS, VMs, jobs | systemd --user, sempre ativo |
 | `podstack` | usuário | CLI (cliente RPC) | por invocação |
 | `podstack-helper` | root | operações privilegiadas declarativas | systemd system, sob demanda |
+| `podstack update --install --runner` | usuário | runner destacado do update assistido | por update, sobrevive à saída da GUI |
+| `podstack-update-<uuid>.service` | root | unidade transiente que executa o gerenciador fora do cgroup do helper/sessão | por update, `--collect` ao final |
+| `podstack-update-exec` | root | wrapper do job: `flock`, redaction, log e `state.json` | filho da unidade transiente |
 | `caddy` | usuário | proxy/HTTPS | filho do daemon |
 | `qemu-system-*` | usuário | machines | por máquina |
 | `k3s` | usuário (guest) | cluster | por cluster |
@@ -306,7 +309,11 @@ qemu-system-x86_64 \
 | `~/.local/share/podstack/kubeconfigs/` | kubeconfigs | 0600 |
 | `~/.local/share/podstack/ca/` | CA/chaves | 0600 |
 | `~/.cache/podstack/images/` | imagens cloud | 0700 |
-| `~/.local/state/podstack/logs/` | logs rotacionados | 0700 |
+| `~/.local/state/podstack/logs/` | logs rotacionados (JSON Lines) | 0700 (arquivos 0600) |
+| `~/.local/state/podstack/updates/` | `state.json`/`gui-was-open` do runner | 0700 |
+| `~/.cache/podstack/updates/` | manifesto e artefato do update | 0700 (arquivos 0600) |
+| `/run/podstack/update/<uuid>/` | staging root-owned e `state.json` do job | 0700/0640 |
+| `/var/log/podstack/jobs/<uid>/` | logs root por operação do update | 0750/0640 |
 | `~/.local/state/podstack/ui-state.json` | geometria, seção e abas da UI | 0600 |
 | `$XDG_RUNTIME_DIR/podstack/` | sockets, PID, locks | 0700 |
 
@@ -326,7 +333,12 @@ qemu-system-x86_64 \
 
 - RPM: `podstack`, `podstack-helper`, `podstack-selinux`.
 - systemd user: `podstack.socket`, `podstack.service`; system: `podstack-helper.service`.
-- polkit: ações `dev.podstack.helper.*`.
+- polkit: ações `dev.podstack.helper.*`, incluindo `stage-update`/`install-update` (`auth_admin`) e
+  `get-update-status`/`get-logs` (`auth_admin_keep`/`auth_admin`).
+- Scriptlets: `preinst`/`postinst`/`postrm`/`prerm` (Debian) e `%pre`/`%preun`/`%post`/`%posttrans`
+  (RPM) com parada/religamento de socket/daemon/helper, máscara runtime e trap de limpeza.
+- Wrapper `podstack-update-exec` em `/usr/libexec/podstack/`; `tmpfiles.d` e logrotate/timer para
+  `/var/log/podstack`; `procps`/`procps-ng` declarados.
 - AppStream + `.desktop` + ícones.
 - Flatpak: não previsto no v1; reavaliar sob demanda (ADR-0006).
 
@@ -344,6 +356,10 @@ qemu-system-x86_64 \
 | Podman 6.x | Camada de adaptação + testes 5.8/6.x |
 | Escopo | Marcos com critérios de saída; P2 fora do v1 |
 | SELinux | Política desde M0; testes |
+| Update deixar processo antigo ativo | `preinst`/`%pre` com máscara runtime, SIGTERM e trap; `postinst` reinicia o helper |
+| Update matar a instalação ao reiniciar o helper | unidade transiente de sistema; lock na unidade; polling de `GetUpdateStatus` |
+| Logging bloquear a UI ou crescer sem limite | writer assíncrono com fila limitada, retenção 7 dias, limites por arquivo e teto 200 MB |
+| Logs root expostos a outro uid | `GetLogs` escopado por `GetConnectionUnixUser`/polkit; app não lê root diretamente |
 
 ---
 
@@ -362,3 +378,59 @@ qemu-system-x86_64 \
 | M8 | USB/serial/X11/áudio, migração, i18n | P2 |
 
 Detalhamento em [`tasks.md`](tasks.md) e [`roadmap.md`](roadmap.md).
+
+---
+
+## 15. Atualização segura e logs do app
+
+> Decisão: **ADR-0012**. Requisitos: `FR-UPD-006…016`, `FR-LOG-001…009` e `NFR-UPD`/`NFR-LOG`
+> do [`PRD.md`](PRD.md). Fluxos em [`spec.md`](spec.md) §15.
+
+### 15.1 Caminhos do update
+
+| Caminho | Mecanismo | Resultado |
+|---|---|---|
+| Manual `apt`/`dnf` | `preinst`/`%pre` param socket/service/GUI/daemon/helper; `postinst`/`%posttrans` religam | Resolve o incidente 0.1.3; usuário reabre o app |
+| Assistido GUI/CLI (0.1.4+) | GUI → runner `setsid` → `StageUpdate`/`InstallUpdate` → unidade transiente | App reabre na versão nova via `gui-was-open` |
+
+- O `preinst` aplica `mask --runtime podstack.socket` por usuário logado, para socket/service, encerra
+  GUI (SIGTERM + 3 s + SIGKILL) e daemon (systemd ou `pkill -x podstackd`), confere o helper e aborta
+  com trap de limpeza se algo não parar. Não toca no runner nem em containers/machines.
+- O `postinst`/`%post` faz `daemon-reload`, habilita o socket, remove a máscara por usuário e
+  **reinicia** o helper; não abre GUI/daemon de usuário. `postrm`/`%posttrans` restauram nos abortos.
+- O runner grava `state.json` atômico (`QSaveFile`), para o socket/daemon e baixa/valida o manifesto
+  e o artefato em cache (`0600`, TTL 6 h, `.part` + rename, 300 MB, timeouts 15/5/30 min).
+- O helper é a única fronteira root: `StageUpdate` (staging `/run/podstack/update/<uuid>/` `0700`,
+  `O_NOFOLLOW`, dono via `GetConnectionUnixUser`, assinatura com chave de release embutida/root-owned,
+  SHA-256 contra o manifesto, identidade `dpkg-deb -f`/`rpm -qp`) e `InstallUpdate` (admissão com
+  `flock /run/podstack/update.admission.lock`, recusa de unidade ativa, `systemd-run
+  --unit=podstack-update-<uuid> --collect --property=RuntimeMaxSec=1800`).
+- O lock global `/run/podstack/update.lock` pertence à unidade transiente, não ao helper; o wrapper
+  `podstack-update-exec` executa o gerenciador, filtra stdout/stderr pela `Redaction`, grava
+  `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` e `state.json` (`0640`). Não há redirecionamento
+  `append` do systemd.
+- `GetUpdateStatus` (`auth_admin_keep`) alimenta o polling com backoff durante o restart do helper;
+  `UpdateProgress`/`UpdateFinished` são best-effort. O helper reconstrói o estado no start varrendo
+  unidades e `state.json`.
+- Falha: helper mantido/restaurado, GUI/daemon da versão instalada religados, erro em `state.json` e
+  no log; próxima execução oferece retomar/limpar. Sem rollback automático.
+- QEMU/virtiofsd ficam em `systemd-run --user --scope`; `KillMode=process` é defesa em profundidade,
+  não move processos de cgroup. `updates.mode=auto` só verifica/baixa; Flatpak/sem systemd de usuário
+  desabilita o assistido com caminho manual.
+
+### 15.2 Logs
+
+- `src/core/Logging` instala `qInstallMessageHandler` que só enfileira (writer thread, fila 8192,
+  drop-oldest + `dropped`), sem I/O no thread da UI; stderr/journal permanece.
+- `LogWriter`/`LogRotation`: JSON Lines por processo (`podstackd.jsonl`,
+  `podstack-gui-<pid>.jsonl`, `podstack-cli-<pid>.jsonl`), `O_APPEND`, flush 1 s/warn+, rotação
+  diária e por tamanho (`<processo>-YYYYMMDD[-N].jsonl`), retenção 7 dias (1–30),
+  `advanced.logMaxBytes` 10 MB, teto 200 MB, `flock` e rename atômico; timer da meia-noite local.
+- Redaction **antes** de gravar, em todos os sinks e logs root; `advanced.logLevel` em runtime
+  (`restartRequired: false`) e `PODSTACK_LOG_LEVEL`; setup jobs persistidos no log do daemon.
+- Logs root em `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` (`0750`/`0640`), com `tmpfiles.d`,
+  logrotate/timer e SELinux/AppArmor; o app só acessa via `GetLogs {jobId?}` (`auth_admin`, cap
+  1 MiB, rate limit, auditoria), escopado ao uid. O legado `podstackd.log` é migrado/removido.
+- `podstack system logs`/GUI leem/filtram/exportam/limpam os 7 dias (`--json` `{api:1,...}`,
+  `--export` `0600`, filtro inválido 2); `system.report --include-logs` inclui os 7 dias com caps
+  de 10.000 linhas/componente e 5 MB, e `diagnostics.includeLogs` default `false`.

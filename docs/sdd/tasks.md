@@ -271,6 +271,34 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 ---
 
+## TX-15 — Atualização segura
+
+> **Status (2026-11-13): planejado.** Spec promovida em [`../specs/002-update-seguro-logs-debug/`](../specs/002-update-seguro-logs-debug/);
+> requisitos `FR-UPD-006…016`/`NFR-UPD-001…004`, decisão ADR-0012.
+
+| ID | P | Tarefa | Dep | Conclusão |
+|---|---|---|---|---|
+| T-UPD-00 | P0 | Colocar QEMU/virtiofsd em scope próprio (`systemd-run --user --scope`); `KillMode=process` só como defesa; cobrir reconciliação de órfãos. | — | Update com machine rodando: QEMU/virtiofsd vivos no scope, mounts virtiofs intactos; restart do daemon não mata a VM; teste unitário/e2e. |
+| T-UPD-01 | P0 | `preinst` (Debian) e `%pre` (RPM): parar socket/service de todos os logados, máscara runtime, SIGTERM + 3 s + SIGKILL, fallback `pkill -x podstackd`, trap de limpeza, checagem do helper; `prerm`/`%preun` de remoção idem; declarar `procps`/`procps-ng`. | — | Container com processos falsos: PIDs antigos ausentes, runner vivo, helper parado, socket não reativa daemon antigo, containers/machines intactos, caso sem systemd coberto. |
+| T-UPD-02 | P0 | Corrigir `postinst`/`%post`/`%posttrans` e criar `postrm` (Debian): `daemon-reload`, socket global, `unmask --runtime` com retry/remediação, `restart podstack-helper.service`; abortos restauram helper/socket; handler SIGTERM/SIGINT na GUI salva `UiState`. | T-UPD-01 | Upgrade 0.1.3→0.1.4 com app aberto: helper novo, GUI nova, OVMF `ok`; falhas injetadas restauram helper/socket; `kill -TERM` salva `UiState`. |
+| T-UPD-03 | P0 | Runner assistido: `update --install [--yes] [--json]` + `--runner`/`--manifest`; cache `0600`/TTL 6 h; lock na unidade transiente e `state.json`; helper `StageUpdate`/`InstallUpdate`/`GetUpdateStatus` com staging root-owned, chave de release, `O_NOFOLLOW`, admissão por `flock` e varredura no start; wrapper `podstack-update-exec`. | T-UPD-00, T-UPD-02, T7-06 | E2E 0.1.4→0.1.5; restart do helper no meio do `apt`; dois usuários; falha restaura o app; assinatura/chave/path/TOCTOU/identidade recusados; machine intacta; exit codes/JSON. |
+| T-UPD-04 | P0 | Bootstrap e UI: 0.1.3→0.1.4 manual; GUI/CLI com notas, consentimento, progresso pós-saída, “Ver log”, `gui-was-open`/`--relaunch`, recusa de downgrade e retomada/limpeza; detectar Flatpak/sem systemd. | T-UPD-03 | Manual validado nas VMs; GUI 0.1.4→0.1.5; mensagens/exit codes estáveis; marcador/relaunch; retomada/limpeza; Flatpak/sem systemd com caminho manual. |
+
+## TX-16 — Logs de debug e retenção
+
+> **Status (2026-11-13): planejado.** Requisitos `FR-LOG-001…009`/`NFR-LOG-001…003`; decisão
+> ADR-0012; `FR-SYS-009` detalhado.
+
+| ID | P | Tarefa | Dep | Conclusão |
+|---|---|---|---|---|
+| T-LOG-01 | P0 | Núcleo: `qInstallMessageHandler` assíncrono com writer thread/fila limitada, JSON Lines, arquivo por processo, `LogWriter`/`LogRotation`, `0600`/`0700`, rotação diária/por tamanho, timer da meia-noite, retenção 7 dias, `advanced.logMaxBytes`, teto 200 MB, `advanced.logLevel` em runtime, `PODSTACK_LOG_LEVEL`, redaction incondicional; aplicar em daemon/GUI/CLI/QML. | — | Rotação/retenção no 8º dia, nomes/sequência, JSON, redaction com `diagnostics.redact=false`, permissões, UI não bloqueada, nível em runtime, concorrência daemon+CLI e `kill -9`; settings/schema atualizados. |
+| T-LOG-02 | P0 | Persistir setup jobs no log do daemon; logs root por operação em `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` via wrapper com redaction; scriptlets com `JOB_ID`/`UID`; `tmpfiles.d`/logrotate/SELinux; `GetLogs {jobId?}` escopado ao uid; report com caps e `diagnostics.includeLogs=false`; backend do `--clear`; migrar/remover `podstackd.log`. | T-LOG-01 | Erro de setup/helper visível após restart; permissões root; `GetLogs` uid A não vê B/negado/jobId; report vazio/volumetria; `--clear` backend; token redigido; legado migrado. |
+| T-LOG-03 | P0 | CLI `system logs [--follow\|--since\|--level\|--component\|--json\|--export\|--clear]`; página/diálogo de logs na GUI (filtro, follow, abrir pasta, exportar, limpar, “Exportar diagnóstico”); “Ver log” no erro de setup/update; worker/modelo virtualizado; i18n/`Accessible.name`. | T-LOG-01/02 | 7 dias acessíveis/filtráveis/exportáveis; `--export` `0600` canonicalizado; `--json` schema/golden; filtro inválido 2; `--clear` CLI/GUI; “Ver log”; `qmllint`; sem I/O no thread da UI. |
+| T-E2E-01 | P0 | Matriz de atualização/logs: Ubuntu 24.04/26.04 e Fedora; 0.1.3→0.1.4 manual com machine rodando; 0.1.4→0.1.5 assistido; falhas de download/assinatura/unpack/`postinst`/após `%pre`; restart do helper; dois usuários + lock; timeouts; 7 dias/rotação; uid A/B; containers/machines intactos; SSH/Tuxee/Flatpak documentados. | T-UPD-00…04, T-LOG-01…03 | Evidência por VM; PIDs antigos ausentes; OVMF; machines/containers intactos; logs e exit codes (install sem 3); cobertura ≥ 80%. |
+| T-DOC-01 | P0 | Atualizar `engineering/{packaging,settings,architecture,security,cli-parity,ui-map}.md`, `api-rpc.md` (`system.report`), `sdd/testing.md`, `docs/user/*`, `web/*`, `translations/`, `CHANGELOG`, ADR-0012 e bump 0.1.3→0.1.4. | T-UPD-04, T-LOG-03, T-E2E-01 | Docs/web consistentes; `scripts/web_build.py --check`; ADR-0012 no índice; promoção registrada. |
+
+---
+
 ## Grafo de dependências
 
 ```mermaid
@@ -282,6 +310,19 @@ flowchart LR
   M4 --> M7
   M6 --> M7
   M7 --> M8
+  M7 --> T0[T-UPD-00]
+  T0 --> T3[T-UPD-03]
+  T1[T-UPD-01] --> T2[T-UPD-02]
+  T2 --> T3
+  T3 --> T4[T-UPD-04]
+  T4 --> E[T-E2E-01]
+  L1[T-LOG-01] --> L2[T-LOG-02]
+  L2 --> L3[T-LOG-03]
+  L1 --> E
+  L2 --> E
+  L3 --> E
+  T4 --> D[T-DOC-01]
+  L3 --> D
 ```
 
 ## Definição de pronto (por tarefa)

@@ -1,6 +1,7 @@
 # 002 — Atualização segura e logs de debug (7 dias)
 
-> **Status:** proposta — não promovida ao núcleo SDD.
+> **Status:** promovida ao núcleo SDD em 2026-11-13 — PRD §7.17/§7.19/§8.7/§8.8,
+> spec §15, plan §15, tasks TX-15/TX-16 e ADR-0012. O diretório permanece como registro da proposta.
 > **Marcos:** TX-15 (atualização segura) e TX-16 (logs de debug) — transversais.
 > **Data:** 2026-11-12.
 > **Promove para:** [`../../sdd/PRD.md`](../../sdd/PRD.md) (FR-UPD-006…016, FR-LOG-001…009,

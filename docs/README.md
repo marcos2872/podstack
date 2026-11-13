@@ -14,7 +14,7 @@
 |---|---|---|
 | [`sdd/`](sdd/) | Núcleo SDD: constituição, PRD, spec, plan, roadmap, tasks, testing | fonte de verdade |
 | [`engineering/`](engineering/) | Referência técnica derivada: arquitetura, data model, RPC, UI, segurança, settings, CLI, empacotamento, web, marca | derivada |
-| [`specs/`](specs/) | Deltas SDD por feature (`spec.md`, `plan.md`, `tasks.md`) ainda não promovidos | proposta |
+| [`specs/`](specs/) | Deltas SDD por feature (`spec.md`, `plan.md`, `tasks.md`), propostos ou já promovidos | proposta/registro |
 | [`adr/`](adr/) | Decisões arquiteturais | decisão |
 | [`reference/`](reference/) | Material de referência do OrbStack 2.2.5 | referência |
 | [`user/`](user/) | Documentação de usuário | derivada |
@@ -78,6 +78,7 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 | [`adr/0008-docker-coexistence-setup.md`](adr/0008-docker-coexistence-setup.md) | Docker e Podman coexistem; setup não destrutivo e remoção opt-in |
 | [`adr/0009-tray-sni-lifecycle.md`](adr/0009-tray-sni-lifecycle.md) | Bandeja SNI (`QSystemTrayIcon`), fechar-para-bandeja e instância única |
 | [`adr/0010-deb-ubuntu-qtermwidget-vendorizado.md`](adr/0010-deb-ubuntu-qtermwidget-vendorizado.md) | DEB do Ubuntu 24.04 com QTermWidget vendorizado |
+| [`adr/0012-update-logging.md`](adr/0012-update-logging.md) | Atualização segura (scripts + runner/helper) e logs de debug com retenção de 7 dias |
 
 ## Referência
 
