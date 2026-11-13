@@ -294,6 +294,25 @@ void StreamClient::subscribeEvents()
     connectSocket();
 }
 
+void StreamClient::subscribeApps(const QString &machineId)
+{
+    stop(true);
+    m_kind = QStringLiteral("apps");
+    m_unsubscribeMethod = QStringLiteral("machines.apps.unsubscribe");
+    QJsonObject params;
+    if (!machineId.isEmpty()) {
+        params.insert(QStringLiteral("id"), machineId);
+    }
+    m_pending = {
+        {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+        {QStringLiteral("id"), 1},
+        {QStringLiteral("method"), QStringLiteral("machines.apps.subscribe")},
+        {QStringLiteral("params"), params},
+    };
+    m_pendingSend = true;
+    connectSocket();
+}
+
 void StreamClient::unsubscribe()
 {
     stop(true);
@@ -449,6 +468,8 @@ void StreamClient::onReadyRead()
             m_socket.abort();
         } else if (method == QStringLiteral("event")) {
             emit eventReceived(params);
+        } else if (method.startsWith(QStringLiteral("machines.apps.session."))) {
+            emit appEvent(method, params);
         } else if (method == QStringLiteral("images.pull.done")) {
             emit pullFinished(true, {});
             m_subscriptionId.clear();

@@ -150,8 +150,9 @@
 - `src/gui/AppHost.*`: spawn/supervisão do cliente local (`QProcess`), `stopLocal`,
   `shutdownAll`, sinais `clientExited`/`clientFailed`.
 - `Backend`: `appItems`/`appSessions`/`appsLoading`/`appsError`, `refreshApps`,
-  `launchApp`, `stopApp`, `closeApps`, polling de 2,5 s e `shutdownAll` em erro de
-  RPC; o `LaunchSpec` devolvido pelo daemon é convertido e passado ao `AppHost`.
+  `launchApp`, `stopApp`, `closeApps`, subscribe dedicado de
+  `machines.apps.session.*` + polling de fallback e `shutdownAll` em erro de RPC; o
+  `LaunchSpec` devolvido pelo daemon é convertido e passado ao `AppHost`.
 - QML: botão **Abrir app** no Inspector (Linux) e diálogo com busca, catálogo, sessões
   abertas e **Parar**.
 - CLI: `podstack machine apps list <machine>` (texto/`--json`); `launch`/`stop` retornam
@@ -231,7 +232,7 @@
 
 - `cmake --build --preset dev`: ok, sem warnings novos.
 - `ctest --preset dev`: **17/17** testes passando.
-- Cobertura (`gcovr`, gate 80%): **80,1%** de linhas (26682/33308). A T9-08
+- Cobertura (`gcovr`, gate 80%): **80,1%** de linhas (26728/33367). A T9-08
   partiu de 79,8% e as T10-00/T10-01/T9-05/T9-07 subiram o gate
   (`GuestAgentClient.cpp` 90%, `GuestChannel.cpp` 97%, `GuestAppCatalog.cpp` 86%,
   `AppSessionManager.cpp` 86%).

@@ -37,6 +37,7 @@ public:
     void startSetupRemoveDocker(const QJsonObject &params);
     void subscribeSetup(const QString &jobId);
     void subscribeEvents();
+    void subscribeApps(const QString &machineId = QString());
     void unsubscribe();
 
 signals:
@@ -56,6 +57,7 @@ signals:
     void setupEvent(const QJsonObject &event);
     void setupFinished(const QJsonObject &result);
     void eventReceived(const QJsonObject &event);
+    void appEvent(const QString &method, const QJsonObject &payload);
     void k8sLogLine(const QString &line);
     void k8sLogFinished(bool ok, const QString &error);
     void k8sJobEvent(const QJsonObject &event);

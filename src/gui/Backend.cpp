@@ -59,6 +59,28 @@ double parsePercent(const QString &text)
     return ok ? value : 0.0;
 }
 
+LaunchSpec appLaunchSpecFromJson(const QJsonObject &object)
+{
+    LaunchSpec spec;
+    spec.backend = object.value(QStringLiteral("backend")).toString();
+    spec.program = object.value(QStringLiteral("program")).toString();
+    for (const QJsonValue &value : object.value(QStringLiteral("args")).toArray()) {
+        spec.args.append(value.toString());
+    }
+    const QJsonObject env = object.value(QStringLiteral("env")).toObject();
+    for (auto it = env.constBegin(); it != env.constEnd(); ++it) {
+        spec.env.insert(it.key(), it.value().toString());
+    }
+    spec.knownHostsPath = object.value(QStringLiteral("knownHostsPath")).toString();
+    spec.sshPort = object.value(QStringLiteral("sshPort")).toInt();
+    spec.display = object.value(QStringLiteral("display")).toString();
+    spec.xpraVersion = object.value(QStringLiteral("xpraVersion")).toString();
+    spec.rdpFile = object.value(QStringLiteral("rdpFile")).toString();
+    spec.rdpSecretPath = object.value(QStringLiteral("rdpSecretPath")).toString();
+    spec.certFingerprint = object.value(QStringLiteral("certFingerprint")).toString();
+    return spec;
+}
+
 qint64 parseHumanBytes(const QString &text)
 {
     static const QRegularExpression pattern(
@@ -236,6 +258,50 @@ Backend::Backend(QObject *parent)
                 m_appsError = message;
                 emit appsChanged();
             });
+    connect(
+        &m_appsEventStream, &StreamClient::appEvent, this,
+        [this](const QString &method, const QJsonObject &payload) {
+            const QString sessionId = payload.value(QStringLiteral("sessionId")).toString();
+            if (sessionId.isEmpty()) {
+                return;
+            }
+            if (method.endsWith(QStringLiteral(".closed"))) {
+                for (int i = m_appSessions.size() - 1; i >= 0; --i) {
+                    if (m_appSessions.at(i).toMap().value(QStringLiteral("sessionId")).toString() ==
+                        sessionId) {
+                        m_appSessions.removeAt(i);
+                    }
+                }
+                m_appHost.stopLocal(sessionId);
+            } else {
+                bool replaced = false;
+                for (int i = 0; i < m_appSessions.size(); ++i) {
+                    if (m_appSessions.at(i).toMap().value(QStringLiteral("sessionId")).toString() ==
+                        sessionId) {
+                        m_appSessions[i] = payload.toVariantMap();
+                        replaced = true;
+                        break;
+                    }
+                }
+                if (!replaced) {
+                    m_appSessions.append(payload.toVariantMap());
+                }
+                if (method.endsWith(QStringLiteral(".started")) &&
+                    !m_appHost.isRunning(sessionId)) {
+                    const LaunchSpec spec =
+                        appLaunchSpecFromJson(payload.value(QStringLiteral("spec")).toObject());
+                    if (!spec.program.isEmpty()) {
+                        m_appHost.start(sessionId, spec);
+                    }
+                }
+            }
+            emit appsChanged();
+        });
+    connect(&m_appsEventStream, &StreamClient::error, this, [this](const QString &message) {
+        m_appsError = message;
+        m_appHost.shutdownAll();
+        emit appsChanged();
+    });
     m_appsRefreshTimer.setInterval(2500);
     connect(&m_appsRefreshTimer, &QTimer::timeout, this, [this] {
         if (!m_appsMachineId.isEmpty() && !m_appsWatcher.isRunning()) {
@@ -3463,6 +3529,10 @@ void Backend::refreshApps(const QString &id, bool refresh)
     m_appsLoading = true;
     emit appsChanged();
     m_appsRefreshTimer.start();
+    if (m_appsSubscribedId != id) {
+        m_appsEventStream.subscribeApps(id);
+        m_appsSubscribedId = id;
+    }
     startAppsRequest(QStringLiteral("machines.apps.list"),
                      QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("refresh"), refresh}},
                      QStringLiteral("list"));
@@ -3471,6 +3541,8 @@ void Backend::refreshApps(const QString &id, bool refresh)
 void Backend::closeApps()
 {
     m_appsRefreshTimer.stop();
+    m_appsEventStream.unsubscribe();
+    m_appsSubscribedId.clear();
     m_appsMachineId.clear();
     m_appsOp.clear();
     m_appItems.clear();
@@ -3558,24 +3630,8 @@ void Backend::onAppsFinished()
 
     if (m_appsOp == QStringLiteral("launch")) {
         const QString sessionId = result.value(QStringLiteral("sessionId")).toString();
-        const QJsonObject specObject = result.value(QStringLiteral("spec")).toObject();
-        LaunchSpec spec;
-        spec.backend = specObject.value(QStringLiteral("backend")).toString();
-        spec.program = specObject.value(QStringLiteral("program")).toString();
-        for (const QJsonValue &value : specObject.value(QStringLiteral("args")).toArray()) {
-            spec.args.append(value.toString());
-        }
-        const QJsonObject env = specObject.value(QStringLiteral("env")).toObject();
-        for (auto it = env.constBegin(); it != env.constEnd(); ++it) {
-            spec.env.insert(it.key(), it.value().toString());
-        }
-        spec.knownHostsPath = specObject.value(QStringLiteral("knownHostsPath")).toString();
-        spec.sshPort = specObject.value(QStringLiteral("sshPort")).toInt();
-        spec.display = specObject.value(QStringLiteral("display")).toString();
-        spec.xpraVersion = specObject.value(QStringLiteral("xpraVersion")).toString();
-        spec.rdpFile = specObject.value(QStringLiteral("rdpFile")).toString();
-        spec.rdpSecretPath = specObject.value(QStringLiteral("rdpSecretPath")).toString();
-        spec.certFingerprint = specObject.value(QStringLiteral("certFingerprint")).toString();
+        const LaunchSpec spec =
+            appLaunchSpecFromJson(result.value(QStringLiteral("spec")).toObject());
         if (sessionId.isEmpty() || !m_appHost.start(sessionId, spec)) {
             m_appsError = QStringLiteral("Não foi possível iniciar o cliente do app.");
         } else if (!m_appsMachineId.isEmpty()) {

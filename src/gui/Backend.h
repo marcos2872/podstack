@@ -610,6 +610,7 @@ private:
     StreamClient m_composeStream;
     StreamClient m_buildStream;
     StreamClient m_machineCreateStream;
+    StreamClient m_appsEventStream;
     StreamClient m_machineStatsStream;
     StreamClient m_machineConsoleStream;
     StreamClient m_setupStream;
@@ -699,6 +700,7 @@ private:
     QString m_appsError;
     QString m_appsOp;
     QString m_appsPendingSessionId;
+    QString m_appsSubscribedId;
     bool m_appsLoading = false;
     AppHost m_appHost;
     QVariantList m_machineDistros;
