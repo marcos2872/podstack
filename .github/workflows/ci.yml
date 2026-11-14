@@ -56,6 +56,18 @@ jobs:
       - name: clang-tidy (fontes alterados)
         run: scripts/check-tidy.sh origin/main
 
+      - name: Fronteiras dos módulos QML
+        run: scripts/check-qml-boundaries.sh
+
+      # Informativo por enquanto: o design system ainda tem avisos de
+      # "unqualified access" herdados do QML antigo. Vira bloqueante quando
+      # a migração terminar.
+      - name: qmllint (design system e telas)
+        continue-on-error: true
+        run: |
+          qmllint --version
+          qmllint -I build/coverage/qml $(find src/gui/qml -name '*.qml')
+
       - name: Testes
         run: ctest --preset coverage --output-on-failure
 

@@ -419,46 +419,14 @@ Rectangle {
                     Item { Layout.fillWidth: true }
 
                     // Busca
-                    Rectangle {
+                    AppSearchField {
+                        id: searchField
                         visible: window.section === "containers"
                         Layout.preferredWidth: window.compactLayout ? 200 : 270
                         Layout.preferredHeight: 34
-                        radius: Theme.radiusSm
-                        color: Theme.bgSurface2
-                        border.width: 1
-                        border.color: searchField.activeFocus ? Theme.indigo500 : Theme.border
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 10
-                            spacing: 7
-
-                            AppIcon {
-                                name: "search"
-                                size: 14
-                                color: Theme.textTertiary
-                            }
-
-                            TextField {
-                                id: searchField
-                                Layout.fillWidth: true
-                                Accessible.name: qsTr("Buscar containers")
-                                placeholderText: qsTr("Buscar containers…")
-                                color: Theme.textPrimary
-                                placeholderTextColor: Theme.textTertiary
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontBody
-                                leftPadding: 0
-                                rightPadding: 0
-                                verticalAlignment: TextInput.AlignVCenter
-                                background: null
-                                selectByMouse: true
-                                selectionColor: Theme.accentSoft
-                                selectedTextColor: Theme.textPrimary
-                                onTextChanged: window.searchText = text
-                            }
-                        }
+                        placeholderText: qsTr("Buscar containers…")
+                        accessibleName: qsTr("Buscar containers")
+                        onTextChanged: window.searchText = text
                     }
 
                     AppButton {

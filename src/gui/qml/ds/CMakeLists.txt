@@ -27,6 +27,7 @@ qt_add_qml_module(podstack_qml_design
         primitives/AppTooltip.qml
         primitives/AppSwitch.qml
         primitives/AppIconButton.qml
+        primitives/AppSearchField.qml
         patterns/AppViewHeader.qml
         patterns/AppFooter.qml
         patterns/AppNavItem.qml

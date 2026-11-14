@@ -483,41 +483,42 @@ indisponível); fechar a janela esconde para a bandeja; a segunda instância foc
 
 ## 11. Componentes QML
 
+## 11. Componentes QML
+
 ```
-qml/
-├── Main.qml
-├── Theme.qml            # singleton de tokens
-├── NavItem.qml
-├── ViewHeader.qml
-├── CatalogList.qml
-├── AppIcon.qml
-├── AppBadge.qml
-├── ActionButton.qml
-├── FormField.qml
-├── FormCheck.qml
-├── ContainersPage.qml
-├── Inspector.qml
-├── ContainerDetail.qml   # conteúdo do overlay de detalhe (9 abas, inclui Terminal)
-├── KubernetesPage.qml    # habilitar/desabilitar/reset + abas Pods/Services, logs e ações
-├── MachinesPage.qml      # catálogo + card lateral (Info/Logs/Stats)
-├── MachineInspector.qml  # card lateral e conteúdo do overlay da machine (+ Terminal/Files)
-├── MachineFilesView.qml  # file manager SSH/SCP da machine (aba Files do overlay)
-├── LogsView.qml
-├── StatsView.qml
-├── Sparkline.qml
-├── FilesView.qml
-├── ImagesView.qml
-├── VolumesView.qml
-├── NetworksView.qml
-├── PodsView.qml
-├── ComposeView.qml
-├── BuildsView.qml
-├── Toast.qml
-└── Setup/               # implementado em src/gui/qml (sem subpasta)
-    ├── SetupWindow.qml    # 7 etapas + progresso/log + confirmações
-    ├── SetupRail.qml      # rail de etapas
-    └── SetupCheckRow.qml  # check com status/versão/remediação
+src/gui/qml/
+├── Main.qml                 # shell, atalhos, overlays; módulo PodStack
+├── ds/                      # PodStack.Design (não importa Pages/Features)
+│   ├── Theme.qml            # singleton de tokens
+│   ├── primitives/          # AppButton, AppModal, AppInput, AppCheck, AppSelect,
+│   │                        # AppTabs, AppConfirmDialog, AppToast, AppSpinner,
+│   │                        # AppTooltip, AppSwitch, AppIconButton, AppSearchField...
+│   └── patterns/            # AppViewHeader, AppFooter, AppNavItem, AppSettingsRow,
+│                            # AppCatalogList, AppInspector, AppLogView, AppFileList,
+│                            # AppEmptyState, AppErrorBanner, AppStatCard, AppSection,
+│                            # SelectionState
+├── pages/                   # PodStack.Pages (consome só PodStack.Design)
+│   ├── containers/          # ContainersPage + detail/ContainerDetail
+│   ├── images/ volumes/ networks/ pods/
+│   ├── machines/            # MachinesPage, MachineInspector, MachineFilesView
+│   ├── compose/ builds/ kubernetes/
+├── features/                # PodStack.Features
+│   ├── setup/               # SetupWindow, SetupRail, SetupCheckRow
+│   ├── system-logs/         # SystemLogsDialog
+│   └── activity/            # ActivityMonitorWindow
+└── shell/                   # reservado ao shell do app
 ```
+
+- Módulos: `PodStack.Design`, `PodStack.Pages`, `PodStack.Features`; o módulo
+  `PodStack` reexporta os três (`IMPORTS` no CMake).
+- `ds/` é agnóstico de domínio; páginas não usam `Button`/`Dialog`/
+  `ComboBox`/`TextField` nativos (verificado por
+  `scripts/check-qml-boundaries.sh --strict`).
+- Tokens só via `Theme.*`; todo controle expõe `Accessible.name`; textos em
+  `qsTr()`.
+- `qt_add_qml_module` por módulo; `qmllint` e `tests/qml` (QUICK_TEST_MAIN)
+  no contrato do design system.
+
 
 - `qt_add_qml_module`; `qmllint` no CI.
 - Modelos C++ expostos via `Q_PROPERTY`/`Q_INVOKABLE`; QML só apresentação.
