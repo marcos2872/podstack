@@ -615,27 +615,16 @@ Rectangle {
             }
         }
 
-        RowLayout {
+        AppTabs {
             Layout.fillWidth: true
             Layout.leftMargin: 14
             Layout.rightMargin: 14
             Layout.bottomMargin: 8
-            spacing: 7
-
-            Item { Layout.fillWidth: true }
-
-            Repeater {
-                model: root.tabs
-
-                delegate: AppButton {
-                    required property var modelData
-
-                    text: modelData.label
-                    size: "sm"
-                    variant: root.tab === modelData.key ? "primary" : "ghost"
-                    onClicked: root.selectTab(modelData.key)
-                }
-            }
+            model: root.tabs.map(function(entry) { return entry.label })
+            currentIndex: Math.max(0, root.tabs.findIndex(function(entry) {
+                return entry.key === root.tab
+            }))
+            onActivated: function(index) { root.selectTab(root.tabs[index].key) }
         }
 
         Rectangle {

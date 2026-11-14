@@ -558,58 +558,17 @@ Rectangle {
         }
 
         // Abas
-        Rectangle {
+        AppTabs {
             Layout.fillWidth: true
             Layout.preferredHeight: 40
             Layout.leftMargin: 20
             Layout.rightMargin: 20
             Layout.topMargin: 10
-            radius: Theme.radiusSm
-            color: Theme.bgSurface2
-            border.width: 1
-            border.color: Theme.border
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 3
-                spacing: 2
-
-                Repeater {
-                    model: [qsTr("Visão geral"), qsTr("Logs"), qsTr("Info"), qsTr("Ambiente"),
-                            qsTr("Redes"), qsTr("Volumes"), qsTr("Arquivos"), qsTr("Terminal"),
-                            qsTr("Inspect")]
-
-                    ItemDelegate {
-                        id: detailTab
-                        readonly property bool active: root.tabIndex === index
-
-                        Layout.fillWidth: true
-                        implicitHeight: 30
-                        hoverEnabled: true
-                        Accessible.name: modelData
-
-                        background: Rectangle {
-                            radius: Theme.radiusXs
-                            color: detailTab.active ? Theme.bgElevated
-                                                    : detailTab.hovered ? Theme.bgHover
-                                                                        : "transparent"
-                        }
-
-                        contentItem: Text {
-                            text: modelData
-                            color: detailTab.active ? Theme.textPrimary : Theme.textTertiary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMeta
-                            font.weight: Font.Medium
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                        }
-
-                        onClicked: root.tabIndex = index
-                    }
-                }
-            }
+            model: [qsTr("Visão geral"), qsTr("Logs"), qsTr("Info"), qsTr("Ambiente"),
+                    qsTr("Redes"), qsTr("Volumes"), qsTr("Arquivos"), qsTr("Terminal"),
+                    qsTr("Inspect")]
+            currentIndex: root.tabIndex
+            onActivated: function(index) { root.tabIndex = index }
         }
 
         // Erro do inspect

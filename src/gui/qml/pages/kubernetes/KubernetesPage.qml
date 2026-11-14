@@ -260,27 +260,15 @@ ColumnLayout {
         }
     }
 
-    RowLayout {
+    AppTabs {
         Layout.fillWidth: true
         Layout.leftMargin: 22
         Layout.rightMargin: 22
         Layout.bottomMargin: 12
         visible: backend.k8s.enabled
-        spacing: 8
-
-        AppButton {
-            text: qsTr("Pods")
-            variant: page.tab === 0 ? "primary" : "ghost"
-            onClicked: page.tab = 0
-        }
-
-        AppButton {
-            text: qsTr("Services")
-            variant: page.tab === 1 ? "primary" : "ghost"
-            onClicked: page.tab = 1
-        }
-
-        Item { Layout.fillWidth: true }
+        model: [qsTr("Pods"), qsTr("Services")]
+        currentIndex: page.tab
+        onActivated: function(index) { page.tab = index }
     }
 
     Label {

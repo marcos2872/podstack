@@ -1,4 +1,4 @@
-find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Test QuickTest)
 
 qt_add_executable(test_core test_core.cpp ../src/daemon/builds/BuildStore.cpp
     ../src/daemon/builds/ManifestBuilder.cpp)
@@ -128,3 +128,12 @@ set_tests_properties(package_scriptlets PROPERTIES
 add_test(NAME update_exec
     COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-update-exec.sh
             $<TARGET_FILE:podstack-update-exec>)
+
+qt_add_executable(test_qml qml/main.cpp)
+target_link_libraries(test_qml PRIVATE podstack_qml podstack_qmlplugin
+    podstack_qml_design podstack_qml_designplugin
+    podstack_qml_pages podstack_qml_pagesplugin
+    podstack_qml_features podstack_qml_featuresplugin
+    Qt6::QuickTest Qt6::Test)
+add_test(NAME qml COMMAND test_qml -input ${CMAKE_CURRENT_SOURCE_DIR}/qml)
+set_tests_properties(qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

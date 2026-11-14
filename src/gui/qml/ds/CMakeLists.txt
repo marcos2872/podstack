@@ -21,6 +21,12 @@ qt_add_qml_module(podstack_qml_design
         primitives/AppPathField.qml
         primitives/AppToast.qml
         primitives/AppSparkline.qml
+        primitives/AppTabs.qml
+        primitives/AppConfirmDialog.qml
+        primitives/AppSpinner.qml
+        primitives/AppTooltip.qml
+        primitives/AppSwitch.qml
+        primitives/AppIconButton.qml
         patterns/AppViewHeader.qml
         patterns/AppFooter.qml
         patterns/AppNavItem.qml
@@ -30,6 +36,10 @@ qt_add_qml_module(podstack_qml_design
         patterns/AppLogView.qml
         patterns/AppFileList.qml
         patterns/SelectionState.qml
+        patterns/AppEmptyState.qml
+        patterns/AppErrorBanner.qml
+        patterns/AppStatCard.qml
+        patterns/AppSection.qml
 )
 
 target_link_libraries(podstack_qml_design PUBLIC Qt6::Qml Qt6::Quick)
