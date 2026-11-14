@@ -5,6 +5,19 @@ add_executable(podstackd
     main.cpp
     Daemon.cpp
     rpc/RpcServer.cpp
+    rpc/Internal.cpp
+    rpc/handlers/builds.cpp
+    rpc/handlers/compose.cpp
+    rpc/handlers/containers.cpp
+    rpc/handlers/images.cpp
+    rpc/handlers/k8s.cpp
+    rpc/handlers/machines.cpp
+    rpc/handlers/networks.cpp
+    rpc/handlers/pods.cpp
+    rpc/handlers/settings.cpp
+    rpc/handlers/setup.cpp
+    rpc/handlers/system.cpp
+    rpc/handlers/volumes.cpp
     builds/BuildStore.cpp
     builds/ManifestBuilder.cpp
     compose/ComposeManager.cpp
