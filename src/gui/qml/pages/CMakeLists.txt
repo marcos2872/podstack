@@ -30,6 +30,13 @@ qt_add_qml_module(podstack_qml_pages
         machines/MachinesPage.qml
         machines/MachineInspector.qml
         machines/MachineFilesView.qml
+        machines/InfoTab.qml
+        machines/LogsTab.qml
+        machines/StatsTab.qml
+        machines/TerminalTab.qml
+        machines/FilesTab.qml
+        machines/InspectorMetricCard.qml
+        machines/InspectorChartBox.qml
         compose/ComposePage.qml
         builds/BuildsPage.qml
         kubernetes/KubernetesPage.qml
