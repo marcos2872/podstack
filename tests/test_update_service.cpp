@@ -429,6 +429,10 @@ void UpdateServiceTest::logsReadRootFiles()
     error = {};
     QVERIFY(!service.logs(fixture.uid, QStringLiteral("update-missing"), &all, &truncated, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    error = {};
+    QVERIFY(!service.logs(fixture.uid, QStringLiteral("../etc/passwd"), &all, &truncated, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void UpdateServiceTest::installRunsSystemdRun()

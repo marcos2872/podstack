@@ -451,12 +451,22 @@ void LoggingTest::logReaderEdges()
     QCOMPARE(result.lines.size(), 1);
     QCOMPARE(result.lines.first().component, QStringLiteral("qml"));
 
+    options.component.clear();
+    options.maxBytes = 1;
+    QVERIFY(PodStack::readUserLogs(options, &result, &error));
+    QVERIFY(result.truncated);
+    options.maxBytes = 5 * 1024 * 1024;
+
     const QString target = dir.filePath(QStringLiteral("target.jsonl"));
     QVERIFY(PodStack::exportLogs({}, target, &error));
     const QString link = dir.filePath(QStringLiteral("link.jsonl"));
     QVERIFY(QFile::link(target, link));
     error = {};
     QVERIFY(!PodStack::exportLogs({}, link, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    QVERIFY(!PodStack::exportLogs({}, QStringLiteral("/nao-existe-podstack/x.jsonl"), &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
 
     const QString stateLogs = PodStack::Paths::stateDir() + QStringLiteral("/logs");

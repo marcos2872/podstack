@@ -75,6 +75,9 @@ private slots:
     void unixTerminationSignal();
     void systemLogs();
     void loadUpdateState();
+    void diagnosticReport();
+    void clearUpdateState();
+    void installUpdateFlatpakGuard();
     void guiStartsAndQuits();
 
 private:
@@ -1661,6 +1664,7 @@ void GuiTest::systemLogs()
 
     PodStack::Backend backend;
     backend.loadSystemLogs(QString(), QStringLiteral("setup"), 7);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.systemLogsBusy(), 3000);
     QVERIFY2(backend.systemLogsError().isEmpty(), qPrintable(backend.systemLogsError()));
     QCOMPARE(backend.systemLogs().size(), 1);
     QVERIFY(!backend.systemLogs().first().toMap().value(QStringLiteral("message"))
@@ -1690,6 +1694,39 @@ void GuiTest::loadUpdateState()
     QTRY_COMPARE_WITH_TIMEOUT(
         backend.updateStatus().value(QStringLiteral("status")).toString(),
         QStringLiteral("installed"), 3000);
+}
+
+void GuiTest::diagnosticReport()
+{
+    PodStack::Backend backend;
+    backend.generateDiagnosticReport();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.diagnosticReportPath().isEmpty(), 5000);
+    QVERIFY(QFileInfo::exists(backend.diagnosticReportPath()));
+}
+
+void GuiTest::clearUpdateState()
+{
+    const QString stateDir = m_testDataDir + QStringLiteral("/state/podstack/updates");
+    QVERIFY(QDir().mkpath(stateDir));
+    const QString path = stateDir + QStringLiteral("/state.json");
+    QFile state(path);
+    QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    state.write(QByteArrayLiteral(R"({"phase":"failed","message":"erro"})"));
+    state.close();
+
+    PodStack::Backend backend;
+    backend.clearUpdateState();
+    QVERIFY(!QFileInfo::exists(path));
+}
+
+void GuiTest::installUpdateFlatpakGuard()
+{
+    PodStack::Backend backend;
+    QSignalSpy failed(&backend, &PodStack::Backend::updateCheckFailed);
+    qputenv("FLATPAK_ID", "dev.podstack.PodStack");
+    const auto restore = qScopeGuard([] { qunsetenv("FLATPAK_ID"); });
+    backend.installUpdate();
+    QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 3000);
 }
 
 void GuiTest::unixTerminationSignal()

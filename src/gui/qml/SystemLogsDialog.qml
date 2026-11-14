@@ -18,6 +18,17 @@ AppDialog {
 
     onOpened: backend.loadSystemLogs(levelFilter, componentFilter, 7)
 
+    function openFor(forComponent, forLevel) {
+        componentFilter = forComponent || ""
+        levelFilter = forLevel || ""
+        const componentIndex = componentBox.model.indexOf(componentFilter)
+        componentBox.currentIndex = componentIndex > 0 ? componentIndex : 0
+        const levelIndex = levelBox.model.indexOf(levelFilter)
+        levelBox.currentIndex = levelIndex > 0 ? levelIndex : 0
+        open()
+        backend.loadSystemLogs(levelFilter, componentFilter, 7)
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 10
@@ -70,6 +81,11 @@ AppDialog {
                 text: qsTr("Abrir pasta")
                 size: "sm"
                 onClicked: backend.openLogsFolder()
+            }
+            ActionButton {
+                text: qsTr("Exportar diagnóstico")
+                size: "sm"
+                onClicked: backend.generateDiagnosticReport()
             }
             ActionButton {
                 text: qsTr("Limpar")
@@ -135,6 +151,16 @@ AppDialog {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
             wrapMode: Text.Wrap
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: backend.diagnosticReportPath.length > 0
+            text: qsTr("Relatório: %1").arg(backend.diagnosticReportPath)
+            color: Theme.textTertiary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMicro
+            elide: Text.ElideMiddle
         }
     }
 

@@ -202,6 +202,18 @@ Backend::Backend(QObject *parent)
             &Backend::onSetupFinished);
     connect(&m_updateWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onUpdateFinished);
+    connect(&m_systemLogsWatcher, &QFutureWatcher<SystemLogsTask>::finished, this,
+            &Backend::onSystemLogsFinished);
+    connect(&m_reportWatcher, &QFutureWatcher<QJsonObject>::finished, this, [this]() {
+        const QJsonObject result = m_reportWatcher.result();
+        if (result.contains(QStringLiteral("__error"))) {
+            m_systemLogsError = result.value(QStringLiteral("__error")).toString();
+            emit systemLogsChanged();
+            return;
+        }
+        m_diagnosticReportPath = result.value(QStringLiteral("path")).toString();
+        emit diagnosticReportChanged();
+    });
     connect(&m_diskWatcher, &QFutureWatcher<QJsonObject>::finished, this, &Backend::onDiskFinished);
     m_updateTimer.setInterval(6 * 60 * 60 * 1000);
     connect(&m_updateTimer, &QTimer::timeout, this, [this] { checkForUpdates(false); });
@@ -2585,6 +2597,17 @@ void Backend::loadUpdateState()
 
 void Backend::installUpdate()
 {
+    if (qEnvironmentVariableIsSet("FLATPAK_ID")
+        || QFileInfo::exists(QStringLiteral("/.flatpak-info"))) {
+        emit updateCheckFailed(
+            tr("O update assistido não está disponível no Flatpak; use o pacote do host."));
+        return;
+    }
+    if (QStandardPaths::findExecutable(QStringLiteral("systemctl")).isEmpty()) {
+        emit updateCheckFailed(
+            tr("O update assistido exige systemd de usuário; use o caminho manual."));
+        return;
+    }
     const QString stateDir = Paths::stateDir() + QStringLiteral("/updates");
     if (!QDir().mkpath(stateDir)) {
         emit updateCheckFailed(tr("Não foi possível preparar o estado do update."));
@@ -2618,27 +2641,41 @@ void Backend::installUpdate()
 
 void Backend::loadSystemLogs(const QString &level, const QString &component, int sinceDays)
 {
-    m_systemLogs.clear();
+    if (m_systemLogsWatcher.isRunning()) {
+        return;
+    }
+    m_systemLogsBusy = true;
     m_systemLogsError.clear();
-    m_lastLogs.clear();
-    m_systemLogsTruncated = false;
+    emit systemLogsChanged();
 
     LogReadOptions options;
     options.since = QDate::currentDate().addDays(-(qMax(1, sinceDays) - 1));
     options.level = level;
     options.component = component;
-    LogReadResult result;
-    Error error;
-    if (!readUserLogs(options, &result, &error)) {
-        m_systemLogsError = error.message;
+    m_pendingLogOptions = options;
+    m_pendingLogComponent = component;
+    m_systemLogsWatcher.setFuture(QtConcurrent::run([options]() {
+        SystemLogsTask task;
+        readUserLogs(options, &task.result, &task.error);
+        return task;
+    }));
+}
+
+void Backend::onSystemLogsFinished()
+{
+    m_systemLogsBusy = false;
+    const SystemLogsTask task = m_systemLogsWatcher.result();
+    if (!task.error.isEmpty()) {
+        m_systemLogsError = task.error.message;
         emit systemLogsChanged();
         return;
     }
-    m_lastLogs = result.lines;
-    m_systemLogsTruncated = result.truncated;
 
-    if (component.isEmpty() || component == QStringLiteral("helper")
-        || component == QStringLiteral("package")) {
+    m_lastLogs = task.result.lines;
+    m_systemLogsTruncated = task.result.truncated;
+
+    if (m_pendingLogComponent.isEmpty() || m_pendingLogComponent == QStringLiteral("helper")
+        || m_pendingLogComponent == QStringLiteral("package")) {
         HelperClient helper;
         QVariantMap reply;
         QString helperError;
@@ -2650,7 +2687,8 @@ void Backend::loadSystemLogs(const QString &level, const QString &component, int
                     object.value(QStringLiteral("jobId")).toString().isEmpty()
                         ? QStringLiteral("helper")
                         : QStringLiteral("package");
-                if (!component.isEmpty() && component != helperComponent) {
+                if (!m_pendingLogComponent.isEmpty()
+                    && m_pendingLogComponent != helperComponent) {
                     continue;
                 }
                 const QString lineLevel =
@@ -2670,6 +2708,7 @@ void Backend::loadSystemLogs(const QString &level, const QString &component, int
         }
     }
 
+    m_systemLogs.clear();
     for (const LogLine &line : m_lastLogs) {
         QVariantMap entry;
         entry.insert(QStringLiteral("ts"), line.ts);
@@ -2701,6 +2740,31 @@ void Backend::clearSystemLogs()
         return;
     }
     loadSystemLogs();
+}
+
+void Backend::generateDiagnosticReport()
+{
+    if (m_reportWatcher.isRunning()) {
+        return;
+    }
+    m_reportWatcher.setFuture(QtConcurrent::run([]() {
+        RpcClient client;
+        Error error;
+        QJsonObject result =
+            client.call(QStringLiteral("system.report"),
+                        QJsonObject{{QStringLiteral("includeLogs"), true}}, &error, 120000);
+        if (!error.isEmpty()) {
+            result.insert(QStringLiteral("__error"), error.message);
+        }
+        return result;
+    }));
+}
+
+void Backend::clearUpdateState()
+{
+    QFile::remove(Paths::stateDir() + QStringLiteral("/updates/state.json"));
+    m_updateStatus.clear();
+    emit updateStatusChanged();
 }
 
 void Backend::openLogsFolder()

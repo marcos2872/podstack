@@ -365,9 +365,9 @@ existe aba **Updates**: canal, feed e chave pública são internos do app (schem
 
 `SystemLogsDialog.qml` (atalho na sidebar **Logs**) lê os 7 dias via `Backend::loadSystemLogs` com
 filtro de nível/componente, **Atualizar**, **Exportar** (`0600`), **Abrir pasta** e **Limpar** com
-confirmação; mostra erro/truncamento. O CLI equivalente é `podstack system logs`. Leitura em
-worker/modelo virtualizado e “Exportar diagnóstico”/“Ver log” contextual permanecem pendentes
-(T-LOG-03).
+confirmação; mostra erro/truncamento e “Exportar diagnóstico” (report JSON). A leitura roda em
+worker (`QtConcurrent`) e o CLI equivalente é `podstack system logs`; follow em tempo real e
+`qmllint`/i18n final permanecem pendentes (T-LOG-03).
 
 O rodapé mantém **Executar configuração** (reabre o setup) e **Fechar**. Reset por chave usa o
 botão da linha; o reset total fica na CLI (`podstack config reset --all --yes`) e preserva

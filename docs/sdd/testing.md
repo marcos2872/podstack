@@ -598,7 +598,7 @@ Todo PR/tarefa anexa:
 | Exit codes/JSON | `test_cli/updateCommand`: `update --check` 0/1/2/3/6/8/9 e `update --install` 0/1/2/6/8/9 (sem 3); `--json` com `error.code`; `--yes` obrigatório sem TTY; manifesto ausente |
 | Logs core | `test_logging`: JSON Lines, nomes correntes/rotacionados (`-YYYYMMDD[-N]`), rotação diária/por tamanho, timer da meia-noite, 8º dia removido, 1–30 dias, 10 MB/200 MB, `0600`/`0700`, `flock`, concorrência daemon+CLI, fila cheia/drop-oldest, `kill -9`, redaction com `diagnostics.redact=false` |
 | Logs root | `test_update_service/logsReadRootFiles`: `/var/log/podstack/jobs/<uid>/<jobId>.jsonl`, redaction, `GetLogs` com/sem jobId, cap 1 MiB; `test_update_exec` cobre permissões 0640 e token do gerenciador; uid A/B/negado no helper |
-| CLI/GUI | `test_cli/systemLogs`: `--json`, `--level`, `--export` `0600`, `--clear`, filtro inválido 2; `test_gui/systemLogs`: `Backend::loadSystemLogs/export/clear`; `test_logging/logReaderFilters`; `--follow`/GUi worker e “Ver log” contextual pendentes (T-LOG-03) |
+| CLI/GUI | `test_cli/systemLogs`, `test_gui/systemLogs`, `test_gui/diagnosticReport`, `test_logging/logReaderFilters/logReaderEdges`; follow em tempo real e `qmllint`/i18n final pendentes |
 | Report | `test_rpc/systemReportRedactsSettings`: logs do usuário incluídos com redaction e `includeLogs=true`; caps 10.000/componente e 5 MB; `diagnostics.includeLogs=false`; helper via `GetLogs` |
 
 ### 16.2 E2E (VMs Ubuntu 24.04/26.04 e Fedora)

@@ -141,6 +141,9 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList systemLogs READ systemLogs NOTIFY systemLogsChanged)
     Q_PROPERTY(QString systemLogsError READ systemLogsError NOTIFY systemLogsChanged)
     Q_PROPERTY(bool systemLogsTruncated READ systemLogsTruncated NOTIFY systemLogsChanged)
+    Q_PROPERTY(bool systemLogsBusy READ systemLogsBusy NOTIFY systemLogsChanged)
+    Q_PROPERTY(QString diagnosticReportPath READ diagnosticReportPath
+               NOTIFY diagnosticReportChanged)
     Q_PROPERTY(QVariantMap diskHealth READ diskHealth NOTIFY diskHealthChanged)
     Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
     Q_PROPERTY(QString setupJobId READ setupJobId NOTIFY setupJobChanged)
@@ -267,6 +270,8 @@ public:
     QVariantList systemLogs() const { return m_systemLogs; }
     QString systemLogsError() const { return m_systemLogsError; }
     bool systemLogsTruncated() const { return m_systemLogsTruncated; }
+    bool systemLogsBusy() const { return m_systemLogsBusy; }
+    QString diagnosticReportPath() const { return m_diagnosticReportPath; }
     QVariantMap diskHealth() const { return m_diskHealth; }
     QString setupDockerPolicy() const { return m_setupDockerPolicy; }
     QString setupJobId() const { return m_setupJobId; }
@@ -441,6 +446,8 @@ public:
                                     const QString &component = QString(), int sinceDays = 7);
     Q_INVOKABLE bool exportSystemLogs(const QString &path);
     Q_INVOKABLE void clearSystemLogs();
+    Q_INVOKABLE void clearUpdateState();
+    Q_INVOKABLE void generateDiagnosticReport();
     Q_INVOKABLE void openLogsFolder();
     Q_INVOKABLE void checkDiskHealth();
     Q_INVOKABLE void setupCancel();
@@ -490,6 +497,7 @@ signals:
     void eventsChanged();
     void updateStatusChanged();
     void systemLogsChanged();
+    void diagnosticReportChanged();
     void updateAvailable(const QVariantMap &release);
     void updateCheckFailed(const QString &reason);
     void diskHealthChanged();
@@ -515,6 +523,7 @@ private:
     void onSetupFinished();
     void onUpdateFinished();
     void loadUpdateState();
+    void onSystemLogsFinished();
     void onDiskFinished();
     void onSettingsFinished();
     void onSettingsActionFinished();
@@ -732,7 +741,17 @@ private:
     QVariantList m_systemLogs;
     QString m_systemLogsError;
     bool m_systemLogsTruncated = false;
+    bool m_systemLogsBusy = false;
     QVector<PodStack::LogLine> m_lastLogs;
+    struct SystemLogsTask {
+        LogReadResult result;
+        Error error;
+    };
+    LogReadOptions m_pendingLogOptions;
+    QString m_pendingLogComponent;
+    QFutureWatcher<SystemLogsTask> m_systemLogsWatcher;
+    QFutureWatcher<QJsonObject> m_reportWatcher;
+    QString m_diagnosticReportPath;
     bool m_updateCheckRunning = false;
     bool m_updatesEnabled = true;
     bool m_updateInteractive = false;
