@@ -80,8 +80,14 @@ private slots:
     void rotateAtStart();
     void queueDrop();
     void clearLogs();
+    void rotationErrorPaths();
+    void rotationHelpers();
+    void logWriterLifecycle();
     void logReaderFilters();
     void logReaderEdges();
+    void logReaderComponents();
+    void logReaderExportErrors();
+    void loggingWrappers();
     void settingsSchema();
 
 private:
@@ -376,6 +382,180 @@ void LoggingTest::clearLogs()
     QVERIFY(lines.join(QString()).contains(QStringLiteral("depois do clear")));
 }
 
+void LoggingTest::rotationErrorPaths()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QDate date(2026, 11, 13);
+
+    PodStack::LogRotation::Options empty;
+    empty.stem = QStringLiteral("podstackd");
+    QString error;
+    QVERIFY(!PodStack::LogRotation::rotate(empty, date, &error));
+    QVERIFY(!error.isEmpty());
+
+    error.clear();
+    int sequence = 9;
+    QVERIFY(!PodStack::LogRotation::rotateForSize(empty, date, &sequence, &error));
+    QCOMPARE(sequence, 0);
+    QVERIFY(!error.isEmpty());
+
+    QFile blocker(dir.filePath(QStringLiteral("blocker")));
+    QVERIFY(blocker.open(QIODevice::WriteOnly));
+    blocker.write("x");
+    blocker.close();
+    PodStack::LogRotation::Options blocked;
+    blocked.directory = blocker.fileName();
+    blocked.stem = QStringLiteral("podstackd");
+    error.clear();
+    QVERIFY(!PodStack::LogRotation::rotate(blocked, date, &error));
+    QVERIFY(!error.isEmpty());
+    error.clear();
+    QVERIFY(!PodStack::LogRotation::rotateForSize(blocked, date, &sequence, &error));
+    QVERIFY(!error.isEmpty());
+
+    PodStack::LogRotation::Options missing;
+    missing.directory = dir.filePath(QStringLiteral("missing"));
+    missing.stem = QStringLiteral("podstackd");
+    QVERIFY(PodStack::LogRotation::rotateAtStart(missing, date));
+    QCOMPARE(PodStack::LogRotation::prune(missing, date), 0);
+    QCOMPARE(PodStack::LogRotation::clear(missing.directory), 0);
+    QVERIFY(PodStack::LogRotation::rotatedFiles(missing).isEmpty());
+
+    PodStack::LogRotation::Options collision;
+    collision.directory = dir.filePath(QStringLiteral("collision"));
+    collision.stem = QStringLiteral("podstackd");
+    QVERIFY(QDir().mkpath(collision.directory));
+    QFile current(PodStack::LogRotation::currentPath(collision));
+    QVERIFY(current.open(QIODevice::WriteOnly | QIODevice::Append));
+    current.write("x");
+    current.close();
+    QVERIFY(QDir().mkpath(PodStack::LogRotation::rotatedPath(collision, date)));
+    error.clear();
+    QVERIFY(!PodStack::LogRotation::rotate(collision, date, &error));
+    QVERIFY(!error.isEmpty());
+
+    PodStack::LogRotation::Options emptyCurrent;
+    emptyCurrent.directory = dir.filePath(QStringLiteral("empty-current"));
+    emptyCurrent.stem = QStringLiteral("podstackd");
+    QVERIFY(PodStack::LogRotation::rotateForSize(emptyCurrent, date, &sequence, nullptr));
+
+    error.clear();
+    QFile today(PodStack::LogRotation::currentPath(collision));
+    QVERIFY(today.open(QIODevice::WriteOnly | QIODevice::Append));
+    today.write("y");
+    today.close();
+    QVERIFY(PodStack::LogRotation::rotateAtStart(collision, date, &error));
+    error.clear();
+    QCOMPARE(PodStack::LogRotation::prune(collision, date, &error), 0);
+    QVERIFY(error.isEmpty());
+}
+
+void LoggingTest::rotationHelpers()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    PodStack::LogRotation::Options options;
+    options.directory = dir.path();
+    options.stem = QStringLiteral("podstackd");
+
+    const QDate today(2026, 11, 13);
+    const auto touch = [&options](const QString &path, const QDateTime &mtime) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) {
+            return false;
+        }
+        file.write("x");
+        file.flush();
+        const bool ok = file.setFileTime(mtime, QFileDevice::FileModificationTime);
+        file.close();
+        return ok;
+    };
+
+    QVERIFY(touch(PodStack::LogRotation::rotatedPath(options, today.addDays(-1)),
+                  QDateTime(today.addDays(-1), QTime(12, 0))));
+    QVERIFY(touch(PodStack::LogRotation::rotatedPath(options, today, 2),
+                  QDateTime(today, QTime(11, 0))));
+    QVERIFY(touch(PodStack::LogRotation::rotatedPath(options, today, 1),
+                  QDateTime(today, QTime(11, 0))));
+    QVERIFY(touch(dir.filePath(QStringLiteral("podstackd-notes.jsonl")),
+                  QDateTime(today, QTime(10, 0))));
+
+    const QStringList files = PodStack::LogRotation::rotatedFiles(options);
+    QCOMPARE(files.size(), 3);
+    QCOMPARE(files.at(0), PodStack::LogRotation::rotatedPath(options, today.addDays(-1)));
+    QCOMPARE(files.at(1), PodStack::LogRotation::rotatedPath(options, today, 1));
+    QCOMPARE(files.at(2), PodStack::LogRotation::rotatedPath(options, today, 2));
+
+    QCOMPARE(PodStack::LogRotation::clear(options.directory), 4);
+    QVERIFY(PodStack::LogRotation::rotatedFiles(options).isEmpty());
+}
+
+void LoggingTest::logWriterLifecycle()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    PodStack::LogRotation::Options options;
+    options.directory = dir.path();
+    options.stem = QStringLiteral("writer");
+    options.maxFileBytes = 64;
+    options.maxTotalBytes = 1024 * 1024;
+
+    PodStack::LogWriter writer(QStringLiteral("writer"), options, PodStack::LogLevel::Info);
+    writer.start();
+    writer.start();
+    QMessageLogContext context;
+    writer.enqueue(QtInfoMsg, context, QStringLiteral("primeira"));
+    writer.enqueue(QtWarningMsg, context, QStringLiteral("segunda"));
+    writer.flush();
+    writer.requestRotation();
+    writer.flush();
+    writer.stop();
+    writer.flush();
+
+    QVERIFY(!writer.currentFile().isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(!PodStack::LogRotation::rotatedFiles(options).isEmpty(), 3000);
+
+    QCOMPARE(PodStack::LogWriter::levelFromName(QStringLiteral("trace"), PodStack::LogLevel::Info),
+             PodStack::LogLevel::Trace);
+    QCOMPARE(PodStack::LogWriter::levelFromName(QStringLiteral("desconhecido"),
+                                                PodStack::LogLevel::Warn),
+             PodStack::LogLevel::Warn);
+    QCOMPARE(PodStack::LogWriter::levelName(PodStack::LogLevel::Debug), QStringLiteral("debug"));
+    QCOMPARE(PodStack::LogWriter::levelName(PodStack::LogLevel::Trace), QStringLiteral("trace"));
+    QCOMPARE(PodStack::LogWriter::levelName(static_cast<PodStack::LogLevel>(99)),
+             QStringLiteral("info"));
+
+    QTemporaryDir smallDir;
+    QVERIFY(smallDir.isValid());
+    PodStack::LogRotation::Options small;
+    small.directory = smallDir.path();
+    small.stem = QStringLiteral("small");
+    small.maxFileBytes = 32;
+    small.maxTotalBytes = 1024 * 1024;
+    PodStack::LogWriter smallWriter(QStringLiteral("small"), small, PodStack::LogLevel::Info);
+    smallWriter.start();
+    for (int index = 0; index < 20; ++index) {
+        smallWriter.enqueue(QtInfoMsg, context, QString(200, QLatin1Char('x')));
+    }
+    smallWriter.flush();
+    smallWriter.stop();
+    QVERIFY(!PodStack::LogRotation::rotatedFiles(small).isEmpty());
+
+    QFile blocker(dir.filePath(QStringLiteral("blocked")));
+    QVERIFY(blocker.open(QIODevice::WriteOnly));
+    blocker.write("x");
+    blocker.close();
+    PodStack::LogRotation::Options blocked;
+    blocked.directory = blocker.fileName();
+    blocked.stem = QStringLiteral("blocked");
+    PodStack::LogWriter blockedWriter(QStringLiteral("blocked"), blocked, PodStack::LogLevel::Info);
+    blockedWriter.start();
+    blockedWriter.enqueue(QtInfoMsg, context, QStringLiteral("sem arquivo"));
+    blockedWriter.flush();
+    blockedWriter.stop();
+}
+
 void LoggingTest::logReaderFilters()
 {
     QTemporaryDir dir;
@@ -480,6 +660,80 @@ void LoggingTest::logReaderEdges()
     stateFile.close();
     QVERIFY(PodStack::clearUserLogs(&error));
     QVERIFY(!QFileInfo::exists(stateFile.fileName()));
+}
+
+void LoggingTest::logReaderExportErrors()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    PodStack::Error error;
+
+    QVERIFY(!PodStack::exportLogs({}, dir.path(), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    error = {};
+    QVERIFY(
+        !PodStack::exportLogs({}, dir.filePath(QStringLiteral("missing/sub/file.jsonl")), &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString target = dir.filePath(QStringLiteral("target.jsonl"));
+    QFile real(target);
+    QVERIFY(real.open(QIODevice::WriteOnly));
+    real.close();
+    const QString link = dir.filePath(QStringLiteral("link.jsonl"));
+    QVERIFY(QFile::link(target, link));
+    error = {};
+    QVERIFY(!PodStack::exportLogs({}, link, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void LoggingTest::logReaderComponents()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QFile file(dir.filePath(QStringLiteral("podstackd.jsonl")));
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(QByteArrayLiteral(
+        R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.update","process":"podstackd","message":"update"})"
+        "\n\n"
+        R"({"ts":"2026-11-13T00:00:01Z","level":"info","category":"qml","process":"podstack-gui-1","message":"qml"})"
+        "\n"
+        R"({"ts":"2026-11-13T00:00:02Z","level":"info","category":"podstack.core","process":"podstack-gui-1","message":"gui"})"
+        "\n"
+        R"({"ts":"2026-11-13T00:00:03Z","level":"info","category":"podstack.core","process":"podstack-cli-1","message":"cli"})"
+        "\n"
+        R"({"ts":"2026-11-13T00:00:04Z","level":"info","category":"podstack.core","process":"podstackd","message":"daemon"})"
+        "\n"));
+    file.close();
+
+    PodStack::LogReadOptions options;
+    options.directory = dir.path();
+    options.since = QDate::currentDate().addDays(-6);
+    options.level = QStringLiteral("trace");
+    PodStack::LogReadResult result;
+    PodStack::Error error;
+    QVERIFY(PodStack::readUserLogs(options, &result, &error));
+    QCOMPARE(result.lines.size(), 5);
+    QCOMPARE(result.lines.at(0).component, QStringLiteral("update"));
+    QCOMPARE(result.lines.at(1).component, QStringLiteral("qml"));
+    QCOMPARE(result.lines.at(2).component, QStringLiteral("gui"));
+    QCOMPARE(result.lines.at(3).component, QStringLiteral("cli"));
+    QCOMPARE(result.lines.at(4).component, QStringLiteral("daemon"));
+}
+
+void LoggingTest::loggingWrappers()
+{
+    PodStack::Logging::shutdown();
+    PodStack::Logging::reload();
+    QVERIFY(PodStack::Logging::currentLogFile().isEmpty());
+    QCOMPARE(PodStack::Logging::level(), PodStack::LogLevel::Info);
+    QCOMPARE(PodStack::Logging::levelName(PodStack::LogLevel::Warn), QStringLiteral("warn"));
+
+    initLogging(QStringLiteral("wrappers"), QStringLiteral("debug"));
+    QCOMPARE(PodStack::Logging::level(), PodStack::LogLevel::Debug);
+    QVERIFY(!PodStack::Logging::logDirectory().isEmpty());
+    QVERIFY(!PodStack::Logging::currentLogFile().isEmpty());
+    stopLogging();
 }
 
 void LoggingTest::settingsSchema()

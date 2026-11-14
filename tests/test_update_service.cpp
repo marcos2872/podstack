@@ -6,6 +6,7 @@
 #include "UpdateTestUtils.h"
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -19,6 +20,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <fcntl.h>
+#include <sys/file.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -76,6 +79,22 @@ uid_t testUid()
     return current == 0 ? static_cast<uid_t>(1000) : current;
 }
 
+QByteArray signedManifest(const QJsonObject &root, const UpdateTestUtils::KeyPair &key,
+                          QByteArray *signature)
+{
+    const QByteArray manifest = QJsonDocument(root).toJson(QJsonDocument::Compact);
+    *signature = UpdateTestUtils::minisignFile(manifest, key, false);
+    return manifest;
+}
+
+bool setTestOwner(const QString &path, uid_t uid)
+{
+    if (::getuid() != 0) {
+        return true;
+    }
+    return ::chown(QFile::encodeName(path).constData(), uid, static_cast<gid_t>(-1)) == 0;
+}
+
 } // namespace
 
 class UpdateServiceTest : public QObject {
@@ -88,7 +107,16 @@ private slots:
     void stageRejectsSignatureAndHash();
     void stageRejectsVersionAndIdentity();
     void stageRejectsArtifactVariants();
+    void stageRejectsManifestInputs();
+    void stageRejectsSignedManifestVariants();
+    void stageRejectsReleaseKeyAndState();
+    void stageReadsReleaseKeyFile();
+    void stageRejectsEmptyPackageTool();
+    void stageRejectsKnownInvalidChannel();
+    void stageRejectsPackageTool();
     void statusAndInstallRejectInvalidJob();
+    void installRejectsStateVariants();
+    void logsEdgeCases();
     void logsReadRootFiles();
     void installRunsSystemdRun();
     void installRefusesActiveUnit();
@@ -363,6 +391,233 @@ void UpdateServiceTest::stageRejectsArtifactVariants()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
 }
 
+void UpdateServiceTest::stageRejectsManifestInputs()
+{
+    const Fixture fixture = makeFixture(QStringLiteral("manifest-inputs"));
+    UpdateService service(fixture.options);
+    UpdateService defaultService;
+    Q_UNUSED(defaultService);
+    QVariantMap result;
+    PodStack::Error error;
+
+    QVERIFY(!service.stage(fixture.uid, QByteArray(), QByteArray(), fixture.artifact,
+                           QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
+
+    error = {};
+    QVERIFY(!service.stage(0, fixture.manifest, fixture.signature, fixture.artifact,
+                           QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_UNSUPPORTED"));
+
+    error = {};
+    const QByteArray huge(2 * 1024 * 1024, 'x');
+    QVERIFY(!service.stage(fixture.uid, huge, QByteArrayLiteral("assinatura"), fixture.artifact,
+                           QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
+
+    error = {};
+    QVERIFY(!service.stage(fixture.uid, fixture.manifest, fixture.signature,
+                           QFileInfo(fixture.artifact).fileName(), QStringLiteral("stable"),
+                           &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+
+    error = {};
+    QVERIFY(!service.stage(fixture.uid, fixture.manifest, fixture.signature,
+                           QStringLiteral("/etc/hosts"), QStringLiteral("stable"), &result,
+                           &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+}
+
+void UpdateServiceTest::stageRejectsSignedManifestVariants()
+{
+    const Fixture fixture = makeFixture(QStringLiteral("signed-variants"));
+    const QJsonObject root = QJsonDocument::fromJson(fixture.manifest).object();
+    UpdateService service(fixture.options);
+    QVariantMap result;
+    PodStack::Error error;
+
+    const QByteArray malformed = QByteArrayLiteral("not-json");
+    const QByteArray malformedSignature = UpdateTestUtils::minisignFile(malformed, m_key, false);
+    QVERIFY(!service.stage(fixture.uid, malformed, malformedSignature, fixture.artifact,
+                           QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
+
+    QByteArray signature;
+    const QByteArray stableOnly = signedManifest(root, m_key, &signature);
+    error = {};
+    QVERIFY(!service.stage(fixture.uid, stableOnly, signature, fixture.artifact,
+                           QStringLiteral("beta"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
+
+    QJsonObject noArch = root;
+    QJsonObject channels = noArch.value(QStringLiteral("channels")).toObject();
+    QJsonObject release = channels.value(QStringLiteral("stable")).toObject();
+    QJsonArray artifacts = release.value(QStringLiteral("artifacts")).toArray();
+    QJsonObject artifact = artifacts.at(0).toObject();
+    artifact.insert(QStringLiteral("arch"), QStringLiteral("s390x"));
+    artifacts.replace(0, artifact);
+    release.insert(QStringLiteral("artifacts"), artifacts);
+    channels.insert(QStringLiteral("stable"), release);
+    noArch.insert(QStringLiteral("channels"), channels);
+    const QByteArray noArchManifest = signedManifest(noArch, m_key, &signature);
+    error = {};
+    QVERIFY(!service.stage(fixture.uid, noArchManifest, signature, fixture.artifact,
+                           QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+
+    const QString wrongFormat = fixture.artifact + QStringLiteral(".txt");
+    QVERIFY(QFile::copy(fixture.artifact, wrongFormat));
+    QVERIFY(setTestOwner(wrongFormat, fixture.uid));
+    error = {};
+    QVERIFY(!service.stage(fixture.uid, fixture.manifest, fixture.signature, wrongFormat,
+                           QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+
+    QJsonObject renamed = root;
+    channels = renamed.value(QStringLiteral("channels")).toObject();
+    release = channels.value(QStringLiteral("stable")).toObject();
+    artifacts = release.value(QStringLiteral("artifacts")).toArray();
+    artifact = artifacts.at(0).toObject();
+    artifact.insert(QStringLiteral("url"), QStringLiteral("https://example.test/outro-pacote.bin"));
+    artifacts.replace(0, artifact);
+    release.insert(QStringLiteral("artifacts"), artifacts);
+    channels.insert(QStringLiteral("stable"), release);
+    renamed.insert(QStringLiteral("channels"), channels);
+    const QByteArray renamedManifest = signedManifest(renamed, m_key, &signature);
+    error = {};
+    QVERIFY(!service.stage(fixture.uid, renamedManifest, signature, fixture.artifact,
+                           QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+}
+
+void UpdateServiceTest::stageRejectsReleaseKeyAndState()
+{
+    const Fixture fixture = makeFixture(QStringLiteral("release-key"));
+    UpdateService::Options noKey = fixture.options;
+    noKey.embeddedKey.clear();
+    noKey.releaseKeyPath = fixture.options.stateRoot + QStringLiteral("/missing.pub");
+    UpdateService noKeyService(noKey);
+    QVariantMap result;
+    PodStack::Error error;
+    QVERIFY(!noKeyService.stage(fixture.uid, fixture.manifest, fixture.signature, fixture.artifact,
+                                QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_UNSUPPORTED"));
+
+    const Fixture blocked = makeFixture(QStringLiteral("state-blocked"));
+    QFile blocker(blocked.options.stateRoot);
+    QVERIFY(blocker.open(QIODevice::WriteOnly));
+    blocker.write("x");
+    blocker.close();
+    UpdateService blockedService(blocked.options);
+    error = {};
+    QVERIFY(!blockedService.stage(blocked.uid, blocked.manifest, blocked.signature,
+                                  blocked.artifact, QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void UpdateServiceTest::stageReadsReleaseKeyFile()
+{
+    const Fixture fixture = makeFixture(QStringLiteral("release-file"));
+    UpdateService::Options options = fixture.options;
+    options.embeddedKey.clear();
+    options.releaseKeyPath = QStringLiteral("/etc/hostname");
+    UpdateService smallKey(options);
+    QVariantMap result;
+    PodStack::Error error;
+    QVERIFY(!smallKey.stage(fixture.uid, fixture.manifest, fixture.signature, fixture.artifact,
+                            QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_SIGNATURE_INVALID"));
+
+    options.releaseKeyPath = QStringLiteral("/etc/services");
+    UpdateService largeKey(options);
+    error = {};
+    QVERIFY(!largeKey.stage(fixture.uid, fixture.manifest, fixture.signature, fixture.artifact,
+                            QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
+}
+
+void UpdateServiceTest::stageRejectsEmptyPackageTool()
+{
+    const Fixture fixture = makeFixture(QStringLiteral("package-tool-empty"));
+    UpdateService::Options options = fixture.options;
+    options.packageTool.clear();
+    UpdateService service(options);
+    QVariantMap result;
+    PodStack::Error error;
+    QVERIFY(!service.stage(fixture.uid, fixture.manifest, fixture.signature, fixture.artifact,
+                           QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+}
+
+void UpdateServiceTest::stageRejectsKnownInvalidChannel()
+{
+    const Fixture fixture = makeFixture(QStringLiteral("invalid-channel"));
+    QJsonObject root = QJsonDocument::fromJson(fixture.manifest).object();
+    QJsonObject channels = root.value(QStringLiteral("channels")).toObject();
+    channels.insert(QStringLiteral("nightly"), channels.value(QStringLiteral("stable")));
+    root.insert(QStringLiteral("channels"), channels);
+    QByteArray signature;
+    const QByteArray manifest = signedManifest(root, m_key, &signature);
+    UpdateService service(fixture.options);
+    QVariantMap result;
+    PodStack::Error error;
+    QVERIFY(!service.stage(fixture.uid, manifest, signature, fixture.artifact,
+                           QStringLiteral("nightly"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
+}
+
+void UpdateServiceTest::stageRejectsPackageTool()
+{
+    const Fixture fixture = makeFixture(QStringLiteral("package-tool"));
+    QVERIFY(QDir().mkpath(fixture.options.stateRoot));
+    QVariantMap result;
+    PodStack::Error error;
+
+    UpdateService::Options missing = fixture.options;
+    missing.packageTool = fixture.options.stateRoot + QStringLiteral("/missing-tool");
+    UpdateService missingService(missing);
+    QVERIFY(!missingService.stage(fixture.uid, fixture.manifest, fixture.signature,
+                                  fixture.artifact, QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+
+    const QString failingTool = fixture.options.stateRoot + QStringLiteral("/failing-tool");
+    QVERIFY(writeExecutable(failingTool, QByteArrayLiteral("exit 1\n")));
+    UpdateService::Options failing = fixture.options;
+    failing.packageTool = failingTool;
+    UpdateService failingService(failing);
+    error = {};
+    QVERIFY(!failingService.stage(fixture.uid, fixture.manifest, fixture.signature,
+                                  fixture.artifact, QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+
+    const QString incompleteTool = fixture.options.stateRoot + QStringLiteral("/incomplete-tool");
+    QVERIFY(writeExecutable(incompleteTool, QByteArrayLiteral("printf 'Package: podstack\\n'\n")));
+    UpdateService::Options incomplete = fixture.options;
+    incomplete.packageTool = incompleteTool;
+    UpdateService incompleteService(incomplete);
+    error = {};
+    QVERIFY(!incompleteService.stage(fixture.uid, fixture.manifest, fixture.signature,
+                                     fixture.artifact, QStringLiteral("stable"), &result, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+
+    const QString wrongVersionTool =
+        fixture.options.stateRoot + QStringLiteral("/wrong-version-tool");
+    const QByteArray wrongVersionBody =
+        hostFormat() == QStringLiteral("deb")
+            ? QByteArrayLiteral(
+                  "printf 'Package: podstack\\nVersion: 9.9.9\\nArchitecture: amd64\\n'\n")
+            : QByteArrayLiteral("printf 'podstack\\n9.9.9\\nx86_64\\n'\n");
+    QVERIFY(writeExecutable(wrongVersionTool, wrongVersionBody));
+    UpdateService::Options wrongVersion = fixture.options;
+    wrongVersion.packageTool = wrongVersionTool;
+    UpdateService wrongVersionService(wrongVersion);
+    error = {};
+    QVERIFY(!wrongVersionService.stage(fixture.uid, fixture.manifest, fixture.signature,
+                                       fixture.artifact, QStringLiteral("stable"), &result,
+                                       &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+}
+
 void UpdateServiceTest::statusAndInstallRejectInvalidJob()
 {
     const Fixture fixture = makeFixture(QStringLiteral("invalid-job"));
@@ -389,6 +644,127 @@ void UpdateServiceTest::statusAndInstallRejectInvalidJob()
     error = {};
     QVERIFY(!service.status(fixture.uid + 1, jobId, &status, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+}
+
+void UpdateServiceTest::installRejectsStateVariants()
+{
+    const auto stageJob = [](const Fixture &fixture, UpdateService *service) {
+        QVariantMap stage;
+        PodStack::Error error;
+        const bool ok = service->stage(fixture.uid, fixture.manifest, fixture.signature,
+                                       fixture.artifact, QStringLiteral("stable"), &stage, &error);
+        return ok ? stage : QVariantMap{};
+    };
+    const auto rewritePhase = [](const QString &stateDir, const QString &phase) {
+        QFile file(stateDir + QStringLiteral("/state.json"));
+        if (!file.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+        QJsonObject state = QJsonDocument::fromJson(file.readAll()).object();
+        file.close();
+        state.insert(QStringLiteral("phase"), phase);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return false;
+        }
+        file.write(QJsonDocument(state).toJson(QJsonDocument::Compact));
+        file.close();
+        return true;
+    };
+
+    const Fixture wrongUid = makeFixture(QStringLiteral("install-wrong-uid"));
+    UpdateService wrongUidService(wrongUid.options);
+    QVariantMap wrongStage = stageJob(wrongUid, &wrongUidService);
+    QVERIFY(!wrongStage.isEmpty());
+    QVariantMap wrongInstall;
+    PodStack::Error wrongError;
+    QVERIFY(!wrongUidService.install(wrongUid.uid + 1,
+                                     wrongStage.value(QStringLiteral("jobId")).toString(),
+                                     &wrongInstall, &wrongError));
+    QCOMPARE(wrongError.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    const Fixture notStaged = makeFixture(QStringLiteral("install-not-staged"));
+    UpdateService notStagedService(notStaged.options);
+    QVariantMap stage = stageJob(notStaged, &notStagedService);
+    QVERIFY(!stage.isEmpty());
+    QVERIFY(rewritePhase(stage.value(QStringLiteral("stateDir")).toString(),
+                         QStringLiteral("installing")));
+    QVariantMap install;
+    PodStack::Error error;
+    QVERIFY(!notStagedService.install(
+        notStaged.uid, stage.value(QStringLiteral("jobId")).toString(), &install, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_LOCKED"));
+
+    const Fixture locked = makeFixture(QStringLiteral("install-locked"));
+    UpdateService lockedService(locked.options);
+    stage = stageJob(locked, &lockedService);
+    QVERIFY(!stage.isEmpty());
+    const int fd = ::open(QFile::encodeName(locked.options.admissionLock).constData(),
+                          O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+    QVERIFY(fd >= 0);
+    QCOMPARE(::flock(fd, LOCK_EX | LOCK_NB), 0);
+    error = {};
+    QVERIFY(!lockedService.install(locked.uid, stage.value(QStringLiteral("jobId")).toString(),
+                                   &install, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_LOCKED"));
+    ::flock(fd, LOCK_UN);
+    ::close(fd);
+
+    const Fixture badUnit = makeFixture(QStringLiteral("install-bad-unit"));
+    UpdateService::Options noRun = badUnit.options;
+    noRun.systemdRun = badUnit.options.stateRoot + QStringLiteral("/missing-systemd-run");
+    UpdateService noRunService(noRun);
+    stage = stageJob(badUnit, &noRunService);
+    QVERIFY(!stage.isEmpty());
+    error = {};
+    QVERIFY(!noRunService.install(badUnit.uid, stage.value(QStringLiteral("jobId")).toString(),
+                                  &install, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
+}
+
+void UpdateServiceTest::logsEdgeCases()
+{
+    const Fixture fixture = makeFixture(QStringLiteral("logs-edge"));
+    UpdateService service(fixture.options);
+    const QString uidDir =
+        fixture.options.logRoot + QLatin1Char('/') + QString::number(fixture.uid);
+    QVERIFY(QDir().mkpath(uidDir));
+
+    QFile big(uidDir + QStringLiteral("/update-big.jsonl"));
+    QVERIFY(big.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    big.write(QByteArray(1024 * 1024 + 32, 'x'));
+    big.close();
+
+    QVariantList lines;
+    bool truncated = false;
+    PodStack::Error error;
+    QVERIFY(service.logs(fixture.uid, QStringLiteral("update-big"), &lines, &truncated, &error));
+    QVERIFY(truncated);
+    QCOMPARE(lines.size(), 0);
+
+    const QString oldPath = uidDir + QStringLiteral("/update-old.jsonl");
+    QFile old(oldPath);
+    QVERIFY(old.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    old.write("{}\n");
+    old.flush();
+    QVERIFY(old.setFileTime(QDateTime::currentDateTime().addDays(-10),
+                            QFileDevice::FileModificationTime));
+    old.close();
+    error = {};
+    truncated = false;
+    QVERIFY(service.logs(fixture.uid, QStringLiteral("update-old"), &lines, &truncated, &error));
+    QCOMPARE(lines.size(), 0);
+    QVERIFY(!truncated);
+
+    const QString stateDir = fixture.options.stateRoot + QStringLiteral("/update-corrupt");
+    QVERIFY(QDir().mkpath(stateDir));
+    QFile corrupt(stateDir + QStringLiteral("/state.json"));
+    QVERIFY(corrupt.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    corrupt.write("not-json");
+    corrupt.close();
+    QVariantMap status;
+    error = {};
+    QVERIFY(!service.status(fixture.uid, QStringLiteral("update-corrupt"), &status, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
 }
 
 void UpdateServiceTest::logsReadRootFiles()

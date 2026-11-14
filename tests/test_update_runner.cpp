@@ -45,6 +45,13 @@ public:
             return true;
         }
         if (method == QStringLiteral("InstallUpdate")) {
+            if (failInstall) {
+                if (error) {
+                    error->code = QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED");
+                    error->message = QStringLiteral("instalação simulada");
+                }
+                return false;
+            }
             if (reply) {
                 *reply = QVariantMap{
                     {QStringLiteral("ok"), true},
@@ -53,11 +60,27 @@ public:
             return true;
         }
         if (method == QStringLiteral("GetUpdateStatus")) {
+            if (notFoundCount > 0) {
+                --notFoundCount;
+                if (error) {
+                    error->code = QStringLiteral("PODSTACK_NOT_FOUND");
+                    error->message = QStringLiteral("ainda não publicado");
+                }
+                return false;
+            }
+            if (failStatus) {
+                if (error) {
+                    error->code = QStringLiteral("PODSTACK_IO_ERROR");
+                    error->message = QStringLiteral("status simulado");
+                }
+                return false;
+            }
             if (reply) {
                 *reply = QVariantMap{
                     {QStringLiteral("ok"), true},
                     {QStringLiteral("phase"),
-                     failed ? QStringLiteral("failed") : QStringLiteral("done")},
+                     neverDone ? QStringLiteral("installing")
+                               : (failed ? QStringLiteral("failed") : QStringLiteral("done"))},
                     {QStringLiteral("percent"), 100},
                     {QStringLiteral("errorCode"),
                      failed ? QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED") : QString()},
@@ -72,7 +95,11 @@ public:
     QStringList calls;
     QString stateDir;
     bool failStage = false;
+    bool failInstall = false;
+    bool failStatus = false;
     bool failed = false;
+    bool neverDone = false;
+    int notFoundCount = 0;
 };
 
 QString hostFormat()
@@ -108,6 +135,14 @@ QByteArray manifestFor(const QByteArray &artifactSha, const QString &version,
     return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 
+QByteArray signedManifest(const QJsonObject &root, const UpdateTestUtils::KeyPair &key,
+                          QByteArray *signature)
+{
+    const QByteArray manifest = QJsonDocument(root).toJson(QJsonDocument::Compact);
+    *signature = UpdateTestUtils::minisignFile(manifest, key, false);
+    return manifest;
+}
+
 } // namespace
 
 class UpdateRunnerTest : public QObject {
@@ -119,6 +154,16 @@ private slots:
     void prepareRejectsEqualVersion();
     void prepareRejectsDowngrade();
     void prepareRejectsMissingFeed();
+    void prepareRejectsInvalidChannel();
+    void prepareRejectsNetworkAndSize();
+    void prepareRejectsMalformedManifest();
+    void prepareRejectsMissingChannel();
+    void prepareRejectsNoCompatibleArtifact();
+    void prepareRejectsArtifactWithoutUrl();
+    void prepareFromManifestMissingKey();
+    void prepareWithoutHelper();
+    void prepareRejectsArtifactHash();
+    void prepareRejectsArtifactPathDirectory();
     void prepareUsesCache();
     void prepareRejectsMissingKey();
     void installStageFails();
@@ -129,6 +174,17 @@ private slots:
     void installOrchestratesHelper();
     void installRestartsServices();
     void installRelaunchesGui();
+    void installFailsStateWrite();
+    void installPollsNotFoundThenDone();
+    void installTimesOut();
+    void installStageFailureRestarts();
+    void installRestartFails();
+    void installStatusFails();
+    void installInstallFailureRestarts();
+    void resumeFailedRestartsServices();
+    void resumeWithoutHelper();
+    void resumeRestartFails();
+    void notifyWithoutBinary();
     void resumeInstallingJob();
     void installRefusesExistingState();
     void resumeFailedAndDoneStates();
@@ -208,6 +264,7 @@ void UpdateRunnerTest::prepareDownloadsAndVerifies()
              qPrintable(error.message + QStringLiteral(" ") + error.detail));
     QCOMPARE(runner.version(), QStringLiteral("0.1.5"));
     QCOMPARE(runner.channel(), QStringLiteral("stable"));
+    QVERIFY(!runner.statePath().isEmpty());
     QVERIFY(QFileInfo::exists(runner.artifactPath()));
     QCOMPARE(fixture->server.requestCount(QStringLiteral("/podstack-update.json")), 1);
     QVERIFY(QFileInfo::exists(fixture->options.cacheDir + QStringLiteral("/manifest.json")));
@@ -255,6 +312,201 @@ void UpdateRunnerTest::prepareRejectsMissingFeed()
     QVERIFY(fixture != nullptr);
     fixture->options.feedUrl = fixture->server.url(QStringLiteral("/missing-feed.json"));
     fixture->server.setResponse(QStringLiteral("/missing-feed.json"), 404, "{}");
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_DOWNLOAD_FAILED"));
+}
+
+void UpdateRunnerTest::prepareRejectsInvalidChannel()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    fixture->options.channel = QStringLiteral("nightly");
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
+}
+
+void UpdateRunnerTest::prepareRejectsNetworkAndSize()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    fixture->options.feedUrl = QStringLiteral("http://127.0.0.1:1/podstack-update.json");
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_DOWNLOAD_FAILED"));
+
+    auto large = makeFixture();
+    QVERIFY(large != nullptr);
+    large->server.setResponse(QStringLiteral("/podstack-update.json"), 200,
+                              QByteArray(600 * 1024, 'x'));
+    FakeUpdateHelper largeHelper;
+    PodStack::UpdateRunner largeRunner(&largeHelper, large->options);
+    error = {};
+    QVERIFY(!largeRunner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_DOWNLOAD_FAILED"));
+}
+
+void UpdateRunnerTest::prepareRejectsMalformedManifest()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    const QByteArray malformed = QByteArrayLiteral("not-json");
+    fixture->signature = UpdateTestUtils::minisignFile(malformed, fixture->key, false);
+    fixture->server.setResponse(QStringLiteral("/podstack-update.json"), 200, malformed);
+    fixture->server.setResponse(QStringLiteral("/podstack-update.json.minisig"), 200,
+                                fixture->signature);
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
+}
+
+void UpdateRunnerTest::prepareRejectsMissingChannel()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    QJsonObject root = QJsonDocument::fromJson(fixture->manifest).object();
+    QJsonObject channels = root.value(QStringLiteral("channels")).toObject();
+    const QJsonObject release = channels.take(QStringLiteral("stable")).toObject();
+    channels.insert(QStringLiteral("beta"), release);
+    root.insert(QStringLiteral("channels"), channels);
+    QByteArray signature;
+    fixture->manifest = signedManifest(root, fixture->key, &signature);
+    fixture->signature = signature;
+    fixture->server.setResponse(QStringLiteral("/podstack-update.json"), 200, fixture->manifest);
+    fixture->server.setResponse(QStringLiteral("/podstack-update.json.minisig"), 200,
+                                fixture->signature);
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"));
+}
+
+void UpdateRunnerTest::prepareRejectsNoCompatibleArtifact()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    QJsonObject root = QJsonDocument::fromJson(fixture->manifest).object();
+    QJsonObject channels = root.value(QStringLiteral("channels")).toObject();
+    QJsonObject release = channels.value(QStringLiteral("stable")).toObject();
+    QJsonArray artifacts = release.value(QStringLiteral("artifacts")).toArray();
+    QJsonObject artifact = artifacts.at(0).toObject();
+    artifact.insert(QStringLiteral("arch"), QStringLiteral("s390x"));
+    artifacts.replace(0, artifact);
+    release.insert(QStringLiteral("artifacts"), artifacts);
+    channels.insert(QStringLiteral("stable"), release);
+    root.insert(QStringLiteral("channels"), channels);
+    QByteArray signature;
+    fixture->manifest = signedManifest(root, fixture->key, &signature);
+    fixture->signature = signature;
+    fixture->server.setResponse(QStringLiteral("/podstack-update.json"), 200, fixture->manifest);
+    fixture->server.setResponse(QStringLiteral("/podstack-update.json.minisig"), 200,
+                                fixture->signature);
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+}
+
+void UpdateRunnerTest::prepareRejectsArtifactWithoutUrl()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    QJsonObject root = QJsonDocument::fromJson(fixture->manifest).object();
+    QJsonObject channels = root.value(QStringLiteral("channels")).toObject();
+    QJsonObject release = channels.value(QStringLiteral("stable")).toObject();
+    QJsonArray artifacts = release.value(QStringLiteral("artifacts")).toArray();
+    QJsonObject artifact = artifacts.at(0).toObject();
+    artifact.insert(QStringLiteral("url"), QString());
+    artifacts.replace(0, artifact);
+    release.insert(QStringLiteral("artifacts"), artifacts);
+    channels.insert(QStringLiteral("stable"), release);
+    root.insert(QStringLiteral("channels"), channels);
+    QByteArray signature;
+    fixture->manifest = signedManifest(root, fixture->key, &signature);
+    fixture->signature = signature;
+    fixture->server.setResponse(QStringLiteral("/podstack-update.json"), 200, fixture->manifest);
+    fixture->server.setResponse(QStringLiteral("/podstack-update.json.minisig"), 200,
+                                fixture->signature);
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+}
+
+void UpdateRunnerTest::prepareFromManifestMissingKey()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    const QString manifestPath = fixture->dir->filePath(QStringLiteral("manual.json"));
+    QFile manifest(manifestPath);
+    QVERIFY(manifest.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    manifest.write(fixture->manifest);
+    manifest.close();
+    QFile signature(manifestPath + QStringLiteral(".minisig"));
+    QVERIFY(signature.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    signature.write(fixture->signature);
+    signature.close();
+
+    const QByteArray previousConfig = qgetenv("XDG_CONFIG_HOME");
+    qputenv("XDG_CONFIG_HOME", fixture->dir->filePath(QStringLiteral("config")).toUtf8());
+    const auto restore = qScopeGuard([previousConfig] {
+        if (previousConfig.isEmpty()) {
+            qunsetenv("XDG_CONFIG_HOME");
+        } else {
+            qputenv("XDG_CONFIG_HOME", previousConfig);
+        }
+    });
+    fixture->options.publicKey.clear();
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepareFromManifest(manifestPath, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_UNSUPPORTED"));
+}
+
+void UpdateRunnerTest::prepareWithoutHelper()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    PodStack::UpdateRunner runner(nullptr, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
+}
+
+void UpdateRunnerTest::prepareRejectsArtifactHash()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    fixture->server.setResponse(QStringLiteral("/podstack-") + QStringLiteral("0.1.5.") +
+                                    hostArch() + QStringLiteral(".") + hostFormat(),
+                                200, QByteArrayLiteral("conteúdo divergente"));
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
+}
+
+void UpdateRunnerTest::prepareRejectsArtifactPathDirectory()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    const QString fileName = QUrl(fixture->artifactUrl).fileName();
+    QVERIFY(!fileName.isEmpty());
+    QVERIFY(QDir().mkpath(fixture->options.cacheDir + QLatin1Char('/') + fileName));
     FakeUpdateHelper helper;
     PodStack::UpdateRunner runner(&helper, fixture->options);
     PodStack::Error error;
@@ -456,6 +708,209 @@ void UpdateRunnerTest::installRelaunchesGui()
     QFile log(guiLog);
     QVERIFY(log.open(QIODevice::ReadOnly));
     QVERIFY(QString::fromUtf8(log.readAll()).contains(QStringLiteral("--relaunch")));
+}
+
+void UpdateRunnerTest::installFailsStateWrite()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    QFile blocker(fixture->options.stateDir);
+    QVERIFY(blocker.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    blocker.write("x");
+    blocker.close();
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY(!runner.install(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void UpdateRunnerTest::installPollsNotFoundThenDone()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    FakeUpdateHelper helper;
+    helper.notFoundCount = 2;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY2(runner.install(&error), qPrintable(error.message));
+    QCOMPARE(helper.calls.count(QStringLiteral("GetUpdateStatus")), 3);
+}
+
+void UpdateRunnerTest::installTimesOut()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    fixture->options.installTimeoutMs = 5;
+    fixture->options.pollIntervalMs = 1;
+    FakeUpdateHelper helper;
+    helper.neverDone = true;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY(!runner.install(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_TIMEOUT"));
+}
+
+void UpdateRunnerTest::installStageFailureRestarts()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    const QString log = fixture->dir->filePath(QStringLiteral("systemctl.log"));
+    const QString systemctl = fixture->dir->filePath(QStringLiteral("systemctl"));
+    QFile script(systemctl);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"");
+    script.write(log.toUtf8());
+    script.write("\"\nexit 0\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
+    fixture->options.systemctlBinary = systemctl;
+    fixture->options.restartServices = true;
+    FakeUpdateHelper helper;
+    helper.failStage = true;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY(!runner.install(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_SIGNATURE_INVALID"));
+    QFile commands(log);
+    QVERIFY(commands.open(QIODevice::ReadOnly));
+    QVERIFY(QString::fromUtf8(commands.readAll()).contains(QStringLiteral("start")));
+}
+
+void UpdateRunnerTest::installRestartFails()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    const QString systemctl = fixture->dir->filePath(QStringLiteral("systemctl"));
+    QFile script(systemctl);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\nif [ \"$2\" = \"start\" ]; then exit 1; fi\nexit 0\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
+    fixture->options.systemctlBinary = systemctl;
+    fixture->options.restartServices = true;
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY(!runner.install(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
+}
+
+void UpdateRunnerTest::resumeFailedRestartsServices()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    const QString systemctl = fixture->dir->filePath(QStringLiteral("systemctl"));
+    QFile script(systemctl);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\nexit 0\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
+    fixture->options.systemctlBinary = systemctl;
+    fixture->options.restartServices = true;
+    QDir().mkpath(fixture->options.stateDir);
+    QFile state(fixture->options.stateDir + QStringLiteral("/state.json"));
+    QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    state.write(QByteArrayLiteral(
+        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.5","channel":"stable"})"));
+    state.close();
+    FakeUpdateHelper helper;
+    helper.failed = true;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.resume(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
+}
+
+void UpdateRunnerTest::installStatusFails()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    FakeUpdateHelper helper;
+    helper.failStatus = true;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY(!runner.install(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+}
+
+void UpdateRunnerTest::installInstallFailureRestarts()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    const QString systemctl = fixture->dir->filePath(QStringLiteral("systemctl"));
+    QFile script(systemctl);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\nexit 0\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
+    fixture->options.systemctlBinary = systemctl;
+    fixture->options.restartServices = true;
+    FakeUpdateHelper helper;
+    helper.failInstall = true;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY(!runner.install(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
+}
+
+void UpdateRunnerTest::resumeWithoutHelper()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    PodStack::UpdateRunner runner(nullptr, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.resume(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
+}
+
+void UpdateRunnerTest::resumeRestartFails()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    const QString systemctl = fixture->dir->filePath(QStringLiteral("systemctl"));
+    QFile script(systemctl);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\nif [ \"$2\" = \"start\" ]; then exit 1; fi\nexit 0\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
+    fixture->options.systemctlBinary = systemctl;
+    fixture->options.restartServices = true;
+    QDir().mkpath(fixture->options.stateDir);
+    QFile state(fixture->options.stateDir + QStringLiteral("/state.json"));
+    QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    state.write(QByteArrayLiteral(
+        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.5","channel":"stable"})"));
+    state.close();
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.resume(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
+}
+
+void UpdateRunnerTest::notifyWithoutBinary()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    fixture->options.notifyBinary = QStringLiteral("podstack-notify-inexistente");
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY2(runner.install(&error), qPrintable(error.message));
 }
 
 void UpdateRunnerTest::resumeInstallingJob()

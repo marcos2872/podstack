@@ -202,6 +202,8 @@ private slots:
     void helperRejectsPackagesOutsideAllowlist();
     void helperRequiresDBusAuthorization();
     void helperAuditsUid();
+    void helperUpdateAndLogsAuthorization();
+    void helperUpdateAndLogsInvalidParams();
     void dockerInventoryCounts();
     void dockerInventoryNoSocket();
     void helperValidatesPorts();
@@ -581,6 +583,46 @@ void SetupTest::helperAuditsUid()
     const QString log = g_capturedMessages.join(QLatin1Char('\n'));
     QVERIFY2(log.contains(QStringLiteral("installation requested: uid=")), qPrintable(log));
     QVERIFY2(log.contains(QStringLiteral("installation denied: uid=")), qPrintable(log));
+}
+
+void SetupTest::helperUpdateAndLogsAuthorization()
+{
+    PodStack::HelperService helper;
+    const QString denied = QStringLiteral("Chamada local não autorizada.");
+    for (const QVariantMap &reply : {helper.StageUpdate({}, {}, {}, QStringLiteral("stable")),
+                                     helper.InstallUpdate(QStringLiteral("update-x")),
+                                     helper.GetUpdateStatus(QStringLiteral("update-x")),
+                                     helper.GetLogs(QStringLiteral("update-x"))}) {
+        QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+        QCOMPARE(reply.value(QStringLiteral("message")).toString(), denied);
+    }
+}
+
+void SetupTest::helperUpdateAndLogsInvalidParams()
+{
+    AuthorizedHelper helper;
+
+    QVariantMap reply = helper.StageUpdate({}, {}, {}, QStringLiteral("stable"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(!reply.value(QStringLiteral("code")).toString().isEmpty());
+
+    reply = helper.InstallUpdate(QStringLiteral("invalid"));
+    QCOMPARE(reply.value(QStringLiteral("code")).toString(),
+             QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    reply = helper.GetUpdateStatus(QStringLiteral("invalid"));
+    QCOMPARE(reply.value(QStringLiteral("code")).toString(),
+             QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    reply = helper.GetLogs(QStringLiteral("invalid"));
+    QCOMPARE(reply.value(QStringLiteral("code")).toString(),
+             QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    for (int index = 0; index < 12; ++index) {
+        reply = helper.InstallUpdate(QStringLiteral("invalid"));
+    }
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(reply.value(QStringLiteral("message")).toString().contains(QStringLiteral("Muitas")));
 }
 
 void SetupTest::dockerInventoryCounts()
