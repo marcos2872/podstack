@@ -15,6 +15,7 @@ add_library(podstack_gui_lib STATIC
     controllers/BuildController.cpp
     controllers/ContainerController.cpp
     controllers/ContainerDetailController.cpp
+    controllers/SettingsController.cpp
     controllers/ComposeController.cpp
     controllers/CatalogController.cpp
     controllers/ControllerBase.cpp

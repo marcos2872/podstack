@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
     PodStack::Autostart::syncFromConfig();
 
     PodStack::Backend backend;
-    QObject::connect(&backend, &PodStack::Backend::settingsChanged, &app,
+    QObject::connect(backend.settings(), &PodStack::SettingsController::valuesChanged, &app,
                      []() { PodStack::Logging::reload(); });
     PodStack::TrayController tray;
     PodStack::NotificationService notifications;
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
                      });
     QObject::connect(&tray, &PodStack::TrayController::refreshRequested, &backend,
                      &PodStack::Backend::refresh);
-    QObject::connect(&backend, &PodStack::Backend::settingsChanged, &tray,
+    QObject::connect(backend.settings(), &PodStack::SettingsController::valuesChanged, &tray,
                      &PodStack::TrayController::reloadConfig);
     QObject::connect(&tray, &PodStack::TrayController::machineActionRequested, &backend,
                      [&backend](const QString &action, const QString &id) {

@@ -2,6 +2,7 @@
 #include "gui/app/MainWindow.h"
 
 #include "gui/controllers/Backend.h"
+#include "gui/controllers/SettingsController.h"
 #include "gui/windows/ContainerDetailDialog.h"
 #include "gui/windows/MachineDetailDialog.h"
 #include "gui/app/notifications/Notifications.h"
@@ -57,7 +58,7 @@ MainWindow::MainWindow(Backend *backend, TrayController *tray,
 
     if (m_backend) {
         connect(m_backend, &Backend::terminalRequested, this, &MainWindow::openTerminal);
-        connect(m_backend, &Backend::settingsChanged, this,
+        connect(m_backend->settings(), &SettingsController::valuesChanged, this,
                 &MainWindow::updateQuitOnLastWindowClosed);
     }
     updateQuitOnLastWindowClosed();

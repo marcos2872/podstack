@@ -10,6 +10,8 @@
 namespace PodStack {
 
 namespace {
+int g_logBufferLines = 10000;
+
 
 QJsonObject errorPayload(const Error &error)
 {
@@ -164,6 +166,18 @@ void ControllerBase::onActionFinished(const QString &, const QJsonObject &,
         setLastError(errorMessage(result));
     } else {
         clearLastError();
+    }
+}
+
+int ControllerBase::logBufferLines()
+{
+    return g_logBufferLines;
+}
+
+void ControllerBase::setLogBufferLines(int lines)
+{
+    if (lines >= 100 && lines <= 1000000) {
+        g_logBufferLines = lines;
     }
 }
 

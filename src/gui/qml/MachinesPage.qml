@@ -30,7 +30,7 @@ ColumnLayout {
 
     signal machineExpandRequested(string id, int tab)
 
-    readonly property var settingsValues: backend.settingsValues
+    readonly property var settingsValues: backend.settings.values
     // Defaults de criação vindos de Configurações (machines.*); caem no valor
     // histórico se a chave ainda não carregou.
     readonly property int defaultCpus: {

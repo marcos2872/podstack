@@ -5,6 +5,7 @@
 #include "gui/controllers/ContainerController.h"
 #include "gui/controllers/ContainerDetailController.h"
 #include "gui/controllers/K8sController.h"
+#include "gui/controllers/SettingsController.h"
 #include "gui/controllers/ComposeController.h"
 #include "gui/controllers/ImageController.h"
 #include "gui/controllers/NetworkController.h"
@@ -28,6 +29,7 @@ namespace PodStack {
 class Backend : public QObject {
     Q_OBJECT
     Q_PROPERTY(PodStack::K8sController *k8s READ k8s CONSTANT)
+    Q_PROPERTY(PodStack::SettingsController *settings READ settings CONSTANT)
     Q_PROPERTY(PodStack::ContainerController *containers READ containers CONSTANT)
     Q_PROPERTY(PodStack::ContainerDetailController *containerDetail READ containerDetail CONSTANT)
     Q_PROPERTY(PodStack::ImageController *images READ images CONSTANT)
@@ -112,16 +114,88 @@ class Backend : public QObject {
     Q_PROPERTY(QString setupError READ setupError NOTIFY setupChanged)
     Q_PROPERTY(bool setupBusy READ setupBusy NOTIFY setupChanged)
     Q_PROPERTY(bool setupLoaded READ setupLoaded NOTIFY setupChanged)
-    Q_PROPERTY(QVariantList settingsSchema READ settingsSchema NOTIFY settingsSchemaChanged)
-    Q_PROPERTY(QVariantMap settingsValues READ settingsValues NOTIFY settingsValuesChanged)
-    Q_PROPERTY(QString settingsError READ settingsError NOTIFY settingsErrorChanged)
+    Q_PROPERTY(bool connected READ connected NOTIFY stateChanged)
+    Q_PROPERTY(QString error READ error NOTIFY stateChanged)
+    Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    Q_PROPERTY(QString version READ version CONSTANT)
+    Q_PROPERTY(QVariantMap activityStats READ activityStats NOTIFY activityChanged)
+    Q_PROPERTY(QVariantList activityCpuHistory READ activityCpuHistory NOTIFY activityChanged)
+    Q_PROPERTY(QVariantList activityMemHistory READ activityMemHistory NOTIFY activityChanged)
+    Q_PROPERTY(bool activityActive READ activityActive NOTIFY activityChanged)
+    Q_PROPERTY(bool actionActive READ actionActive NOTIFY actionStateChanged)
+    Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
+    Q_PROPERTY(QVariantMap prunePreview READ prunePreview NOTIFY prunePreviewChanged)
+    Q_PROPERTY(QVariantList machines READ machines NOTIFY machinesChanged)
+    Q_PROPERTY(QVariantList machineDistros READ machineDistros NOTIFY machineDistrosChanged)
+    Q_PROPERTY(QVariantMap machineInfo READ machineInfo NOTIFY machineInfoChanged)
     Q_PROPERTY(
-        QStringList pendingRestartKeys READ pendingRestartKeys NOTIFY pendingRestartKeysChanged)
+        QVariantList machineSerialPorts READ machineSerialPorts NOTIFY machineSerialPortsChanged)
+    Q_PROPERTY(
+        QVariantList machineUsbDevices READ machineUsbDevices NOTIFY machineUsbDevicesChanged)
+    Q_PROPERTY(QStringList machineLogLines READ machineLogLines NOTIFY machineLogsChanged)
+    Q_PROPERTY(QString machineLogsCapturedAt READ machineLogsCapturedAt
+               NOTIFY machineLogsChanged)
+    Q_PROPERTY(QVariantMap machineStats READ machineStats NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineCpuHistory READ machineCpuHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineMemHistory READ machineMemHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineNetRxHistory READ machineNetRxHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QVariantList machineNetTxHistory READ machineNetTxHistory
+               NOTIFY machineStatsChanged)
+    Q_PROPERTY(QString machineStatsError READ machineStatsError NOTIFY machineStatsChanged)
+    Q_PROPERTY(bool machineConsoleActive READ machineConsoleActive NOTIFY machineConsoleChanged)
+    Q_PROPERTY(QString machineConsoleText READ machineConsoleText NOTIFY machineConsoleChanged)
+    Q_PROPERTY(QString machineConsoleError READ machineConsoleError NOTIFY machineConsoleChanged)
+    Q_PROPERTY(QVariantList machineFiles READ machineFiles NOTIFY machineFilesChanged)
+    Q_PROPERTY(QString machineFilesPath READ machineFilesPath NOTIFY machineFilesChanged)
+    Q_PROPERTY(bool machineFilesBusy READ machineFilesBusy NOTIFY machineFilesChanged)
+    Q_PROPERTY(QString machineFilesError READ machineFilesError NOTIFY machineFilesChanged)
+    Q_PROPERTY(QVariantList machineSnapshots READ machineSnapshots
+               NOTIFY machineSnapshotsChanged)
+    Q_PROPERTY(QString machineSnapshotsError READ machineSnapshotsError
+               NOTIFY machineSnapshotsChanged)
+    Q_PROPERTY(bool machineCreateActive READ machineCreateActive NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineJobKind READ machineJobKind NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineCreateJobId READ machineCreateJobId NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineCreateStage READ machineCreateStage NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(int machineCreateProgress READ machineCreateProgress
+               NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString machineCreateError READ machineCreateError
+               NOTIFY machineCreateStateChanged)
+    Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
+    Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
+    Q_PROPERTY(bool setupCompleted READ setupCompleted NOTIFY setupChanged)
+    Q_PROPERTY(bool setupPending READ setupPending NOTIFY setupChanged)
+    Q_PROPERTY(QString setupPodmanAction READ setupPodmanAction NOTIFY setupChanged)
+    Q_PROPERTY(bool setupMandatoryOk READ setupMandatoryOk NOTIFY setupChanged)
+    Q_PROPERTY(QVariantList setupChecks READ setupChecks NOTIFY setupChanged)
+    Q_PROPERTY(QVariantMap setupSummary READ setupSummary NOTIFY setupChanged)
+    Q_PROPERTY(QVariantMap setupDockerImpact READ setupDockerImpact NOTIFY setupChanged)
+    Q_PROPERTY(QVariantMap updateStatus READ updateStatus NOTIFY updateStatusChanged)
+    Q_PROPERTY(QVariantList systemLogs READ systemLogs NOTIFY systemLogsChanged)
+    Q_PROPERTY(QString systemLogsError READ systemLogsError NOTIFY systemLogsChanged)
+    Q_PROPERTY(bool systemLogsTruncated READ systemLogsTruncated NOTIFY systemLogsChanged)
+    Q_PROPERTY(bool systemLogsBusy READ systemLogsBusy NOTIFY systemLogsChanged)
+    Q_PROPERTY(
+        QString diagnosticReportPath READ diagnosticReportPath NOTIFY diagnosticReportChanged)
+    Q_PROPERTY(QVariantMap diskHealth READ diskHealth NOTIFY diskHealthChanged)
+    Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
+    Q_PROPERTY(QString setupJobId READ setupJobId NOTIFY setupJobChanged)
+    Q_PROPERTY(bool setupJobActive READ setupJobActive NOTIFY setupJobChanged)
+    Q_PROPERTY(int setupProgress READ setupProgress NOTIFY setupJobChanged)
+    Q_PROPERTY(QStringList setupLog READ setupLog NOTIFY setupJobChanged)
+    Q_PROPERTY(QString setupStatus READ setupStatus NOTIFY setupJobChanged)
+    Q_PROPERTY(QString setupError READ setupError NOTIFY setupChanged)
+    Q_PROPERTY(bool setupBusy READ setupBusy NOTIFY setupChanged)
+    Q_PROPERTY(bool setupLoaded READ setupLoaded NOTIFY setupChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
 
     K8sController *k8s() { return &m_k8s; }
+    SettingsController *settings() { return &m_settings; }
     ContainerController *containers() { return &m_containers; }
     ContainerDetailController *containerDetail() { return &m_containerDetail; }
     ImageController *images() { return &m_images; }
@@ -193,10 +267,6 @@ public:
     QString setupStatus() const { return m_setupStatus; }
     QString setupError() const { return m_setupError; }
     bool setupBusy() const { return m_setupBusy; }
-    QString settingsError() const { return m_settingsError; }
-    QVariantList settingsSchema() const { return m_settingsSchema; }
-    QVariantMap settingsValues() const { return m_settingsValues; }
-    QStringList pendingRestartKeys() const { return m_pendingRestartKeys; }
     bool setupLoaded() const { return m_setupLoaded; }
 
     Q_INVOKABLE void refresh();
@@ -250,15 +320,6 @@ public:
                                    bool force = false);
     Q_INVOKABLE void startActivityMonitor();
     Q_INVOKABLE void stopActivityMonitor();
-    Q_INVOKABLE QVariantMap settings() const;
-    Q_INVOKABLE void refreshSettings();
-    Q_INVOKABLE void setSetting(const QString &key, const QVariant &value);
-    Q_INVOKABLE void resetSetting(const QString &key);
-    Q_INVOKABLE void saveEngineMode(const QString &mode);
-    Q_INVOKABLE void saveTheme(const QString &theme);
-    Q_INVOKABLE void saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
-                                      bool notifications = true);
-    Q_INVOKABLE void saveProxySettings(const QString &proxy, const QString &excludeText);
     Q_INVOKABLE void setupRefresh();
     Q_INVOKABLE void setupCheck();
     Q_INVOKABLE void setupValidate();
@@ -310,12 +371,6 @@ signals:
     void containerEvent(const QVariantMap &event);
     void terminalRequested(const QString &title, const QString &program,
                            const QStringList &args);
-    void settingsChanged();
-    void settingsSchemaChanged();
-    void settingsValuesChanged();
-    void settingsErrorChanged();
-    void pendingRestartKeysChanged();
-    void settingFinished(const QString &key, bool ok, const QString &error);
     void setupChanged();
     void setupJobChanged();
 
@@ -331,15 +386,6 @@ private:
     void startUpdateRunner(bool resume);
     void onSystemLogsFinished();
     void onDiskFinished();
-    void onSettingsFinished();
-    void onSettingsActionFinished();
-    void setSettingInternal(const QString &key, const QVariant &value,
-                            bool applyAutostart = false);
-    void enqueueSettingsRequest(const QString &method, const QJsonObject &params,
-                                bool applyAutostart = false);
-    void startNextSettingsRequest();
-    void setSettingsError(const QString &error);
-    void applySettingsValues(const QVariantMap &values);
     void onMachinesFinished();
     void onMachineDistrosFinished();
     void onMachineInfoFinished();
@@ -383,17 +429,6 @@ private:
     QFutureWatcher<QJsonObject> m_machineFilesWatcher;
     QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
-    QFutureWatcher<QJsonObject> m_settingsWatcher;
-    QFutureWatcher<QJsonObject> m_settingsActionWatcher;
-    struct SettingsRequest {
-        QString method;
-        QJsonObject params;
-        bool applyAutostart = false;
-    };
-    QQueue<SettingsRequest> m_settingsQueue;
-    SettingsRequest m_settingsCurrentRequest;
-    bool m_settingsActionActive = false;
-    bool m_settingsRefreshAgain = false;
     QString m_setupPendingMethod;
     QString m_catalogSection;
     QStringList m_catalogQueue;
@@ -420,6 +455,7 @@ private:
     QVariantList m_activityMemHistory;
     bool m_activityActive = false;
     K8sController m_k8s;
+    SettingsController m_settings;
     ContainerController m_containers;
     ContainerDetailController m_containerDetail{&m_containers};
     ImageController m_images;
@@ -506,11 +542,6 @@ private:
     QString m_setupError;
     bool m_setupBusy = false;
     bool m_setupLoaded = false;
-    QVariantList m_settingsSchema;
-    QVariantMap m_settingsValues;
-    QString m_settingsError;
-    QStringList m_pendingRestartKeys;
-    int m_logBufferLines = 10000;
 };
 
 } // namespace PodStack

@@ -58,6 +58,10 @@ protected:
                                   const QJsonObject &result);
 
     void setLastError(const QString &message);
+
+    /// Limite de linhas mantidas pelos buffers de log (setting logs.bufferLines).
+    static int logBufferLines();
+    static void setLogBufferLines(int lines);
     static QString errorMessage(const QJsonObject &result);
     static bool isErrorResult(const QJsonObject &result);
 

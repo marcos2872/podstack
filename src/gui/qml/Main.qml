@@ -30,7 +30,7 @@ Rectangle {
     }
 
     function applyAppearance() {
-        const theme = backend.settingsValues["app.theme"] || "system"
+        const theme = backend.settings.values["app.theme"] || "system"
         if (theme === "light") {
             Theme.dark = false
         } else if (theme === "dark") {
@@ -45,7 +45,7 @@ Rectangle {
                 Theme.dark = false
             }
         }
-        const scale = Number(backend.settingsValues["app.fontScale"] || 100)
+        const scale = Number(backend.settings.values["app.fontScale"] || 100)
         Theme.fontScale = (isFinite(scale) && scale >= 80 && scale <= 150) ? scale / 100 : 1.0
     }
 
@@ -60,7 +60,7 @@ Rectangle {
 
     Component.onCompleted: {
         applyAppearance()
-        backend.refreshSettings()
+        backend.settings.refresh()
         backend.setupRefresh()
     }
 
@@ -88,7 +88,7 @@ Rectangle {
         target: Qt.styleHints
         ignoreUnknownSignals: true
         function onColorSchemeChanged() {
-            if ((backend.settingsValues["app.theme"] || "system") === "system") {
+            if ((backend.settings.values["app.theme"] || "system") === "system") {
                 applyAppearance()
             }
         }
@@ -136,7 +136,7 @@ Rectangle {
     }
 
     readonly property string engineMode: {
-        return backend.settingsValues["engine.mode"] === "rootful" ? "rootful" : "rootless"
+        return backend.settings.values["engine.mode"] === "rootful" ? "rootful" : "rootless"
     }
 
     function countFor(key) {
@@ -464,7 +464,7 @@ Rectangle {
                         iconName: Theme.dark ? "sun" : "moon"
                         onClicked: {
                             Theme.dark = !Theme.dark
-                            backend.saveTheme(Theme.dark ? "dark" : "light")
+                            backend.settings.saveTheme(Theme.dark ? "dark" : "light")
                         }
                         Accessible.name: qsTr("Alternar tema")
                     }
@@ -908,7 +908,7 @@ Rectangle {
         topPadding: 12
         bottomPadding: 0
         onOpened: {
-            backend.refreshSettings()
+            backend.settings.refresh()
             rebuildSettingsRows()
         }
         onAutoCheckUpdatesChanged: autoCheckBox.checked = autoCheckUpdates
@@ -969,9 +969,9 @@ Rectangle {
 
         function rebuildSettingsRows() {
             const rows = []
-            const schema = backend.settingsSchema
+            const schema = backend.settings.schema
             const category = categoryBox.currentValue
-            const updateMode = backend.settingsValues["updates.mode"] || "check"
+            const updateMode = backend.settings.values["updates.mode"] || "check"
             settingsDialog.autoCheckUpdates = updateMode !== "off"
             for (let index = 0; index < schema.length; ++index) {
                 const definition = schema[index]
@@ -980,7 +980,7 @@ Rectangle {
                 if (definition.category !== category || definition.hidden === true) {
                     continue
                 }
-                const value = backend.settingsValues[definition.key]
+                const value = backend.settings.values[definition.key]
                 rows.push({
                     settingKey: definition.key,
                     settingType: definition.type,
@@ -1040,7 +1040,7 @@ Rectangle {
 
             Rectangle {
                 Layout.fillWidth: true
-                visible: backend.pendingRestartKeys.length > 0
+                visible: backend.settings.pendingRestartKeys.length > 0
                 implicitHeight: restartNotice.implicitHeight + 12
                 radius: Theme.radiusSm
                 color: Theme.warningSoft
@@ -1052,7 +1052,7 @@ Rectangle {
                     anchors.fill: parent
                     anchors.margins: 6
                     text: qsTr("Reinicie o PodStack para aplicar: %1")
-                              .arg(backend.pendingRestartKeys.join(", "))
+                              .arg(backend.settings.pendingRestartKeys.join(", "))
                     color: Theme.warning
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -1107,7 +1107,7 @@ Rectangle {
                                 text: qsTr("Verificar atualizações ao iniciar")
                                 checked: settingsDialog.autoCheckUpdates
                                 Layout.fillWidth: true
-                                onClicked: backend.setSetting("updates.mode",
+                                onClicked: backend.settings.setSetting("updates.mode",
                                                               checked ? "check" : "off")
                             }
 
@@ -1198,10 +1198,10 @@ Rectangle {
                             settingsBackend: backend
 
                             onSaveRequested: function(key, value) {
-                                backend.setSetting(key, value)
+                                backend.settings.setSetting(key, value)
                             }
                             onResetRequested: function(key) {
-                                backend.resetSetting(key)
+                                backend.settings.resetSetting(key)
                             }
                         }
                     }
@@ -1209,7 +1209,7 @@ Rectangle {
                     Text {
                         visible: settingsDialog.settingsRows.length === 0
                         width: parent.width
-                        text: backend.settingsSchema.length === 0
+                        text: backend.settings.schema.length === 0
                               ? qsTr("Carregando schema de configurações…")
                               : qsTr("Nenhuma configuração nesta categoria.")
                         color: Theme.textTertiary
@@ -1223,8 +1223,8 @@ Rectangle {
             }
 
             Text {
-                visible: backend.settingsError.length > 0
-                text: backend.settingsError
+                visible: backend.settings.error.length > 0
+                text: backend.settings.error
                 color: Theme.danger
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
@@ -1233,7 +1233,7 @@ Rectangle {
             }
 
             ActionButton {
-                visible: backend.settingsError.length > 0
+                visible: backend.settings.error.length > 0
                 text: qsTr("Ver log")
                 size: "sm"
                 onClicked: systemLogsDialog.openFor("setup", "")

@@ -19,7 +19,7 @@ ColumnLayout {
     readonly property var sourceLines: logsView.lines !== null ? logsView.lines
                                                               : backend.containers.logLines
 
-    readonly property var settingsValues: backend.settingsValues
+    readonly property var settingsValues: backend.settings.values
     readonly property int logFontSize: {
         const size = Number(settingsValues["logs.fontSize"] || 12)
         return isFinite(size) && size >= 8 && size <= 32 ? size : 12
