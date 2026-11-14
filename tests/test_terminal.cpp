@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "core/config/Config.h"
+#include "gui/app/MainWindow.h"
+#include "gui/app/SingleInstance.h"
+#include "gui/app/Translation.h"
+#include "gui/app/UiState.h"
+#include "gui/app/notifications/Notifications.h"
+#include "gui/app/terminal/ExternalTerminal.h"
+#include "gui/app/tray/Tray.h"
 #include "gui/controllers/Backend.h"
 #include "gui/windows/ContainerDetailDialog.h"
-#include "gui/app/terminal/ExternalTerminal.h"
 #include "gui/windows/MachineDetailDialog.h"
-#include "gui/app/MainWindow.h"
-#include "gui/app/notifications/Notifications.h"
-#include "gui/app/SingleInstance.h"
-#include "gui/windows/terminal/TerminalView.h"
 #include "gui/windows/TerminalWindow.h"
-#include "gui/app/Translation.h"
-#include "gui/app/tray/Tray.h"
-#include "gui/app/UiState.h"
+#include "gui/windows/terminal/TerminalView.h"
 
 #include <QDockWidget>
 #include <QFile>
@@ -439,7 +439,8 @@ void TerminalTest::selectionState()
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     component.loadFromModule(QStringLiteral("PodStack.Design"), QStringLiteral("SelectionState"));
 #else
-    component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Design/patterns/SelectionState.qml")));
+    component.loadUrl(
+        QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Design/patterns/SelectionState.qml")));
 #endif
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
     QScopedPointer<QObject> state(component.create());
