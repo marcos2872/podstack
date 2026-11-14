@@ -41,4 +41,8 @@ int prune(const Options &options, const QDate &today, QString *error = nullptr);
 /// Arquivos rotacionados (com data) do stem, do mais antigo ao mais novo.
 QStringList rotatedFiles(const Options &options);
 
+/// Remove todos os arquivos .jsonl do diretório (usado por `--clear`).
+/// Retorna a quantidade removida; ignora diretórios e lock files.
+int clear(const QString &directory);
+
 } // namespace PodStack::LogRotation

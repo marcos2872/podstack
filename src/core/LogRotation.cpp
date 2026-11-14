@@ -294,6 +294,19 @@ int prune(const Options &options, const QDate &today, QString *error)
     return removed;
 }
 
+int clear(const QString &directory)
+{
+    const QDir dir(directory);
+    int removed = 0;
+    const QStringList names = dir.entryList({QStringLiteral("*.jsonl")}, QDir::Files);
+    for (const QString &name : names) {
+        if (QFile::remove(dir.filePath(name))) {
+            ++removed;
+        }
+    }
+    return removed;
+}
+
 QStringList rotatedFiles(const Options &options)
 {
     QVector<RotatedFile> files = rotatedFileList(options);

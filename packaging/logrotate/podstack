@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Rotação dos logs root por operação. O app lê somente via GetLogs.
+/var/log/podstack/jobs/*/*.jsonl {
+    daily
+    rotate 7
+    missingok
+    notifempty
+    compress
+    copytruncate
+    su root root
+}

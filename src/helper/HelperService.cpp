@@ -42,6 +42,7 @@ constexpr auto kTrustCaAction = "dev.podstack.helper.trust-ca";
 constexpr auto kStageUpdateAction = "dev.podstack.helper.stage-update";
 constexpr auto kInstallUpdateAction = "dev.podstack.helper.install-update";
 constexpr auto kUpdateStatusAction = "dev.podstack.helper.get-update-status";
+constexpr auto kGetLogsAction = "dev.podstack.helper.get-logs";
 
 const QStringList &installAllowlist()
 {
@@ -802,6 +803,34 @@ QVariantMap HelperService::GetUpdateStatus(const QString &jobId)
     if (!updateService()->status(uid, jobId, &reply, &updateError)) {
         return updateFailure(updateError);
     }
+    return reply;
+}
+
+QVariantMap HelperService::GetLogs(const QString &jobId)
+{
+    const uint uid = callerUid();
+    QString error;
+    if (!authorize(QString::fromLatin1(kGetLogsAction), &error)) {
+        qCWarning(lcHelper, "GetLogs uid=%u job=%s result=denied", uid, qUtf8Printable(jobId));
+        return result(false, error);
+    }
+    if (!updateRateLimit(uid, QStringLiteral("logs"), 10, &error)) {
+        return result(false, error);
+    }
+
+    QVariantList lines;
+    bool truncated = false;
+    Error logsError;
+    if (!updateService()->logs(uid, jobId, &lines, &truncated, &logsError)) {
+        return updateFailure(logsError);
+    }
+    qCInfo(lcHelper, "GetLogs uid=%u job=%s lines=%d truncated=%d result=ok", uid,
+           qUtf8Printable(jobId), static_cast<int>(lines.size()), truncated ? 1 : 0);
+    QVariantMap reply;
+    reply.insert(QStringLiteral("ok"), true);
+    reply.insert(QStringLiteral("message"), QString());
+    reply.insert(QStringLiteral("lines"), lines);
+    reply.insert(QStringLiteral("truncated"), truncated);
     return reply;
 }
 

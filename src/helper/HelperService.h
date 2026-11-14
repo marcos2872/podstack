@@ -40,6 +40,7 @@ public slots:
                                          const QString &artifactPath, const QString &channel);
     Q_SCRIPTABLE QVariantMap InstallUpdate(const QString &jobId);
     Q_SCRIPTABLE QVariantMap GetUpdateStatus(const QString &jobId);
+    Q_SCRIPTABLE QVariantMap GetLogs(const QString &jobId);
 
 protected:
     /// Ponto de extensão para testes; em produção exige polkit via D-Bus.

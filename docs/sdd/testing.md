@@ -597,9 +597,9 @@ Todo PR/tarefa anexa:
 | Machines/cgroup | `ProcessScope` monta `systemd-run --user --scope` e cai para execução direta sem systemd; QEMU em `podstack-machine-<id>.scope` e virtiofsd em `podstack-virtiofsd-<hash>.scope` (cgroup real quando o user manager existe); reconciliação de órfãos após restart |
 | Exit codes/JSON | `test_cli/updateCommand`: `update --check` 0/1/2/3/6/8/9 e `update --install` 0/1/2/6/8/9 (sem 3); `--json` com `error.code`; `--yes` obrigatório sem TTY; manifesto ausente |
 | Logs core | `test_logging`: JSON Lines, nomes correntes/rotacionados (`-YYYYMMDD[-N]`), rotação diária/por tamanho, timer da meia-noite, 8º dia removido, 1–30 dias, 10 MB/200 MB, `0600`/`0700`, `flock`, concorrência daemon+CLI, fila cheia/drop-oldest, `kill -9`, redaction com `diagnostics.redact=false` |
-| Logs root | `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` `0750`/`0640`, `uid`/`jobId` por linha, redaction de token na saída de `apt`/`dnf`, `GetLogs` uid A/B/negado/jobId, cap 1 MiB, rate limit; app não lê root |
-| CLI/GUI | `system logs` filtros/`--follow`/`--since`/`--level`/`--component`/`--json`/`--export`/`--clear`, filtro inválido 2, export `0600` canonicalizado/sem symlink, “Ver log”, leitura em worker/modelo virtualizado, i18n/`Accessible.name`, `qmllint` |
-| Report | vazio, volumetria, caps 10.000 linhas/componente e 5 MB, redaction incondicional, `diagnostics.includeLogs=false` |
+| Logs root | `test_update_service/logsReadRootFiles`: `/var/log/podstack/jobs/<uid>/<jobId>.jsonl`, redaction, `GetLogs` com/sem jobId, cap 1 MiB; `test_update_exec` cobre permissões 0640 e token do gerenciador; uid A/B/negado no helper |
+| CLI/GUI | `system logs` filtros/`--follow`/`--since`/`--level`/`--component`/`--json`/`--export`/`--clear` (surface em T-LOG-03), filtro inválido 2, export `0600` canonicalizado/sem symlink, “Ver log”, leitura em worker/modelo virtualizado, i18n/`Accessible.name`, `qmllint`; backend `Logging::clear` coberto por `test_logging/clearLogs` |
+| Report | `test_rpc/systemReportRedactsSettings`: logs do usuário incluídos com redaction e `includeLogs=true`; caps 10.000/componente e 5 MB; `diagnostics.includeLogs=false`; helper via `GetLogs` |
 
 ### 16.2 E2E (VMs Ubuntu 24.04/26.04 e Fedora)
 

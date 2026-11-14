@@ -78,6 +78,7 @@ private slots:
     void retentionAndCap();
     void rotateAtStart();
     void queueDrop();
+    void clearLogs();
     void settingsSchema();
 
 private:
@@ -353,6 +354,23 @@ void LoggingTest::queueDrop()
         foundDropped = foundDropped || line.contains(QStringLiteral("descartadas"));
     }
     QVERIFY(foundDropped);
+}
+
+void LoggingTest::clearLogs()
+{
+    initLogging(QStringLiteral("clear"), QStringLiteral("info"));
+    qCInfo(lcCore) << "antes do clear";
+    PodStack::Logging::flush();
+    const QString path = PodStack::Logging::currentLogFile();
+    QVERIFY(QFileInfo::exists(path));
+    PodStack::Logging::clear();
+    PodStack::Logging::flush();
+    QVERIFY(!QFileInfo::exists(path) || QFileInfo(path).size() == 0);
+    qCInfo(lcCore) << "depois do clear";
+    stopLogging();
+    const QStringList lines = readLines(m_lastFile);
+    QVERIFY(!lines.join(QString()).contains(QStringLiteral("antes do clear")));
+    QVERIFY(lines.join(QString()).contains(QStringLiteral("depois do clear")));
 }
 
 void LoggingTest::settingsSchema()

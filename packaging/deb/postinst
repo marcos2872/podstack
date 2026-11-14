@@ -16,6 +16,13 @@ log() {
     echo "PodStack: $*" >&2
 }
 
+log_update() {
+    if [ -n "${PODSTACK_UPDATE_JOB_ID:-}" ] && command -v logger >/dev/null 2>&1; then
+        logger -t podstack-update \
+            "JOB_ID=${PODSTACK_UPDATE_JOB_ID} UID=${PODSTACK_UPDATE_UID:-} $*"
+    fi
+}
+
 logged_uids() {
     if command -v loginctl >/dev/null 2>&1; then
         loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u
@@ -23,10 +30,12 @@ logged_uids() {
 }
 
 if command -v systemctl >/dev/null 2>&1; then
+    systemd-tmpfiles --create podstack.conf >/dev/null 2>&1 || true
     systemctl daemon-reload >/dev/null 2>&1 || helper_rc=1
     systemctl --global enable "$SOCKET_UNIT" >/dev/null 2>&1 || helper_rc=1
     systemctl enable "$HELPER_UNIT" >/dev/null 2>&1 || helper_rc=1
     systemctl restart "$HELPER_UNIT" >/dev/null 2>&1 || helper_rc=1
+    log_update "postinst: helper reiniciado"
 
     for uid in $(logged_uids); do
         systemctl --machine "user@${uid}.service" --user daemon-reload \

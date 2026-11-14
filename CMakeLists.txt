@@ -336,6 +336,8 @@ install(FILES packaging/systemd-system/podstack-helper.service
 
 install(TARGETS podstack-helper RUNTIME DESTINATION libexec/podstack)
 install(TARGETS podstack-update-exec RUNTIME DESTINATION libexec/podstack)
+install(FILES packaging/tmpfiles.d/podstack.conf DESTINATION lib/tmpfiles.d)
+install(FILES packaging/logrotate/podstack DESTINATION /etc/logrotate.d)
 
 install(FILES packaging/polkit/dev.podstack.helper.policy
     DESTINATION share/polkit-1/actions

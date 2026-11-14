@@ -80,6 +80,7 @@ private slots:
     void stageRejectsVersionAndIdentity();
     void stageRejectsArtifactVariants();
     void statusAndInstallRejectInvalidJob();
+    void logsReadRootFiles();
     void installRunsSystemdRun();
     void installRefusesActiveUnit();
     void installReportsSystemdRunFailure();
@@ -212,6 +213,7 @@ UpdateServiceTest::Fixture UpdateServiceTest::makeFixture(const QString &name,
     options.wrapperPath = root + QStringLiteral("/wrapper");
     options.logRoot = root + QStringLiteral("/logs");
     options.maxArtifactBytes = 1024 * 1024;
+    options.includeJournal = false;
     fixture.options = options;
     fixture.artifact = artifact;
 
@@ -371,6 +373,38 @@ void UpdateServiceTest::statusAndInstallRejectInvalidJob()
     QVariantMap status;
     error = {};
     QVERIFY(!service.status(fixture.uid + 1, jobId, &status, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+}
+
+void UpdateServiceTest::logsReadRootFiles()
+{
+    const Fixture fixture = makeFixture(QStringLiteral("logs"));
+    UpdateService service(fixture.options);
+    const QString uidDir = fixture.options.logRoot + QLatin1Char('/')
+                           + QString::number(fixture.uid);
+    QVERIFY(QDir().mkpath(uidDir));
+    QFile file(uidDir + QStringLiteral("/update-test.jsonl"));
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(QByteArrayLiteral(R"({"jobId":"update-test","uid":1000,)")
+               + QByteArrayLiteral(R"("message":"Authorization: Bearer segredo"})") + '\n');
+    file.close();
+
+    QVariantList lines;
+    bool truncated = true;
+    PodStack::Error error;
+    QVERIFY2(service.logs(fixture.uid, QStringLiteral("update-test"), &lines, &truncated, &error),
+             qPrintable(error.message));
+    QCOMPARE(lines.size(), 1);
+    QVERIFY(!truncated);
+    QVERIFY(!lines.first().toString().contains(QStringLiteral("segredo")));
+    QVERIFY(lines.first().toString().contains(QStringLiteral("[redacted]")));
+
+    QVariantList all;
+    QVERIFY(service.logs(fixture.uid, QString(), &all, &truncated, &error));
+    QCOMPARE(all.size(), 1);
+
+    error = {};
+    QVERIFY(!service.logs(fixture.uid, QStringLiteral("update-missing"), &all, &truncated, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 }
 

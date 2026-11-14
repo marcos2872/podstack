@@ -19,6 +19,7 @@
 Q_LOGGING_CATEGORY(lcCore, "podstack.core")
 Q_LOGGING_CATEGORY(lcPodman, "podstack.podman")
 Q_LOGGING_CATEGORY(lcRpc, "podstack.rpc")
+Q_LOGGING_CATEGORY(lcSetup, "podstack.setup")
 
 namespace PodStack::Logging {
 namespace {
@@ -231,6 +232,13 @@ void flush()
 {
     if (g_writer) {
         g_writer->flush();
+    }
+}
+
+void clear()
+{
+    if (g_writer) {
+        g_writer->clear();
     }
 }
 

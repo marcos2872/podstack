@@ -115,6 +115,14 @@ interface Subscription { subscriptionId: string }
 | `system.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 | `system.shutdown` | `{stopContainers?:bool}` | `{}` |
 
+#### `system.report`
+
+`params`: `{includeLogs?: bool}`. O report é JSON `0600` (não tar.gz) e devolve
+`{path, bytes, sha256}`. Com `includeLogs:true`, inclui até 7 dias de logs do usuário
+(daemon/GUI/CLI/setup/update) e os logs root do uid via `GetLogs`, com cap de 10.000 linhas por
+componente e 5 MB no total, aplicando redaction incondicional. `diagnostics.includeLogs` é
+**opt-in** (`false` por padrão); nada é enviado.
+
 #### `system.df`
 
 `params`: `{detailed?: bool}` — padrão `true` para compatibilidade. Com `detailed:false`,

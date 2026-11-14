@@ -615,6 +615,27 @@ void RpcTest::systemReportRedactsSettings()
     QVERIFY(!settings.value(QStringLiteral("network.proxy")).toString().contains("s3cr3t"));
     QVERIFY(settings.value(QStringLiteral("network.proxy")).toString().contains("[redacted]"));
 
+    const QString logDir = m_testDataDir + QStringLiteral("/state/podstack/logs");
+    QVERIFY(QDir().mkpath(logDir));
+    QFile logFile(logDir + QStringLiteral("/podstackd.jsonl"));
+    QVERIFY(logFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    logFile.write(QByteArrayLiteral(
+                      R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer s3cr3t"})")
+                  + '\n');
+    logFile.close();
+    QVERIFY(logFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+
+    const QJsonObject withLogs =
+        client.call(QStringLiteral("system.report"),
+                    QJsonObject{{QStringLiteral("includeLogs"), true}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QFile reportWithLogs(withLogs.value(QStringLiteral("path")).toString());
+    QVERIFY(reportWithLogs.open(QIODevice::ReadOnly));
+    const QByteArray logsPayload = reportWithLogs.readAll();
+    reportWithLogs.close();
+    QVERIFY(!logsPayload.contains("s3cr3t"));
+    QVERIFY(logsPayload.contains("[redacted]"));
+
     client.call(QStringLiteral("settings.reset"),
                 QJsonObject{{QStringLiteral("key"), QStringLiteral("network.proxy")}}, &error);
 }

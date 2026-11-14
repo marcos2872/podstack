@@ -27,6 +27,8 @@
 /usr/libexec/podstack/podstackd
 /usr/libexec/podstack/podstack-helper
 /usr/libexec/podstack/podstack-update-exec
+/usr/lib/tmpfiles.d/podstack.conf
+/etc/logrotate.d/podstack
 /usr/lib/systemd/user/podstack.socket
 /usr/lib/systemd/user/podstack.service
 /usr/lib/systemd/system/podstack-helper.service
@@ -161,6 +163,10 @@ ProtectControlGroups=yes
   `flock /run/podstack/update.lock /usr/libexec/podstack/podstack-update-exec`; o wrapper grava
   `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` (`0640`) e `state.json` (`0640`). O helper roda com
   `ProtectHome=read-only` para ler o artefato do usuário sem escrever no home.
+- **Logs root:** `/var/log/podstack` e `/var/log/podstack/jobs` são criados por
+  `tmpfiles.d/podstack.conf` (`0750` root); `logrotate.d/podstack` mantém 7 dias com
+  `copytruncate`/`su root root`. O app nunca lê esses arquivos diretamente: `GetLogs` filtra pelo
+  uid do chamador e retorna até 1 MiB redigido.
 
 ### 4.1 Helper em desenvolvimento
 
@@ -331,6 +337,8 @@ binário; ambos tolerantes a host sem SELinux (`|| :`). O `%preun` remove com
 ```bash
 ls -Z /usr/libexec/podstack/podstack-helper
 /usr/libexec/podstack/podstack-update-exec
+/usr/lib/tmpfiles.d/podstack.conf
+/etc/logrotate.d/podstack
 ls -Zd /run/podstack
 semodule -l | grep podstack
 ausearch -m avc -ts recent        # negações do domínio podstack_helper_t
@@ -457,6 +465,8 @@ fi
 %files helper
 /usr/libexec/podstack/podstack-helper
 /usr/libexec/podstack/podstack-update-exec
+/usr/lib/tmpfiles.d/podstack.conf
+/etc/logrotate.d/podstack
 /usr/lib/systemd/system/podstack-helper.service
 /usr/share/dbus-1/system.d/dev.podstack.Helper1.conf
 /usr/share/polkit-1/actions/dev.podstack.helper.policy

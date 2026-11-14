@@ -17,6 +17,13 @@ log() {
     echo "PodStack: $*" >&2
 }
 
+log_update() {
+    if [ -n "${PODSTACK_UPDATE_JOB_ID:-}" ] && command -v logger >/dev/null 2>&1; then
+        logger -t podstack-update \
+            "JOB_ID=${PODSTACK_UPDATE_JOB_ID} UID=${PODSTACK_UPDATE_UID:-} $*"
+    fi
+}
+
 used_systemd() {
     command -v systemctl >/dev/null 2>&1
 }
@@ -41,6 +48,7 @@ restore_runtime() {
 
 abort_upgrade() {
     log "$1"
+    log_update "preinst abortado: $1"
     log "restaurando a máscara do socket e o helper..."
     restore_runtime
     exit 1
@@ -118,9 +126,11 @@ stop_without_systemd() {
 
 case "${1:-}" in
     install|upgrade)
+        log_update "preinst iniciado"
         if used_systemd; then
             stop_logged_users
             stop_helper
+            log_update "preinst concluído"
         else
             stop_without_systemd
         fi

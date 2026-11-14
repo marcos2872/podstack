@@ -10,6 +10,7 @@
 Q_DECLARE_LOGGING_CATEGORY(lcCore)
 Q_DECLARE_LOGGING_CATEGORY(lcPodman)
 Q_DECLARE_LOGGING_CATEGORY(lcRpc)
+Q_DECLARE_LOGGING_CATEGORY(lcSetup)
 
 namespace PodStack::Logging {
 
@@ -26,6 +27,7 @@ void shutdown();
 
 /// Solicita um flush síncrono (usado por testes e encerramento).
 void flush();
+void clear();
 
 QString logDirectory();
 QString currentLogFile();

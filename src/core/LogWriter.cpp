@@ -138,6 +138,12 @@ void LogWriter::flush()
     (void) m_flushCv.wait_for(lock, std::chrono::seconds(3), [this] { return m_flushDone; });
 }
 
+void LogWriter::clear()
+{
+    m_clearRequested = true;
+    flush();
+}
+
 void LogWriter::requestRotation()
 {
     m_rotationRequested = true;
@@ -228,6 +234,11 @@ void LogWriter::run()
 
         if (rotate) {
             rotateDaily(m_fileDate.isValid() ? m_fileDate : QDate::currentDate());
+        }
+        if (m_clearRequested.exchange(false)) {
+            closeFile();
+            (void) LogRotation::clear(m_options.directory);
+            (void) openFile();
         }
 
         if (m_fileDate.isValid() && QDate::currentDate() != m_fileDate) {

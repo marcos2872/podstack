@@ -43,6 +43,7 @@ public:
     void stop();
     void enqueue(QtMsgType type, const QMessageLogContext &context, const QString &message);
     void flush();
+    void clear();
     void requestRotation();
     void update(LogRotation::Options options, LogLevel level);
 
@@ -81,6 +82,7 @@ private:
     std::atomic<int> m_level;
     std::atomic<bool> m_stop{false};
     std::atomic<bool> m_rotationRequested{false};
+    std::atomic<bool> m_clearRequested{false};
     std::atomic<int> m_dropped{0};
 
     mutable std::mutex m_mutex;

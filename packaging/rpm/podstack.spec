@@ -65,8 +65,15 @@ install -D -m 0644 packaging/selinux/podstack.pp \
 # Encerra GUI/daemon/helper antigos antes do unpack. O runner
 # `podstack update --install --runner` não é tocado. Roda também na
 # instalação para não deixar um app de desenvolvimento com o mesmo nome.
+log_update() {
+    if [ -n "${PODSTACK_UPDATE_JOB_ID:-}" ] && command -v logger >/dev/null 2>&1; then
+        logger -t podstack-update \
+            "JOB_ID=${PODSTACK_UPDATE_JOB_ID} UID=${PODSTACK_UPDATE_UID:-} $*"
+    fi
+}
 if [ "$1" -ge 1 ]; then
     touched_uids=""
+    log_update "rpm %pre iniciado"
     restore_rpm() {
         for touched in $touched_uids; do
             systemctl --machine "user@${touched}.service" --user unmask --runtime \
@@ -140,7 +147,15 @@ if [ "$1" -ge 1 ]; then
 fi
 
 %post
+log_update() {
+    if [ -n "${PODSTACK_UPDATE_JOB_ID:-}" ] && command -v logger >/dev/null 2>&1; then
+        logger -t podstack-update \
+            "JOB_ID=${PODSTACK_UPDATE_JOB_ID} UID=${PODSTACK_UPDATE_UID:-} $*"
+    fi
+}
+log_update "rpm %post iniciado"
 # O socket do usuário sobe sob demanda na primeira conexão da GUI/CLI.
+systemd-tmpfiles --create podstack.conf >/dev/null 2>&1 || :
 systemctl --global enable podstack.socket >/dev/null 2>&1 || :
 # Tolerante a sistemas sem SELinux/semodule: o módulo é opcional em runtime.
 semodule -i %{_datadir}/selinux/packages/podstack.pp >/dev/null 2>&1 || :
@@ -152,6 +167,7 @@ systemctl enable podstack-helper.service >/dev/null 2>&1 || :
 # `enable --now` não reinicia um helper já ativo; o restart é obrigatório
 # para carregar a allowlist e o código novos.
 systemctl restart podstack-helper.service >/dev/null 2>&1 || :
+log_update "rpm %post: helper reiniciado"
 for uid in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u); do
     systemctl --machine "user@${uid}.service" --user daemon-reload >/dev/null 2>&1 || :
     systemctl --machine "user@${uid}.service" --user unmask --runtime \
@@ -252,6 +268,8 @@ fi
 %{_libexecdir}/podstack/podstack-helper
 %{_libexecdir}/podstack/podstack-update-exec
 %{_unitdir}/podstack-helper.service
+%{_tmpfilesdir}/podstack.conf
+%config(noreplace) /etc/logrotate.d/podstack
 %{_datadir}/polkit-1/actions/dev.podstack.helper.policy
 %{_datadir}/dbus-1/system.d/dev.podstack.Helper1.conf
 %{_datadir}/selinux/packages/podstack.pp

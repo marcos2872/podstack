@@ -6,6 +6,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QVariantList>
 #include <QVariantMap>
 
 #include <sys/types.h>
@@ -30,6 +31,7 @@ public:
         QString logRoot = QStringLiteral("/var/log/podstack/jobs");
         int installTimeoutSeconds = 1800;
         qint64 maxArtifactBytes = 300LL * 1024 * 1024;
+        bool includeJournal = true;
     };
 
     UpdateService();
@@ -40,6 +42,8 @@ public:
                Error *error);
     bool install(uid_t uid, const QString &jobId, QVariantMap *result, Error *error);
     bool status(uid_t uid, const QString &jobId, QVariantMap *result, Error *error);
+    bool logs(uid_t uid, const QString &jobId, QVariantList *lines, bool *truncated,
+              Error *error) const;
 
     const Options &options() const { return m_options; }
 

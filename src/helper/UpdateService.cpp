@@ -2,6 +2,7 @@
 
 #include "helper/UpdateService.h"
 
+#include "core/Redaction.h"
 #include "core/UpdateManifest.h"
 
 #include <QByteArray>
@@ -749,6 +750,115 @@ bool UpdateService::install(uid_t uid, const QString &jobId, QVariantMap *result
         result->insert(QStringLiteral("jobId"), jobId);
         result->insert(QStringLiteral("unit"), unit);
         result->insert(QStringLiteral("stateDir"), stateDir);
+    }
+    return true;
+}
+
+bool UpdateService::logs(uid_t uid, const QString &jobId, QVariantList *lines, bool *truncated,
+                         Error *error) const
+{
+    if (error) {
+        *error = {};
+    }
+    if (lines) {
+        lines->clear();
+    }
+    if (truncated) {
+        *truncated = false;
+    }
+
+    const QString directory = m_options.logRoot + QLatin1Char('/') + QString::number(uid);
+    QStringList files;
+    if (!jobId.isEmpty()) {
+        if (!jobId.startsWith(QStringLiteral("update-")) || jobId.contains(QLatin1Char('/'))
+            || jobId.contains(QStringLiteral(".."))) {
+            if (error) {
+                *error = updateError(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("jobId inválido."), jobId);
+            }
+            return false;
+        }
+        const QString path = directory + QLatin1Char('/') + jobId + QStringLiteral(".jsonl");
+        if (!QFileInfo::exists(path)) {
+            if (error) {
+                *error = updateError(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                     QStringLiteral("Log do update não encontrado."), jobId);
+            }
+            return false;
+        }
+        files.append(path);
+    } else {
+        const QDir dir(directory);
+        files = dir.entryList({QStringLiteral("*.jsonl")}, QDir::Files | QDir::Readable);
+        files.sort();
+        for (QString &file : files) {
+            file = dir.filePath(file);
+        }
+    }
+
+    constexpr qint64 kMaxBytes = 1024 * 1024;
+    constexpr int kMaxLines = 10000;
+    qint64 bytes = 0;
+    const auto appendLine = [&](const QString &line) {
+        bytes += line.toUtf8().size();
+        if (bytes > kMaxBytes || (lines && lines->size() >= kMaxLines)) {
+            if (truncated) {
+                *truncated = true;
+            }
+            return false;
+        }
+        if (lines && !line.trimmed().isEmpty()) {
+            lines->append(Redaction::text(line));
+        }
+        return true;
+    };
+
+    const QDateTime cutoff = QDateTime::currentDateTime().addDays(-7);
+    for (const QString &path : files) {
+        if (QFileInfo(path).lastModified() < cutoff) {
+            continue;
+        }
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            continue;
+        }
+        while (!file.atEnd()) {
+            if (!appendLine(QString::fromUtf8(file.readLine()).trimmed())) {
+                return true;
+            }
+        }
+    }
+
+    // O wrapper espelha as linhas dos scriptlets no journal com JOB_ID/UID.
+    const QString journalctl = m_options.includeJournal
+                                   ? QStandardPaths::findExecutable(QStringLiteral("journalctl"))
+                                   : QString();
+    if (!journalctl.isEmpty()) {
+        QProcess journal;
+        journal.start(journalctl, {QStringLiteral("-t"), QStringLiteral("podstack-update"),
+                                   QStringLiteral("--since"), QStringLiteral("7 days ago"),
+                                   QStringLiteral("--no-pager"), QStringLiteral("-o"),
+                                   QStringLiteral("cat")});
+        if (journal.waitForFinished(10000) && journal.exitCode() == 0) {
+            const QString jobNeedle =
+                jobId.isEmpty() ? QString() : QStringLiteral("JOB_ID=%1").arg(jobId);
+            const QString uidNeedle = QStringLiteral("UID=%1").arg(uid);
+            for (const QByteArray &raw : journal.readAllStandardOutput().split('\n')) {
+                const QString line = QString::fromUtf8(raw).trimmed();
+                if (line.isEmpty()) {
+                    continue;
+                }
+                if (!jobNeedle.isEmpty() && !line.contains(jobNeedle)) {
+                    continue;
+                }
+                if (jobNeedle.isEmpty() && !line.contains(uidNeedle)) {
+                    continue;
+                }
+                if (!appendLine(line)) {
+                    return true;
+                }
+            }
+        }
     }
     return true;
 }

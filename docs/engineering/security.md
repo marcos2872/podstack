@@ -103,6 +103,7 @@ flowchart TB
 | `StageUpdate` | `{manifest, signature, artifactPath, channel}` | Valida assinatura/chave de release, SHA-256 e identidade do pacote; copia para staging root-owned |
 | `InstallUpdate` | `{jobId}` | Recusa unidade ativa e inicia a unidade transiente com `systemd-run`/`flock` |
 | `GetUpdateStatus` | `{jobId}` | Lê `state.json` do job, escopado ao uid do chamador |
+| `GetLogs` | `{jobId?}` | Lê `/var/log/podstack/jobs/<uid>/` com cap de 1 MiB e redaction; nunca expõe outro uid |
 
 **Proibido:** `Exec`, `Shell`, caminho arbitrário, escrita fora de paths allowlisted; instalação/remoção de pacotes só via `InstallPackages`/`RemovePackages`, com allowlist e consentimento.
 
@@ -111,7 +112,9 @@ flowchart TB
 check/notificação. O artefato é lido com `O_NOFOLLOW`, `fstat` de dono/tamanho e copiado para
 `/run/podstack/update/<jobId>/` root-owned; o helper não confia em SHA/caminho do chamador. O
 gerenciador roda na unidade transiente, fora do cgroup do helper/sessão, com lock global
-`/run/podstack/update.lock`; falha não executa o gerenciador.
+`/run/podstack/update.lock`; falha não executa o gerenciador. Logs root em
+`/var/log/podstack/jobs/<uid>/<jobId>.jsonl` (`0750`/`0640`) são lidos só via `GetLogs`, com
+`auth_admin`, cap de 1 MiB, rate limit e auditoria.
 
 **Firewall runtime (LAN):** `OpenPorts`/`ClosePorts` só aceitam listas de portas
 (`1..65535`, até 32 por chamada, sem duplicatas) e `protocol` `tcp`/`udp`. O helper executa
