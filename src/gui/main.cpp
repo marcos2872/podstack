@@ -79,8 +79,8 @@ int main(int argc, char *argv[])
     PodStack::NotificationService notifications;
     notifications.setTrayIcon(tray.trayIcon());
 
-    QObject::connect(&backend, &PodStack::Backend::containersChanged, &tray,
-                     &PodStack::TrayController::setContainers);
+    QObject::connect(backend.containers(), &PodStack::ContainerController::itemsChanged, &tray,
+                     [&backend, &tray]() { tray.setContainers(backend.containers()->items()); });
     QObject::connect(&backend, &PodStack::Backend::stateChanged, &tray, [&backend, &tray]() {
         tray.setConnected(backend.connected());
         tray.setSetupPending(backend.setupPending());
@@ -95,11 +95,15 @@ int main(int argc, char *argv[])
                      [&backend, &tray]() {
                          tray.setComposeProjects(backend.compose()->items());
                      });
-    QObject::connect(&backend, &PodStack::Backend::actionStateChanged, &tray,
-                     [&backend, &tray]() { tray.setActionActive(backend.actionActive()); });
+    QObject::connect(backend.containers(), &PodStack::ControllerBase::actionStateChanged, &tray,
+                     [&backend, &tray]() {
+                         tray.setActionActive(backend.containers()->actionActive());
+                     });
     QObject::connect(
         &tray, &PodStack::TrayController::containerActionRequested, &backend,
-        [&backend](const QString &action, const QString &id) { backend.lifecycle(action, id); });
+        [&backend](const QString &action, const QString &id) {
+            backend.containers()->lifecycle(action, id);
+        });
     QObject::connect(&tray, &PodStack::TrayController::composeActionRequested, &backend,
                      [&backend](const QString &action, const QString &path) {
                          if (action == QStringLiteral("start")) {

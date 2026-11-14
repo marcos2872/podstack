@@ -278,14 +278,14 @@ Item {
             ActionButton {
                 text: containersPage.compact ? "" : qsTr("Start all")
                 iconName: "play"
-                onClicked: backend.batchAll("start")
+                onClicked: backend.containers.batchAll("start")
                 Accessible.name: qsTr("Start all")
             }
 
             ActionButton {
                 text: containersPage.compact ? "" : qsTr("Stop all")
                 iconName: "stop"
-                onClicked: backend.batchAll("stop")
+                onClicked: backend.containers.batchAll("stop")
                 Accessible.name: qsTr("Stop all")
             }
 
@@ -423,7 +423,7 @@ Item {
                             iconName: "play"
                             size: "sm"
                             Accessible.name: qsTr("Iniciar")
-                            onClicked: backend.batchIds(Object.keys(containersPage.selectedIds), "start")
+                            onClicked: backend.containers.batchIds(Object.keys(containersPage.selectedIds), "start")
                         }
 
                         ActionButton {
@@ -432,7 +432,7 @@ Item {
                             iconName: "stop"
                             size: "sm"
                             Accessible.name: qsTr("Parar")
-                            onClicked: backend.batchIds(Object.keys(containersPage.selectedIds), "stop")
+                            onClicked: backend.containers.batchIds(Object.keys(containersPage.selectedIds), "stop")
                         }
 
                         ActionButton {
@@ -442,7 +442,7 @@ Item {
                             iconName: "trash"
                             size: "sm"
                             Accessible.name: qsTr("Remover")
-                            onClicked: backend.batchIds(Object.keys(containersPage.selectedIds), "remove")
+                            onClicked: backend.containers.batchIds(Object.keys(containersPage.selectedIds), "remove")
                         }
                     }
 
@@ -627,7 +627,7 @@ Item {
                                             size: "sm"
                                             variant: "ghost"
                                             iconName: modelData.state === "running" ? "stop" : "play"
-                                            onClicked: backend.lifecycle(
+                                            onClicked: backend.containers.lifecycle(
                                                            modelData.state === "running" ? "stop" : "start",
                                                            modelData.id)
                                             Accessible.name: modelData.state === "running"
@@ -638,7 +638,7 @@ Item {
                                             size: "sm"
                                             variant: "ghost"
                                             iconName: "rotate"
-                                            onClicked: backend.lifecycle("restart", modelData.id)
+                                            onClicked: backend.containers.lifecycle("restart", modelData.id)
                                             Accessible.name: qsTr("Reiniciar")
                                         }
                                     }
@@ -802,7 +802,7 @@ Item {
                 text: qsTr("Criar e iniciar")
                 variant: "primary"
                 onClicked: {
-                    backend.createContainer({
+                    backend.containers.createContainer({
                         image: createImage.text,
                         name: createName.text,
                         command: createCommand.text,

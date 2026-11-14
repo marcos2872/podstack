@@ -7,7 +7,7 @@ ColumnLayout {
     id: logsView
 
     // Quando `lines` é definido, a tela usa essa fonte (ex.: detalhe expandido)
-    // em vez de `backend.logLines`. `clearRequested` permite que o dono da
+    // em vez de `backend.containers.logLines`. `clearRequested` permite que o dono da
     // fonte externa decida como limpar.
     property var lines: null
     property string emptyText: qsTr("Sem logs. Assine os logs do container para acompanhar a saída.")
@@ -17,7 +17,7 @@ ColumnLayout {
     spacing: 8
 
     readonly property var sourceLines: logsView.lines !== null ? logsView.lines
-                                                              : backend.logLines
+                                                              : backend.containers.logLines
 
     readonly property var settingsValues: backend.settingsValues
     readonly property int logFontSize: {
@@ -85,7 +85,7 @@ ColumnLayout {
                 if (logsView.lines !== null) {
                     logsView.clearRequested()
                 } else {
-                    backend.clearLogs()
+                    backend.containers.clearLogs()
                 }
             }
             Accessible.name: qsTr("Limpar logs")

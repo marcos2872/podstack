@@ -16,7 +16,7 @@ ColumnLayout {
 
         Text {
             Layout.fillWidth: true
-            text: backend.filesPath
+            text: backend.containers.filesPath
             color: Theme.textSecondary
             font.family: Theme.monoFamily
             font.pixelSize: Theme.fontMeta
@@ -30,7 +30,7 @@ ColumnLayout {
             iconName: "upload"
             enabled: filesView.containerId !== "" && uploadPath.text.length > 0
             onClicked: {
-                backend.uploadFile(filesView.containerId, backend.filesPath, uploadPath.text)
+                backend.containers.uploadFile(filesView.containerId, backend.containers.filesPath, uploadPath.text)
             }
         }
 
@@ -39,7 +39,7 @@ ColumnLayout {
             iconName: "refresh"
             size: "sm"
             enabled: filesView.containerId !== ""
-            onClicked: backend.listFiles(filesView.containerId, backend.filesPath)
+            onClicked: backend.containers.listFiles(filesView.containerId, backend.containers.filesPath)
             Accessible.name: qsTr("Atualizar")
         }
     }
@@ -65,7 +65,7 @@ ColumnLayout {
             id: filesList
             anchors.fill: parent
             clip: true
-            model: backend.files
+            model: backend.containers.files
             ScrollBar.vertical: ScrollBar {}
 
             delegate: ItemDelegate {
@@ -78,9 +78,9 @@ ColumnLayout {
                     if (modelData.directory) {
                         return
                     }
-                    const base = backend.filesPath.endsWith("/") ? backend.filesPath
-                                                                 : backend.filesPath + "/"
-                    backend.downloadFile(filesView.containerId, base + modelData.name)
+                    const base = backend.containers.filesPath.endsWith("/") ? backend.containers.filesPath
+                                                                 : backend.containers.filesPath + "/"
+                    backend.containers.downloadFile(filesView.containerId, base + modelData.name)
                 }
 
                 background: Rectangle {
@@ -143,7 +143,7 @@ ColumnLayout {
 
     Component.onCompleted: {
         if (containerId !== "") {
-            backend.listFiles(containerId, "/")
+            backend.containers.listFiles(containerId, "/")
         }
     }
 }

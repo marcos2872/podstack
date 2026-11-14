@@ -145,7 +145,7 @@ Rectangle {
                     text: inspector.compact ? "" : qsTr("Parar")
                     iconName: "stop"
                     size: "sm"
-                    onClicked: backend.lifecycle("stop", inspector.selected.id)
+                    onClicked: backend.containers.lifecycle("stop", inspector.selected.id)
                     Accessible.name: qsTr("Parar")
                 }
 
@@ -155,7 +155,7 @@ Rectangle {
                     iconName: "play"
                     size: "sm"
                     variant: "primary"
-                    onClicked: backend.lifecycle("start", inspector.selected.id)
+                    onClicked: backend.containers.lifecycle("start", inspector.selected.id)
                     Accessible.name: qsTr("Iniciar")
                 }
 
@@ -163,7 +163,7 @@ Rectangle {
                     text: inspector.compact ? "" : qsTr("Reiniciar")
                     iconName: "rotate"
                     size: "sm"
-                    onClicked: backend.lifecycle("restart", inspector.selected.id)
+                    onClicked: backend.containers.lifecycle("restart", inspector.selected.id)
                     Accessible.name: qsTr("Reiniciar")
                 }
 
@@ -278,7 +278,7 @@ Rectangle {
                                     inspector.lanPendingId = inspector.selected.id
                                     inspector.lanTarget = !inspector.lanExposed
                                     inspector.lanPending = true
-                                    backend.exposeContainerLan(inspector.selected.id,
+                                    backend.containers.exposeContainerLan(inspector.selected.id,
                                                                inspector.lanTarget)
                                 }
                             }
@@ -296,8 +296,8 @@ Rectangle {
                             Text {
                                 Layout.fillWidth: true
                                 visible: inspector.portsText.length > 0
-                                         && backend.lastError.length > 0
-                                text: backend.lastError
+                                         && backend.containers.lastError.length > 0
+                                text: backend.containers.lastError
                                 color: Theme.danger
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontMicro
@@ -426,14 +426,14 @@ Rectangle {
                             Layout.fillWidth: true
                             text: qsTr("Pausar")
                             size: "sm"
-                            onClicked: backend.lifecycle("pause", inspector.selected.id)
+                            onClicked: backend.containers.lifecycle("pause", inspector.selected.id)
                         }
 
                         ActionButton {
                             Layout.fillWidth: true
                             text: qsTr("Despausar")
                             size: "sm"
-                            onClicked: backend.lifecycle("unpause", inspector.selected.id)
+                            onClicked: backend.containers.lifecycle("unpause", inspector.selected.id)
                         }
 
                         ActionButton {
@@ -441,7 +441,7 @@ Rectangle {
                             text: qsTr("Matar")
                             size: "sm"
                             variant: "danger"
-                            onClicked: backend.lifecycle("kill", inspector.selected.id)
+                            onClicked: backend.containers.lifecycle("kill", inspector.selected.id)
                         }
 
                         ActionButton {
@@ -472,7 +472,7 @@ Rectangle {
                             Layout.fillWidth: true
                             text: qsTr("Duplicar")
                             size: "sm"
-                            onClicked: backend.duplicateContainer(inspector.selected.id)
+                            onClicked: backend.containers.duplicateContainer(inspector.selected.id)
                         }
                     }
 
@@ -482,8 +482,8 @@ Rectangle {
                         Layout.topMargin: 10
                         Layout.bottomMargin: 14
                         Layout.fillWidth: true
-                        visible: backend.lastError.length > 0
-                        text: backend.lastError
+                        visible: backend.containers.lastError.length > 0
+                        text: backend.containers.lastError
                         color: Theme.danger
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
@@ -515,7 +515,7 @@ Rectangle {
             font.pixelSize: Theme.fontBody
             wrapMode: Text.WordWrap
         }
-        onAccepted: backend.removeContainer(containerId, true, false)
+        onAccepted: backend.containers.removeContainer(containerId, true, false)
     }
 
     AppDialog {
@@ -558,7 +558,7 @@ Rectangle {
                 text: qsTr("Salvar")
                 variant: "primary"
                 onClicked: {
-                    backend.renameContainer(renameDialog.containerId, renameName.text)
+                    backend.containers.renameContainer(renameDialog.containerId, renameName.text)
                     renameDialog.close()
                 }
             }

@@ -2,6 +2,8 @@
 
 #include "core/logging/LogReader.h"
 #include "gui/controllers/BuildController.h"
+#include "gui/controllers/ContainerController.h"
+#include "gui/controllers/ContainerDetailController.h"
 #include "gui/controllers/ComposeController.h"
 #include "gui/controllers/ImageController.h"
 #include "gui/controllers/NetworkController.h"
@@ -24,6 +26,8 @@ namespace PodStack {
 
 class Backend : public QObject {
     Q_OBJECT
+    Q_PROPERTY(PodStack::ContainerController *containers READ containers CONSTANT)
+    Q_PROPERTY(PodStack::ContainerDetailController *containerDetail READ containerDetail CONSTANT)
     Q_PROPERTY(PodStack::ImageController *images READ images CONSTANT)
     Q_PROPERTY(PodStack::ComposeController *compose READ compose CONSTANT)
     Q_PROPERTY(PodStack::BuildController *builds READ builds CONSTANT)
@@ -34,41 +38,10 @@ class Backend : public QObject {
     Q_PROPERTY(QString error READ error NOTIFY stateChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QString version READ version CONSTANT)
-    Q_PROPERTY(QStringList logLines READ logLines NOTIFY logsChanged)
-    Q_PROPERTY(QVariantMap stats READ stats NOTIFY statsChanged)
-    Q_PROPERTY(QVariantList cpuHistory READ cpuHistory NOTIFY statsChanged)
-    Q_PROPERTY(QVariantList memHistory READ memHistory NOTIFY statsChanged)
-    Q_PROPERTY(QVariantMap containerDetail READ containerDetail NOTIFY containerDetailChanged)
-    Q_PROPERTY(QString containerDetailError READ containerDetailError NOTIFY containerDetailChanged)
-    Q_PROPERTY(bool containerDetailLoading READ containerDetailLoading
-               NOTIFY containerDetailChanged)
-    Q_PROPERTY(QVariantMap containerDetailStats READ containerDetailStats
-               NOTIFY containerDetailStatsChanged)
-    Q_PROPERTY(QVariantList containerDetailCpuHistory READ containerDetailCpuHistory
-               NOTIFY containerDetailStatsChanged)
-    Q_PROPERTY(QVariantList containerDetailMemHistory READ containerDetailMemHistory
-               NOTIFY containerDetailStatsChanged)
-    Q_PROPERTY(QVariantList containerDetailNetRxHistory READ containerDetailNetRxHistory
-               NOTIFY containerDetailStatsChanged)
-    Q_PROPERTY(QVariantList containerDetailNetTxHistory READ containerDetailNetTxHistory
-               NOTIFY containerDetailStatsChanged)
-    Q_PROPERTY(QVariantList containerDetailDiskReadHistory READ containerDetailDiskReadHistory
-               NOTIFY containerDetailStatsChanged)
-    Q_PROPERTY(QVariantList containerDetailDiskWriteHistory READ containerDetailDiskWriteHistory
-               NOTIFY containerDetailStatsChanged)
-    Q_PROPERTY(QString containerDetailStatsError READ containerDetailStatsError
-               NOTIFY containerDetailStatsChanged)
-    Q_PROPERTY(QStringList containerDetailLogLines READ containerDetailLogLines
-               NOTIFY containerDetailLogsChanged)
-    Q_PROPERTY(QString containerDetailLogsError READ containerDetailLogsError
-               NOTIFY containerDetailLogsChanged)
     Q_PROPERTY(QVariantMap activityStats READ activityStats NOTIFY activityChanged)
     Q_PROPERTY(QVariantList activityCpuHistory READ activityCpuHistory NOTIFY activityChanged)
     Q_PROPERTY(QVariantList activityMemHistory READ activityMemHistory NOTIFY activityChanged)
     Q_PROPERTY(bool activityActive READ activityActive NOTIFY activityChanged)
-    Q_PROPERTY(QVariantList files READ files NOTIFY filesChanged)
-    Q_PROPERTY(QString filesPath READ filesPath NOTIFY filesChanged)
-    Q_PROPERTY(QVariantList containers READ containers NOTIFY containersChanged)
     Q_PROPERTY(bool actionActive READ actionActive NOTIFY actionStateChanged)
     Q_PROPERTY(QString k8sState READ k8sState NOTIFY k8sChanged)
     Q_PROPERTY(bool k8sEnabled READ k8sEnabled NOTIFY k8sChanged)
@@ -162,6 +135,8 @@ class Backend : public QObject {
 public:
     explicit Backend(QObject *parent = nullptr);
 
+    ContainerController *containers() { return &m_containers; }
+    ContainerDetailController *containerDetail() { return &m_containerDetail; }
     ImageController *images() { return &m_images; }
     ComposeController *compose() { return &m_compose; }
     BuildController *builds() { return &m_builds; }
@@ -172,36 +147,10 @@ public:
     QString error() const { return m_error; }
     QString lastError() const { return m_lastError; }
     QString version() const;
-    const QStringList &logLines() const { return m_logLines; }
-    QVariantMap stats() const { return m_stats; }
-    QVariantList cpuHistory() const { return m_cpuHistory; }
-    QVariantList memHistory() const { return m_memHistory; }
-    QVariantMap containerDetail() const { return m_containerDetail; }
-    QString containerDetailError() const { return m_containerDetailError; }
-    bool containerDetailLoading() const { return m_containerDetailLoading; }
-    QVariantMap containerDetailStats() const { return m_containerDetailStats; }
-    QVariantList containerDetailCpuHistory() const { return m_containerDetailCpuHistory; }
-    QVariantList containerDetailMemHistory() const { return m_containerDetailMemHistory; }
-    QVariantList containerDetailNetRxHistory() const { return m_containerDetailNetRxHistory; }
-    QVariantList containerDetailNetTxHistory() const { return m_containerDetailNetTxHistory; }
-    QVariantList containerDetailDiskReadHistory() const
-    {
-        return m_containerDetailDiskReadHistory;
-    }
-    QVariantList containerDetailDiskWriteHistory() const
-    {
-        return m_containerDetailDiskWriteHistory;
-    }
-    QString containerDetailStatsError() const { return m_containerDetailStatsError; }
-    QStringList containerDetailLogLines() const { return m_containerDetailLogLines; }
-    QString containerDetailLogsError() const { return m_containerDetailLogsError; }
     QVariantMap activityStats() const { return m_activityStats; }
     QVariantList activityCpuHistory() const { return m_activityCpuHistory; }
     QVariantList activityMemHistory() const { return m_activityMemHistory; }
     bool activityActive() const { return m_activityActive; }
-    QVariantList files() const { return m_files; }
-    QString filesPath() const { return m_filesPath; }
-    QVariantList containers() const { return m_containers; }
     bool actionActive() const { return m_actionActive; }
     QString k8sState() const { return m_k8sState; }
     bool k8sEnabled() const { return m_k8sEnabled; }
@@ -343,36 +292,10 @@ public:
     Q_INVOKABLE void importMachine(const QString &path, const QString &name = QString(),
                                    bool force = false);
     Q_INVOKABLE QString machineArchivePath(const QString &id) const;
-    Q_INVOKABLE void lifecycle(const QString &action, const QString &id);
-    Q_INVOKABLE void removeContainer(const QString &id, bool force, bool volumes);
-    Q_INVOKABLE void loadContainerDetail(const QString &id);
-    Q_INVOKABLE void copyContainerInspect();
-    Q_INVOKABLE void startContainerDetailStats(const QString &id);
-    Q_INVOKABLE void stopContainerDetailStats();
-    Q_INVOKABLE void startContainerDetailLogs(const QString &id, int tail = 200,
-                                              bool follow = true);
-    Q_INVOKABLE void stopContainerDetailLogs();
-    Q_INVOKABLE void clearContainerDetailLogs();
-    Q_INVOKABLE void containerDetailLifecycle(const QString &action, const QString &id);
-    Q_INVOKABLE void removeContainerDetail(const QString &id, bool force);
-    Q_INVOKABLE void createContainer(const QVariantMap &spec, bool start);
-    Q_INVOKABLE void exposeContainerLan(const QString &id, bool expose);
-    Q_INVOKABLE void batchAll(const QString &action);
-    Q_INVOKABLE void batchIds(const QStringList &ids, const QString &action);
     Q_INVOKABLE void batchMachines(const QStringList &ids, const QString &action,
                                    bool force = false);
-    Q_INVOKABLE void renameContainer(const QString &id, const QString &name);
-    Q_INVOKABLE void duplicateContainer(const QString &id);
-    Q_INVOKABLE void subscribeLogs(const QString &id, int tail, bool follow);
-    Q_INVOKABLE void unsubscribeLogs();
-    Q_INVOKABLE void clearLogs();
-    Q_INVOKABLE void subscribeStats(const QString &id);
-    Q_INVOKABLE void unsubscribeStats();
     Q_INVOKABLE void startActivityMonitor();
     Q_INVOKABLE void stopActivityMonitor();
-    Q_INVOKABLE void listFiles(const QString &id, const QString &path);
-    Q_INVOKABLE void downloadFile(const QString &id, const QString &path);
-    Q_INVOKABLE void uploadFile(const QString &id, const QString &path, const QString &sourcePath);
     Q_INVOKABLE QVariantMap settings() const;
     Q_INVOKABLE void refreshSettings();
     Q_INVOKABLE void setSetting(const QString &key, const QVariant &value);
@@ -382,7 +305,6 @@ public:
     Q_INVOKABLE void saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
                                       bool notifications = true);
     Q_INVOKABLE void saveProxySettings(const QString &proxy, const QString &excludeText);
-    Q_INVOKABLE void openTerminal(const QString &id);
     Q_INVOKABLE void setupRefresh();
     Q_INVOKABLE void setupCheck();
     Q_INVOKABLE void setupValidate();
@@ -405,18 +327,11 @@ public:
     Q_INVOKABLE void setupSkip();
 
 signals:
-    void containersChanged(const QVariantList &items);
     void actionStateChanged();
     void stateChanged();
     void lastErrorChanged();
     void actionFinished(bool ok, const QString &error);
-    void logsChanged();
-    void statsChanged();
-    void containerDetailChanged();
-    void containerDetailStatsChanged();
-    void containerDetailLogsChanged();
     void activityChanged();
-    void filesChanged();
     void k8sChanged();
     void k8sLogsChanged();
     void k8sForwardChanged();
@@ -508,10 +423,7 @@ private:
     void startAction(const PendingAction &action);
     void enqueueAction(const PendingAction &action);
 
-    QFutureWatcher<QJsonObject> m_watcher;
     QFutureWatcher<QJsonObject> m_actionWatcher;
-    QFutureWatcher<QJsonObject> m_containerDetailWatcher;
-    QFutureWatcher<QJsonObject> m_filesWatcher;
     QFutureWatcher<QJsonObject> m_catalogWatcher;
     QFutureWatcher<QJsonObject> m_setupWatcher;
     QFutureWatcher<QJsonObject> m_updateWatcher;
@@ -543,9 +455,6 @@ private:
     QString m_setupPendingMethod;
     QString m_catalogSection;
     QStringList m_catalogQueue;
-    StreamClient m_stream;
-    StreamClient m_detailStatsStream;
-    StreamClient m_detailLogsStream;
     StreamClient m_activityStream;
     StreamClient m_machineCreateStream;
     StreamClient m_machineStatsStream;
@@ -555,8 +464,6 @@ private:
     StreamClient m_k8sLogsStream;
     StreamClient m_k8sJobStream;
     QTimer m_eventTimer;
-    QTimer m_logsTimer;
-    QTimer m_detailLogsTimer;
     QTimer m_refreshTimer;
     QTimer m_eventsRetryTimer;
     QTimer m_updateTimer;
@@ -564,38 +471,16 @@ private:
     int m_eventsRetryDelayMs = 1000;
     QList<PendingAction> m_actionQueue;
     bool m_actionActive = false;
-    bool m_refreshAgain = false;
-    bool m_logsPending = false;
     bool m_connected = false;
     QString m_error;
     QString m_lastError;
     QStringList m_logLines;
-    QVariantMap m_stats;
-    QVariantList m_cpuHistory;
-    QVariantList m_memHistory;
-    QVariantMap m_containerDetail;
-    QJsonObject m_containerDetailJson;
-    QString m_containerDetailError;
-    bool m_containerDetailLoading = false;
-    QString m_pendingContainerDetailId;
-    QVariantMap m_containerDetailStats;
-    QVariantList m_containerDetailCpuHistory;
-    QVariantList m_containerDetailMemHistory;
-    QVariantList m_containerDetailNetRxHistory;
-    QVariantList m_containerDetailNetTxHistory;
-    QVariantList m_containerDetailDiskReadHistory;
-    QVariantList m_containerDetailDiskWriteHistory;
-    QString m_containerDetailStatsError;
-    QStringList m_containerDetailLogLines;
-    QString m_containerDetailLogsError;
-    bool m_detailLogsPending = false;
     QVariantMap m_activityStats;
     QVariantList m_activityCpuHistory;
     QVariantList m_activityMemHistory;
     bool m_activityActive = false;
-    QVariantList m_files;
-    QString m_filesPath = QStringLiteral("/");
-    QVariantList m_containers;
+    ContainerController m_containers;
+    ContainerDetailController m_containerDetail{&m_containers};
     ImageController m_images;
     ComposeController m_compose;
     BuildController m_builds;

@@ -293,7 +293,7 @@ void GuiTest::containerListModel()
 void GuiTest::backendSuccess()
 {
     PodStack::Backend backend;
-    QSignalSpy containersSpy(&backend, &PodStack::Backend::containersChanged);
+    QSignalSpy containersSpy(backend.containers(), &PodStack::ContainerController::itemsChanged);
     QSignalSpy stateSpy(&backend, &PodStack::Backend::stateChanged);
 
     QTRY_VERIFY_WITH_TIMEOUT(containersSpy.count() > 0, 5000);
@@ -301,8 +301,7 @@ void GuiTest::backendSuccess()
     QVERIFY(backend.error().isEmpty());
     QCOMPARE(backend.version(), QStringLiteral(PODSTACK_VERSION));
 
-    const QVariantList items = containersSpy.last().at(0).value<QVariantList>();
-    QCOMPARE(items.size(), 1);
+    QCOMPARE(backend.containers()->items().size(), 1);
 }
 
 void GuiTest::backendError()
@@ -332,24 +331,22 @@ void GuiTest::backendError()
 void GuiTest::backendActions()
 {
     PodStack::Backend backend;
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    auto *containers = backend.containers();
 
-    backend.lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
-    QVERIFY(backend.lastError().isEmpty());
+    containers->lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.removeContainer(QStringLiteral("abc123"), true, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->removeContainer(QStringLiteral("abc123"), true, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.lifecycle(QStringLiteral("does-not-exist"), QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QVERIFY(!backend.lastError().isEmpty());
+    containers->lifecycle(QStringLiteral("does-not-exist"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(!containers->lastError().isEmpty());
 
-    backend.lifecycle(QString(), QStringLiteral("abc123"));
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    containers->lifecycle(QString(), QStringLiteral("abc123"));
+    QVERIFY(!containers->lastError().isEmpty());
 
     QVariantMap spec;
     spec.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
@@ -357,43 +354,42 @@ void GuiTest::backendActions()
     spec.insert(QStringLiteral("portsText"), QStringLiteral("8080:80"));
     spec.insert(QStringLiteral("envText"), QStringLiteral("A=B"));
     spec.insert(QStringLiteral("mountsText"), QStringLiteral("/tmp:/mnt"));
-    backend.createContainer(spec, true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->createContainer(spec, true);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    QSignalSpy containersSpy(&backend, &PodStack::Backend::containersChanged);
+    QSignalSpy containersSpy(containers, &PodStack::ContainerController::itemsChanged);
     backend.refresh();
     QTRY_VERIFY_WITH_TIMEOUT(containersSpy.count() > 0, 5000);
 
-    backend.batchAll(QStringLiteral("start"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 5, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->batchAll(QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.batchAll(QStringLiteral("invalid"));
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    containers->batchAll(QStringLiteral("invalid"));
+    QVERIFY(!containers->lastError().isEmpty());
 
-    backend.renameContainer(QStringLiteral("abc123"), QStringLiteral("renamed"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 7, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->renameContainer(QStringLiteral("abc123"), QStringLiteral("renamed"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.duplicateContainer(QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 8, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->duplicateContainer(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.batchIds({QStringLiteral("abc123")}, QStringLiteral("start"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 9, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->batchIds({QStringLiteral("abc123")}, QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    const int before = actionSpy.count();
-    backend.batchIds({}, QStringLiteral("start"));
+    containers->batchIds({}, QStringLiteral("start"));
     QTest::qWait(100);
-    QCOMPARE(actionSpy.count(), before);
+    QVERIFY(containers->lastError().isEmpty());
 }
 
 void GuiTest::backendExposeLan()
 {
     PodStack::Backend backend;
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    auto *containers = backend.containers();
     const QVariantMap settingsBefore = backend.settings();
 
     QVariantMap spec;
@@ -403,25 +399,23 @@ void GuiTest::backendExposeLan()
     spec.insert(QStringLiteral("exposeLan"), true);
 
     const int createsBefore = m_mock.createCount();
-    backend.createContainer(spec, true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QVERIFY(!backend.lastError().isEmpty());
+    containers->createContainer(spec, true);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(!containers->lastError().isEmpty());
     QCOMPARE(m_mock.createCount(), createsBefore);
 
-    backend.exposeContainerLan(QStringLiteral("abc123"), true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QVERIFY(!backend.lastError().isEmpty());
+    containers->exposeContainerLan(QStringLiteral("abc123"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(!containers->lastError().isEmpty());
     QVERIFY(backend.settings() == settingsBefore);
 
     QVariantMap plain;
     plain.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
     plain.insert(QStringLiteral("name"), QStringLiteral("local"));
     plain.insert(QStringLiteral("portsText"), QStringLiteral("8081:81"));
-    backend.createContainer(plain, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->createContainer(plain, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
     const QJsonObject body = QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
     const QJsonArray mappings = body.value(QStringLiteral("portmappings")).toArray();
     QCOMPARE(mappings.size(), 1);
@@ -432,47 +426,48 @@ void GuiTest::backendExposeLan()
 void GuiTest::backendStreams()
 {
     PodStack::Backend backend;
+    auto *containers = backend.containers();
 
-    backend.subscribeLogs(QStringLiteral("abc123"), 10, false);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.logLines().size() >= 2, 5000);
-    backend.unsubscribeLogs();
+    containers->subscribeLogs(QStringLiteral("abc123"), 10, false);
+    QTRY_VERIFY_WITH_TIMEOUT(containers->logLines().size() >= 2, 5000);
+    containers->unsubscribeLogs();
 
-    backend.subscribeStats(QStringLiteral("abc123"));
+    containers->subscribeStats(QStringLiteral("abc123"));
     QTRY_VERIFY_WITH_TIMEOUT(
-        backend.stats().value(QStringLiteral("cpu_percent")).toString().contains(
+        containers->stats().value(QStringLiteral("cpu_percent")).toString().contains(
             QStringLiteral("1.5")),
         5000);
-    QCOMPARE(backend.cpuHistory().size(), 1);
-    QCOMPARE(backend.memHistory().size(), 1);
-    backend.unsubscribeStats();
+    QCOMPARE(containers->cpuHistory().size(), 1);
+    QCOMPARE(containers->memHistory().size(), 1);
+    containers->unsubscribeStats();
 
-    QSignalSpy filesSpy(&backend, &PodStack::Backend::filesChanged);
-    backend.listFiles(QStringLiteral("abc123"), QStringLiteral("/"));
+    QSignalSpy filesSpy(containers, &PodStack::ContainerController::filesChanged);
+    containers->listFiles(QStringLiteral("abc123"), QStringLiteral("/"));
     QTRY_VERIFY_WITH_TIMEOUT(filesSpy.count() > 0, 5000);
-    QCOMPARE(backend.files().size(), 2);
+    QCOMPARE(containers->files().size(), 2);
 }
 
 void GuiTest::backendContainerDetail()
 {
     PodStack::Backend backend;
-    QSignalSpy detailSpy(&backend, &PodStack::Backend::containerDetailChanged);
+    auto *detail = backend.containerDetail();
+    QSignalSpy detailSpy(detail, &PodStack::ContainerDetailController::detailChanged);
 
-    backend.loadContainerDetail(QStringLiteral("abc123"));
-    QVERIFY(backend.containerDetailLoading());
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.containerDetailLoading(), 5000);
-    QVERIFY2(backend.containerDetailError().isEmpty(),
-             qPrintable(backend.containerDetailError()));
+    detail->load(QStringLiteral("abc123"));
+    QVERIFY(detail->loading());
+    QTRY_VERIFY_WITH_TIMEOUT(!detail->loading(), 5000);
+    QVERIFY2(detail->error().isEmpty(), qPrintable(detail->error()));
     QVERIFY(detailSpy.count() > 0);
 
-    const QVariantMap detail = backend.containerDetail();
-    QCOMPARE(detail.value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
-    const QVariantMap config = detail.value(QStringLiteral("Config")).toMap();
+    const QVariantMap data = detail->detail();
+    QCOMPARE(data.value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
+    const QVariantMap config = data.value(QStringLiteral("Config")).toMap();
     const QVariantList env = config.value(QStringLiteral("Env")).toList();
     QCOMPARE(env.size(), 3);
     QCOMPARE(env.first().toString(), QStringLiteral("A=B"));
     QCOMPARE(env.at(1).toString(), QStringLiteral("TOKEN=super-secret"));
 
-    const QVariantList mounts = detail.value(QStringLiteral("Mounts")).toList();
+    const QVariantList mounts = data.value(QStringLiteral("Mounts")).toList();
     QCOMPARE(mounts.size(), 2);
     QCOMPARE(mounts.first().toMap().value(QStringLiteral("Destination")).toString(),
              QStringLiteral("/mnt"));
@@ -480,10 +475,7 @@ void GuiTest::backendContainerDetail()
              QStringLiteral("data"));
 
     const QVariantMap networks =
-        detail.value(QStringLiteral("NetworkSettings"))
-            .toMap()
-            .value(QStringLiteral("Networks"))
-            .toMap();
+        data.value(QStringLiteral("NetworkSettings")).toMap().value(QStringLiteral("Networks")).toMap();
     QVERIFY(networks.contains(QStringLiteral("podman")));
     QCOMPARE(networks.value(QStringLiteral("podman"))
                  .toMap()
@@ -492,41 +484,38 @@ void GuiTest::backendContainerDetail()
              QStringLiteral("10.0.0.1"));
 
     // Sem QGuiApplication (suíte guiless) o clipboard é nulo; a chamada não pode quebrar.
-    backend.copyContainerInspect();
+    detail->copyInspect();
 
-    backend.loadContainerDetail(QStringLiteral("missing123"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.containerDetailLoading(), 5000);
-    QVERIFY(!backend.containerDetailError().isEmpty());
+    detail->load(QStringLiteral("missing123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!detail->loading(), 5000);
+    QVERIFY(!detail->error().isEmpty());
 
-    backend.startContainerDetailStats(QStringLiteral("abc123"));
+    detail->startStats(QStringLiteral("abc123"));
     QTRY_VERIFY_WITH_TIMEOUT(
-        backend.containerDetailStats().value(QStringLiteral("cpu_percent")).toString().contains(
+        detail->stats().value(QStringLiteral("cpu_percent")).toString().contains(
             QStringLiteral("1.5")),
         5000);
-    QCOMPARE(backend.containerDetailCpuHistory().size(), 1);
-    QCOMPARE(backend.containerDetailMemHistory().size(), 1);
-    QCOMPARE(backend.containerDetailNetRxHistory().size(), 1);
-    QCOMPARE(backend.containerDetailNetTxHistory().size(), 1);
-    QCOMPARE(backend.containerDetailDiskReadHistory().size(), 1);
-    QCOMPARE(backend.containerDetailDiskWriteHistory().size(), 1);
-    QVERIFY(backend.containerDetailStats()
-                .value(QStringLiteral("netRxBytes"))
-                .toLongLong()
-            > 0);
-    QVERIFY(backend.containerDetailStatsError().isEmpty());
-    backend.stopContainerDetailStats();
+    QCOMPARE(detail->cpuHistory().size(), 1);
+    QCOMPARE(detail->memHistory().size(), 1);
+    QCOMPARE(detail->netRxHistory().size(), 1);
+    QCOMPARE(detail->netTxHistory().size(), 1);
+    QCOMPARE(detail->diskReadHistory().size(), 1);
+    QCOMPARE(detail->diskWriteHistory().size(), 1);
+    QVERIFY(detail->stats().value(QStringLiteral("netRxBytes")).toLongLong() > 0);
+    QVERIFY(detail->statsError().isEmpty());
+    detail->stopStats();
 
-    QSignalSpy logsSpy(&backend, &PodStack::Backend::containerDetailLogsChanged);
-    backend.startContainerDetailLogs(QStringLiteral("abc123"), 10, false);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.containerDetailLogLines().size() >= 2, 5000);
+    QSignalSpy logsSpy(detail, &PodStack::ContainerDetailController::logsChanged);
+    detail->startLogs(QStringLiteral("abc123"), 10, false);
+    QTRY_VERIFY_WITH_TIMEOUT(detail->logLines().size() >= 2, 5000);
     QVERIFY(logsSpy.count() > 0);
-    QVERIFY(backend.containerDetailLogsError().isEmpty());
-    backend.clearContainerDetailLogs();
-    QVERIFY(backend.containerDetailLogLines().isEmpty());
-    backend.stopContainerDetailLogs();
+    QVERIFY(detail->logsError().isEmpty());
+    detail->clearLogs();
+    QVERIFY(detail->logLines().isEmpty());
+    detail->stopLogs();
 
-    backend.containerDetailLifecycle(QStringLiteral("invalid"), QStringLiteral("abc123"));
-    QVERIFY(!backend.lastError().isEmpty());
+    detail->lifecycle(QStringLiteral("invalid"), QStringLiteral("abc123"));
+    QVERIFY(!detail->lastError().isEmpty());
 }
 
 void GuiTest::backendKubernetes()
@@ -602,7 +591,7 @@ void GuiTest::backendCatalog()
     QSignalSpy volumesSpy(backend.volumes(), &PodStack::VolumeController::itemsChanged);
     QSignalSpy networksSpy(backend.networks(), &PodStack::NetworkController::itemsChanged);
     QSignalSpy podsSpy(backend.pods(), &PodStack::PodController::itemsChanged);
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    auto *containers = backend.containers();
     QSignalSpy pullSpy(backend.images(), &PodStack::ImageController::pullStateChanged);
     QSignalSpy diskSpy(&backend, &PodStack::Backend::diskUsageChanged);
 
@@ -714,9 +703,10 @@ void GuiTest::backendCatalog()
     QVERIFY(uploadFile.open(QIODevice::WriteOnly));
     uploadFile.write("gui-upload");
     uploadFile.close();
-    backend.uploadFile(QStringLiteral("abc123"), QStringLiteral("/tmp"), uploadPath);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.containers()->uploadFile(QStringLiteral("abc123"), QStringLiteral("/tmp"),
+                                     uploadPath);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.containers()->actionActive()
+                                 && backend.containers()->lastError().isEmpty(), 5000);
     QFile::remove(uploadPath);
 
     const QString hostDir = QStringLiteral("/tmp/podstack-host-src");
@@ -1144,8 +1134,10 @@ void GuiTest::backendTerminal()
     PodStack::Backend backend;
     QSignalSpy terminalSpy(&backend, &PodStack::Backend::terminalRequested);
     QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy containerErrorSpy(backend.containers(),
+                                 &PodStack::ContainerController::lastErrorChanged);
 
-    backend.openTerminal(QStringLiteral("abc123"));
+    backend.containers()->openTerminal(QStringLiteral("abc123"));
     QCOMPARE(terminalSpy.count(), 1);
     const QList<QVariant> request = terminalSpy.takeFirst();
     QCOMPARE(request.at(0).toString(), QStringLiteral("abc123"));
@@ -1154,10 +1146,10 @@ void GuiTest::backendTerminal()
              QStringList({QStringLiteral("exec"), QStringLiteral("-it"),
                           QStringLiteral("abc123"), QStringLiteral("/bin/sh")}));
 
-    backend.openTerminal(QString());
+    backend.containers()->openTerminal(QString());
     QCOMPARE(terminalSpy.count(), 0);
-    QCOMPARE(backend.lastError(), QStringLiteral("Container inválido."));
-    QVERIFY(errorSpy.count() > 0);
+    QCOMPARE(backend.containers()->lastError(), QStringLiteral("Container inválido."));
+    QVERIFY(containerErrorSpy.count() > 0);
 
     const int errorsBefore = errorSpy.count();
     backend.openMachineSsh(QStringLiteral("missing-machine"));
@@ -1175,7 +1167,7 @@ void GuiTest::backendM3()
     QSignalSpy buildSpy(backend.builds(), &PodStack::BuildController::buildStateChanged);
     QSignalSpy buildsSpy(backend.builds(), &PodStack::BuildController::itemsChanged);
     QSignalSpy eventsSpy(&backend, &PodStack::Backend::eventsChanged);
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    auto *containers = backend.containers();
 
     backend.compose()->refresh();
     QTRY_VERIFY_WITH_TIMEOUT(composeSpy.count() > 0, 5000);
@@ -1261,7 +1253,7 @@ void GuiTest::backendErrors()
     PodStack::Backend backend;
     QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
     QSignalSpy imageErrorSpy(backend.images(), &PodStack::ImageController::lastErrorChanged);
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    auto *containers = backend.containers();
 
     backend.images()->pullImage(QString());
     QVERIFY(imageErrorSpy.count() > 0);
@@ -1269,18 +1261,17 @@ void GuiTest::backendErrors()
     backend.builds()->startBuild({});
     QVERIFY(!backend.builds()->lastError().isEmpty());
 
-    backend.uploadFile(QString(), QString(), QString());
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.containers()->uploadFile(QString(), QString(), QString());
+    QVERIFY(!backend.containers()->lastError().isEmpty());
 
-    backend.renameContainer(QString(), QString());
-    QVERIFY(actionSpy.count() > 0);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.containers()->renameContainer(QString(), QString());
+    QVERIFY(!backend.containers()->lastError().isEmpty());
 
-    backend.duplicateContainer(QString());
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.containers()->duplicateContainer(QString());
+    QVERIFY(!backend.containers()->lastError().isEmpty());
 
-    backend.openTerminal(QString());
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.containers()->openTerminal(QString());
+    QVERIFY(!backend.containers()->lastError().isEmpty());
 
     backend.saveEngineMode(QStringLiteral("bogus"));
     QVERIFY(!backend.lastError().isEmpty());
@@ -1332,18 +1323,18 @@ void GuiTest::backendInvalidArguments()
     backend.setMachinePorts(QString(), {});
     backend.exportMachine(QString(), QString());
     backend.importMachine(QString());
-    backend.loadContainerDetail(QString());
-    backend.startContainerDetailStats(QString());
-    backend.startContainerDetailLogs(QString(), 0, true);
-    backend.containerDetailLifecycle(QString(), QString());
-    backend.removeContainerDetail(QString(), false);
-    backend.createContainer({}, false);
-    backend.exposeContainerLan(QString(), true);
-    backend.batchAll(QString());
-    backend.batchIds({}, QString());
-    backend.listFiles(QString(), QString());
-    backend.downloadFile(QString(), QString());
-    backend.uploadFile(QString(), QString(), QString());
+    backend.containerDetail()->load(QString());
+    backend.containerDetail()->startStats(QString());
+    backend.containerDetail()->startLogs(QString(), 0, true);
+    backend.containerDetail()->lifecycle(QString(), QString());
+    backend.containerDetail()->remove(QString(), false);
+    backend.containers()->createContainer({}, false);
+    backend.containers()->exposeContainerLan(QString(), true);
+    backend.containers()->batchAll(QString());
+    backend.containers()->batchIds({}, QString());
+    backend.containers()->listFiles(QString(), QString());
+    backend.containers()->downloadFile(QString(), QString());
+    backend.containers()->uploadFile(QString(), QString(), QString());
     backend.setSetting(QString(), {});
     backend.setSetting(QStringLiteral("does.not.exist"), 1);
     backend.setSetting(QStringLiteral("app.theme"), QStringLiteral("bogus"));
@@ -1549,18 +1540,16 @@ void GuiTest::backendSettings()
 void GuiTest::backendTray()
 {
     PodStack::Backend backend;
-    QSignalSpy containersSpy(&backend, &PodStack::Backend::containersChanged);
+    QSignalSpy containersSpy(backend.containers(), &PodStack::ContainerController::itemsChanged);
     QTRY_VERIFY_WITH_TIMEOUT(containersSpy.count() > 0, 5000);
-    QCOMPARE(backend.containers().size(),
-             containersSpy.last().at(0).value<QVariantList>().size());
+    QVERIFY(containersSpy.count() > 0);
+    QCOMPARE(backend.containers()->items().size(), 1);
 
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
-    backend.lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
-    QVERIFY(backend.actionActive());
-    backend.lifecycle(QStringLiteral("unpause"), QStringLiteral("abc123"));
-    QVERIFY(backend.actionActive());
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() >= 2, 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.actionActive(), 5000);
+    backend.containers()->lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
+    QVERIFY(backend.containers()->actionActive());
+    backend.containers()->lifecycle(QStringLiteral("unpause"), QStringLiteral("abc123"));
+    QVERIFY(backend.containers()->actionActive());
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.containers()->actionActive(), 5000);
 
     backend.saveTraySettings(false, false, true, false);
     QTRY_COMPARE(backend.settings().value(QStringLiteral("keepRunningInTray")).toBool(),

@@ -149,9 +149,9 @@ void ContainerDetailDialog::openContainer(const QString &id, int detailTab)
     }
 
     if (m_backend) {
-        m_backend->stopContainerDetailStats();
-        m_backend->stopContainerDetailLogs();
-        m_backend->clearContainerDetailLogs();
+        m_backend->containerDetail()->stopStats();
+        m_backend->containerDetail()->stopLogs();
+        m_backend->containerDetail()->clearLogs();
     }
 
     m_containerId = id;
@@ -268,9 +268,9 @@ void ContainerDetailDialog::handleCloseRequested()
 void ContainerDetailDialog::teardownSession()
 {
     if (m_backend) {
-        m_backend->stopContainerDetailStats();
-        m_backend->stopContainerDetailLogs();
-        m_backend->clearContainerDetailLogs();
+        m_backend->containerDetail()->stopStats();
+        m_backend->containerDetail()->stopLogs();
+        m_backend->containerDetail()->clearLogs();
     }
     if (m_quickWidget && m_quickWidget->rootObject()) {
         // Evita que uma ação em voo reabra os streams depois do fechamento.

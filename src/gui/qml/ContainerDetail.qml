@@ -23,13 +23,13 @@ Rectangle {
     property bool reloadPending: false
 
     readonly property bool compact: width < 1180
-    readonly property var detail: backend.containerDetail || ({})
+    readonly property var detail: backend.containerDetail.detail || ({})
     readonly property var config: root.detail.Config || ({})
     readonly property var detailState: root.detail.State || ({})
     readonly property var hostConfig: root.detail.HostConfig || ({})
     readonly property var networkSettings: root.detail.NetworkSettings || ({})
     readonly property var summary: {
-        const items = backend.containers || []
+        const items = backend.containers.items || []
         for (let i = 0; i < items.length; ++i) {
             if (String(items[i].id) === root.containerId) {
                 return items[i]
@@ -193,22 +193,22 @@ Rectangle {
         if (id.length === 0) {
             return
         }
-        backend.stopContainerDetailStats()
-        backend.stopContainerDetailLogs()
-        backend.clearContainerDetailLogs()
+        backend.containerDetail.stopStats()
+        backend.containerDetail.stopLogs()
+        backend.containerDetail.clearLogs()
         root.containerId = id
         root.tabIndex = 0
         root.removePending = false
         root.reloadPending = false
         root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
-        backend.loadContainerDetail(id)
-        backend.startContainerDetailStats(id)
-        backend.startContainerDetailLogs(id, 200, true)
+        backend.containerDetail.load(id)
+        backend.containerDetail.startStats(id)
+        backend.containerDetail.startLogs(id, 200, true)
     }
 
     onTabIndexChanged: {
         if (root.tabIndex === 6 && root.containerId.length > 0) {
-            backend.listFiles(root.containerId, "/")
+            backend.containers.listFiles(root.containerId, "/")
         }
         if (root.containerId.length > 0) {
             if (typeof appWindow !== "undefined" && appWindow) {
@@ -244,9 +244,9 @@ Rectangle {
             return
         }
         root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
-        backend.stopContainerDetailStats()
-        backend.stopContainerDetailLogs()
-        backend.clearContainerDetailLogs()
+        backend.containerDetail.stopStats()
+        backend.containerDetail.stopLogs()
+        backend.containerDetail.clearLogs()
         root.closeRequested()
     }
 
@@ -255,7 +255,7 @@ Rectangle {
             return
         }
         root.reloadPending = true
-        backend.containerDetailLifecycle(action, root.containerId)
+        backend.containerDetail.lifecycle(action, root.containerId)
     }
 
     function sensitiveKey(key) {
@@ -436,9 +436,9 @@ Rectangle {
             if (!ok || root.containerId.length === 0) {
                 return
             }
-            backend.loadContainerDetail(root.containerId)
-            backend.startContainerDetailStats(root.containerId)
-            backend.startContainerDetailLogs(root.containerId, 200, true)
+            backend.containerDetail.load(root.containerId)
+            backend.containerDetail.startStats(root.containerId)
+            backend.containerDetail.startLogs(root.containerId, 200, true)
         }
     }
 
@@ -512,7 +512,7 @@ Rectangle {
                     iconName: "play"
                     variant: "primary"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.actionActive
+                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
                     onClicked: root.lifecycle("start")
                     Accessible.name: qsTr("Iniciar container")
                 }
@@ -522,7 +522,7 @@ Rectangle {
                     text: root.compact ? "" : qsTr("Parar")
                     iconName: "stop"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.actionActive
+                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
                     onClicked: root.lifecycle("stop")
                     Accessible.name: qsTr("Parar container")
                 }
@@ -531,7 +531,7 @@ Rectangle {
                     text: root.compact ? "" : qsTr("Reiniciar")
                     iconName: "rotate"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.actionActive
+                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
                     onClicked: root.lifecycle("restart")
                     Accessible.name: qsTr("Reiniciar container")
                 }
@@ -541,7 +541,7 @@ Rectangle {
                     iconName: "trash"
                     variant: "danger"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.actionActive
+                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
                     onClicked: removeDialog.open()
                     Accessible.name: qsTr("Remover container")
                 }
@@ -619,7 +619,7 @@ Rectangle {
             Layout.rightMargin: 20
             Layout.topMargin: 8
             Layout.preferredHeight: visible ? 36 : 0
-            visible: backend.containerDetailError.length > 0
+            visible: backend.containerDetail.detail.error.length > 0
             radius: Theme.radiusSm
             color: Theme.dangerSoft
             border.width: 1
@@ -639,7 +639,7 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
-                    text: backend.containerDetailError
+                    text: backend.containerDetail.detail.error
                     color: Theme.danger
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMeta
@@ -650,7 +650,7 @@ Rectangle {
                     text: qsTr("Tentar novamente")
                     size: "sm"
                     variant: "ghost"
-                    onClicked: backend.loadContainerDetail(root.containerId)
+                    onClicked: backend.containerDetail.load(root.containerId)
                 }
             }
         }
@@ -688,7 +688,7 @@ Rectangle {
                         }
 
                         Text {
-                            text: backend.containerDetailLoading ? qsTr("carregando inspect…")
+                            text: backend.containerDetail.detail.loading ? qsTr("carregando inspect…")
                                                                  : qsTr("stats ~1 s")
                             color: Theme.textTertiary
                             font.family: Theme.fontFamily
@@ -704,9 +704,9 @@ Rectangle {
 
                         MetricCard {
                             label: qsTr("CPU")
-                            value: backend.containerDetailStats.cpu_percent || "—"
+                            value: backend.containerDetail.detail.stats.cpu_percent || "—"
                             detailText: qsTr("histórico de 60 amostras")
-                            values: backend.containerDetailCpuHistory
+                            values: backend.containerDetail.detail.cpuHistory
                             accent: Theme.cyan
                             maxValue: 100
                         }
@@ -714,15 +714,15 @@ Rectangle {
                         MetricCard {
                             label: qsTr("RAM")
                             value: {
-                                const stats = backend.containerDetailStats
+                                const stats = backend.containerDetail.detail.stats
                                 if (Number(stats.memLimitBytes || 0) > 0) {
                                     return root.formatBytes(stats.memUsedBytes) + " / "
                                            + root.formatBytes(stats.memLimitBytes)
                                 }
                                 return stats.mem_usage || "—"
                             }
-                            detailText: backend.containerDetailStats.mem_percent || qsTr("aguardando amostras")
-                            values: backend.containerDetailMemHistory
+                            detailText: backend.containerDetail.detail.stats.mem_percent || qsTr("aguardando amostras")
+                            values: backend.containerDetail.detail.memHistory
                             accent: Theme.indigo400
                             maxValue: 100
                         }
@@ -730,7 +730,7 @@ Rectangle {
                         MetricCard {
                             label: qsTr("REDE  ↓ / ↑")
                             value: {
-                                const stats = backend.containerDetailStats
+                                const stats = backend.containerDetail.detail.stats
                                 if (stats.netRxBytes !== undefined) {
                                     return "↓ " + root.formatBytes(stats.netRxBytes) + "   ↑ "
                                            + root.formatBytes(stats.netTxBytes)
@@ -738,8 +738,8 @@ Rectangle {
                                 return stats.net_io || "—"
                             }
                             detailText: qsTr("RX (ciano) e TX (índigo), acumulados")
-                            values: backend.containerDetailNetRxHistory
-                            secondaryValues: backend.containerDetailNetTxHistory
+                            values: backend.containerDetail.detail.netRxHistory
+                            secondaryValues: backend.containerDetail.detail.netTxHistory
                             accent: Theme.cyan
                             autoScale: true
                         }
@@ -747,7 +747,7 @@ Rectangle {
                         MetricCard {
                             label: qsTr("DISCO  R / W")
                             value: {
-                                const stats = backend.containerDetailStats
+                                const stats = backend.containerDetail.detail.stats
                                 if (stats.diskReadBytes !== undefined) {
                                     return "R " + root.formatBytes(stats.diskReadBytes) + "   W "
                                            + root.formatBytes(stats.diskWriteBytes)
@@ -755,8 +755,8 @@ Rectangle {
                                 return stats.block_io || "—"
                             }
                             detailText: qsTr("leitura (ciano) e escrita (índigo), acumuladas")
-                            values: backend.containerDetailDiskReadHistory
-                            secondaryValues: backend.containerDetailDiskWriteHistory
+                            values: backend.containerDetail.detail.diskReadHistory
+                            secondaryValues: backend.containerDetail.detail.diskWriteHistory
                             accent: Theme.cyan
                             autoScale: true
                         }
@@ -769,7 +769,7 @@ Rectangle {
                         Text {
                             Layout.fillWidth: true
                             text: qsTr("PIDs: %1 · estado: %2 · %3")
-                                      .arg(String(backend.containerDetailStats.pids || "—"))
+                                      .arg(String(backend.containerDetail.detail.stats.pids || "—"))
                                       .arg(root.stateText.length > 0 ? root.stateText : "—")
                                       .arg(root.statusText)
                             color: Theme.textTertiary
@@ -779,8 +779,8 @@ Rectangle {
                         }
 
                         Text {
-                            visible: backend.containerDetailStatsError.length > 0
-                            text: backend.containerDetailStatsError
+                            visible: backend.containerDetail.detail.statsError.length > 0
+                            text: backend.containerDetail.detail.statsError
                             color: Theme.danger
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontMicro
@@ -804,8 +804,8 @@ Rectangle {
 
                     Text {
                         Layout.fillWidth: true
-                        visible: backend.containerDetailLogsError.length > 0
-                        text: backend.containerDetailLogsError
+                        visible: backend.containerDetail.detail.logsError.length > 0
+                        text: backend.containerDetail.detail.logsError
                         color: Theme.danger
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
@@ -815,9 +815,9 @@ Rectangle {
                     LogsView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        lines: backend.containerDetailLogLines
+                        lines: backend.containerDetail.detail.logLines
                         emptyText: qsTr("Sem logs. O stream do container será exibido aqui em tempo real.")
-                        onClearRequested: backend.clearContainerDetailLogs()
+                        onClearRequested: backend.containerDetail.clearLogs()
                     }
                 }
             }
@@ -1262,7 +1262,7 @@ Rectangle {
                             size: "sm"
                             variant: "secondary"
                             enabled: root.loaded
-                            onClicked: backend.copyContainerInspect()
+                            onClicked: backend.containerDetail.copyInspect()
                             Accessible.name: qsTr("Copiar JSON do inspect")
                         }
                     }
@@ -1306,7 +1306,7 @@ Rectangle {
                             width: parent.width - 32
                             visible: root.inspectText.length === 0
                             horizontalAlignment: Text.AlignHCenter
-                            text: backend.containerDetailLoading ? qsTr("Carregando inspect…")
+                            text: backend.containerDetail.detail.loading ? qsTr("Carregando inspect…")
                                                                  : qsTr("Inspect indisponível.")
                             color: Theme.textTertiary
                             font.family: Theme.fontFamily
@@ -1343,7 +1343,7 @@ Rectangle {
         }
         onAccepted: {
             root.removePending = true
-            backend.removeContainerDetail(root.containerId, true)
+            backend.containerDetail.remove(root.containerId, true)
         }
     }
 }
