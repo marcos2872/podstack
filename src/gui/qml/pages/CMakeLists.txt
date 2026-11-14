@@ -29,6 +29,15 @@ qt_add_qml_module(podstack_qml_pages
         pods/PodsPage.qml
         machines/MachinesPage.qml
         machines/MachineInspector.qml
+        machines/MachineCatalog.qml
+        machines/MachineCreateDialog.qml
+        machines/MachineExportDialog.qml
+        machines/MachineCloneDialog.qml
+        machines/MachinePortsDialog.qml
+        machines/MachineSerialDialog.qml
+        machines/MachineUsbDialog.qml
+        machines/MachineResourcesDialog.qml
+        machines/MachineSnapshotsDialog.qml
         machines/MachineFilesView.qml
         machines/InfoTab.qml
         machines/LogsTab.qml
