@@ -120,11 +120,10 @@ Config Config::load()
     }
     if (migrated) {
         const QString backupPath =
-            path + QStringLiteral(".bak-")
-            + QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMddTHHmmssZ"));
+            path + QStringLiteral(".bak-") +
+            QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMddTHHmmssZ"));
         if (QFile::copy(path, backupPath)) {
-            QFile::setPermissions(backupPath,
-                                  QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+            QFile::setPermissions(backupPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         } else {
             qWarning("podstack: não foi possível criar o backup %s", qUtf8Printable(backupPath));
         }

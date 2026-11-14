@@ -201,9 +201,8 @@ void CoreTest::configMigratesProxyPorts()
     QCOMPARE(loaded.get(QStringLiteral("network.httpsPort")).toInt(), 18443);
     QCOMPARE(loaded.get(QStringLiteral("app.theme")).toString(), QStringLiteral("dark"));
 
-    const QStringList backups =
-        QDir(PodStack::Paths::configDir())
-            .entryList({QStringLiteral("config.json.bak-*")}, QDir::Files);
+    const QStringList backups = QDir(PodStack::Paths::configDir())
+                                    .entryList({QStringLiteral("config.json.bak-*")}, QDir::Files);
     QCOMPARE(backups.size(), 1);
     QFile backup(PodStack::Paths::configDir() + QLatin1Char('/') + backups.first());
     QVERIFY(backup.open(QIODevice::ReadOnly));
