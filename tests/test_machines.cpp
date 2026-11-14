@@ -479,13 +479,25 @@ qint64 readPidFile(const QString &path)
 }
 
 /// Encerra e colhe o processo destacado. Em containers (root/PID 1 sem reaper)
-/// o filho pode virar zumbi e manter `/proc/<pid>`; o waitpid remove o zumbi.
+/// o filho pode virar zumbi e manter `/proc/<pid>`; um zumbi já está encerrado.
 bool terminateAndReap(qint64 pid)
 {
     if (pid <= 0) {
         return true;
     }
-    const auto gone = [pid] { return !QFileInfo::exists(QStringLiteral("/proc/%1").arg(pid)); };
+    const auto terminated = [pid] {
+        QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+        if (!stat.open(QIODevice::ReadOnly)) {
+            return true;
+        }
+        const QByteArray data = stat.readAll();
+        const qsizetype close = data.lastIndexOf(')');
+        if (close < 0 || close + 2 >= data.size()) {
+            return false;
+        }
+        const char state = data.at(close + 2);
+        return state == 'Z' || state == 'X';
+    };
     const auto reap = [pid] {
         int status = 0;
         (void) ::waitpid(static_cast<pid_t>(pid), &status, WNOHANG);
@@ -494,7 +506,7 @@ bool terminateAndReap(qint64 pid)
     ::kill(static_cast<pid_t>(pid), SIGTERM);
     for (int i = 0; i < 100; ++i) {
         reap();
-        if (gone()) {
+        if (terminated()) {
             return true;
         }
         QTest::qWait(10);
@@ -503,12 +515,12 @@ bool terminateAndReap(qint64 pid)
     ::kill(static_cast<pid_t>(pid), SIGKILL);
     for (int i = 0; i < 100; ++i) {
         reap();
-        if (gone()) {
+        if (terminated()) {
             return true;
         }
         QTest::qWait(10);
     }
-    return gone();
+    return terminated();
 }
 
 QByteArray processCgroup(qint64 pid)
