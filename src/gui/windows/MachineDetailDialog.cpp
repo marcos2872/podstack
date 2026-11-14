@@ -2,6 +2,8 @@
 #include "gui/windows/MachineDetailDialog.h"
 
 #include "gui/controllers/Backend.h"
+#include "gui/controllers/MachineController.h"
+#include "gui/controllers/MachineDetailController.h"
 #include "gui/app/terminal/ExternalTerminal.h"
 #include "gui/windows/terminal/TerminalView.h"
 
@@ -57,9 +59,9 @@ MachineDetailDialog::MachineDetailDialog(Backend *backend, QWidget *parent, bool
     setupInterface(loadQml);
 
     if (m_backend) {
-        connect(m_backend, &Backend::machineInfoChanged, this,
+        connect(m_backend->machines(), &MachineController::infoChanged, this,
                 &MachineDetailDialog::refreshMachine);
-        connect(m_backend, &Backend::machinesChanged, this,
+        connect(m_backend->machines(), &MachineController::itemsChanged, this,
                 &MachineDetailDialog::refreshMachine);
     }
 
@@ -187,14 +189,14 @@ QVariantMap MachineDetailDialog::findMachine(const QString &id) const
     if (!m_backend || id.isEmpty()) {
         return {};
     }
-    const QVariantList machines = m_backend->machines();
+    const QVariantList machines = m_backend->machines()->items();
     for (const QVariant &value : machines) {
         const QVariantMap machine = value.toMap();
         if (machine.value(QStringLiteral("id")).toString() == id) {
             return machine;
         }
     }
-    const QVariantMap info = m_backend->machineInfo();
+    const QVariantMap info = m_backend->machines()->info();
     if (info.value(QStringLiteral("id")).toString() == id) {
         return info;
     }
@@ -221,7 +223,7 @@ void MachineDetailDialog::openMachine(const QVariantMap &machine, int tab)
     }
 
     if (m_backend) {
-        m_backend->stopMachineStats();
+        m_backend->machineDetail()->stopStats();
     }
 
     m_machineId = id;
@@ -231,7 +233,7 @@ void MachineDetailDialog::openMachine(const QVariantMap &machine, int tab)
     resetTerminalSession();
 
     if (m_backend && tab == 4) {
-        m_backend->refreshMachineFiles(id, QStringLiteral("/"));
+        m_backend->machineDetail()->refreshFiles(id, QStringLiteral("/"));
     }
 
     if (m_quickWidget && m_quickWidget->rootObject()) {
@@ -245,7 +247,7 @@ void MachineDetailDialog::openMachine(const QVariantMap &machine, int tab)
     }
 
     if (m_backend) {
-        m_backend->loadMachineInfo(id);
+        m_backend->machines()->loadInfo(id);
     }
 
     applyOverlayGeometry();
@@ -410,7 +412,7 @@ void MachineDetailDialog::handleDeleteRequested(const QString &id)
         return;
     }
     if (m_backend) {
-        m_backend->removeMachine(id, true);
+        m_backend->machines()->remove(id, true);
     }
     closeOverlay();
 }
@@ -422,7 +424,7 @@ void MachineDetailDialog::refreshMachine()
     }
 
     QVariantMap merged = m_machine;
-    const QVariantMap info = m_backend->machineInfo();
+    const QVariantMap info = m_backend->machines()->info();
     if (info.value(QStringLiteral("id")).toString() == m_machineId) {
         for (auto it = info.cbegin(); it != info.cend(); ++it) {
             merged.insert(it.key(), it.value());
@@ -463,7 +465,7 @@ void MachineDetailDialog::handleCloseRequested()
 void MachineDetailDialog::teardownSession()
 {
     if (m_backend) {
-        m_backend->stopMachineStats();
+        m_backend->machineDetail()->stopStats();
     }
     if (m_quickWidget && m_quickWidget->rootObject()) {
         QObject *root = m_quickWidget->rootObject();

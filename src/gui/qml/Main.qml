@@ -162,7 +162,7 @@ Rectangle {
             return backend.pods.items.length
         }
         if (key === "machines") {
-            return backend.machines.length
+            return backend.machines.items.length
         }
         if (key === "kubernetes") {
             return backend.k8s.pods.length + backend.k8s.services.length
@@ -214,7 +214,7 @@ Rectangle {
         } else if (section === "builds") {
             backend.refreshBuilds()
         } else if (section === "machines") {
-            backend.refreshMachines()
+            backend.machines.refresh()
         } else if (section === "kubernetes") {
             backend.k8s.refresh()
         }
@@ -736,7 +736,7 @@ Rectangle {
 
                     Text {
                         visible: !window.compactStatus
-                        text: backend.machines.length + qsTr(" machines")
+                        text: backend.machines.items.length + qsTr(" machines")
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro

@@ -723,14 +723,14 @@ void TerminalTest::machineDetailDialogFromList()
         }
     });
 
-    backend.refreshMachines();
-    QTRY_COMPARE_WITH_TIMEOUT(backend.machines().size(), 1, 5000);
+    backend.machines()->refresh();
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machines()->items().size(), 1, 5000);
 
     QWidget host;
     host.resize(1200, 800);
     PodStack::MachineDetailDialog overlay(&backend, &host, /*loadQml=*/false);
     host.show();
-    QSignalSpy infoSpy(&backend, &PodStack::Backend::machineInfoChanged);
+    QSignalSpy infoSpy(backend.machines(), &PodStack::MachineController::infoChanged);
     overlay.openMachine(QStringLiteral("server-machine"));
     QCOMPARE(overlay.machineId(), QStringLiteral("server-machine"));
     QVERIFY(!overlay.isHidden());

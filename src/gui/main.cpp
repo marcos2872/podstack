@@ -87,8 +87,8 @@ int main(int argc, char *argv[])
     });
     QObject::connect(backend.setup(), &PodStack::SetupController::changed, &tray,
                      [&backend, &tray]() { tray.setSetupPending(backend.setup()->pending()); });
-    QObject::connect(&backend, &PodStack::Backend::machinesChanged, &tray,
-                     [&backend, &tray]() { tray.setMachines(backend.machines()); });
+    QObject::connect(backend.machines(), &PodStack::MachineController::itemsChanged, &tray,
+                     [&backend, &tray]() { tray.setMachines(backend.machines()->items()); });
     QObject::connect(backend.k8s(), &PodStack::K8sController::changed, &tray,
                      [&backend, &tray]() { tray.setKubernetes(backend.k8s()->enabled()); });
     QObject::connect(backend.compose(), &PodStack::ComposeController::itemsChanged, &tray,
@@ -120,10 +120,10 @@ int main(int argc, char *argv[])
                      &PodStack::TrayController::reloadConfig);
     QObject::connect(&tray, &PodStack::TrayController::machineActionRequested, &backend,
                      [&backend](const QString &action, const QString &id) {
-                         backend.machineLifecycle(action, id);
+                         backend.machines()->lifecycle(action, id);
                      });
     QObject::connect(&tray, &PodStack::TrayController::machineSshRequested, &backend,
-                     [&backend](const QString &id) { backend.openMachineSsh(id); });
+                     [&backend](const QString &id) { backend.machines()->openSsh(id); });
     QObject::connect(&backend, &PodStack::Backend::containerEvent, &notifications,
                      &PodStack::NotificationService::notifyContainerEvent);
     QObject::connect(&tray, &PodStack::TrayController::updateCheckRequested, &backend,
@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
     tray.setConnected(backend.connected());
     tray.setSetupPending(backend.setup()->pending());
     tray.setComposeProjects(backend.compose()->items());
-    tray.setMachines(backend.machines());
+    tray.setMachines(backend.machines()->items());
     tray.setKubernetes(backend.k8s()->enabled());
     tray.setActionActive(backend.actionActive());
 

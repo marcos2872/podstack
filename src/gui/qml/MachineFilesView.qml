@@ -12,8 +12,8 @@ ColumnLayout {
 
     spacing: 8
 
-    readonly property string currentPath: backend.machineFilesPath.length > 0
-                                          ? backend.machineFilesPath : "/"
+    readonly property string currentPath: backend.machineDetail.filesPath.length > 0
+                                          ? backend.machineDetail.filesPath : "/"
 
     function parentPath(path) {
         if (!path || path === "/") {
@@ -31,7 +31,7 @@ ColumnLayout {
         if (root.machineId.length === 0) {
             return
         }
-        backend.refreshMachineFiles(root.machineId, path.length > 0 ? path : "/")
+        backend.machineDetail.refreshFiles(root.machineId, path.length > 0 ? path : "/")
     }
 
     function formatSize(bytes) {
@@ -65,7 +65,7 @@ ColumnLayout {
             Layout.fillWidth: true
             Layout.preferredHeight: 30
             placeholderText: qsTr("Caminho remoto…")
-            text: backend.machineFilesPath
+            text: backend.machineDetail.filesPath
             onAccepted: root.go(text)
         }
 
@@ -73,7 +73,7 @@ ColumnLayout {
             text: qsTr("Ir")
             size: "sm"
             variant: "secondary"
-            enabled: root.machineId.length > 0 && !backend.machineFilesBusy
+            enabled: root.machineId.length > 0 && !backend.machineDetail.filesBusy
             onClicked: root.go(pathField.text)
         }
 
@@ -82,7 +82,7 @@ ColumnLayout {
             size: "sm"
             variant: "ghost"
             enabled: root.machineId.length > 0 && root.currentPath !== "/"
-                     && !backend.machineFilesBusy
+                     && !backend.machineDetail.filesBusy
             onClicked: root.go(root.parentPath(root.currentPath))
             Accessible.name: qsTr("Subir um diretório")
         }
@@ -91,7 +91,7 @@ ColumnLayout {
             iconName: "refresh"
             size: "sm"
             variant: "ghost"
-            enabled: root.machineId.length > 0 && !backend.machineFilesBusy
+            enabled: root.machineId.length > 0 && !backend.machineDetail.filesBusy
             onClicked: root.go(pathField.text)
             Accessible.name: qsTr("Atualizar listagem")
         }
@@ -117,8 +117,8 @@ ColumnLayout {
             size: "sm"
             variant: "primary"
             enabled: root.machineId.length > 0 && uploadPath.text.length > 0
-                     && !backend.machineFilesBusy
-            onClicked: backend.uploadMachineFile(root.machineId, root.currentPath,
+                     && !backend.machineDetail.filesBusy
+            onClicked: backend.machineDetail.uploadFile(root.machineId, root.currentPath,
                                                  uploadPath.text)
         }
     }
@@ -127,7 +127,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.leftMargin: 14
         Layout.rightMargin: 14
-        visible: backend.machineFilesBusy
+        visible: backend.machineDetail.filesBusy
         text: qsTr("Operação de arquivos em andamento…")
         color: Theme.textTertiary
         font.family: Theme.fontFamily
@@ -150,7 +150,7 @@ ColumnLayout {
             id: filesList
             anchors.fill: parent
             clip: true
-            model: backend.machineFiles
+            model: backend.machineDetail.files
             ScrollBar.vertical: ScrollBar {}
 
             delegate: ItemDelegate {
@@ -158,14 +158,14 @@ ColumnLayout {
                 width: filesList.width
                 height: 34
                 hoverEnabled: true
-                enabled: !backend.machineFilesBusy
+                enabled: !backend.machineDetail.filesBusy
 
                 onClicked: {
                     if (modelData.directory) {
                         root.go(modelData.path)
                         return
                     }
-                    backend.downloadMachineFile(root.machineId, modelData.path,
+                    backend.machineDetail.downloadFile(root.machineId, modelData.path,
                                                 modelData.name)
                 }
 
@@ -218,7 +218,7 @@ ColumnLayout {
                 width: parent.width - 32
                 horizontalAlignment: Text.AlignHCenter
                 visible: filesList.count === 0
-                text: backend.machineFilesBusy
+                text: backend.machineDetail.filesBusy
                       ? qsTr("Carregando…")
                       : root.machineId.length === 0
                         ? qsTr("Selecione uma machine para listar os arquivos.")
@@ -236,8 +236,8 @@ ColumnLayout {
         Layout.leftMargin: 14
         Layout.rightMargin: 14
         Layout.bottomMargin: 10
-        visible: backend.machineFilesError.length > 0
-        text: backend.machineFilesError
+        visible: backend.machineDetail.filesError.length > 0
+        text: backend.machineDetail.filesError
         color: Theme.danger
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontMicro
@@ -248,9 +248,9 @@ ColumnLayout {
         target: backend
 
         function onMachineFilesChanged() {
-            pathField.text = backend.machineFilesPath
+            pathField.text = backend.machineDetail.filesPath
         }
     }
 
-    Component.onCompleted: pathField.text = backend.machineFilesPath
+    Component.onCompleted: pathField.text = backend.machineDetail.filesPath
 }

@@ -54,7 +54,7 @@ Rectangle {
     readonly property string machineState: machine && machine.state ? String(machine.state) : ""
     readonly property var portsList: machine && machine.ports ? machine.ports : []
     readonly property var mountsList: machine && machine.mounts ? machine.mounts : []
-    readonly property var stats: backend.machineStats || ({})
+    readonly property var stats: backend.machineDetail.stats || ({})
     readonly property bool hasMachineStats: Object.keys(stats).length > 0
     readonly property string statsUpdatedAt: {
         const timestamp = Number(stats.ts || 0)
@@ -101,18 +101,18 @@ Rectangle {
 
     function selectTab(nextTab) {
         if (root.tab === "stats" && nextTab !== "stats") {
-            backend.stopMachineStats()
+            backend.machineDetail.stopStats()
         }
         const previousTab = root.tab
         root.tab = nextTab
         if (nextTab === "logs") {
-            backend.loadMachineLogs(root.machineId, 200)
+            backend.machineDetail.loadLogs(root.machineId, 200)
         } else if (nextTab === "stats" && root.machineId.length > 0) {
-            backend.startMachineStats(root.machineId)
+            backend.machineDetail.startStats(root.machineId)
         } else if (nextTab === "files" && previousTab !== "files"
                    && root.machineId.length > 0) {
-            if (!backend.machineFilesBusy) {
-                backend.refreshMachineFiles(root.machineId, "/")
+            if (!backend.machineDetail.filesBusy) {
+                backend.machineDetail.refreshFiles(root.machineId, "/")
             }
         }
     }
@@ -140,14 +140,14 @@ Rectangle {
         if (root.machineId.length === 0) {
             return
         }
-        backend.stopMachineConsole()
+        backend.machineDetail.stopConsole()
         root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
         root.closeRequested()
     }
 
     onTabChanged: {
         if (root.tab !== "logs") {
-            backend.stopMachineConsole()
+            backend.machineDetail.stopConsole()
         }
         if (root.machineId.length > 0) {
             if (typeof appWindow !== "undefined" && appWindow) {
@@ -173,11 +173,11 @@ Rectangle {
     }
 
     onMachineIdChanged: {
-        backend.stopMachineConsole()
+        backend.machineDetail.stopConsole()
         if (root.tab === "stats") {
-            backend.stopMachineStats()
+            backend.machineDetail.stopStats()
             if (root.machineId.length > 0) {
-                backend.startMachineStats(root.machineId)
+                backend.machineDetail.startStats(root.machineId)
             }
         }
         if (root.machineId.length === 0 && root.tab !== "info") {
@@ -187,9 +187,9 @@ Rectangle {
     }
 
     Component.onDestruction: {
-        backend.stopMachineConsole()
+        backend.machineDetail.stopConsole()
         if (root.tab === "stats") {
-            backend.stopMachineStats()
+            backend.machineDetail.stopStats()
         }
     }
 
@@ -453,8 +453,8 @@ Rectangle {
                 enabled: root.machineId.length > 0 && root.machineState !== "running"
                          && root.machineState !== "starting"
                          && backend.actionActive === false
-                         && backend.machineCreateActive === false
-                onClicked: backend.machineLifecycle("start", root.machineId)
+                         && backend.machines.createActive === false
+                onClicked: backend.machines.lifecycle("start", root.machineId)
             }
 
             ActionButton {
@@ -464,8 +464,8 @@ Rectangle {
                          && (root.machineState === "running"
                              || root.machineState === "starting")
                          && backend.actionActive === false
-                         && backend.machineCreateActive === false
-                onClicked: backend.machineLifecycle("stop", root.machineId, false)
+                         && backend.machines.createActive === false
+                onClicked: backend.machines.lifecycle("stop", root.machineId, false)
             }
 
             // No card lateral o SSH abre o detalhe da machine já na aba
@@ -497,8 +497,8 @@ Rectangle {
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
                          && backend.actionActive === false
-                         && backend.machineCreateActive === false
-                onClicked: backend.machineLifecycle("restart", root.machineId)
+                         && backend.machines.createActive === false
+                onClicked: backend.machines.lifecycle("restart", root.machineId)
             }
 
             ActionButton {
@@ -507,7 +507,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.machineCreateActive === false
+                         && backend.machines.createActive === false
                 onClicked: root.exportRequested(root.machineId)
             }
 
@@ -517,7 +517,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.machineCreateActive === false
+                         && backend.machines.createActive === false
                 onClicked: root.renameRequested(root.machineId)
             }
 
@@ -527,7 +527,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.machineCreateActive === false
+                         && backend.machines.createActive === false
                 onClicked: root.cloneRequested(root.machineId)
             }
 
@@ -575,7 +575,7 @@ Rectangle {
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
                          && backend.actionActive === false
-                onClicked: backend.setMachineAudio(root.machineId,
+                onClicked: backend.machines.setAudio(root.machineId,
                                                    !(root.machine
                                                      && root.machine.audioEnabled))
                 Accessible.name: qsTr("Alternar áudio da machine")
@@ -610,7 +610,7 @@ Rectangle {
                 variant: "danger"
                 size: "sm"
                 enabled: root.machineId.length > 0 && backend.actionActive === false
-                         && backend.machineCreateActive === false
+                         && backend.machines.createActive === false
                 onClicked: root.deleteRequested(root.machineId)
             }
         }
@@ -718,7 +718,7 @@ Rectangle {
                             if (checked === current || root.machineId.length === 0) {
                                 return
                             }
-                            backend.updateMachine({ "id": root.machineId,
+                            backend.machines.update({ "id": root.machineId,
                                                     "forwardSshAgent": checked })
                         }
                     }
@@ -829,7 +829,7 @@ Rectangle {
 
                         Text {
                             Layout.fillWidth: true
-                            text: backend.machineConsoleActive
+                            text: backend.machineDetail.consoleActive
                                   ? qsTr("console.log · serial (seguindo)")
                                   : qsTr("console.log")
                             color: Theme.textTertiary
@@ -839,9 +839,9 @@ Rectangle {
 
                         Text {
                             Layout.fillWidth: true
-                            visible: backend.machineLogsCapturedAt.length > 0
-                                     && !backend.machineConsoleActive
-                            text: qsTr("Atualizado em %1").arg(backend.machineLogsCapturedAt)
+                            visible: backend.machineDetail.logsCapturedAt.length > 0
+                                     && !backend.machineDetail.consoleActive
+                            text: qsTr("Atualizado em %1").arg(backend.machineDetail.logsCapturedAt)
                             color: Theme.textDisabled
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontMicro
@@ -850,8 +850,8 @@ Rectangle {
 
                         Text {
                             Layout.fillWidth: true
-                            visible: backend.machineConsoleError.length > 0
-                            text: backend.machineConsoleError
+                            visible: backend.machineDetail.consoleError.length > 0
+                            text: backend.machineDetail.consoleError
                             color: Theme.danger
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontMicro
@@ -863,32 +863,32 @@ Rectangle {
                         text: qsTr("Copiar")
                         size: "sm"
                         iconName: "copy"
-                        enabled: !backend.machineConsoleActive
-                                 && backend.machineLogLines.length > 0
-                        onClicked: backend.copyMachineLogs()
+                        enabled: !backend.machineDetail.consoleActive
+                                 && backend.machineDetail.logs.length > 0
+                        onClicked: backend.machineDetail.copyLogs()
                     }
 
                     ActionButton {
                         text: qsTr("Atualizar")
                         size: "sm"
                         iconName: "refresh"
-                        enabled: root.machineId.length > 0 && !backend.machineConsoleActive
-                        onClicked: backend.loadMachineLogs(root.machineId, 200)
+                        enabled: root.machineId.length > 0 && !backend.machineDetail.consoleActive
+                        onClicked: backend.machineDetail.loadLogs(root.machineId, 200)
                     }
 
                     ActionButton {
-                        text: backend.machineConsoleActive
+                        text: backend.machineDetail.consoleActive
                               ? qsTr("Parar console")
                               : qsTr("Seguir console")
                         size: "sm"
-                        iconName: backend.machineConsoleActive ? "stop" : "terminal"
-                        variant: backend.machineConsoleActive ? "danger" : "secondary"
+                        iconName: backend.machineDetail.consoleActive ? "stop" : "terminal"
+                        variant: backend.machineDetail.consoleActive ? "danger" : "secondary"
                         enabled: root.machineId.length > 0
                         onClicked: {
-                            if (backend.machineConsoleActive) {
-                                backend.stopMachineConsole()
+                            if (backend.machineDetail.consoleActive) {
+                                backend.machineDetail.stopConsole()
                             } else {
-                                backend.followMachineConsole(root.machineId, 65536)
+                                backend.machineDetail.followConsole(root.machineId, 65536)
                             }
                         }
                     }
@@ -913,10 +913,10 @@ Rectangle {
                         TextArea {
                             id: machineLogArea
                             width: machineLogScroll.availableWidth
-                            text: (backend.machineConsoleActive
-                                   || backend.machineConsoleText.length > 0)
-                                  ? backend.machineConsoleText
-                                  : backend.machineLogLines.join("\n")
+                            text: (backend.machineDetail.consoleActive
+                                   || backend.machineDetail.consoleText.length > 0)
+                                  ? backend.machineDetail.consoleText
+                                  : backend.machineDetail.logs.join("\n")
                             color: Theme.textSecondary
                             font.family: Theme.monoFamily
                             font.pixelSize: Theme.fontMeta
@@ -935,9 +935,9 @@ Rectangle {
                         anchors.centerIn: parent
                         width: parent.width - 40
                         horizontalAlignment: Text.AlignHCenter
-                        visible: backend.machineLogLines.length === 0
-                                 && backend.machineConsoleText.length === 0
-                        text: backend.machineConsoleActive
+                        visible: backend.machineDetail.logs.length === 0
+                                 && backend.machineDetail.consoleText.length === 0
+                        text: backend.machineDetail.consoleActive
                               ? qsTr("Seguindo o console serial. Sem dados ainda.")
                               : qsTr("Sem linhas de console.\nA machine ainda não inicializou ou o log está vazio.")
                         color: Theme.textTertiary
@@ -1037,26 +1037,26 @@ Rectangle {
 
                         ChartBox {
                             label: qsTr("CPU (%)")
-                            values: backend.machineCpuHistory
+                            values: backend.machineDetail.cpuHistory
                             lineColor: Theme.cyan
                         }
 
                         ChartBox {
                             label: qsTr("RAM (%)")
-                            values: backend.machineMemHistory
+                            values: backend.machineDetail.memHistory
                             lineColor: Theme.indigo400
                         }
 
                         ChartBox {
                             label: qsTr("Rede ↓")
-                            values: backend.machineNetRxHistory
+                            values: backend.machineDetail.netRxHistory
                             lineColor: Theme.cyan
                             autoScale: true
                         }
 
                         ChartBox {
                             label: qsTr("Rede ↑")
-                            values: backend.machineNetTxHistory
+                            values: backend.machineDetail.netTxHistory
                             lineColor: Theme.indigo400
                             autoScale: true
                         }
@@ -1064,8 +1064,8 @@ Rectangle {
 
                     Text {
                         Layout.fillWidth: true
-                        visible: backend.machineStatsError.length > 0
-                        text: backend.machineStatsError
+                        visible: backend.machineDetail.statsError.length > 0
+                        text: backend.machineDetail.statsError
                         color: Theme.danger
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
@@ -1074,7 +1074,7 @@ Rectangle {
 
                     Text {
                         Layout.fillWidth: true
-                        visible: !root.hasMachineStats && backend.machineStatsError.length === 0
+                        visible: !root.hasMachineStats && backend.machineDetail.statsError.length === 0
                         text: root.machineState === "running"
                               ? qsTr("Aguardando amostras…")
                               : qsTr("Inicie a machine para coletar métricas.")
@@ -1175,7 +1175,7 @@ Rectangle {
         }
 
         function onMachineConsoleChanged() {
-            if (backend.machineConsoleActive) {
+            if (backend.machineDetail.consoleActive) {
                 Qt.callLater(root.scrollLogsToEnd)
             }
         }

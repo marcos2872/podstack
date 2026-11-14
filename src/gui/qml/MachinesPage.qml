@@ -49,11 +49,11 @@ ColumnLayout {
     readonly property bool defaultForwardSshAgent:
         settingsValues["machines.forwardSshAgent"] === true
 
-    readonly property int machineCount: backend.machines.length
+    readonly property int machineCount: backend.machines.items.length
     readonly property int runningCount: {
         let count = 0
-        for (let i = 0; i < backend.machines.length; ++i) {
-            if (backend.machines[i].state === "running") {
+        for (let i = 0; i < backend.machines.items.length; ++i) {
+            if (backend.machines.items[i].state === "running") {
                 ++count
             }
         }
@@ -64,11 +64,11 @@ ColumnLayout {
         if (selectedMachineId.length === 0) {
             return ({})
         }
-        const info = backend.machineInfo
+        const info = backend.machines.info
         let listItem = null
-        for (let i = 0; i < backend.machines.length; ++i) {
-            if (String(backend.machines[i].id) === selectedMachineId) {
-                listItem = backend.machines[i]
+        for (let i = 0; i < backend.machines.items.length; ++i) {
+            if (String(backend.machines.items[i].id) === selectedMachineId) {
+                listItem = backend.machines.items[i]
                 break
             }
         }
@@ -93,8 +93,8 @@ ColumnLayout {
 
     readonly property var distroLabels: {
         const labels = []
-        for (let i = 0; i < backend.machineDistros.length; ++i) {
-            const distro = backend.machineDistros[i]
+        for (let i = 0; i < backend.machines.distros.length; ++i) {
+            const distro = backend.machines.distros[i]
             labels.push(distro.label || distro.distro || "")
         }
         return labels
@@ -103,13 +103,13 @@ ColumnLayout {
     function selectMachine(id) {
         selectedMachineId = id
         if (id.length > 0) {
-            backend.loadMachineInfo(id)
-            backend.loadMachineLogs(id, 200)
+            backend.machines.loadInfo(id)
+            backend.machineDetail.loadLogs(id, 200)
         }
     }
 
     function syncSelection() {
-        const items = backend.machines
+        const items = backend.machines.items
         let index = -1
         for (let i = 0; i < items.length; ++i) {
             if (String(items[i].id) === selectedMachineId) {
@@ -132,8 +132,8 @@ ColumnLayout {
         }
         machineList.currentRow = index
         if (index >= 0) {
-            backend.loadMachineInfo(selectedMachineId)
-            backend.loadMachineLogs(selectedMachineId, 200)
+            backend.machines.loadInfo(selectedMachineId)
+            backend.machineDetail.loadLogs(selectedMachineId, 200)
         }
     }
 
@@ -142,9 +142,9 @@ ColumnLayout {
         portsActionPending = false
         portsDraft = []
         let machine = selectedMachine
-        for (let i = 0; i < backend.machines.length; ++i) {
-            if (String(backend.machines[i].id) === id) {
-                machine = backend.machines[i]
+        for (let i = 0; i < backend.machines.items.length; ++i) {
+            if (String(backend.machines.items[i].id) === id) {
+                machine = backend.machines.items[i]
                 break
             }
         }
@@ -179,8 +179,8 @@ ColumnLayout {
         pendingSerialId = id
         serialActionPending = false
         serialError.text = ""
-        backend.refreshMachineSerialPorts(id)
-        backend.loadMachineInfo(id)
+        backend.machines.refreshSerialPorts(id)
+        backend.machines.loadInfo(id)
         serialDialog.open()
     }
 
@@ -190,15 +190,15 @@ ColumnLayout {
         }
         serialActionPending = true
         serialError.text = ""
-        backend.attachMachineSerialPort(pendingSerialId, path)
+        backend.machines.attachSerialPort(pendingSerialId, path)
     }
 
     function openUsbDialog(id) {
         pendingUsbId = id
         usbActionPending = false
         usbError.text = ""
-        backend.refreshMachineUsbDevices(id)
-        backend.loadMachineInfo(id)
+        backend.machines.refreshUsbDevices(id)
+        backend.machines.loadInfo(id)
         usbDialog.open()
     }
 
@@ -208,7 +208,7 @@ ColumnLayout {
         }
         usbActionPending = true
         usbError.text = ""
-        backend.attachMachineUsbDevice(pendingUsbId, bus, address)
+        backend.machines.attachUsbDevice(pendingUsbId, bus, address)
     }
 
     function detachUsbDevice(bus, address) {
@@ -217,7 +217,7 @@ ColumnLayout {
         }
         usbActionPending = true
         usbError.text = ""
-        backend.detachMachineUsbDevice(pendingUsbId, bus, address)
+        backend.machines.detachUsbDevice(pendingUsbId, bus, address)
     }
 
     function detachSerialPort(path) {
@@ -226,7 +226,7 @@ ColumnLayout {
         }
         serialActionPending = true
         serialError.text = ""
-        backend.detachMachineSerialPort(pendingSerialId, path)
+        backend.machines.detachSerialPort(pendingSerialId, path)
     }
 
     function addPortDraft() {        const hostPort = parseInt(portsHost.text)
@@ -390,9 +390,9 @@ ColumnLayout {
     }
 
     function createRequested() {        const index = distroSelect.currentIndex
-        const distro = index >= 0 && index < backend.machineDistros.length
-                       ? backend.machineDistros[index] : ({})
-        backend.createMachine({
+        const distro = index >= 0 && index < backend.machines.distros.length
+                       ? backend.machines.distros[index] : ({})
+        backend.machines.create({
             name: machineName.text,
             distro: distro.distro || "",
             version: distro.version || "",
@@ -427,7 +427,7 @@ ColumnLayout {
             text: qsTr("Nova machine")
             variant: "primary"
             iconName: "plus"
-            enabled: !backend.machineCreateActive
+            enabled: !backend.machines.createActive
             onClicked: {
                 machineName.text = ""
                 machineCpus.text = String(machinesPage.defaultCpus)
@@ -442,8 +442,8 @@ ColumnLayout {
                 forwardSshAgentBox.checked = !machinesPage.defaultIsolated
                                             && machinesPage.defaultForwardSshAgent
                 distroSelect.currentIndex = 0
-                backend.resetMachineCreateState()
-                backend.refreshMachineDistros()
+                backend.machines.resetCreateState()
+                backend.machines.refreshDistros()
                 createDialog.open()
             }
         }
@@ -452,12 +452,12 @@ ColumnLayout {
             text: qsTr("Importar")
             variant: "ghost"
             iconName: "download"
-            enabled: !backend.machineCreateActive
+            enabled: !backend.machines.createActive
             onClicked: {
                 importPath.text = ""
                 importName.text = ""
                 importForce.checked = false
-                backend.resetMachineCreateState()
+                backend.machines.resetCreateState()
                 importDialog.open()
             }
             Accessible.name: qsTr("Importar machine de um arquivo .tar.zst")
@@ -475,14 +475,14 @@ ColumnLayout {
             visible: machineSelection.count > 0
             text: qsTr("Iniciar")
             iconName: "play"
-            onClicked: backend.batchMachines(machineSelection.ids(), "start")
+            onClicked: backend.machines.batch(machineSelection.ids(), "start")
         }
 
         ActionButton {
             visible: machineSelection.count > 0
             text: qsTr("Parar")
             iconName: "stop"
-            onClicked: backend.batchMachines(machineSelection.ids(), "stop")
+            onClicked: backend.machines.batch(machineSelection.ids(), "stop")
         }
 
         ActionButton {
@@ -490,13 +490,13 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.batchMachines(machineSelection.ids(), "delete", true)
+            onClicked: backend.machines.batch(machineSelection.ids(), "delete", true)
         }
 
         ActionButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.refreshMachines()
+            onClicked: backend.machines.refresh()
             Accessible.name: qsTr("Atualizar machines")
         }
     }
@@ -517,7 +517,7 @@ ColumnLayout {
             Layout.fillHeight: true
             emptyIcon: "machines"
             emptyText: qsTr("Nenhuma machine.\nCrie uma machine Linux para começar.")
-            items: backend.machines
+            items: backend.machines.items
             selection: machineSelection
             idKey: "id"
             columns: [
@@ -528,8 +528,8 @@ ColumnLayout {
             ]
 
             onActivated: function(index) {
-                if (index >= 0 && index < backend.machines.length) {
-                    machinesPage.selectMachine(String(backend.machines[index].id))
+                if (index >= 0 && index < backend.machines.items.length) {
+                    machinesPage.selectMachine(String(backend.machines.items[index].id))
                 }
             }
         }
@@ -548,9 +548,9 @@ ColumnLayout {
             }
             onExportRequested: function(id) {
                 machinesPage.pendingExportId = id
-                exportPath.text = backend.machineArchivePath(id)
+                exportPath.text = backend.machines.archivePath(id)
                 exportForce.checked = false
-                backend.resetMachineCreateState()
+                backend.machines.resetCreateState()
                 exportDialog.open()
             }
             onRenameRequested: function(id) {
@@ -561,7 +561,7 @@ ColumnLayout {
             onCloneRequested: function(id) {
                 machinesPage.pendingCloneId = id
                 cloneName.text = ""
-                backend.resetMachineCreateState()
+                backend.machines.resetCreateState()
                 cloneDialog.open()
             }
             onPortsRequested: function(id) {
@@ -587,9 +587,9 @@ ColumnLayout {
                 machinesPage.pendingResourcesId = id
                 machinesPage.resourcesActionPending = false
                 let machine = machinesPage.selectedMachine
-                for (let i = 0; i < backend.machines.length; ++i) {
-                    if (String(backend.machines[i].id) === id) {
-                        machine = backend.machines[i]
+                for (let i = 0; i < backend.machines.items.length; ++i) {
+                    if (String(backend.machines.items[i].id) === id) {
+                        machine = backend.machines.items[i]
                         break
                     }
                 }
@@ -619,16 +619,16 @@ ColumnLayout {
         }
 
         function onMachineCreateStateChanged() {
-            if (backend.machineCreateActive || backend.machineCreateStage !== "done") {
+            if (backend.machines.createActive || backend.machines.createStage !== "done") {
                 return
             }
-            if (backend.machineJobKind === "create") {
+            if (backend.machines.jobKind === "create") {
                 createDialog.close()
-            } else if (backend.machineJobKind === "export") {
+            } else if (backend.machines.jobKind === "export") {
                 exportDialog.close()
-            } else if (backend.machineJobKind === "import") {
+            } else if (backend.machines.jobKind === "import") {
                 importDialog.close()
-            } else if (backend.machineJobKind === "clone") {
+            } else if (backend.machines.jobKind === "clone") {
                 cloneDialog.close()
             }
         }
@@ -653,8 +653,8 @@ ColumnLayout {
                 machinesPage.usbActionPending = false
                 if (ok) {
                     usbError.text = ""
-                    backend.refreshMachineUsbDevices(machinesPage.pendingUsbId)
-                    backend.loadMachineInfo(machinesPage.pendingUsbId)
+                    backend.machines.refreshUsbDevices(machinesPage.pendingUsbId)
+                    backend.machines.loadInfo(machinesPage.pendingUsbId)
                 } else {
                     usbError.text = message.length > 0 ? message : backend.lastError
                 }
@@ -667,8 +667,8 @@ ColumnLayout {
                 machinesPage.serialActionPending = false
                 if (ok) {
                     serialError.text = ""
-                    backend.refreshMachineSerialPorts(machinesPage.pendingSerialId)
-                    backend.loadMachineInfo(machinesPage.pendingSerialId)
+                    backend.machines.refreshSerialPorts(machinesPage.pendingSerialId)
+                    backend.machines.loadInfo(machinesPage.pendingSerialId)
                 } else {
                     serialError.text = message.length > 0 ? message : backend.lastError
                 }
@@ -703,7 +703,7 @@ ColumnLayout {
         title: qsTr("Nova machine")
         modal: true
         width: 580
-        closePolicy: backend.machineCreateActive
+        closePolicy: backend.machines.createActive
                      ? Popup.NoAutoClose
                      : Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
@@ -721,7 +721,7 @@ ColumnLayout {
                     id: machineName
                     Layout.fillWidth: true
                     placeholderText: "dev"
-                    enabled: !backend.machineCreateActive
+                    enabled: !backend.machines.createActive
                 }
 
                 Text { text: qsTr("Distro"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
@@ -729,7 +729,7 @@ ColumnLayout {
                     id: distroSelect
                     Layout.fillWidth: true
                     model: machinesPage.distroLabels
-                    enabled: !backend.machineCreateActive
+                    enabled: !backend.machines.createActive
                     currentIndex: model.length > 0 ? 0 : -1
                 }
 
@@ -738,7 +738,7 @@ ColumnLayout {
                     id: machineCpus
                     Layout.fillWidth: true
                     text: "2"
-                    enabled: !backend.machineCreateActive
+                    enabled: !backend.machines.createActive
                     validator: IntValidator { bottom: 1; top: 256 }
                 }
 
@@ -747,7 +747,7 @@ ColumnLayout {
                     id: machineMemory
                     Layout.fillWidth: true
                     text: "4"
-                    enabled: !backend.machineCreateActive
+                    enabled: !backend.machines.createActive
                     validator: IntValidator { bottom: 1; top: 1024 }
                 }
 
@@ -756,7 +756,7 @@ ColumnLayout {
                     id: machineDisk
                     Layout.fillWidth: true
                     text: "20"
-                    enabled: !backend.machineCreateActive
+                    enabled: !backend.machines.createActive
                     validator: IntValidator { bottom: 1; top: 4096 }
                 }
 
@@ -765,7 +765,7 @@ ColumnLayout {
                     id: machineUser
                     Layout.fillWidth: true
                     placeholderText: qsTr("usuário padrão do host")
-                    enabled: !backend.machineCreateActive
+                    enabled: !backend.machines.createActive
                 }
 
                 Text { text: qsTr("Senha do usuário"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
@@ -774,7 +774,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     echoMode: TextInput.Password
                     placeholderText: qsTr("opcional; gravada só como hash")
-                    enabled: !backend.machineCreateActive
+                    enabled: !backend.machines.createActive
                 }
             }
 
@@ -789,7 +789,7 @@ ColumnLayout {
                 id: machineUserData
                 Layout.fillWidth: true
                 Layout.preferredHeight: 84
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machines.createActive
                 placeholderText: "#cloud-config\nruncmd:\n  - echo pronto"
                 color: Theme.textPrimary
                 placeholderTextColor: Theme.textTertiary
@@ -811,7 +811,7 @@ ColumnLayout {
             FormCheck {
                 id: isolatedBox
                 text: qsTr("Modo isolado (sem mounts, agent SSH nem rede para o host)")
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machines.createActive
                 onToggled: {
                     if (checked) {
                         machineMounts.text = ""
@@ -834,7 +834,7 @@ ColumnLayout {
                 id: machineMounts
                 Layout.fillWidth: true
                 Layout.preferredHeight: 64
-                enabled: !backend.machineCreateActive && !isolatedBox.checked
+                enabled: !backend.machines.createActive && !isolatedBox.checked
                 placeholderText: "/home/voce/projetos:/mnt/podstack/projetos\n/dados:/dados:ro"
                 color: Theme.textPrimary
                 placeholderTextColor: Theme.textTertiary
@@ -856,25 +856,25 @@ ColumnLayout {
             FormCheck {
                 id: isolateNetworkBox
                 text: qsTr("Isolar a rede da machine")
-                enabled: !backend.machineCreateActive && !isolatedBox.checked
+                enabled: !backend.machines.createActive && !isolatedBox.checked
             }
 
             FormCheck {
                 id: forwardSshAgentBox
                 text: qsTr("Encaminhar o SSH agent")
-                enabled: !backend.machineCreateActive && !isolatedBox.checked
+                enabled: !backend.machines.createActive && !isolatedBox.checked
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 4
-                visible: backend.machineCreateActive || backend.machineCreateError.length > 0
-                         || backend.machineCreateStage === "cancelled"
+                visible: backend.machines.createActive || backend.machines.createError.length > 0
+                         || backend.machines.createStage === "cancelled"
 
                 Text {
                     Layout.fillWidth: true
-                    text: machinesPage.stageLabel(backend.machineCreateStage)
-                    color: backend.machineCreateError.length > 0 ? Theme.danger
+                    text: machinesPage.stageLabel(backend.machines.createStage)
+                    color: backend.machines.createError.length > 0 ? Theme.danger
                                                                  : Theme.textSecondary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -889,7 +889,7 @@ ColumnLayout {
 
                     Rectangle {
                         width: parent.width
-                               * Math.max(0, Math.min(1, backend.machineCreateProgress / 100))
+                               * Math.max(0, Math.min(1, backend.machines.createProgress / 100))
                         height: parent.height
                         radius: parent.radius
                         color: Theme.indigo500
@@ -898,8 +898,8 @@ ColumnLayout {
 
                 Text {
                     Layout.fillWidth: true
-                    visible: backend.machineCreateError.length > 0
-                    text: backend.machineCreateError
+                    visible: backend.machines.createError.length > 0
+                    text: backend.machines.createError
                     color: Theme.danger
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -911,11 +911,11 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: backend.machineCreateActive ? qsTr("Cancelar criação") : qsTr("Fechar")
+                text: backend.machines.createActive ? qsTr("Cancelar criação") : qsTr("Fechar")
                 variant: "secondary"
                 onClicked: {
-                    if (backend.machineCreateActive) {
-                        backend.cancelMachineCreate()
+                    if (backend.machines.createActive) {
+                        backend.machines.cancelCreate()
                     } else {
                         createDialog.close()
                     }
@@ -924,7 +924,7 @@ ColumnLayout {
             ActionButton {
                 text: qsTr("Criar")
                 variant: "primary"
-                enabled: !backend.machineCreateActive && machineName.text.length > 0
+                enabled: !backend.machines.createActive && machineName.text.length > 0
                          && machinesPage.distroLabels.length > 0
                 onClicked: machinesPage.createRequested()
             }
@@ -967,7 +967,7 @@ ColumnLayout {
                 variant: "danger"
                 onClicked: {
                     if (machinesPage.pendingDeleteId.length > 0) {
-                        backend.removeMachine(machinesPage.pendingDeleteId, true)
+                        backend.machines.remove(machinesPage.pendingDeleteId, true)
                         machinesPage.pendingDeleteId = ""
                     }
                     deleteMachineDialog.close()
@@ -982,7 +982,7 @@ ColumnLayout {
         modal: true
         width: 520
         anchors.centerIn: parent
-        closePolicy: backend.machineCreateActive ? Popup.NoAutoClose
+        closePolicy: backend.machines.createActive ? Popup.NoAutoClose
                                                  : Popup.CloseOnEscape | Popup.CloseOnPressOutside
         onClosed: machinesPage.pendingExportId = ""
         background: Rectangle {
@@ -1008,26 +1008,26 @@ ColumnLayout {
                 mode: "save"
                 filter: qsTr("Machine PodStack (*.tar.zst);;Todos os arquivos (*)")
                 placeholderText: qsTr("/home/voce/Downloads/machine.tar.zst")
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machines.createActive
             }
 
             FormCheck {
                 id: exportForce
                 text: qsTr("Substituir o arquivo se já existir")
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machines.createActive
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 4
-                visible: backend.machineCreateActive || backend.machineCreateError.length > 0
-                         || backend.machineCreateStage === "cancelled"
-                         || backend.machineCreateStage === "done"
+                visible: backend.machines.createActive || backend.machines.createError.length > 0
+                         || backend.machines.createStage === "cancelled"
+                         || backend.machines.createStage === "done"
 
                 Text {
                     Layout.fillWidth: true
-                    text: machinesPage.archiveStageLabel(backend.machineCreateStage)
-                    color: backend.machineCreateError.length > 0 ? Theme.danger
+                    text: machinesPage.archiveStageLabel(backend.machines.createStage)
+                    color: backend.machines.createError.length > 0 ? Theme.danger
                                                                  : Theme.textSecondary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -1042,7 +1042,7 @@ ColumnLayout {
 
                     Rectangle {
                         width: parent.width
-                               * Math.max(0, Math.min(1, backend.machineCreateProgress / 100))
+                               * Math.max(0, Math.min(1, backend.machines.createProgress / 100))
                         height: parent.height
                         radius: parent.radius
                         color: Theme.indigo500
@@ -1051,8 +1051,8 @@ ColumnLayout {
 
                 Text {
                     Layout.fillWidth: true
-                    visible: backend.machineCreateError.length > 0
-                    text: backend.machineCreateError
+                    visible: backend.machines.createError.length > 0
+                    text: backend.machines.createError
                     color: Theme.danger
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -1064,11 +1064,11 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: backend.machineCreateActive ? qsTr("Cancelar export") : qsTr("Fechar")
+                text: backend.machines.createActive ? qsTr("Cancelar export") : qsTr("Fechar")
                 variant: "secondary"
                 onClicked: {
-                    if (backend.machineCreateActive) {
-                        backend.cancelMachineCreate()
+                    if (backend.machines.createActive) {
+                        backend.machines.cancelCreate()
                     } else {
                         exportDialog.close()
                     }
@@ -1077,10 +1077,10 @@ ColumnLayout {
             ActionButton {
                 text: qsTr("Exportar")
                 variant: "primary"
-                enabled: !backend.machineCreateActive && exportPath.text.length > 0
+                enabled: !backend.machines.createActive && exportPath.text.length > 0
                          && machinesPage.pendingExportId.length > 0
-                         && backend.machineCreateStage !== "done"
-                onClicked: backend.exportMachine(machinesPage.pendingExportId,
+                         && backend.machines.createStage !== "done"
+                onClicked: backend.machines.exportTo(machinesPage.pendingExportId,
                                                  exportPath.text, exportForce.checked)
             }
         }
@@ -1092,7 +1092,7 @@ ColumnLayout {
         modal: true
         width: 520
         anchors.centerIn: parent
-        closePolicy: backend.machineCreateActive ? Popup.NoAutoClose
+        closePolicy: backend.machines.createActive ? Popup.NoAutoClose
                                                  : Popup.CloseOnEscape | Popup.CloseOnPressOutside
         background: Rectangle {
             color: Theme.bgSurface
@@ -1116,7 +1116,7 @@ ColumnLayout {
                 title: qsTr("Importar machine")
                 filter: qsTr("Machine PodStack (*.tar.zst);;Todos os arquivos (*)")
                 placeholderText: qsTr("/home/voce/Downloads/machine.tar.zst")
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machines.createActive
             }
 
             Text {
@@ -1129,26 +1129,26 @@ ColumnLayout {
                 id: importName
                 Layout.fillWidth: true
                 placeholderText: qsTr("usado no arquivo se vazio")
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machines.createActive
             }
 
             FormCheck {
                 id: importForce
                 text: qsTr("Substituir uma machine existente com o mesmo nome")
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machines.createActive
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 4
-                visible: backend.machineCreateActive || backend.machineCreateError.length > 0
-                         || backend.machineCreateStage === "cancelled"
-                         || backend.machineCreateStage === "done"
+                visible: backend.machines.createActive || backend.machines.createError.length > 0
+                         || backend.machines.createStage === "cancelled"
+                         || backend.machines.createStage === "done"
 
                 Text {
                     Layout.fillWidth: true
-                    text: machinesPage.archiveStageLabel(backend.machineCreateStage)
-                    color: backend.machineCreateError.length > 0 ? Theme.danger
+                    text: machinesPage.archiveStageLabel(backend.machines.createStage)
+                    color: backend.machines.createError.length > 0 ? Theme.danger
                                                                  : Theme.textSecondary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -1163,7 +1163,7 @@ ColumnLayout {
 
                     Rectangle {
                         width: parent.width
-                               * Math.max(0, Math.min(1, backend.machineCreateProgress / 100))
+                               * Math.max(0, Math.min(1, backend.machines.createProgress / 100))
                         height: parent.height
                         radius: parent.radius
                         color: Theme.indigo500
@@ -1172,8 +1172,8 @@ ColumnLayout {
 
                 Text {
                     Layout.fillWidth: true
-                    visible: backend.machineCreateError.length > 0
-                    text: backend.machineCreateError
+                    visible: backend.machines.createError.length > 0
+                    text: backend.machines.createError
                     color: Theme.danger
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -1185,11 +1185,11 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: backend.machineCreateActive ? qsTr("Cancelar import") : qsTr("Fechar")
+                text: backend.machines.createActive ? qsTr("Cancelar import") : qsTr("Fechar")
                 variant: "secondary"
                 onClicked: {
-                    if (backend.machineCreateActive) {
-                        backend.cancelMachineCreate()
+                    if (backend.machines.createActive) {
+                        backend.machines.cancelCreate()
                     } else {
                         importDialog.close()
                     }
@@ -1198,9 +1198,9 @@ ColumnLayout {
             ActionButton {
                 text: qsTr("Importar")
                 variant: "primary"
-                enabled: !backend.machineCreateActive && importPath.text.length > 0
-                         && backend.machineCreateStage !== "done"
-                onClicked: backend.importMachine(importPath.text, importName.text,
+                enabled: !backend.machines.createActive && importPath.text.length > 0
+                         && backend.machines.createStage !== "done"
+                onClicked: backend.machines.importFrom(importPath.text, importName.text,
                                                  importForce.checked)
             }
         }
@@ -1236,7 +1236,7 @@ ColumnLayout {
                 onAccepted: {
                     if (renameName.text.trim().length > 0
                             && machinesPage.pendingRenameId.length > 0) {
-                        backend.renameMachine(machinesPage.pendingRenameId,
+                        backend.machines.rename(machinesPage.pendingRenameId,
                                               renameName.text.trim())
                         renameDialog.close()
                     }
@@ -1257,7 +1257,7 @@ ColumnLayout {
                 enabled: renameName.text.trim().length > 0
                          && machinesPage.pendingRenameId.length > 0
                 onClicked: {
-                    backend.renameMachine(machinesPage.pendingRenameId,
+                    backend.machines.rename(machinesPage.pendingRenameId,
                                           renameName.text.trim())
                     renameDialog.close()
                 }
@@ -1271,7 +1271,7 @@ ColumnLayout {
         modal: true
         width: 520
         anchors.centerIn: parent
-        closePolicy: backend.machineCreateActive ? Popup.NoAutoClose
+        closePolicy: backend.machines.createActive ? Popup.NoAutoClose
                                                  : Popup.CloseOnEscape | Popup.CloseOnPressOutside
         onClosed: machinesPage.pendingCloneId = ""
         background: Rectangle {
@@ -1294,20 +1294,20 @@ ColumnLayout {
                 id: cloneName
                 Layout.fillWidth: true
                 placeholderText: qsTr("copia-da-machine")
-                enabled: !backend.machineCreateActive
+                enabled: !backend.machines.createActive
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 4
-                visible: backend.machineCreateActive || backend.machineCreateError.length > 0
-                         || backend.machineCreateStage === "cancelled"
-                         || backend.machineCreateStage === "done"
+                visible: backend.machines.createActive || backend.machines.createError.length > 0
+                         || backend.machines.createStage === "cancelled"
+                         || backend.machines.createStage === "done"
 
                 Text {
                     Layout.fillWidth: true
-                    text: machinesPage.archiveStageLabel(backend.machineCreateStage)
-                    color: backend.machineCreateError.length > 0 ? Theme.danger
+                    text: machinesPage.archiveStageLabel(backend.machines.createStage)
+                    color: backend.machines.createError.length > 0 ? Theme.danger
                                                                  : Theme.textSecondary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -1322,7 +1322,7 @@ ColumnLayout {
 
                     Rectangle {
                         width: parent.width
-                               * Math.max(0, Math.min(1, backend.machineCreateProgress / 100))
+                               * Math.max(0, Math.min(1, backend.machines.createProgress / 100))
                         height: parent.height
                         radius: parent.radius
                         color: Theme.indigo500
@@ -1331,8 +1331,8 @@ ColumnLayout {
 
                 Text {
                     Layout.fillWidth: true
-                    visible: backend.machineCreateError.length > 0
-                    text: backend.machineCreateError
+                    visible: backend.machines.createError.length > 0
+                    text: backend.machines.createError
                     color: Theme.danger
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -1344,11 +1344,11 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: backend.machineCreateActive ? qsTr("Cancelar clone") : qsTr("Fechar")
+                text: backend.machines.createActive ? qsTr("Cancelar clone") : qsTr("Fechar")
                 variant: "secondary"
                 onClicked: {
-                    if (backend.machineCreateActive) {
-                        backend.cancelMachineCreate()
+                    if (backend.machines.createActive) {
+                        backend.machines.cancelCreate()
                     } else {
                         cloneDialog.close()
                     }
@@ -1357,10 +1357,10 @@ ColumnLayout {
             ActionButton {
                 text: qsTr("Clonar")
                 variant: "primary"
-                enabled: !backend.machineCreateActive && cloneName.text.trim().length > 0
+                enabled: !backend.machines.createActive && cloneName.text.trim().length > 0
                          && machinesPage.pendingCloneId.length > 0
-                         && backend.machineCreateStage !== "done"
-                onClicked: backend.cloneMachine(machinesPage.pendingCloneId,
+                         && backend.machines.createStage !== "done"
+                onClicked: backend.machines.clone(machinesPage.pendingCloneId,
                                                 cloneName.text.trim())
             }
         }
@@ -1404,7 +1404,7 @@ ColumnLayout {
 
             Text {
                 Layout.fillWidth: true
-                visible: (backend.machineInfo.usbDevices || []).length === 0
+                visible: (backend.machines.info.usbDevices || []).length === 0
                 text: qsTr("Nenhum dispositivo USB anexado.")
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
@@ -1414,9 +1414,9 @@ ColumnLayout {
             ListView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(160, Math.max(1,
-                    (backend.machineInfo.usbDevices || []).length) * 36)
+                    (backend.machines.info.usbDevices || []).length) * 36)
                 clip: true
-                model: backend.machineInfo.usbDevices || []
+                model: backend.machines.info.usbDevices || []
                 delegate: RowLayout {
                     required property var modelData
                     width: ListView.view.width
@@ -1452,7 +1452,7 @@ ColumnLayout {
 
             Text {
                 Layout.fillWidth: true
-                visible: backend.machineUsbDevices.length === 0
+                visible: backend.machines.usbDevices.length === 0
                 text: qsTr("Nenhum dispositivo USB disponível no host.")
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
@@ -1462,9 +1462,9 @@ ColumnLayout {
             ListView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(220, Math.max(1,
-                    backend.machineUsbDevices.length) * 36)
+                    backend.machines.usbDevices.length) * 36)
                 clip: true
-                model: backend.machineUsbDevices
+                model: backend.machines.usbDevices
                 delegate: RowLayout {
                     required property var modelData
                     width: ListView.view.width
@@ -1548,7 +1548,7 @@ ColumnLayout {
 
             Text {
                 Layout.fillWidth: true
-                visible: (backend.machineInfo.serialPorts || []).length === 0
+                visible: (backend.machines.info.serialPorts || []).length === 0
                 text: qsTr("Nenhuma porta anexada.")
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
@@ -1558,9 +1558,9 @@ ColumnLayout {
             ListView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(160, Math.max(1,
-                    (backend.machineInfo.serialPorts || []).length) * 36)
+                    (backend.machines.info.serialPorts || []).length) * 36)
                 clip: true
-                model: backend.machineInfo.serialPorts || []
+                model: backend.machines.info.serialPorts || []
                 delegate: RowLayout {
                     required property var modelData
                     width: ListView.view.width
@@ -1594,7 +1594,7 @@ ColumnLayout {
 
             Text {
                 Layout.fillWidth: true
-                visible: backend.machineSerialPorts.length === 0
+                visible: backend.machines.serialPorts.length === 0
                 text: qsTr("Nenhuma porta serial disponível no host.")
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
@@ -1604,9 +1604,9 @@ ColumnLayout {
             ListView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(220, Math.max(1,
-                    backend.machineSerialPorts.length) * 36)
+                    backend.machines.serialPorts.length) * 36)
                 clip: true
-                model: backend.machineSerialPorts
+                model: backend.machines.serialPorts
                 delegate: RowLayout {
                     required property var modelData
                     width: ListView.view.width
@@ -1625,7 +1625,7 @@ ColumnLayout {
                         size: "sm"
                         enabled: !machinesPage.serialActionPending
                                  && modelData.readable === true
-                                 && !(backend.machineInfo.serialPorts || []).includes(
+                                 && !(backend.machines.info.serialPorts || []).includes(
                                      String(modelData.path))
                         onClicked: machinesPage.attachSerialPort(String(modelData.path))
                     }
@@ -1863,7 +1863,7 @@ ColumnLayout {
                 onClicked: {
                     portsError.text = ""
                     machinesPage.portsActionPending = true
-                    backend.setMachinePorts(machinesPage.pendingPortsId,
+                    backend.machines.setPorts(machinesPage.pendingPortsId,
                                             machinesPage.portsDraft)
                 }
             }
@@ -1982,7 +1982,7 @@ ColumnLayout {
                     }
                     resourcesError.text = ""
                     machinesPage.resourcesActionPending = true
-                    backend.updateMachine(spec)
+                    backend.machines.update(spec)
                 }
             }
         }
@@ -2026,8 +2026,8 @@ ColumnLayout {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(220, Math.max(44,
-                    backend.machineSnapshots.length * 38 + 8))
-                visible: backend.machineSnapshots.length > 0
+                    backend.machines.snapshots.length * 38 + 8))
+                visible: backend.machines.snapshots.length > 0
                 radius: Theme.radiusSm
                 color: Theme.bgSurface2
                 border.width: 1
@@ -2038,7 +2038,7 @@ ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 4
                     clip: true
-                    model: backend.machineSnapshots
+                    model: backend.machines.snapshots
                     spacing: 2
 
                     delegate: Item {
@@ -2121,7 +2121,7 @@ ColumnLayout {
 
             Text {
                 Layout.fillWidth: true
-                visible: backend.machineSnapshots.length === 0
+                visible: backend.machines.snapshots.length === 0
                 text: qsTr("Nenhum snapshot criado.")
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
@@ -2131,7 +2131,7 @@ ColumnLayout {
             Text {
                 Layout.fillWidth: true
                 visible: text.length > 0
-                text: backend.machineSnapshotsError
+                text: backend.machines.snapshotsError
                 color: Theme.danger
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
@@ -2243,8 +2243,8 @@ ColumnLayout {
     }
 
     Component.onCompleted: {
-        backend.refreshMachines()
-        backend.refreshMachineDistros()
+        backend.machines.refresh()
+        backend.machines.refreshDistros()
         syncSelection()
     }
 }
