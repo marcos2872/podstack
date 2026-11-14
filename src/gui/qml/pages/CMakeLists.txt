@@ -39,6 +39,9 @@ qt_add_qml_module(podstack_qml_pages
         machines/MachineResourcesDialog.qml
         machines/MachineSnapshotsDialog.qml
         machines/MachineFilesView.qml
+        machines/MachineDeleteDialog.qml
+        machines/MachineImportDialog.qml
+        machines/MachineRenameDialog.qml
         machines/InfoTab.qml
         machines/LogsTab.qml
         machines/StatsTab.qml

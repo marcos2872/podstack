@@ -306,7 +306,6 @@ ColumnLayout {
             }
             onRenameRequested: function(id) {
                 machinesPage.pendingRenameId = id
-                renameName.text = ""
                 renameDialog.open()
             }
             onCloneRequested: function(id) {
@@ -390,228 +389,21 @@ ColumnLayout {
         id: snapshotsDialog
     }
 
-    AppModal {
+    MachineDeleteDialog {
         id: deleteMachineDialog
-        title: qsTr("Remover machine?")
-        modal: true
-        width: 440
-        anchors.centerIn: parent
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.width: 1
-            border.color: Theme.border
-        }
-
-        contentItem: Text {
-            text: qsTr("A machine e o disco serão removidos. Esta ação não pode ser desfeita.")
-            color: Theme.textPrimary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
-        }
-
-        footer: AppFooter {
-            Item { Layout.fillWidth: true }
-            AppButton {
-                text: qsTr("Cancelar")
-                variant: "secondary"
-                onClicked: {
-                    machinesPage.pendingDeleteId = ""
-                    deleteMachineDialog.close()
-                }
-            }
-            AppButton {
-                text: qsTr("Remover")
-                variant: "danger"
-                onClicked: {
-                    if (machinesPage.pendingDeleteId.length > 0) {
-                        backend.machines.remove(machinesPage.pendingDeleteId, true)
-                        machinesPage.pendingDeleteId = ""
-                    }
-                    deleteMachineDialog.close()
-                }
-            }
-        }
+        machineId: machinesPage.pendingDeleteId
+        onClosed: machinesPage.pendingDeleteId = ""
     }
 
-    AppModal {
+    MachineImportDialog {
         id: importDialog
-        title: qsTr("Importar machine")
-        modal: true
-        width: 520
-        anchors.centerIn: parent
-        closePolicy: backend.machines.createActive ? Popup.NoAutoClose
-                                                 : Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.width: 1
-            border.color: Theme.border
-        }
-
-        contentItem: ColumnLayout {
-            spacing: 8
-
-            Text {
-                text: qsTr("Arquivo .tar.zst")
-                color: Theme.textSecondary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMeta
-            }
-            AppPathField {
-                id: importPath
-                Layout.fillWidth: true
-                title: qsTr("Importar machine")
-                filter: qsTr("Machine PodStack (*.tar.zst);;Todos os arquivos (*)")
-                placeholderText: qsTr("/home/voce/Downloads/machine.tar.zst")
-                enabled: !backend.machines.createActive
-            }
-
-            Text {
-                text: qsTr("Nome da nova machine (opcional)")
-                color: Theme.textSecondary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMeta
-            }
-            AppInput {
-                id: importName
-                Layout.fillWidth: true
-                placeholderText: qsTr("usado no arquivo se vazio")
-                enabled: !backend.machines.createActive
-            }
-
-            AppCheck {
-                id: importForce
-                text: qsTr("Substituir uma machine existente com o mesmo nome")
-                enabled: !backend.machines.createActive
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 4
-                visible: backend.machines.createActive || backend.machines.createError.length > 0
-                         || backend.machines.createStage === "cancelled"
-                         || backend.machines.createStage === "done"
-
-                Text {
-                    Layout.fillWidth: true
-                    text: machinesPage.archiveStageLabel(backend.machines.createStage)
-                    color: backend.machines.createError.length > 0 ? Theme.danger
-                                                                 : Theme.textSecondary
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontMicro
-                    elide: Text.ElideRight
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 6
-                    radius: 3
-                    color: Theme.bgSurface2
-
-                    Rectangle {
-                        width: parent.width
-                               * Math.max(0, Math.min(1, backend.machines.createProgress / 100))
-                        height: parent.height
-                        radius: parent.radius
-                        color: Theme.indigo500
-                    }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    visible: backend.machines.createError.length > 0
-                    text: backend.machines.createError
-                    color: Theme.danger
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.WordWrap
-                }
-            }
-        }
-
-        footer: AppFooter {
-            Item { Layout.fillWidth: true }
-            AppButton {
-                text: backend.machines.createActive ? qsTr("Cancelar import") : qsTr("Fechar")
-                variant: "secondary"
-                onClicked: {
-                    if (backend.machines.createActive) {
-                        backend.machines.cancelCreate()
-                    } else {
-                        importDialog.close()
-                    }
-                }
-            }
-            AppButton {
-                text: qsTr("Importar")
-                variant: "primary"
-                enabled: !backend.machines.createActive && importPath.text.length > 0
-                         && backend.machines.createStage !== "done"
-                onClicked: backend.machines.importFrom(importPath.text, importName.text,
-                                                 importForce.checked)
-            }
-        }
+        stageLabel: machinesPage.archiveStageLabel
     }
 
-    AppModal {
+    MachineRenameDialog {
         id: renameDialog
-        title: qsTr("Renomear machine")
-        modal: true
-        width: 440
-        anchors.centerIn: parent
+        machineId: machinesPage.pendingRenameId
         onClosed: machinesPage.pendingRenameId = ""
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.width: 1
-            border.color: Theme.border
-        }
-
-        contentItem: ColumnLayout {
-            spacing: 8
-
-            Text {
-                text: qsTr("Novo nome")
-                color: Theme.textSecondary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMeta
-            }
-            AppInput {
-                id: renameName
-                Layout.fillWidth: true
-                placeholderText: qsTr("novo-nome")
-                onAccepted: {
-                    if (renameName.text.trim().length > 0
-                            && machinesPage.pendingRenameId.length > 0) {
-                        backend.machines.rename(machinesPage.pendingRenameId,
-                                              renameName.text.trim())
-                        renameDialog.close()
-                    }
-                }
-            }
-        }
-
-        footer: AppFooter {
-            Item { Layout.fillWidth: true }
-            AppButton {
-                text: qsTr("Cancelar")
-                variant: "secondary"
-                onClicked: renameDialog.close()
-            }
-            AppButton {
-                text: qsTr("Renomear")
-                variant: "primary"
-                enabled: renameName.text.trim().length > 0
-                         && machinesPage.pendingRenameId.length > 0
-                onClicked: {
-                    backend.machines.rename(machinesPage.pendingRenameId,
-                                          renameName.text.trim())
-                    renameDialog.close()
-                }
-            }
-        }
     }
 
     Component.onCompleted: {
