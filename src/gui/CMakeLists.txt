@@ -12,6 +12,8 @@ add_library(podstack_gui_lib STATIC
     app/terminal/ExternalTerminal.cpp
     app/tray/Tray.cpp
     controllers/Backend.cpp
+    controllers/BuildController.cpp
+    controllers/ComposeController.cpp
     controllers/CatalogController.cpp
     controllers/ControllerBase.cpp
     controllers/ImageController.cpp

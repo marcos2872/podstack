@@ -541,65 +541,6 @@ Backend::Backend(QObject *parent)
         m_eventsRetryDelayMs = qMin(m_eventsRetryDelayMs * 2, 30000);
     });
 
-    connect(&m_composeStream, &StreamClient::composeLog, this,
-            [this](const QString &service, const QString &line) {
-                m_composeLogLines.append(service + QStringLiteral(" | ") + line);
-                if (m_composeLogLines.size() > m_logBufferLines) {
-                    m_composeLogLines = m_composeLogLines.mid(qMax(1, m_logBufferLines / 5));
-                }
-                emit composeLogsChanged();
-            });
-
-    connect(&m_composeStream, &StreamClient::error, this, [this](const QString &message) {
-        m_lastError = message;
-        emit lastErrorChanged();
-    });
-
-    connect(&m_buildStream, &StreamClient::subscriptionReady, this,
-            [this](const QJsonObject &result) {
-                const QString buildId = result.value(QStringLiteral("buildId")).toString();
-                if (!buildId.isEmpty()) {
-                    m_activeBuildId = buildId;
-                    emit buildStateChanged();
-                }
-            });
-
-    connect(&m_buildStream, &StreamClient::buildEvent, this,
-            [this](const QJsonObject &event) {
-                const QString line = event.value(QStringLiteral("line")).toString();
-                if (!line.isEmpty()) {
-                    m_buildLog.append(line);
-                    if (m_buildLog.size() > m_logBufferLines) {
-                        m_buildLog = m_buildLog.mid(qMax(1, m_logBufferLines / 5));
-                    }
-                    m_buildStatus = line;
-                    emit buildLogChanged();
-                }
-            });
-
-    connect(&m_buildStream, &StreamClient::buildFinished, this,
-            [this](const QJsonObject &result) {
-                const QString status = result.value(QStringLiteral("status")).toString();
-                m_buildActive = false;
-                m_buildStatus = status == QStringLiteral("success")
-                                    ? QStringLiteral("Build concluído")
-                                    : status == QStringLiteral("cancelled")
-                                      ? QStringLiteral("Build cancelado")
-                                      : result.value(QStringLiteral("error")).toString();
-                if (m_buildStatus.isEmpty()) {
-                    m_buildStatus = status;
-                }
-                emit buildStateChanged();
-                refreshBuilds();
-            });
-
-    connect(&m_buildStream, &StreamClient::error, this, [this](const QString &message) {
-        m_buildActive = false;
-        m_buildStatus = message;
-        emit buildStateChanged();
-        emit lastErrorChanged();
-    });
-
     connect(&m_machineCreateStream, &StreamClient::subscriptionReady, this,
             [this](const QJsonObject &result) {
                 const QString jobId = result.value(QStringLiteral("jobId")).toString();
@@ -837,6 +778,8 @@ void Backend::refreshCatalog()
     m_volumes.refresh();
     m_networks.refresh();
     m_pods.refresh();
+    m_compose.refresh();
+    m_builds.refresh();
     refreshSection(QStringLiteral("df"));
 }
 
@@ -1121,10 +1064,6 @@ void Backend::startNextCatalog()
     QString method;
     if (m_catalogSection == QStringLiteral("df")) {
         method = QStringLiteral("system.df");
-    } else if (m_catalogSection == QStringLiteral("compose")) {
-        method = QStringLiteral("compose.projects.list");
-    } else if (m_catalogSection == QStringLiteral("builds")) {
-        method = QStringLiteral("builds.list");
     } else {
         startNextCatalog();
         return;
@@ -1197,68 +1136,7 @@ void Backend::onCatalogFinished()
         m_prunePreview = sections.toVariantMap();
         m_prunePreview.insert(QStringLiteral("totalReclaimableBytes"), totalReclaimable);
         emit prunePreviewChanged();
-    } else if (m_catalogSection == QStringLiteral("compose")) {
-        m_composeProjects.clear();
-        for (const QJsonValue &value : items) {
-            const QJsonObject project = value.toObject();
-            QVariantMap item;
-            item.insert(QStringLiteral("name"),
-                        project.value(QStringLiteral("name")).toString());
-            item.insert(QStringLiteral("status"),
-                        project.value(QStringLiteral("status")).toString());
-            item.insert(QStringLiteral("workingDir"),
-                        project.value(QStringLiteral("workingDir")).toString());
-            const QJsonArray configFiles =
-                project.value(QStringLiteral("configFiles")).toArray();
-            item.insert(QStringLiteral("configFile"),
-                        configFiles.isEmpty()
-                            ? QString()
-                            : configFiles.first().toString());
-            QStringList services;
-            for (const QJsonValue &service :
-                 project.value(QStringLiteral("services")).toArray()) {
-                const QJsonObject serviceObject = service.toObject();
-                services.append(serviceObject.value(QStringLiteral("name")).toString());
-            }
-            item.insert(QStringLiteral("services"), services.join(QStringLiteral(", ")));
-            m_composeProjects.append(item);
-        }
-        emit composeProjectsChanged();
-    } else if (m_catalogSection == QStringLiteral("builds")) {
-        m_builds.clear();
-        for (const QJsonValue &value : items) {
-            const QJsonObject build = value.toObject();
-            QVariantMap item;
-            item.insert(QStringLiteral("id"),
-                        build.value(QStringLiteral("id")).toString());
-            item.insert(QStringLiteral("imageRef"),
-                        build.value(QStringLiteral("imageRef")).toString());
-            item.insert(QStringLiteral("status"),
-                        build.value(QStringLiteral("status")).toString());
-            const int durationMs = build.value(QStringLiteral("durationMs")).toInt();
-            item.insert(QStringLiteral("durationMs"), durationMs);
-            item.insert(QStringLiteral("duration"),
-                        QString::number(durationMs / 1000.0, 'f', 1)
-                            + QStringLiteral("s"));
-            item.insert(QStringLiteral("startedAt"),
-                        build.value(QStringLiteral("startedAt")).toString());
-            item.insert(QStringLiteral("trigger"),
-                        build.value(QStringLiteral("trigger")).toString());
-            item.insert(QStringLiteral("contextPath"),
-                        build.value(QStringLiteral("contextPath")).toString());
-            QStringList platforms;
-            for (const QJsonValue &platform :
-                 build.value(QStringLiteral("platforms")).toArray()) {
-                const QString value = platform.toString();
-                if (!value.isEmpty()) {
-                    platforms.append(value);
-                }
-            }
-            item.insert(QStringLiteral("platforms"),
-                        platforms.join(QStringLiteral(", ")));
-            m_builds.append(item);
-        }
-        emit buildsChanged();
+
     }
 
     startNextCatalog();
@@ -2834,34 +2712,6 @@ void Backend::batchMachines(const QStringList &ids, const QString &action, bool 
                   600000);
 }
 
-void Backend::batchCompose(const QStringList &projectPaths, const QString &action)
-{
-    if (action != QStringLiteral("up") && action != QStringLiteral("down") &&
-        action != QStringLiteral("restart") && action != QStringLiteral("stop") &&
-        action != QStringLiteral("start")) {
-        m_lastError = QStringLiteral("Ação de lote inválida.");
-        emit lastErrorChanged();
-        emit actionFinished(false, m_lastError);
-        return;
-    }
-    QJsonObject extra;
-    if (action == QStringLiteral("up")) {
-        extra.insert(QStringLiteral("detach"), true);
-    } else if (action == QStringLiteral("down")) {
-        extra.insert(QStringLiteral("volumes"), false);
-    } else {
-        extra.insert(QStringLiteral("service"), QString());
-    }
-    batchResource(QStringLiteral("compose."), QStringLiteral("projectPath"), action, projectPaths,
-                  false, extra, 600000);
-}
-
-void Backend::batchBuilds(const QStringList &ids)
-{
-    batchResource(QStringLiteral("builds."), QStringLiteral("id"), QStringLiteral("remove"), ids,
-                  false, {}, 120000);
-}
-
 void Backend::uploadFile(const QString &id, const QString &path, const QString &sourcePath)
 {
     if (id.isEmpty() || path.isEmpty() || sourcePath.isEmpty()) {
@@ -2874,63 +2724,6 @@ void Backend::uploadFile(const QString &id, const QString &path, const QString &
               QJsonObject{{QStringLiteral("id"), id},
                           {QStringLiteral("path"), path},
                           {QStringLiteral("sourcePath"), sourcePath}});
-}
-
-void Backend::refreshCompose()
-{
-    refreshSection(QStringLiteral("compose"));
-}
-
-void Backend::composeUp(const QString &projectPath)
-{
-    runAction(QStringLiteral("compose.up"),
-              QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("detach"), true}},
-              600000);
-}
-
-void Backend::composeDown(const QString &projectPath, bool volumes)
-{
-    runAction(QStringLiteral("compose.down"),
-              QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("volumes"), volumes}},
-              600000);
-}
-
-void Backend::composeRestart(const QString &projectPath, const QString &service)
-{
-    runAction(QStringLiteral("compose.restart"),
-              QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("service"), service}},
-              600000);
-}
-
-void Backend::composeStop(const QString &projectPath, const QString &service)
-{
-    runAction(QStringLiteral("compose.stop"),
-              QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("service"), service}},
-              600000);
-}
-
-void Backend::composeStart(const QString &projectPath, const QString &service)
-{
-    runAction(QStringLiteral("compose.start"),
-              QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("service"), service}},
-              600000);
-}
-
-void Backend::subscribeComposeLogs(const QString &project, const QString &service)
-{
-    m_composeLogLines.clear();
-    emit composeLogsChanged();
-    m_composeStream.subscribeComposeLogs(project, service);
-}
-
-void Backend::unsubscribeComposeLogs()
-{
-    m_composeStream.unsubscribe();
 }
 
 void Backend::openPath(const QString &path)
@@ -2957,104 +2750,6 @@ QString Backend::choosePath(const QString &mode, const QString &title,
     }
     return QFileDialog::getOpenFileName(nullptr, resolvedTitle, initialPath,
                                         resolvedFilter);
-}
-
-void Backend::refreshBuilds()
-{
-    refreshSection(QStringLiteral("builds"));
-}
-
-void Backend::startBuild(const QVariantMap &spec)
-{
-    const QString contextPath = spec.value(QStringLiteral("contextPath")).toString();
-    const QString tag = spec.value(QStringLiteral("tag")).toString();
-    if (contextPath.isEmpty() || tag.isEmpty()) {
-        m_lastError = QStringLiteral("Informe o contexto e a tag do build.");
-        emit lastErrorChanged();
-        return;
-    }
-
-    QJsonObject buildArgs;
-    const QString argsText = spec.value(QStringLiteral("buildArgsText")).toString();
-    const QStringList lines =
-        argsText.split(QRegularExpression(QStringLiteral("[,\\n]")), Qt::SkipEmptyParts);
-    for (const QString &line : lines) {
-        const int equals = line.indexOf(QLatin1Char('='));
-        if (equals > 0) {
-            buildArgs.insert(line.left(equals).trimmed(), line.mid(equals + 1).trimmed());
-        }
-    }
-
-    QString dockerfile = spec.value(QStringLiteral("dockerfile")).toString();
-    if (dockerfile.isEmpty()) {
-        dockerfile = QStringLiteral("Dockerfile");
-    }
-
-    QStringList platforms;
-    const auto appendPlatform = [&platforms](const QString &value) {
-        const QString platform = value.trimmed();
-        if (!platform.isEmpty() && !platforms.contains(platform)) {
-            platforms.append(platform);
-        }
-    };
-    const QVariant platformsValue = spec.value(QStringLiteral("platforms"));
-    if (platformsValue.metaType().id() == QMetaType::QStringList) {
-        for (const QString &platform : platformsValue.toStringList()) {
-            appendPlatform(platform);
-        }
-    } else if (platformsValue.metaType().id() == QMetaType::QVariantList) {
-        for (const QVariant &value : platformsValue.toList()) {
-            appendPlatform(value.toString());
-        }
-    } else {
-        for (const QString &part : platformsValue.toString().split(QLatin1Char(','),
-                                                                    Qt::SkipEmptyParts)) {
-            appendPlatform(part);
-        }
-    }
-    if (platforms.isEmpty()) {
-        for (const QString &part : spec.value(QStringLiteral("platform"))
-                                       .toString()
-                                       .split(QLatin1Char(','), Qt::SkipEmptyParts)) {
-            appendPlatform(part);
-        }
-    }
-
-    QJsonArray platformArray;
-    for (const QString &platform : platforms) {
-        platformArray.append(platform);
-    }
-
-    QJsonObject params;
-    params.insert(QStringLiteral("contextPath"), contextPath);
-    params.insert(QStringLiteral("tag"), tag);
-    params.insert(QStringLiteral("dockerfile"), dockerfile);
-    params.insert(QStringLiteral("platforms"), platformArray);
-    if (platforms.size() == 1) {
-        params.insert(QStringLiteral("platform"), platforms.first());
-    }
-    params.insert(QStringLiteral("buildArgs"), buildArgs);
-    params.insert(QStringLiteral("trigger"), QStringLiteral("gui"));
-
-    m_buildLog.clear();
-    emit buildLogChanged();
-    m_buildActive = true;
-    m_buildStatus = QStringLiteral("Iniciando build de %1...").arg(tag);
-    m_activeBuildId.clear();
-    emit buildStateChanged();
-    m_buildStream.startBuild(params);
-}
-
-void Backend::cancelBuild()
-{
-    m_buildStream.unsubscribe();
-    m_buildStatus = QStringLiteral("Cancelando build...");
-    emit buildStateChanged();
-}
-
-void Backend::removeBuild(const QString &id)
-{
-    runAction(QStringLiteral("builds.remove"), QJsonObject{{QStringLiteral("id"), id}});
 }
 
 void Backend::refreshMachines()
@@ -4216,9 +3911,9 @@ void Backend::onActionFinished()
         if (prefix == QStringLiteral("machines.")) {
             refreshMachines();
         } else if (prefix == QStringLiteral("compose.")) {
-            refreshCompose();
+            m_compose.refresh();
         } else if (prefix == QStringLiteral("builds.")) {
-            refreshBuilds();
+            m_builds.refresh();
         }
     }
 

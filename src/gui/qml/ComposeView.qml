@@ -13,14 +13,14 @@ ColumnLayout {
     SelectionState { id: composeSelection }
 
     function openProject(project, service, logs) {
-        for (let i = 0; i < backend.composeProjects.length; ++i) {
-            if (backend.composeProjects[i].name === project) {
+        for (let i = 0; i < backend.compose.items.length; ++i) {
+            if (backend.compose.items[i].name === project) {
                 composeList.currentRow = i
                 break
             }
         }
         if (logs) {
-            backend.subscribeComposeLogs(project, service || "")
+            backend.compose.subscribeComposeLogs(project, service || "")
         }
     }
 
@@ -31,7 +31,7 @@ ColumnLayout {
         Layout.topMargin: 20
         Layout.bottomMargin: 16
         title: qsTr("Compose")
-        subtitle: backend.composeProjects.length + qsTr(" projetos")
+        subtitle: backend.compose.items.length + qsTr(" projetos")
 
         ActionButton {
             text: qsTr("Up por diretório")
@@ -46,7 +46,7 @@ ColumnLayout {
         ActionButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.refreshCompose()
+            onClicked: backend.compose.refreshCompose()
             Accessible.name: qsTr("Atualizar")
         }
     }
@@ -70,28 +70,28 @@ ColumnLayout {
             visible: composeSelection.count > 0
             text: qsTr("Up")
             iconName: "play"
-            onClicked: backend.batchCompose(composeSelection.ids(), "up")
+            onClicked: backend.compose.batchCompose(composeSelection.ids(), "up")
         }
 
         ActionButton {
             visible: composeSelection.count > 0
             text: qsTr("Down")
             iconName: "stop"
-            onClicked: backend.batchCompose(composeSelection.ids(), "down")
+            onClicked: backend.compose.batchCompose(composeSelection.ids(), "down")
         }
 
         ActionButton {
             visible: composeSelection.count > 0
             text: qsTr("Restart")
-            onClicked: backend.batchCompose(composeSelection.ids(), "restart")
+            onClicked: backend.compose.batchCompose(composeSelection.ids(), "restart")
         }
 
         ActionButton {
             visible: composeSelection.count === 0
             text: qsTr("Up")
             enabled: composeList.currentRow >= 0
-            onClicked: backend.composeUp(
-                           backend.composeProjects[composeList.currentRow].workingDir)
+            onClicked: backend.compose.composeUp(
+                           backend.compose.items[composeList.currentRow].workingDir)
         }
 
         ActionButton {
@@ -105,8 +105,8 @@ ColumnLayout {
             visible: composeSelection.count === 0
             text: qsTr("Restart")
             enabled: composeList.currentRow >= 0
-            onClicked: backend.composeRestart(
-                           backend.composeProjects[composeList.currentRow].workingDir, "")
+            onClicked: backend.compose.composeRestart(
+                           backend.compose.items[composeList.currentRow].workingDir, "")
         }
 
         ActionButton {
@@ -114,7 +114,7 @@ ColumnLayout {
             iconName: "file"
             enabled: composeList.currentRow >= 0
             onClicked: {
-                const project = backend.composeProjects[composeList.currentRow]
+                const project = backend.compose.items[composeList.currentRow]
                 backend.openPath(project.configFile.length > 0
                                  ? project.configFile : project.workingDir)
             }
@@ -125,7 +125,7 @@ ColumnLayout {
             iconName: "folder"
             enabled: composeList.currentRow >= 0
             onClicked: backend.openPath(
-                           backend.composeProjects[composeList.currentRow].workingDir)
+                           backend.compose.items[composeList.currentRow].workingDir)
         }
 
         Item { Layout.fillWidth: true }
@@ -147,7 +147,7 @@ ColumnLayout {
             emptyIcon: "compose"
             emptyText: qsTr("Nenhum projeto Compose em execução.\n"
                             + "Use a CLI: podstack compose up <diretório>.")
-            items: backend.composeProjects
+            items: backend.compose.items
             selection: composeSelection
             idKey: "workingDir"
             columns: [
@@ -198,8 +198,8 @@ ColumnLayout {
                         text: qsTr("Assinar")
                         size: "sm"
                         enabled: composeList.currentRow >= 0
-                        onClicked: backend.subscribeComposeLogs(
-                                       backend.composeProjects[composeList.currentRow].name,
+                        onClicked: backend.compose.subscribeComposeLogs(
+                                       backend.compose.items[composeList.currentRow].name,
                                        logService.text)
                     }
 
@@ -207,7 +207,7 @@ ColumnLayout {
                         text: qsTr("Parar")
                         variant: "ghost"
                         size: "sm"
-                        onClicked: backend.unsubscribeComposeLogs()
+                        onClicked: backend.compose.unsubscribeComposeLogs()
                     }
                 }
 
@@ -222,7 +222,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    model: backend.composeLogLines
+                    model: backend.compose.logLines
                     ScrollBar.vertical: ScrollBar {}
 
                     delegate: Text {
@@ -311,7 +311,7 @@ ColumnLayout {
                 variant: "primary"
                 enabled: upProjectPath.text.length > 0
                 onClicked: {
-                    backend.composeUp(upProjectPath.text)
+                    backend.compose.composeUp(upProjectPath.text)
                     upDialog.close()
                 }
             }
@@ -350,12 +350,12 @@ ColumnLayout {
         onOpened: removeVolumes.checked = false
         onAccepted: {
             if (composeList.currentRow >= 0) {
-                backend.composeDown(backend.composeProjects[composeList.currentRow].workingDir,
+                backend.compose.composeDown(backend.compose.items[composeList.currentRow].workingDir,
                                     removeVolumes.checked)
             }
         }
     }
 
-    Component.onCompleted: backend.refreshCompose()
-    Component.onDestruction: backend.unsubscribeComposeLogs()
+    Component.onCompleted: backend.compose.refreshCompose()
+    Component.onDestruction: backend.compose.unsubscribeComposeLogs()
 }

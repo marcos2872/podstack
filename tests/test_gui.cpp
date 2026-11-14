@@ -1170,20 +1170,20 @@ void GuiTest::backendTerminal()
 void GuiTest::backendM3()
 {
     PodStack::Backend backend;
-    QSignalSpy composeSpy(&backend, &PodStack::Backend::composeProjectsChanged);
-    QSignalSpy composeLogsSpy(&backend, &PodStack::Backend::composeLogsChanged);
-    QSignalSpy buildSpy(&backend, &PodStack::Backend::buildStateChanged);
-    QSignalSpy buildsSpy(&backend, &PodStack::Backend::buildsChanged);
+    QSignalSpy composeSpy(backend.compose(), &PodStack::ComposeController::itemsChanged);
+    QSignalSpy composeLogsSpy(backend.compose(), &PodStack::ComposeController::logLinesChanged);
+    QSignalSpy buildSpy(backend.builds(), &PodStack::BuildController::buildStateChanged);
+    QSignalSpy buildsSpy(backend.builds(), &PodStack::BuildController::itemsChanged);
     QSignalSpy eventsSpy(&backend, &PodStack::Backend::eventsChanged);
     QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
 
-    backend.refreshCompose();
+    backend.compose()->refresh();
     QTRY_VERIFY_WITH_TIMEOUT(composeSpy.count() > 0, 5000);
-    QCOMPARE(backend.composeProjects().size(), 1);
+    QCOMPARE(backend.compose()->items().size(), 1);
 
-    backend.subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
-    QTRY_VERIFY_WITH_TIMEOUT(backend.composeLogLines().size() >= 2, 5000);
-    backend.unsubscribeComposeLogs();
+    backend.compose()->subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
+    QTRY_VERIFY_WITH_TIMEOUT(backend.compose()->logLines().size() >= 2, 5000);
+    backend.compose()->unsubscribeComposeLogs();
 
     const QString projectDir = m_testDataDir + QStringLiteral("/project");
     QDir().mkpath(projectDir);
@@ -1196,23 +1196,23 @@ void GuiTest::backendM3()
     spec.insert(QStringLiteral("contextPath"), projectDir);
     spec.insert(QStringLiteral("tag"), QStringLiteral("localhost/mock:1"));
     spec.insert(QStringLiteral("dockerfile"), QStringLiteral("Dockerfile"));
-    backend.startBuild(spec);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.buildActive() && buildSpy.count() > 0, 5000);
-    QVERIFY(backend.buildLog().size() >= 2);
-    QVERIFY(!backend.activeBuildId().isEmpty());
+    backend.builds()->startBuild(spec);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.builds()->buildActive() && buildSpy.count() > 0, 5000);
+    QVERIFY(backend.builds()->logLines().size() >= 2);
+    QVERIFY(!backend.builds()->activeBuildId().isEmpty());
 
     QTRY_VERIFY_WITH_TIMEOUT(buildsSpy.count() > 0, 5000);
-    QVERIFY(backend.builds().size() >= 1);
+    QVERIFY(backend.builds()->items().size() >= 1);
 
     QFile::remove(m_testDataDir + QStringLiteral("/podman-args.log"));
     QVariantMap multiSpec = spec;
     multiSpec.insert(QStringLiteral("tag"), QStringLiteral("localhost/mock:multi"));
     multiSpec.insert(QStringLiteral("platforms"),
                      QStringLiteral("linux/amd64,linux/arm64"));
-    backend.startBuild(multiSpec);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.buildActive() && backend.builds().size() >= 2, 5000);
+    backend.builds()->startBuild(multiSpec);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.builds()->buildActive() && backend.builds()->items().size() >= 2, 5000);
     bool foundPlatforms = false;
-    for (const QVariant &value : backend.builds()) {
+    for (const QVariant &value : backend.builds()->items()) {
         const QVariantMap build = value.toMap();
         if (build.value(QStringLiteral("imageRef")).toString()
             == QStringLiteral("localhost/mock:multi")) {
@@ -1232,27 +1232,27 @@ void GuiTest::backendM3()
     QTRY_VERIFY_WITH_TIMEOUT(eventsSpy.count() > 0, 5000);
     QVERIFY(backend.eventMessage().contains(QStringLiteral("start")));
 
-    backend.composeUp(projectDir);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeUp(projectDir);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.compose()->actionActive()
+                                 && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.composeDown(projectDir, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeDown(projectDir, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.compose()->actionActive()
+                                 && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.composeRestart(projectDir, QString());
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeRestart(projectDir, QString());
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.compose()->actionActive()
+                                 && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.composeStop(projectDir, QString());
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 3, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeStop(projectDir, QString());
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.compose()->actionActive()
+                                 && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.composeStart(projectDir, QString());
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeStart(projectDir, QString());
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.compose()->actionActive()
+                                 && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.removeBuild(backend.activeBuildId());
+    backend.builds()->removeBuild(backend.builds()->activeBuildId());
     QTest::qWait(100);
 }
 
@@ -1266,8 +1266,8 @@ void GuiTest::backendErrors()
     backend.images()->pullImage(QString());
     QVERIFY(imageErrorSpy.count() > 0);
 
-    backend.startBuild({});
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.builds()->startBuild({});
+    QVERIFY(!backend.builds()->lastError().isEmpty());
 
     backend.uploadFile(QString(), QString(), QString());
     QVERIFY(!backend.lastError().isEmpty());
@@ -1309,13 +1309,13 @@ void GuiTest::backendInvalidArguments()
     backend.pods()->createPod(QString());
     backend.pods()->podAction(QString(), QString());
     backend.pods()->removePod(QString(), false);
-    backend.composeUp(QString());
-    backend.composeDown(QString(), false);
-    backend.composeRestart(QString(), QString());
-    backend.composeStop(QString(), QString());
-    backend.composeStart(QString(), QString());
-    backend.subscribeComposeLogs(QString(), QString());
-    backend.removeBuild(QString());
+    backend.compose()->composeUp(QString());
+    backend.compose()->composeDown(QString(), false);
+    backend.compose()->composeRestart(QString(), QString());
+    backend.compose()->composeStop(QString(), QString());
+    backend.compose()->composeStart(QString(), QString());
+    backend.compose()->subscribeComposeLogs(QString(), QString());
+    backend.builds()->removeBuild(QString());
     backend.loadMachineLogs(QString(), 0);
     backend.startMachineStats(QString());
     backend.followMachineConsole(QString(), 0);
@@ -1370,8 +1370,8 @@ void GuiTest::backendOperations()
     backend.networks()->refresh();
     backend.pods()->refresh();
     backend.refreshDiskUsage();
-    backend.refreshCompose();
-    backend.refreshBuilds();
+    backend.compose()->refresh();
+    backend.builds()->refresh();
 
     backend.volumes()->createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
     backend.volumes()->cloneVolume(QStringLiteral("vol1"), QStringLiteral("vol2"));
@@ -1396,14 +1396,14 @@ void GuiTest::backendOperations()
     backend.images()->pruneImages(false);
     backend.images()->removeImage(QStringLiteral("img1234567890"), false);
 
-    backend.composeUp(QStringLiteral("/tmp/mock-project"));
-    backend.composeRestart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
-    backend.composeStop(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
-    backend.composeStart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
-    backend.composeDown(QStringLiteral("/tmp/mock-project"), false);
-    backend.subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
-    backend.unsubscribeComposeLogs();
-    backend.removeBuild(QStringLiteral("missing"));
+    backend.compose()->composeUp(QStringLiteral("/tmp/mock-project"));
+    backend.compose()->composeRestart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.compose()->composeStop(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.compose()->composeStart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.compose()->composeDown(QStringLiteral("/tmp/mock-project"), false);
+    backend.compose()->subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
+    backend.compose()->unsubscribeComposeLogs();
+    backend.builds()->removeBuild(QStringLiteral("missing"));
 
     backend.startActivityMonitor();
     backend.stopActivityMonitor();
@@ -1442,15 +1442,15 @@ void GuiTest::backendBatchActions()
     QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeMachines, 5000);
     QCOMPARE(actionSpy.last().at(0).toBool(), false);
 
-    const int beforeBuilds = actionSpy.count();
-    backend.batchBuilds({QStringLiteral("missing-build")});
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeBuilds, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.builds()->batchBuilds({QStringLiteral("missing-build")});
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.builds()->actionActive()
+                                 && !backend.builds()->lastError().isEmpty(), 5000);
 
-    const int beforeCompose = actionSpy.count();
-    backend.batchCompose({QStringLiteral("/tmp/mock-project")}, QStringLiteral("up"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeCompose, 10000);
-    QVERIFY2(actionSpy.last().at(0).toBool(), qPrintable(actionSpy.last().at(1).toString()));
+    backend.compose()->batchCompose({QStringLiteral("/tmp/mock-project")},
+                                    QStringLiteral("up"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.compose()->actionActive(), 10000);
+    QVERIFY2(backend.compose()->lastError().isEmpty(),
+             qPrintable(backend.compose()->lastError()));
 }
 
 void GuiTest::backendTheme()

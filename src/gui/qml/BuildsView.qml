@@ -13,8 +13,8 @@ ColumnLayout {
     SelectionState { id: buildSelection }
 
     readonly property bool hasPlatforms: {
-        for (let i = 0; i < backend.builds.length; ++i) {
-            const build = backend.builds[i]
+        for (let i = 0; i < backend.builds.items.length; ++i) {
+            const build = backend.builds.items[i]
             if (build && build.platforms && build.platforms.length > 0)
                 return true
         }
@@ -28,12 +28,12 @@ ColumnLayout {
         Layout.topMargin: 20
         Layout.bottomMargin: 16
         title: qsTr("Builds")
-        subtitle: backend.builds.length + qsTr(" registros")
+        subtitle: backend.builds.items.length + qsTr(" registros")
 
         Text {
-            visible: backend.buildStatus.length > 0
-            text: backend.buildStatus
-            color: backend.buildActive ? Theme.cyan : Theme.textTertiary
+            visible: backend.builds.buildStatus.length > 0
+            text: backend.builds.buildStatus
+            color: backend.builds.buildActive ? Theme.cyan : Theme.textTertiary
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
             elide: Text.ElideRight
@@ -63,24 +63,24 @@ ColumnLayout {
         }
 
         ActionButton {
-            visible: buildSelection.count > 0 && !backend.buildActive
+            visible: buildSelection.count > 0 && !backend.builds.buildActive
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.batchBuilds(buildSelection.ids())
+            onClicked: backend.builds.batchBuilds(buildSelection.ids())
             Accessible.name: qsTr("Remover builds selecionados")
         }
 
         ActionButton {
-            visible: buildSelection.count === 0 || backend.buildActive
-            text: backend.buildActive ? qsTr("Cancelar") : qsTr("Remover")
-            variant: backend.buildActive ? "secondary" : "danger"
-            enabled: backend.buildActive || buildsList.currentRow >= 0
+            visible: buildSelection.count === 0 || backend.builds.buildActive
+            text: backend.builds.buildActive ? qsTr("Cancelar") : qsTr("Remover")
+            variant: backend.builds.buildActive ? "secondary" : "danger"
+            enabled: backend.builds.buildActive || buildsList.currentRow >= 0
             onClicked: {
-                if (backend.buildActive) {
-                    backend.cancelBuild()
+                if (backend.builds.buildActive) {
+                    backend.builds.cancelBuild()
                 } else if (buildsList.currentRow >= 0) {
-                    backend.removeBuild(backend.builds[buildsList.currentRow].id)
+                    backend.builds.removeBuild(backend.builds.items[buildsList.currentRow].id)
                 }
             }
         }
@@ -88,7 +88,7 @@ ColumnLayout {
         ActionButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.refreshBuilds()
+            onClicked: backend.builds.refreshBuilds()
             Accessible.name: qsTr("Atualizar")
         }
     }
@@ -109,7 +109,7 @@ ColumnLayout {
             emptyIcon: "builds"
             emptyText: qsTr("Nenhum build registrado.\n"
                             + "Inicie um build informando contexto, Dockerfile e tag.")
-            items: backend.builds
+            items: backend.builds.items
             selection: buildSelection
             idKey: "id"
             columns: {
@@ -148,8 +148,8 @@ ColumnLayout {
 
                     Text {
                         Layout.fillWidth: true
-                        text: backend.activeBuildId.length > 0
-                              ? backend.activeBuildId : qsTr("Log do build")
+                        text: backend.builds.activeBuildId.length > 0
+                              ? backend.builds.activeBuildId : qsTr("Log do build")
                         color: Theme.textPrimary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontBody
@@ -158,7 +158,7 @@ ColumnLayout {
                     }
 
                     AppBadge {
-                        visible: backend.buildActive
+                        visible: backend.builds.buildActive
                         text: qsTr("em execução")
                         tone: "accent"
                     }
@@ -175,7 +175,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    model: backend.buildLog
+                    model: backend.builds.logLines
                     ScrollBar.vertical: ScrollBar {}
 
                     delegate: Text {
@@ -292,9 +292,9 @@ ColumnLayout {
                 text: qsTr("Buildar")
                 variant: "primary"
                 enabled: buildContext.text.length > 0 && buildTag.text.length > 0
-                         && !backend.buildActive
+                         && !backend.builds.buildActive
                 onClicked: {
-                    backend.startBuild({
+                    backend.builds.startBuild({
                         contextPath: buildContext.text,
                         dockerfile: buildDockerfile.text,
                         tag: buildTag.text,
@@ -307,5 +307,5 @@ ColumnLayout {
         }
     }
 
-    Component.onCompleted: backend.refreshBuilds()
+    Component.onCompleted: backend.builds.refreshBuilds()
 }

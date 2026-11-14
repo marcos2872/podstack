@@ -1,6 +1,8 @@
 #pragma once
 
 #include "core/logging/LogReader.h"
+#include "gui/controllers/BuildController.h"
+#include "gui/controllers/ComposeController.h"
 #include "gui/controllers/ImageController.h"
 #include "gui/controllers/NetworkController.h"
 #include "gui/controllers/PodController.h"
@@ -23,6 +25,8 @@ namespace PodStack {
 class Backend : public QObject {
     Q_OBJECT
     Q_PROPERTY(PodStack::ImageController *images READ images CONSTANT)
+    Q_PROPERTY(PodStack::ComposeController *compose READ compose CONSTANT)
+    Q_PROPERTY(PodStack::BuildController *builds READ builds CONSTANT)
     Q_PROPERTY(PodStack::VolumeController *volumes READ volumes CONSTANT)
     Q_PROPERTY(PodStack::NetworkController *networks READ networks CONSTANT)
     Q_PROPERTY(PodStack::PodController *pods READ pods CONSTANT)
@@ -84,13 +88,6 @@ class Backend : public QObject {
     Q_PROPERTY(QString k8sJobError READ k8sJobError NOTIFY k8sJobChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
     Q_PROPERTY(QVariantMap prunePreview READ prunePreview NOTIFY prunePreviewChanged)
-    Q_PROPERTY(QVariantList composeProjects READ composeProjects NOTIFY composeProjectsChanged)
-    Q_PROPERTY(QStringList composeLogLines READ composeLogLines NOTIFY composeLogsChanged)
-    Q_PROPERTY(QVariantList builds READ builds NOTIFY buildsChanged)
-    Q_PROPERTY(QStringList buildLog READ buildLog NOTIFY buildLogChanged)
-    Q_PROPERTY(bool buildActive READ buildActive NOTIFY buildStateChanged)
-    Q_PROPERTY(QString buildStatus READ buildStatus NOTIFY buildStateChanged)
-    Q_PROPERTY(QString activeBuildId READ activeBuildId NOTIFY buildStateChanged)
     Q_PROPERTY(QVariantList machines READ machines NOTIFY machinesChanged)
     Q_PROPERTY(QVariantList machineDistros READ machineDistros NOTIFY machineDistrosChanged)
     Q_PROPERTY(QVariantMap machineInfo READ machineInfo NOTIFY machineInfoChanged)
@@ -166,6 +163,8 @@ public:
     explicit Backend(QObject *parent = nullptr);
 
     ImageController *images() { return &m_images; }
+    ComposeController *compose() { return &m_compose; }
+    BuildController *builds() { return &m_builds; }
     VolumeController *volumes() { return &m_volumes; }
     NetworkController *networks() { return &m_networks; }
     PodController *pods() { return &m_pods; }
@@ -222,13 +221,6 @@ public:
     QString k8sJobError() const { return m_k8sJobError; }
     QVariantMap diskUsage() const { return m_diskUsage; }
     QVariantMap prunePreview() const { return m_prunePreview; }
-    QVariantList composeProjects() const { return m_composeProjects; }
-    QStringList composeLogLines() const { return m_composeLogLines; }
-    QVariantList builds() const { return m_builds; }
-    QStringList buildLog() const { return m_buildLog; }
-    bool buildActive() const { return m_buildActive; }
-    QString buildStatus() const { return m_buildStatus; }
-    QString activeBuildId() const { return m_activeBuildId; }
     QVariantList machines() const { return m_machines; }
     QVariantList machineDistros() const { return m_machineDistros; }
     QVariantMap machineInfo() const { return m_machineInfo; }
@@ -307,22 +299,10 @@ public:
     Q_INVOKABLE void enableK8s();
     Q_INVOKABLE void disableK8s(bool force = false);
     Q_INVOKABLE void resetK8s();
-    Q_INVOKABLE void refreshCompose();
-    Q_INVOKABLE void composeUp(const QString &projectPath);
-    Q_INVOKABLE void composeDown(const QString &projectPath, bool volumes);
-    Q_INVOKABLE void composeRestart(const QString &projectPath, const QString &service);
-    Q_INVOKABLE void composeStop(const QString &projectPath, const QString &service);
-    Q_INVOKABLE void composeStart(const QString &projectPath, const QString &service);
-    Q_INVOKABLE void subscribeComposeLogs(const QString &project, const QString &service);
-    Q_INVOKABLE void unsubscribeComposeLogs();
     Q_INVOKABLE void openPath(const QString &path);
     Q_INVOKABLE QString choosePath(const QString &mode, const QString &title,
                                    const QString &filter = QString(),
                                    const QString &initialPath = QString());
-    Q_INVOKABLE void refreshBuilds();
-    Q_INVOKABLE void startBuild(const QVariantMap &spec);
-    Q_INVOKABLE void cancelBuild();
-    Q_INVOKABLE void removeBuild(const QString &id);
     Q_INVOKABLE void refreshMachines();
     Q_INVOKABLE void refreshMachineDistros();
     Q_INVOKABLE void loadMachineInfo(const QString &id);
@@ -381,8 +361,6 @@ public:
     Q_INVOKABLE void batchIds(const QStringList &ids, const QString &action);
     Q_INVOKABLE void batchMachines(const QStringList &ids, const QString &action,
                                    bool force = false);
-    Q_INVOKABLE void batchCompose(const QStringList &projectPaths, const QString &action);
-    Q_INVOKABLE void batchBuilds(const QStringList &ids);
     Q_INVOKABLE void renameContainer(const QString &id, const QString &name);
     Q_INVOKABLE void duplicateContainer(const QString &id);
     Q_INVOKABLE void subscribeLogs(const QString &id, int tail, bool follow);
@@ -445,11 +423,6 @@ signals:
     void k8sJobChanged();
     void diskUsageChanged();
     void prunePreviewChanged();
-    void composeProjectsChanged();
-    void composeLogsChanged();
-    void buildsChanged();
-    void buildLogChanged();
-    void buildStateChanged();
     void machinesChanged();
     void machineDistrosChanged();
     void machineInfoChanged();
@@ -574,8 +547,6 @@ private:
     StreamClient m_detailStatsStream;
     StreamClient m_detailLogsStream;
     StreamClient m_activityStream;
-    StreamClient m_composeStream;
-    StreamClient m_buildStream;
     StreamClient m_machineCreateStream;
     StreamClient m_machineStatsStream;
     StreamClient m_machineConsoleStream;
@@ -626,6 +597,8 @@ private:
     QString m_filesPath = QStringLiteral("/");
     QVariantList m_containers;
     ImageController m_images;
+    ComposeController m_compose;
+    BuildController m_builds;
     VolumeController m_volumes;
     NetworkController m_networks;
     PodController m_pods;
@@ -648,13 +621,6 @@ private:
     QTimer m_k8sTimer;
     QVariantMap m_diskUsage;
     QVariantMap m_prunePreview;
-    QVariantList m_composeProjects;
-    QStringList m_composeLogLines;
-    QVariantList m_builds;
-    QStringList m_buildLog;
-    bool m_buildActive = false;
-    QString m_buildStatus;
-    QString m_activeBuildId;
     QVariantList m_machines;
     QVariantList m_machineDistros;
     QVariantMap m_machineInfo;

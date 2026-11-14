@@ -91,8 +91,10 @@ int main(int argc, char *argv[])
                      [&backend, &tray]() { tray.setMachines(backend.machines()); });
     QObject::connect(&backend, &PodStack::Backend::k8sChanged, &tray,
                      [&backend, &tray]() { tray.setKubernetes(backend.k8sEnabled()); });
-    QObject::connect(&backend, &PodStack::Backend::composeProjectsChanged, &tray,
-                     [&backend, &tray]() { tray.setComposeProjects(backend.composeProjects()); });
+    QObject::connect(backend.compose(), &PodStack::ComposeController::itemsChanged, &tray,
+                     [&backend, &tray]() {
+                         tray.setComposeProjects(backend.compose()->items());
+                     });
     QObject::connect(&backend, &PodStack::Backend::actionStateChanged, &tray,
                      [&backend, &tray]() { tray.setActionActive(backend.actionActive()); });
     QObject::connect(
@@ -101,11 +103,11 @@ int main(int argc, char *argv[])
     QObject::connect(&tray, &PodStack::TrayController::composeActionRequested, &backend,
                      [&backend](const QString &action, const QString &path) {
                          if (action == QStringLiteral("start")) {
-                             backend.composeStart(path, QString());
+                             backend.compose()->composeStart(path, QString());
                          } else if (action == QStringLiteral("stop")) {
-                             backend.composeStop(path, QString());
+                             backend.compose()->composeStop(path, QString());
                          } else if (action == QStringLiteral("restart")) {
-                             backend.composeRestart(path, QString());
+                             backend.compose()->composeRestart(path, QString());
                          }
                      });
     QObject::connect(&tray, &PodStack::TrayController::refreshRequested, &backend,
@@ -135,7 +137,7 @@ int main(int argc, char *argv[])
                      &PodStack::NotificationService::notifyDiskLow);
     tray.setConnected(backend.connected());
     tray.setSetupPending(backend.setupPending());
-    tray.setComposeProjects(backend.composeProjects());
+    tray.setComposeProjects(backend.compose()->items());
     tray.setMachines(backend.machines());
     tray.setKubernetes(backend.k8sEnabled());
     tray.setActionActive(backend.actionActive());

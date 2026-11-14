@@ -153,10 +153,10 @@ Rectangle {
             return backend.networks.items.length
         }
         if (key === "compose") {
-            return backend.composeProjects.length
+            return backend.compose.items.length
         }
         if (key === "builds") {
-            return backend.builds.length
+            return backend.builds.items.length
         }
         if (key === "pods") {
             return backend.pods.items.length
