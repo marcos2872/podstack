@@ -51,12 +51,12 @@ ColumnLayout {
         Layout.topMargin: 20
         Layout.bottomMargin: 16
         title: qsTr("Images")
-        subtitle: backend.images.length + qsTr(" imagens")
+        subtitle: backend.images.items.length + qsTr(" imagens")
 
         Text {
-            visible: backend.pullStatus.length > 0
-            text: backend.pullStatus
-            color: backend.pullActive ? Theme.cyan : Theme.textTertiary
+            visible: backend.images.pullStatus.length > 0
+            text: backend.images.pullStatus
+            color: backend.images.pullActive ? Theme.cyan : Theme.textTertiary
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
             elide: Text.ElideRight
@@ -92,7 +92,7 @@ ColumnLayout {
             text: qsTr("Tag")
             enabled: imagesList.currentRow >= 0
             onClicked: {
-                const image = backend.images[imagesList.currentRow]
+                const image = backend.images.items[imagesList.currentRow]
                 tagName.text = image.name
                 tagId.text = image.id
                 tagRepo.text = image.name
@@ -104,7 +104,7 @@ ColumnLayout {
             text: qsTr("Untag")
             enabled: imagesList.currentRow >= 0
             onClicked: {
-                const image = backend.images[imagesList.currentRow]
+                const image = backend.images.items[imagesList.currentRow]
                 tagName.text = image.name
                 tagId.text = image.id
                 tagRepo.text = image.name
@@ -125,7 +125,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.batchImages(imageSelection.ids(), false)
+            onClicked: backend.images.batchImages(imageSelection.ids(), false)
             Accessible.name: qsTr("Remover imagens selecionadas")
         }
 
@@ -140,7 +140,7 @@ ColumnLayout {
         ActionButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.refreshImages()
+            onClicked: backend.images.refresh()
             Accessible.name: qsTr("Atualizar")
         }
     }
@@ -154,7 +154,7 @@ ColumnLayout {
         Layout.bottomMargin: 20
         emptyIcon: "images"
             emptyText: qsTr("Nenhuma imagem.\nUse Pull para baixar uma imagem.")
-        items: backend.images
+        items: backend.images.items
         selection: imageSelection
         idKey: "id"
         columns: [
@@ -164,8 +164,8 @@ ColumnLayout {
             { key: "containers", label: "USO", width: 60 }
         ]
         onActivated: function(index) {
-            tagId.text = backend.images[index].id
-            tagName.text = backend.images[index].name
+            tagId.text = backend.images.items[index].id
+            tagName.text = backend.images.items[index].name
         }
     }
 
@@ -205,8 +205,8 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                visible: backend.pullActive || backend.pullStatus.length > 0
-                text: backend.pullStatus
+                visible: backend.images.pullActive || backend.images.pullStatus.length > 0
+                text: backend.images.pullStatus
                 color: Theme.textSecondary
                 font.pixelSize: 10
                 wrapMode: Text.WordWrap
@@ -214,8 +214,8 @@ ColumnLayout {
 
             ProgressBar {
                 Layout.fillWidth: true
-                indeterminate: backend.pullActive
-                visible: backend.pullActive
+                indeterminate: backend.images.pullActive
+                visible: backend.images.pullActive
                 from: 0
                 to: 1
             }
@@ -223,20 +223,20 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: backend.pullActive ? "Cancelar" : "Fechar"
+                text: backend.images.pullActive ? "Cancelar" : "Fechar"
                 variant: "secondary"
                 onClicked: {
-                    if (backend.pullActive) {
-                        backend.cancelPull()
+                    if (backend.images.pullActive) {
+                        backend.images.cancelPull()
                     }
                     pullDialog.close()
                 }
             }
             ActionButton {
                 text: "Pull"
-                enabled: pullReference.text.length > 0 && !backend.pullActive
+                enabled: pullReference.text.length > 0 && !backend.images.pullActive
                 onClicked: {
-                    backend.pullImage(pullReference.text,
+                    backend.images.pullImage(pullReference.text,
                                       pullPlatform.currentIndex > 0
                                       ? pullPlatform.currentText : "")
                 }
@@ -281,7 +281,7 @@ ColumnLayout {
                 text: "Importar"
                 enabled: importPath.text.length > 0
                 onClicked: {
-                    backend.loadImage(importPath.text)
+                    backend.images.loadImage(importPath.text)
                     importDialog.close()
                 }
             }
@@ -305,7 +305,7 @@ ColumnLayout {
         }
         onAccepted: {
             if (imagesList.currentRow >= 0) {
-                backend.removeImage(backend.images[imagesList.currentRow].id, false)
+                backend.images.removeImage(backend.images.items[imagesList.currentRow].id, false)
             }
         }
     }
@@ -390,7 +390,7 @@ ColumnLayout {
             }
         }
         onOpened: backend.refreshDiskUsage()
-        onAccepted: backend.pruneImages(false)
+        onAccepted: backend.images.pruneImages(false)
     }
 
     AppDialog {
@@ -442,7 +442,7 @@ ColumnLayout {
                 variant: "danger"
                 enabled: tagRepo.text.length > 0
                 onClicked: {
-                    backend.untagImage(tagId.text, tagRepo.text)
+                    backend.images.untagImage(tagId.text, tagRepo.text)
                     tagDialog.close()
                 }
             }
@@ -450,7 +450,7 @@ ColumnLayout {
                 text: "Aplicar"
                 enabled: tagRepo.text.length > 0
                 onClicked: {
-                    backend.tagImage(tagId.text, tagRepo.text)
+                    backend.images.tagImage(tagId.text, tagRepo.text)
                     tagDialog.close()
                 }
             }

@@ -18,7 +18,7 @@ ColumnLayout {
         Layout.topMargin: 20
         Layout.bottomMargin: 16
         title: qsTr("Networks")
-        subtitle: backend.networks.length + qsTr(" redes")
+        subtitle: backend.networks.items.length + qsTr(" redes")
 
         ActionButton {
             text: qsTr("Criar")
@@ -36,7 +36,7 @@ ColumnLayout {
             text: qsTr("Conectar")
             enabled: networksList.currentRow >= 0
             onClicked: {
-                connectNetworkName.text = backend.networks[networksList.currentRow].name
+                connectNetworkName.text = backend.networks.items[networksList.currentRow].name
                 connectContainer.text = ""
                 connectDialog.open()
             }
@@ -46,7 +46,7 @@ ColumnLayout {
             text: qsTr("Desconectar")
             enabled: networksList.currentRow >= 0
             onClicked: {
-                disconnectNetworkName.text = backend.networks[networksList.currentRow].name
+                disconnectNetworkName.text = backend.networks.items[networksList.currentRow].name
                 disconnectContainer.text = ""
                 disconnectDialog.open()
             }
@@ -65,7 +65,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.batchNetworks(networkSelection.ids(), false)
+            onClicked: backend.networks.batchNetworks(networkSelection.ids(), false)
             Accessible.name: qsTr("Remover redes selecionadas")
         }
 
@@ -94,7 +94,7 @@ ColumnLayout {
         Layout.bottomMargin: 20
         emptyIcon: "networks"
             emptyText: qsTr("Nenhuma rede.\nCrie uma rede bridge para isolar containers.")
-        items: backend.networks
+        items: backend.networks.items
         selection: networkSelection
         idKey: "name"
         columns: [
@@ -162,7 +162,7 @@ ColumnLayout {
                 text: "Criar"
                 enabled: networkName.text.length > 0
                 onClicked: {
-                    backend.createNetwork(networkName.text, networkSubnet.text,
+                    backend.networks.createNetwork(networkName.text, networkSubnet.text,
                                           networkGateway.text)
                     createDialog.close()
                 }
@@ -215,7 +215,7 @@ ColumnLayout {
                 text: "Conectar"
                 enabled: connectContainer.text.length > 0
                 onClicked: {
-                    backend.connectNetwork(connectNetworkName.text, connectContainer.text)
+                    backend.networks.connectNetwork(connectNetworkName.text, connectContainer.text)
                     connectDialog.close()
                 }
             }
@@ -267,7 +267,7 @@ ColumnLayout {
                 text: "Desconectar"
                 enabled: disconnectContainer.text.length > 0
                 onClicked: {
-                    backend.disconnectNetwork(disconnectNetworkName.text,
+                    backend.networks.disconnectNetwork(disconnectNetworkName.text,
                                                disconnectContainer.text)
                     disconnectDialog.close()
                 }
@@ -292,7 +292,7 @@ ColumnLayout {
         }
         onAccepted: {
             if (networksList.currentRow >= 0) {
-                backend.removeNetwork(backend.networks[networksList.currentRow].name, false)
+                backend.networks.removeNetwork(backend.networks.items[networksList.currentRow].name, false)
             }
         }
     }

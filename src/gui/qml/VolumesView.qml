@@ -33,7 +33,7 @@ ColumnLayout {
         Layout.topMargin: 20
         Layout.bottomMargin: 16
         title: qsTr("Volumes")
-        subtitle: backend.volumes.length + qsTr(" volumes")
+        subtitle: backend.volumes.items.length + qsTr(" volumes")
 
         ActionButton {
             text: qsTr("Criar")
@@ -49,7 +49,7 @@ ColumnLayout {
             text: qsTr("Clone")
             enabled: volumesList.currentRow >= 0
             onClicked: {
-                cloneSource.text = backend.volumes[volumesList.currentRow].name
+                cloneSource.text = backend.volumes.items[volumesList.currentRow].name
                 cloneDestination.text = cloneSource.text + "-copy"
                 cloneDialog.open()
             }
@@ -59,7 +59,7 @@ ColumnLayout {
             text: qsTr("Importar")
             enabled: volumesList.currentRow >= 0
             onClicked: {
-                importVolumeName.text = backend.volumes[volumesList.currentRow].name
+                importVolumeName.text = backend.volumes.items[volumesList.currentRow].name
                 importHostSource.text = ""
                 importHostDialog.open()
             }
@@ -84,7 +84,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.batchVolumes(volumeSelection.ids(), false)
+            onClicked: backend.volumes.batchVolumes(volumeSelection.ids(), false)
             Accessible.name: qsTr("Remover volumes selecionados")
         }
 
@@ -113,7 +113,7 @@ ColumnLayout {
         Layout.bottomMargin: 20
         emptyIcon: "volumes"
             emptyText: qsTr("Nenhum volume.\nCrie um volume para persistir dados.")
-        items: backend.volumes
+        items: backend.volumes.items
         selection: volumeSelection
         idKey: "name"
         columns: [
@@ -170,7 +170,7 @@ ColumnLayout {
                 text: "Criar"
                 enabled: volumeName.text.length > 0
                 onClicked: {
-                    backend.createVolume(volumeName.text, volumeDriver.text)
+                    backend.volumes.createVolume(volumeName.text, volumeDriver.text)
                     createDialog.close()
                 }
             }
@@ -223,7 +223,7 @@ ColumnLayout {
                 text: "Clonar"
                 enabled: cloneDestination.text.length > 0
                 onClicked: {
-                    backend.cloneVolume(cloneSource.text, cloneDestination.text)
+                    backend.volumes.cloneVolume(cloneSource.text, cloneDestination.text)
                     cloneDialog.close()
                 }
             }
@@ -285,7 +285,7 @@ ColumnLayout {
                 text: "Importar"
                 enabled: importHostSource.text.length > 0
                 onClicked: {
-                    backend.importHostPath(importVolumeName.text, importHostSource.text)
+                    backend.volumes.importHostPath(importVolumeName.text, importHostSource.text)
                     importHostDialog.close()
                 }
             }
@@ -309,7 +309,7 @@ ColumnLayout {
         }
         onAccepted: {
             if (volumesList.currentRow >= 0) {
-                backend.removeVolume(backend.volumes[volumesList.currentRow].name, false)
+                backend.volumes.removeVolume(backend.volumes.items[volumesList.currentRow].name, false)
             }
         }
     }
@@ -395,6 +395,6 @@ ColumnLayout {
             }
         }
         onOpened: backend.refreshDiskUsage()
-        onAccepted: backend.pruneVolumes()
+        onAccepted: backend.volumes.pruneVolumes()
     }
 }

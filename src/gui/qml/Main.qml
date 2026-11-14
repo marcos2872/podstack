@@ -144,13 +144,13 @@ Rectangle {
             return containersPage.containerCount
         }
         if (key === "images") {
-            return backend.images.length
+            return backend.images.items.length
         }
         if (key === "volumes") {
-            return backend.volumes.length
+            return backend.volumes.items.length
         }
         if (key === "networks") {
-            return backend.networks.length
+            return backend.networks.items.length
         }
         if (key === "compose") {
             return backend.composeProjects.length
@@ -159,7 +159,7 @@ Rectangle {
             return backend.builds.length
         }
         if (key === "pods") {
-            return backend.pods.length
+            return backend.pods.items.length
         }
         if (key === "machines") {
             return backend.machines.length
@@ -202,7 +202,7 @@ Rectangle {
         if (section === "containers") {
             backend.refresh()
         } else if (section === "images") {
-            backend.refreshImages()
+            backend.images.refresh()
         } else if (section === "volumes") {
             backend.refreshVolumes()
         } else if (section === "networks") {
@@ -704,7 +704,7 @@ Rectangle {
 
                     Text {
                         visible: !window.compactStatus
-                        text: backend.images.length + qsTr(" imagens")
+                        text: backend.images.items.length + qsTr(" imagens")
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
@@ -720,7 +720,7 @@ Rectangle {
 
                     Text {
                         visible: !window.compactStatus
-                        text: backend.volumes.length + qsTr(" volumes")
+                        text: backend.volumes.items.length + qsTr(" volumes")
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro

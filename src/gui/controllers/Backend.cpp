@@ -516,38 +516,6 @@ Backend::Backend(QObject *parent)
                 emit machineConsoleChanged();
             });
 
-    connect(&m_pullStream, &StreamClient::pullEvent, this,
-            [this](const QJsonObject &event) {
-                const QString status = event.value(QStringLiteral("status")).toString();
-                const QString stream =
-                    event.value(QStringLiteral("stream")).toString().trimmed();
-                if (!status.isEmpty()) {
-                    const QString progress =
-                        event.value(QStringLiteral("progress")).toString();
-                    m_pullStatus = progress.isEmpty() ? status : status + QStringLiteral(" ")
-                                                                          + progress;
-                } else if (!stream.isEmpty()) {
-                    m_pullStatus = stream;
-                }
-                emit pullStateChanged();
-            });
-
-    connect(&m_pullStream, &StreamClient::pullFinished, this,
-            [this](bool ok, const QString &error) {
-                m_pullActive = false;
-                m_pullStatus = ok ? QStringLiteral("Pull concluído") : error;
-                emit pullStateChanged();
-                if (ok) {
-                    refreshImages();
-                }
-            });
-
-    connect(&m_pullStream, &StreamClient::error, this, [this](const QString &message) {
-        m_pullActive = false;
-        m_pullStatus = message;
-        emit pullStateChanged();
-    });
-
     m_eventTimer.setSingleShot(true);
     m_eventTimer.setInterval(4000);
     connect(&m_eventTimer, &QTimer::timeout, this, [this] {
@@ -865,36 +833,16 @@ void Backend::refresh()
 
 void Backend::refreshCatalog()
 {
-    refreshImages();
-    refreshVolumes();
-    refreshNetworks();
-    refreshPods();
+    m_images.refresh();
+    m_volumes.refresh();
+    m_networks.refresh();
+    m_pods.refresh();
     refreshSection(QStringLiteral("df"));
 }
 
 void Backend::refreshDiskUsage()
 {
     refreshSection(QStringLiteral("df"));
-}
-
-void Backend::refreshImages()
-{
-    refreshSection(QStringLiteral("images"));
-}
-
-void Backend::refreshVolumes()
-{
-    refreshSection(QStringLiteral("volumes"));
-}
-
-void Backend::refreshNetworks()
-{
-    refreshSection(QStringLiteral("networks"));
-}
-
-void Backend::refreshPods()
-{
-    refreshSection(QStringLiteral("pods"));
 }
 
 void Backend::refreshK8sStatus()
@@ -1171,15 +1119,7 @@ void Backend::startNextCatalog()
     m_catalogSection = m_catalogQueue.takeFirst();
 
     QString method;
-    if (m_catalogSection == QStringLiteral("images")) {
-        method = QStringLiteral("images.list");
-    } else if (m_catalogSection == QStringLiteral("volumes")) {
-        method = QStringLiteral("volumes.list");
-    } else if (m_catalogSection == QStringLiteral("networks")) {
-        method = QStringLiteral("networks.list");
-    } else if (m_catalogSection == QStringLiteral("pods")) {
-        method = QStringLiteral("pods.list");
-    } else if (m_catalogSection == QStringLiteral("df")) {
+    if (m_catalogSection == QStringLiteral("df")) {
         method = QStringLiteral("system.df");
     } else if (m_catalogSection == QStringLiteral("compose")) {
         method = QStringLiteral("compose.projects.list");
@@ -1225,70 +1165,7 @@ void Backend::onCatalogFinished()
 
     const QJsonArray items = result.value(QStringLiteral("items")).toArray();
 
-    if (m_catalogSection == QStringLiteral("images")) {
-        m_images.clear();
-        for (const QJsonValue &value : items) {
-            const QJsonObject image = value.toObject();
-            QVariantMap item;
-            const QJsonArray tags = image.value(QStringLiteral("repoTags")).toArray();
-            item.insert(QStringLiteral("id"),
-                        image.value(QStringLiteral("id")).toString());
-            item.insert(QStringLiteral("name"),
-                        tags.isEmpty() ? QStringLiteral("<none>:<none>")
-                                       : tags.first().toString());
-            item.insert(QStringLiteral("digest"),
-                        image.value(QStringLiteral("digest")).toString());
-            item.insert(QStringLiteral("size"),
-                        static_cast<double>(
-                            image.value(QStringLiteral("size")).toDouble()));
-            item.insert(QStringLiteral("created"),
-                        static_cast<double>(
-                            image.value(QStringLiteral("created")).toDouble()));
-            item.insert(QStringLiteral("containers"),
-                        image.value(QStringLiteral("containers")).toInt());
-            item.insert(QStringLiteral("dangling"),
-                        image.value(QStringLiteral("dangling")).toBool());
-            m_images.append(item);
-        }
-        emit imagesChanged();
-    } else if (m_catalogSection == QStringLiteral("volumes")) {
-        m_volumes.clear();
-        for (const QJsonValue &value : items) {
-            const QJsonObject volume = value.toObject();
-            QVariantMap item;
-            item.insert(QStringLiteral("name"),
-                        volume.value(QStringLiteral("name")).toString());
-            item.insert(QStringLiteral("driver"),
-                        volume.value(QStringLiteral("driver")).toString());
-            item.insert(QStringLiteral("mountpoint"),
-                        volume.value(QStringLiteral("mountpoint")).toString());
-            item.insert(QStringLiteral("size"),
-                        static_cast<double>(
-                            volume.value(QStringLiteral("size")).toDouble()));
-            item.insert(QStringLiteral("links"),
-                        volume.value(QStringLiteral("links")).toInt());
-            m_volumes.append(item);
-        }
-        emit volumesChanged();
-    } else if (m_catalogSection == QStringLiteral("networks")) {
-        m_networks.clear();
-        for (const QJsonValue &value : items) {
-            const QJsonObject network = value.toObject();
-            QVariantMap item;
-            item.insert(QStringLiteral("name"),
-                        network.value(QStringLiteral("name")).toString());
-            item.insert(QStringLiteral("driver"),
-                        network.value(QStringLiteral("driver")).toString());
-            item.insert(QStringLiteral("subnet"),
-                        network.value(QStringLiteral("subnet")).toString());
-            item.insert(QStringLiteral("gateway"),
-                        network.value(QStringLiteral("gateway")).toString());
-            item.insert(QStringLiteral("containers"),
-                        network.value(QStringLiteral("containers")).toInt());
-            m_networks.append(item);
-        }
-        emit networksChanged();
-    } else if (m_catalogSection == QStringLiteral("df")) {
+    if (m_catalogSection == QStringLiteral("df")) {
         const QJsonObject df = result.value(QStringLiteral("json")).toObject();
         qint64 volumesSize = 0;
         for (const QJsonValue &value : df.value(QStringLiteral("Volumes")).toArray()) {
@@ -1382,182 +1259,9 @@ void Backend::onCatalogFinished()
             m_builds.append(item);
         }
         emit buildsChanged();
-    } else if (m_catalogSection == QStringLiteral("pods")) {
-        m_pods.clear();
-        for (const QJsonValue &value : items) {
-            const QJsonObject pod = value.toObject();
-            QVariantMap item;
-            item.insert(QStringLiteral("id"),
-                        pod.value(QStringLiteral("id")).toString());
-            item.insert(QStringLiteral("name"),
-                        pod.value(QStringLiteral("name")).toString());
-            item.insert(QStringLiteral("status"),
-                        pod.value(QStringLiteral("status")).toString());
-            item.insert(QStringLiteral("containers"),
-                        pod.value(QStringLiteral("containers")).toInt());
-            item.insert(QStringLiteral("created"),
-                        pod.value(QStringLiteral("created")).toString());
-            m_pods.append(item);
-        }
-        emit podsChanged();
     }
 
     startNextCatalog();
-}
-
-void Backend::pullImage(const QString &reference, const QString &platform)
-{
-    if (reference.isEmpty()) {
-        m_lastError = QStringLiteral("Informe a imagem para o pull.");
-        emit lastErrorChanged();
-        return;
-    }
-
-    m_pullActive = true;
-    m_pullStatus = QStringLiteral("Iniciando pull de %1...").arg(reference);
-    emit pullStateChanged();
-    m_pullStream.pullImage(reference, platform);
-}
-
-void Backend::cancelPull()
-{
-    m_pullStream.unsubscribe();
-    m_pullActive = false;
-    m_pullStatus = QStringLiteral("Pull cancelado");
-    emit pullStateChanged();
-}
-
-void Backend::removeImage(const QString &id, bool force)
-{
-    runAction(QStringLiteral("images.remove"),
-              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}});
-}
-
-void Backend::pruneImages(bool all)
-{
-    runAction(QStringLiteral("images.prune"), QJsonObject{{QStringLiteral("all"), all}});
-}
-
-void Backend::tagImage(const QString &id, const QString &repoTag)
-{
-    QString repo = repoTag;
-    QString tag = QStringLiteral("latest");
-    const int slash = repo.lastIndexOf(QLatin1Char('/'));
-    const int colon = repo.lastIndexOf(QLatin1Char(':'));
-    if (colon > slash) {
-        tag = repo.mid(colon + 1);
-        repo = repo.left(colon);
-    }
-
-    runAction(QStringLiteral("images.tag"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("repo"), repo},
-                          {QStringLiteral("tag"), tag}});
-}
-
-void Backend::untagImage(const QString &id, const QString &repoTag)
-{
-    QString repo = repoTag;
-    QString tag = QStringLiteral("latest");
-    const int slash = repo.lastIndexOf(QLatin1Char('/'));
-    const int colon = repo.lastIndexOf(QLatin1Char(':'));
-    if (colon > slash) {
-        tag = repo.mid(colon + 1);
-        repo = repo.left(colon);
-    }
-
-    runAction(QStringLiteral("images.untag"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("repo"), repo},
-                          {QStringLiteral("tag"), tag}});
-}
-
-void Backend::exportImage(const QString &id, const QString &path)
-{
-    runAction(QStringLiteral("images.export"),
-              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("path"), path}});
-}
-
-void Backend::loadImage(const QString &path)
-{
-    runAction(QStringLiteral("images.load"), QJsonObject{{QStringLiteral("path"), path}});
-}
-
-void Backend::createVolume(const QString &name, const QString &driver)
-{
-    runAction(QStringLiteral("volumes.create"),
-              QJsonObject{{QStringLiteral("name"), name},
-                          {QStringLiteral("driver"), driver}});
-}
-
-void Backend::removeVolume(const QString &name, bool force)
-{
-    runAction(QStringLiteral("volumes.remove"),
-              QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("force"), force}});
-}
-
-void Backend::pruneVolumes()
-{
-    runAction(QStringLiteral("volumes.prune"), {});
-}
-
-void Backend::cloneVolume(const QString &source, const QString &destination)
-{
-    runAction(QStringLiteral("volumes.clone"),
-              QJsonObject{{QStringLiteral("source"), source},
-                          {QStringLiteral("destination"), destination}});
-}
-
-void Backend::importHostPath(const QString &name, const QString &sourcePath)
-{
-    runAction(QStringLiteral("volumes.importHostPath"),
-              QJsonObject{{QStringLiteral("name"), name},
-                          {QStringLiteral("sourcePath"), sourcePath}});
-}
-
-void Backend::createNetwork(const QString &name, const QString &subnet,
-                            const QString &gateway)
-{
-    runAction(QStringLiteral("networks.create"),
-              QJsonObject{{QStringLiteral("name"), name},
-                          {QStringLiteral("subnet"), subnet},
-                          {QStringLiteral("gateway"), gateway}});
-}
-
-void Backend::removeNetwork(const QString &name, bool force)
-{
-    runAction(QStringLiteral("networks.remove"),
-              QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("force"), force}});
-}
-
-void Backend::connectNetwork(const QString &name, const QString &containerId)
-{
-    runAction(QStringLiteral("networks.connect"),
-              QJsonObject{{QStringLiteral("name"), name},
-                          {QStringLiteral("containerId"), containerId}});
-}
-
-void Backend::disconnectNetwork(const QString &name, const QString &containerId)
-{
-    runAction(QStringLiteral("networks.disconnect"),
-              QJsonObject{{QStringLiteral("name"), name},
-                          {QStringLiteral("containerId"), containerId}});
-}
-
-void Backend::createPod(const QString &name)
-{
-    runAction(QStringLiteral("pods.create"), QJsonObject{{QStringLiteral("name"), name}});
-}
-
-void Backend::podAction(const QString &action, const QString &id)
-{
-    runAction(QStringLiteral("pods.") + action, QJsonObject{{QStringLiteral("id"), id}});
-}
-
-void Backend::removePod(const QString &id, bool force)
-{
-    runAction(QStringLiteral("pods.remove"),
-              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}});
 }
 
 void Backend::onRefreshFinished()
@@ -3115,36 +2819,6 @@ void Backend::batchResource(const QString &prefix, const QString &idKey, const Q
         return;
     }
     startAction(pending);
-}
-
-void Backend::batchImages(const QStringList &ids, bool force)
-{
-    batchResource(QStringLiteral("images."), QStringLiteral("id"), QStringLiteral("remove"), ids,
-                  force, {}, 120000);
-}
-
-void Backend::batchVolumes(const QStringList &names, bool force)
-{
-    batchResource(QStringLiteral("volumes."), QStringLiteral("name"), QStringLiteral("remove"),
-                  names, force, {}, 120000);
-}
-
-void Backend::batchNetworks(const QStringList &names, bool force)
-{
-    batchResource(QStringLiteral("networks."), QStringLiteral("name"), QStringLiteral("remove"),
-                  names, force, {}, 120000);
-}
-
-void Backend::batchPods(const QStringList &ids, const QString &action, bool force)
-{
-    if (action != QStringLiteral("start") && action != QStringLiteral("stop") &&
-        action != QStringLiteral("restart") && action != QStringLiteral("remove")) {
-        m_lastError = QStringLiteral("Ação de lote inválida.");
-        emit lastErrorChanged();
-        emit actionFinished(false, m_lastError);
-        return;
-    }
-    batchResource(QStringLiteral("pods."), QStringLiteral("id"), action, ids, force, {}, 120000);
 }
 
 void Backend::batchMachines(const QStringList &ids, const QString &action, bool force)

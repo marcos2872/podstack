@@ -18,7 +18,7 @@ ColumnLayout {
         Layout.topMargin: 20
         Layout.bottomMargin: 16
         title: qsTr("Pods")
-        subtitle: backend.pods.length + qsTr(" pods")
+        subtitle: backend.pods.items.length + qsTr(" pods")
 
         ActionButton {
             text: qsTr("Criar")
@@ -42,20 +42,20 @@ ColumnLayout {
             visible: podSelection.count > 0
             text: qsTr("Start")
             iconName: "play"
-            onClicked: backend.batchPods(podSelection.ids(), "start")
+            onClicked: backend.pods.batchPods(podSelection.ids(), "start")
         }
 
         ActionButton {
             visible: podSelection.count > 0
             text: qsTr("Stop")
             iconName: "stop"
-            onClicked: backend.batchPods(podSelection.ids(), "stop")
+            onClicked: backend.pods.batchPods(podSelection.ids(), "stop")
         }
 
         ActionButton {
             visible: podSelection.count > 0
             text: qsTr("Restart")
-            onClicked: backend.batchPods(podSelection.ids(), "restart")
+            onClicked: backend.pods.batchPods(podSelection.ids(), "restart")
         }
 
         ActionButton {
@@ -63,28 +63,28 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.batchPods(podSelection.ids(), "remove", true)
+            onClicked: backend.pods.batchPods(podSelection.ids(), "remove", true)
         }
 
         ActionButton {
             visible: podSelection.count === 0
             text: qsTr("Start")
             enabled: podsList.currentRow >= 0
-            onClicked: backend.podAction("start", backend.pods[podsList.currentRow].id)
+            onClicked: backend.pods.podAction("start", backend.pods.items[podsList.currentRow].id)
         }
 
         ActionButton {
             visible: podSelection.count === 0
             text: qsTr("Stop")
             enabled: podsList.currentRow >= 0
-            onClicked: backend.podAction("stop", backend.pods[podsList.currentRow].id)
+            onClicked: backend.pods.podAction("stop", backend.pods.items[podsList.currentRow].id)
         }
 
         ActionButton {
             visible: podSelection.count === 0
             text: qsTr("Restart")
             enabled: podsList.currentRow >= 0
-            onClicked: backend.podAction("restart", backend.pods[podsList.currentRow].id)
+            onClicked: backend.pods.podAction("restart", backend.pods.items[podsList.currentRow].id)
         }
 
         ActionButton {
@@ -112,7 +112,7 @@ ColumnLayout {
         Layout.bottomMargin: 20
         emptyIcon: "pods"
             emptyText: qsTr("Nenhum pod.\nCrie um pod para agrupar containers.")
-        items: backend.pods
+        items: backend.pods.items
         selection: podSelection
         idKey: "id"
         columns: [
@@ -158,7 +158,7 @@ ColumnLayout {
                 text: "Criar"
                 enabled: podName.text.length > 0
                 onClicked: {
-                    backend.createPod(podName.text)
+                    backend.pods.createPod(podName.text)
                     createDialog.close()
                 }
             }
@@ -182,7 +182,7 @@ ColumnLayout {
         }
         onAccepted: {
             if (podsList.currentRow >= 0) {
-                backend.removePod(backend.pods[podsList.currentRow].id, true)
+                backend.pods.removePod(backend.pods.items[podsList.currentRow].id, true)
             }
         }
     }

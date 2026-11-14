@@ -598,12 +598,12 @@ void GuiTest::backendKubernetesDisableJob()
 
 void GuiTest::backendCatalog()
 {    PodStack::Backend backend;
-    QSignalSpy imagesSpy(&backend, &PodStack::Backend::imagesChanged);
-    QSignalSpy volumesSpy(&backend, &PodStack::Backend::volumesChanged);
-    QSignalSpy networksSpy(&backend, &PodStack::Backend::networksChanged);
-    QSignalSpy podsSpy(&backend, &PodStack::Backend::podsChanged);
+    QSignalSpy imagesSpy(backend.images(), &PodStack::ImageController::itemsChanged);
+    QSignalSpy volumesSpy(backend.volumes(), &PodStack::VolumeController::itemsChanged);
+    QSignalSpy networksSpy(backend.networks(), &PodStack::NetworkController::itemsChanged);
+    QSignalSpy podsSpy(backend.pods(), &PodStack::PodController::itemsChanged);
     QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
-    QSignalSpy pullSpy(&backend, &PodStack::Backend::pullStateChanged);
+    QSignalSpy pullSpy(backend.images(), &PodStack::ImageController::pullStateChanged);
     QSignalSpy diskSpy(&backend, &PodStack::Backend::diskUsageChanged);
 
     backend.refreshCatalog();
@@ -639,72 +639,73 @@ void GuiTest::backendCatalog()
                  .toInt(),
              1);
 
-    QCOMPARE(backend.images().size(), 2);
-    QCOMPARE(backend.volumes().size(), 1);
-    QCOMPARE(backend.networks().size(), 1);
-    QCOMPARE(backend.pods().size(), 1);
-    QCOMPARE(backend.images().first().toMap().value(QStringLiteral("name")).toString(),
+    QCOMPARE(backend.images()->items().size(), 2);
+    QCOMPARE(backend.volumes()->items().size(), 1);
+    QCOMPARE(backend.networks()->items().size(), 1);
+    QCOMPARE(backend.pods()->items().size(), 1);
+    QCOMPARE(backend.images()->items().first().toMap().value(QStringLiteral("name")).toString(),
              QStringLiteral("docker.io/library/alpine:3.20"));
 
-    backend.pullImage(QStringLiteral("alpine"), {});
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.pullActive() && pullSpy.count() > 0, 5000);
-    QVERIFY(backend.pullStatus().contains(QStringLiteral("concluído")));
+    backend.images()->pullImage(QStringLiteral("alpine"), {});
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.images()->pullActive() && pullSpy.count() > 0, 5000);
+    QVERIFY(backend.images()->pullStatus().contains(QStringLiteral("concluído")));
 
-    backend.tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:v1"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.images()->tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:v1"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.images()->actionActive()
+                                 && backend.images()->lastError().isEmpty(), 5000);
 
-    backend.untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:v1"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.images()->untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:v1"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.images()->actionActive()
+                                 && backend.images()->lastError().isEmpty(), 5000);
 
-    backend.removeImage(QStringLiteral("img1234567890"), false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.images()->removeImage(QStringLiteral("img1234567890"), false);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.images()->actionActive()
+                                 && backend.images()->lastError().isEmpty(), 5000);
 
-    backend.pruneImages(false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 3, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.images()->pruneImages(false);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.images()->actionActive()
+                                 && backend.images()->lastError().isEmpty(), 5000);
 
-    backend.createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.volumes()->createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.volumes()->actionActive()
+                                 && backend.volumes()->lastError().isEmpty(), 5000);
 
-    backend.removeVolume(QStringLiteral("vol1"), false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 5, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.volumes()->removeVolume(QStringLiteral("vol1"), false);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.volumes()->actionActive()
+                                 && backend.volumes()->lastError().isEmpty(), 5000);
 
-    backend.pruneVolumes();
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 6, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.volumes()->pruneVolumes();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.volumes()->actionActive()
+                                 && backend.volumes()->lastError().isEmpty(), 5000);
 
-    backend.createNetwork(QStringLiteral("mock-net"), QStringLiteral("10.90.0.0/24"), {});
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 7, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.networks()->createNetwork(QStringLiteral("mock-net"),
+                                      QStringLiteral("10.90.0.0/24"), {});
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.networks()->actionActive()
+                                 && backend.networks()->lastError().isEmpty(), 5000);
 
-    backend.connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 8, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.networks()->connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.networks()->actionActive()
+                                 && backend.networks()->lastError().isEmpty(), 5000);
 
-    backend.disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 9, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.networks()->disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.networks()->actionActive()
+                                 && backend.networks()->lastError().isEmpty(), 5000);
 
-    backend.removeNetwork(QStringLiteral("mock-net"), false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 10, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.networks()->removeNetwork(QStringLiteral("mock-net"), false);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.networks()->actionActive()
+                                 && backend.networks()->lastError().isEmpty(), 5000);
 
-    backend.createPod(QStringLiteral("demo-pod"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 11, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.pods()->createPod(QStringLiteral("demo-pod"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.pods()->actionActive()
+                                 && backend.pods()->lastError().isEmpty(), 5000);
 
-    backend.podAction(QStringLiteral("start"), QStringLiteral("pod123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 12, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.pods()->podAction(QStringLiteral("start"), QStringLiteral("pod123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.pods()->actionActive()
+                                 && backend.pods()->lastError().isEmpty(), 5000);
 
-    backend.removePod(QStringLiteral("pod123"), true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 13, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.pods()->removePod(QStringLiteral("pod123"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.pods()->actionActive()
+                                 && backend.pods()->lastError().isEmpty(), 5000);
 
     const QString uploadPath = QDir::tempPath()
                                + QStringLiteral("/podstack-gui-upload-%1.txt")
@@ -714,16 +715,16 @@ void GuiTest::backendCatalog()
     uploadFile.write("gui-upload");
     uploadFile.close();
     backend.uploadFile(QStringLiteral("abc123"), QStringLiteral("/tmp"), uploadPath);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 14, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
     QCOMPARE(actionSpy.last().at(0).toBool(), true);
     QFile::remove(uploadPath);
 
     const QString hostDir = QStringLiteral("/tmp/podstack-host-src");
     QDir(hostDir).removeRecursively();
     QDir().mkpath(hostDir);
-    backend.importHostPath(QStringLiteral("vol2"), hostDir);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 15, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.volumes()->importHostPath(QStringLiteral("vol2"), hostDir);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.volumes()->actionActive()
+                                 && backend.volumes()->lastError().isEmpty(), 5000);
     QDir(hostDir).removeRecursively();
 }
 
@@ -1259,10 +1260,11 @@ void GuiTest::backendErrors()
 {
     PodStack::Backend backend;
     QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy imageErrorSpy(backend.images(), &PodStack::ImageController::lastErrorChanged);
     QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
 
-    backend.pullImage(QString());
-    QVERIFY(errorSpy.count() > 0);
+    backend.images()->pullImage(QString());
+    QVERIFY(imageErrorSpy.count() > 0);
 
     backend.startBuild({});
     QVERIFY(!backend.lastError().isEmpty());
@@ -1291,22 +1293,22 @@ void GuiTest::backendInvalidArguments()
     QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
 
     // Entradas vazias devem ser recusadas no Backend, sem chegar ao daemon.
-    backend.removeImage(QString(), false);
-    backend.tagImage(QString(), QString());
-    backend.untagImage(QString(), QString());
-    backend.exportImage(QString(), QString());
-    backend.loadImage(QString());
-    backend.createVolume(QString(), QString());
-    backend.removeVolume(QString(), false);
-    backend.cloneVolume(QString(), QString());
-    backend.importHostPath(QString(), QString());
-    backend.createNetwork(QString(), QString(), QString());
-    backend.removeNetwork(QString(), false);
-    backend.connectNetwork(QString(), QString());
-    backend.disconnectNetwork(QString(), QString());
-    backend.createPod(QString());
-    backend.podAction(QString(), QString());
-    backend.removePod(QString(), false);
+    backend.images()->removeImage(QString(), false);
+    backend.images()->tagImage(QString(), QString());
+    backend.images()->untagImage(QString(), QString());
+    backend.images()->exportImage(QString(), QString());
+    backend.images()->loadImage(QString());
+    backend.volumes()->createVolume(QString(), QString());
+    backend.volumes()->removeVolume(QString(), false);
+    backend.volumes()->cloneVolume(QString(), QString());
+    backend.volumes()->importHostPath(QString(), QString());
+    backend.networks()->createNetwork(QString(), QString(), QString());
+    backend.networks()->removeNetwork(QString(), false);
+    backend.networks()->connectNetwork(QString(), QString());
+    backend.networks()->disconnectNetwork(QString(), QString());
+    backend.pods()->createPod(QString());
+    backend.pods()->podAction(QString(), QString());
+    backend.pods()->removePod(QString(), false);
     backend.composeUp(QString());
     backend.composeDown(QString(), false);
     backend.composeRestart(QString(), QString());
@@ -1363,36 +1365,36 @@ void GuiTest::backendOperations()
     file.write("tar");
     file.close();
 
-    backend.refreshImages();
-    backend.refreshVolumes();
-    backend.refreshNetworks();
-    backend.refreshPods();
+    backend.images()->refresh();
+    backend.volumes()->refresh();
+    backend.networks()->refresh();
+    backend.pods()->refresh();
     backend.refreshDiskUsage();
     backend.refreshCompose();
     backend.refreshBuilds();
 
-    backend.createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
-    backend.cloneVolume(QStringLiteral("vol1"), QStringLiteral("vol2"));
-    backend.importHostPath(QStringLiteral("vol3"), m_testDataDir);
-    backend.removeVolume(QStringLiteral("vol1"), false);
-    backend.pruneVolumes();
+    backend.volumes()->createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
+    backend.volumes()->cloneVolume(QStringLiteral("vol1"), QStringLiteral("vol2"));
+    backend.volumes()->importHostPath(QStringLiteral("vol3"), m_testDataDir);
+    backend.volumes()->removeVolume(QStringLiteral("vol1"), false);
+    backend.volumes()->pruneVolumes();
 
-    backend.createNetwork(QStringLiteral("net2"), QStringLiteral("10.90.0.0/24"),
+    backend.networks()->createNetwork(QStringLiteral("net2"), QStringLiteral("10.90.0.0/24"),
                           QStringLiteral("10.90.0.1"));
-    backend.connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
-    backend.disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
-    backend.removeNetwork(QStringLiteral("net2"), false);
+    backend.networks()->connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    backend.networks()->disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    backend.networks()->removeNetwork(QStringLiteral("net2"), false);
 
-    backend.createPod(QStringLiteral("pod2"));
-    backend.podAction(QStringLiteral("start"), QStringLiteral("pod1"));
-    backend.removePod(QStringLiteral("pod1"), false);
+    backend.pods()->createPod(QStringLiteral("pod2"));
+    backend.pods()->podAction(QStringLiteral("start"), QStringLiteral("pod1"));
+    backend.pods()->removePod(QStringLiteral("pod1"), false);
 
-    backend.tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
-    backend.untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
-    backend.exportImage(QStringLiteral("img1234567890"), tempFile);
-    backend.loadImage(tempFile);
-    backend.pruneImages(false);
-    backend.removeImage(QStringLiteral("img1234567890"), false);
+    backend.images()->tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
+    backend.images()->untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
+    backend.images()->exportImage(QStringLiteral("img1234567890"), tempFile);
+    backend.images()->loadImage(tempFile);
+    backend.images()->pruneImages(false);
+    backend.images()->removeImage(QStringLiteral("img1234567890"), false);
 
     backend.composeUp(QStringLiteral("/tmp/mock-project"));
     backend.composeRestart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
@@ -1415,28 +1417,25 @@ void GuiTest::backendBatchActions()
     PodStack::Backend backend;
     QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
 
-    backend.batchPods({QStringLiteral("missing")}, QStringLiteral("bogus"));
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.pods()->batchPods({QStringLiteral("missing")}, QStringLiteral("bogus"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.pods()->actionActive()
+                                 && !backend.pods()->lastError().isEmpty(), 5000);
 
-    backend.batchImages({QStringLiteral("missing-image")}, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() >= 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.images()->batchImages({QStringLiteral("missing-image")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.images()->actionActive()
+                                 && !backend.images()->lastError().isEmpty(), 5000);
 
-    const int beforeVolumes = actionSpy.count();
-    backend.batchVolumes({QStringLiteral("missing-volume")}, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeVolumes, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.volumes()->batchVolumes({QStringLiteral("missing-volume")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.volumes()->actionActive()
+                                 && !backend.volumes()->lastError().isEmpty(), 5000);
 
-    const int beforeNetworks = actionSpy.count();
-    backend.batchNetworks({QStringLiteral("missing-network")}, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeNetworks, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.networks()->batchNetworks({QStringLiteral("missing-network")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.networks()->actionActive()
+                                 && !backend.networks()->lastError().isEmpty(), 5000);
 
-    const int beforePods = actionSpy.count();
-    backend.batchPods({QStringLiteral("missing-pod")}, QStringLiteral("start"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforePods, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.pods()->batchPods({QStringLiteral("missing-pod")}, QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.pods()->actionActive()
+                                 && !backend.pods()->lastError().isEmpty(), 5000);
 
     const int beforeMachines = actionSpy.count();
     backend.batchMachines({QStringLiteral("missing-machine")}, QStringLiteral("start"));

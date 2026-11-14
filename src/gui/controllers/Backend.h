@@ -1,6 +1,10 @@
 #pragma once
 
 #include "core/logging/LogReader.h"
+#include "gui/controllers/ImageController.h"
+#include "gui/controllers/NetworkController.h"
+#include "gui/controllers/PodController.h"
+#include "gui/controllers/VolumeController.h"
 #include "core/rpc/StreamClient.h"
 
 #include <QFutureWatcher>
@@ -18,6 +22,10 @@ namespace PodStack {
 
 class Backend : public QObject {
     Q_OBJECT
+    Q_PROPERTY(PodStack::ImageController *images READ images CONSTANT)
+    Q_PROPERTY(PodStack::VolumeController *volumes READ volumes CONSTANT)
+    Q_PROPERTY(PodStack::NetworkController *networks READ networks CONSTANT)
+    Q_PROPERTY(PodStack::PodController *pods READ pods CONSTANT)
     Q_PROPERTY(bool connected READ connected NOTIFY stateChanged)
     Q_PROPERTY(QString error READ error NOTIFY stateChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
@@ -58,10 +66,6 @@ class Backend : public QObject {
     Q_PROPERTY(QString filesPath READ filesPath NOTIFY filesChanged)
     Q_PROPERTY(QVariantList containers READ containers NOTIFY containersChanged)
     Q_PROPERTY(bool actionActive READ actionActive NOTIFY actionStateChanged)
-    Q_PROPERTY(QVariantList images READ images NOTIFY imagesChanged)
-    Q_PROPERTY(QVariantList volumes READ volumes NOTIFY volumesChanged)
-    Q_PROPERTY(QVariantList networks READ networks NOTIFY networksChanged)
-    Q_PROPERTY(QVariantList pods READ pods NOTIFY podsChanged)
     Q_PROPERTY(QString k8sState READ k8sState NOTIFY k8sChanged)
     Q_PROPERTY(bool k8sEnabled READ k8sEnabled NOTIFY k8sChanged)
     Q_PROPERTY(QVariantList k8sPods READ k8sPods NOTIFY k8sChanged)
@@ -78,8 +82,6 @@ class Backend : public QObject {
     Q_PROPERTY(QString k8sJobStage READ k8sJobStage NOTIFY k8sJobChanged)
     Q_PROPERTY(int k8sJobProgress READ k8sJobProgress NOTIFY k8sJobChanged)
     Q_PROPERTY(QString k8sJobError READ k8sJobError NOTIFY k8sJobChanged)
-    Q_PROPERTY(bool pullActive READ pullActive NOTIFY pullStateChanged)
-    Q_PROPERTY(QString pullStatus READ pullStatus NOTIFY pullStateChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
     Q_PROPERTY(QVariantMap prunePreview READ prunePreview NOTIFY prunePreviewChanged)
     Q_PROPERTY(QVariantList composeProjects READ composeProjects NOTIFY composeProjectsChanged)
@@ -163,6 +165,10 @@ class Backend : public QObject {
 public:
     explicit Backend(QObject *parent = nullptr);
 
+    ImageController *images() { return &m_images; }
+    VolumeController *volumes() { return &m_volumes; }
+    NetworkController *networks() { return &m_networks; }
+    PodController *pods() { return &m_pods; }
     bool connected() const { return m_connected; }
     QString error() const { return m_error; }
     QString lastError() const { return m_lastError; }
@@ -198,10 +204,6 @@ public:
     QString filesPath() const { return m_filesPath; }
     QVariantList containers() const { return m_containers; }
     bool actionActive() const { return m_actionActive; }
-    QVariantList images() const { return m_images; }
-    QVariantList volumes() const { return m_volumes; }
-    QVariantList networks() const { return m_networks; }
-    QVariantList pods() const { return m_pods; }
     QString k8sState() const { return m_k8sState; }
     bool k8sEnabled() const { return m_k8sEnabled; }
     QVariantList k8sPods() const { return m_k8sPods; }
@@ -218,8 +220,6 @@ public:
     QString k8sJobStage() const { return m_k8sJobStage; }
     int k8sJobProgress() const { return m_k8sJobProgress; }
     QString k8sJobError() const { return m_k8sJobError; }
-    bool pullActive() const { return m_pullActive; }
-    QString pullStatus() const { return m_pullStatus; }
     QVariantMap diskUsage() const { return m_diskUsage; }
     QVariantMap prunePreview() const { return m_prunePreview; }
     QVariantList composeProjects() const { return m_composeProjects; }
@@ -290,10 +290,6 @@ public:
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
     Q_INVOKABLE void refreshDiskUsage();
-    Q_INVOKABLE void refreshImages();
-    Q_INVOKABLE void refreshVolumes();
-    Q_INVOKABLE void refreshNetworks();
-    Q_INVOKABLE void refreshPods();
     Q_INVOKABLE void refreshK8s();
     Q_INVOKABLE void refreshK8sStatus();
     Q_INVOKABLE void startK8sWatch();
@@ -311,27 +307,6 @@ public:
     Q_INVOKABLE void enableK8s();
     Q_INVOKABLE void disableK8s(bool force = false);
     Q_INVOKABLE void resetK8s();
-    Q_INVOKABLE void pullImage(const QString &reference, const QString &platform = {});
-    Q_INVOKABLE void cancelPull();
-    Q_INVOKABLE void removeImage(const QString &id, bool force);
-    Q_INVOKABLE void pruneImages(bool all);
-    Q_INVOKABLE void tagImage(const QString &id, const QString &repoTag);
-    Q_INVOKABLE void untagImage(const QString &id, const QString &repoTag);
-    Q_INVOKABLE void exportImage(const QString &id, const QString &path);
-    Q_INVOKABLE void loadImage(const QString &path);
-    Q_INVOKABLE void createVolume(const QString &name, const QString &driver);
-    Q_INVOKABLE void removeVolume(const QString &name, bool force);
-    Q_INVOKABLE void pruneVolumes();
-    Q_INVOKABLE void cloneVolume(const QString &source, const QString &destination);
-    Q_INVOKABLE void importHostPath(const QString &name, const QString &sourcePath);
-    Q_INVOKABLE void createNetwork(const QString &name, const QString &subnet,
-                                   const QString &gateway);
-    Q_INVOKABLE void removeNetwork(const QString &name, bool force);
-    Q_INVOKABLE void connectNetwork(const QString &name, const QString &containerId);
-    Q_INVOKABLE void disconnectNetwork(const QString &name, const QString &containerId);
-    Q_INVOKABLE void createPod(const QString &name);
-    Q_INVOKABLE void podAction(const QString &action, const QString &id);
-    Q_INVOKABLE void removePod(const QString &id, bool force);
     Q_INVOKABLE void refreshCompose();
     Q_INVOKABLE void composeUp(const QString &projectPath);
     Q_INVOKABLE void composeDown(const QString &projectPath, bool volumes);
@@ -404,10 +379,6 @@ public:
     Q_INVOKABLE void exposeContainerLan(const QString &id, bool expose);
     Q_INVOKABLE void batchAll(const QString &action);
     Q_INVOKABLE void batchIds(const QStringList &ids, const QString &action);
-    Q_INVOKABLE void batchImages(const QStringList &ids, bool force = false);
-    Q_INVOKABLE void batchVolumes(const QStringList &names, bool force = false);
-    Q_INVOKABLE void batchNetworks(const QStringList &names, bool force = false);
-    Q_INVOKABLE void batchPods(const QStringList &ids, const QString &action, bool force = false);
     Q_INVOKABLE void batchMachines(const QStringList &ids, const QString &action,
                                    bool force = false);
     Q_INVOKABLE void batchCompose(const QStringList &projectPaths, const QString &action);
@@ -468,15 +439,10 @@ signals:
     void containerDetailLogsChanged();
     void activityChanged();
     void filesChanged();
-    void imagesChanged();
-    void volumesChanged();
-    void networksChanged();
-    void podsChanged();
     void k8sChanged();
     void k8sLogsChanged();
     void k8sForwardChanged();
     void k8sJobChanged();
-    void pullStateChanged();
     void diskUsageChanged();
     void prunePreviewChanged();
     void composeProjectsChanged();
@@ -608,7 +574,6 @@ private:
     StreamClient m_detailStatsStream;
     StreamClient m_detailLogsStream;
     StreamClient m_activityStream;
-    StreamClient m_pullStream;
     StreamClient m_composeStream;
     StreamClient m_buildStream;
     StreamClient m_machineCreateStream;
@@ -660,10 +625,10 @@ private:
     QVariantList m_files;
     QString m_filesPath = QStringLiteral("/");
     QVariantList m_containers;
-    QVariantList m_images;
-    QVariantList m_volumes;
-    QVariantList m_networks;
-    QVariantList m_pods;
+    ImageController m_images;
+    VolumeController m_volumes;
+    NetworkController m_networks;
+    PodController m_pods;
     QString m_k8sState;
     bool m_k8sEnabled = false;
     QVariantList m_k8sPods;
@@ -681,8 +646,6 @@ private:
     int m_k8sJobProgress = 0;
     QString m_k8sJobError;
     QTimer m_k8sTimer;
-    bool m_pullActive = false;
-    QString m_pullStatus;
     QVariantMap m_diskUsage;
     QVariantMap m_prunePreview;
     QVariantList m_composeProjects;

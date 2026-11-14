@@ -12,6 +12,12 @@ add_library(podstack_gui_lib STATIC
     app/terminal/ExternalTerminal.cpp
     app/tray/Tray.cpp
     controllers/Backend.cpp
+    controllers/CatalogController.cpp
+    controllers/ControllerBase.cpp
+    controllers/ImageController.cpp
+    controllers/NetworkController.cpp
+    controllers/PodController.cpp
+    controllers/VolumeController.cpp
     models/ContainerListModel.cpp
     windows/ContainerDetailDialog.cpp
     windows/MachineDetailDialog.cpp
