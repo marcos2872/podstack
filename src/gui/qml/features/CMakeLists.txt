@@ -12,6 +12,17 @@ qt_add_qml_module(podstack_qml_features
         setup/SetupWindow.qml
         setup/SetupRail.qml
         setup/SetupCheckRow.qml
+        setup/SetupCard.qml
+        setup/SetupStepTitle.qml
+        setup/SetupSummaryItem.qml
+        setup/SetupWelcomeStep.qml
+        setup/SetupDiagnosisStep.qml
+        setup/SetupPodmanStep.qml
+        setup/SetupVirtualizationStep.qml
+        setup/SetupComponentsStep.qml
+        setup/SetupValidationStep.qml
+        setup/SetupReadyStep.qml
+        setup/SetupJobPanel.qml
         system-logs/SystemLogsDialog.qml
         activity/ActivityMonitorWindow.qml
 )
