@@ -1343,7 +1343,7 @@ void GuiTest::backendInvalidArguments()
     backend.settings()->setSetting(QStringLiteral("app.theme"), QStringLiteral("bogus"));
     backend.settings()->resetSetting(QString());
     backend.settings()->resetSetting(QStringLiteral("does.not.exist"));
-    backend.setupApply(QStringLiteral("bogus"));
+    backend.setup()->apply(QStringLiteral("bogus"));
 
     QTRY_VERIFY_WITH_TIMEOUT(!backend.lastError().isEmpty(), 5000);
     QVERIFY(errorSpy.count() > 0);
@@ -2092,49 +2092,49 @@ void GuiTest::backendProxy()
 void GuiTest::backendSetup()
 {
     PodStack::Backend backend;
-    QSignalSpy setupSpy(&backend, &PodStack::Backend::setupChanged);
+    QSignalSpy setupSpy(backend.setup(), &PodStack::SetupController::changed);
 
-    QVERIFY(!backend.setupLoaded());
-    backend.setupRefresh();
-    QTRY_VERIFY_WITH_TIMEOUT(backend.setupLoaded(), 15000);
+    QVERIFY(!backend.setup()->loaded());
+    backend.setup()->refreshStatus();
+    QTRY_VERIFY_WITH_TIMEOUT(backend.setup()->loaded(), 15000);
     QVERIFY(setupSpy.count() > 0);
-    QVERIFY(backend.setupChecks().size() >= 8);
-    QVERIFY(backend.setupCompleted() == false);
-    QVERIFY(backend.setupPending());
+    QVERIFY(backend.setup()->checks().size() >= 8);
+    QVERIFY(backend.setup()->completed() == false);
+    QVERIFY(backend.setup()->pending());
 
-    backend.setupSkip();
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupPending(), 10000);
-    QVERIFY(!backend.setupCompleted());
+    backend.setup()->skip();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setup()->pending(), 10000);
+    QVERIFY(!backend.setup()->completed());
 
-    backend.setupComplete();
-    if (!backend.setupMandatoryOk()) {
+    backend.setup()->complete();
+    if (!backend.setup()->mandatoryOk()) {
         // O host (ex.: container do CI) não tem QEMU/OVMF/virtiofsd. A recusa é
         // parte do contrato; o caminho de sucesso é coberto onde os checks passam.
-        QVERIFY(!backend.setupError().isEmpty());
-        QVERIFY(!backend.setupCompleted());
+        QVERIFY(!backend.setup()->error().isEmpty());
+        QVERIFY(!backend.setup()->completed());
         QSKIP("Checks obrigatórios indisponíveis no host; conclusão bloqueada.");
     }
-    QTRY_VERIFY_WITH_TIMEOUT(backend.setupCompleted(), 10000);
-    QVERIFY(!backend.setupPending());
+    QTRY_VERIFY_WITH_TIMEOUT(backend.setup()->completed(), 10000);
+    QVERIFY(!backend.setup()->pending());
 }
 
 void GuiTest::backendSetupJob()
 {
     PodStack::Backend backend;
-    QSignalSpy jobSpy(&backend, &PodStack::Backend::setupJobChanged);
+    QSignalSpy jobSpy(backend.setup(), &PodStack::SetupController::jobChanged);
 
-    backend.setupApply(QStringLiteral("bogus"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupJobActive(), 10000);
-    QVERIFY(!backend.setupError().isEmpty());
+    backend.setup()->apply(QStringLiteral("bogus"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setup()->jobActive(), 10000);
+    QVERIFY(!backend.setup()->error().isEmpty());
 
-    backend.setupApply(QStringLiteral("enable-socket"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupJobActive(), 20000);
+    backend.setup()->apply(QStringLiteral("enable-socket"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setup()->jobActive(), 20000);
     QVERIFY(jobSpy.count() > 0);
-    QVERIFY(!backend.setupLog().isEmpty());
+    QVERIFY(!backend.setup()->log().isEmpty());
 
-    backend.setupCancel();
-    backend.setupComplete();
-    QVERIFY(!backend.setupError().isEmpty());
+    backend.setup()->cancel();
+    backend.setup()->complete();
+    QVERIFY(!backend.setup()->error().isEmpty());
 }
 
 } // namespace

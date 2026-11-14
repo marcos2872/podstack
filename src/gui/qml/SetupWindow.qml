@@ -16,22 +16,22 @@ Item {
     property int step: 0
     property bool installCaddy: false
 
-    readonly property var checks: backend.setupChecks
-    readonly property var dockerImpact: backend.setupDockerImpact
-    readonly property bool jobActive: backend.setupJobActive
+    readonly property var checks: backend.setup.checks
+    readonly property var dockerImpact: backend.setup.dockerImpact
+    readonly property bool jobActive: backend.setup.jobActive
     readonly property bool podmanReady: podmanCheck.status === "ok"
     readonly property bool dockerPresent: (dockerCheck.detail || "").indexOf("coexistindo") >= 0
     readonly property bool kvmReady: kvmCheck.status === "ok"
     readonly property bool caddyInstalled: caddyCheck.status === "ok"
-    readonly property bool validated: backend.setupMandatoryOk
+    readonly property bool validated: backend.setup.mandatoryOk
     readonly property bool jobPanelVisible: !jobPanelDismissed
                                             && (jobActive
-                                                || (backend.setupError.length > 0
-                                                    && backend.setupLog.length > 0))
+                                                || (backend.setup.error.length > 0
+                                                    && backend.setup.log.length > 0))
 
     // O overlay só fecha sozinho quando o setup foi concluído; reconfigurar
     // abre via Settings e pode ser fechado pelo X.
-    visible: manuallyOpen || !backend.setupCompleted
+    visible: manuallyOpen || !backend.setup.completed
 
     function checkFor(id) {
         for (let index = 0; index < checks.length; ++index) {
@@ -62,7 +62,7 @@ Item {
     }
 
     readonly property var podmanCheck: checkFor("podman")
-    readonly property string podmanAction: backend.setupPodmanAction
+    readonly property string podmanAction: backend.setup.podmanAction
     readonly property var dockerCheck: checkFor("docker")
     readonly property var kvmCheck: checkFor("kvm")
     readonly property var qemuCheck: checkFor("qemu")
@@ -77,13 +77,13 @@ Item {
         jobPanelDismissed = false
         step = 0
         if (refresh) {
-            backend.setupRefresh()
+            backend.setup.refreshStatus()
         }
         forceActiveFocus()
     }
 
     function closeOverlay() {
-        if (backend.setupCompleted) {
+        if (backend.setup.completed) {
             manuallyOpen = false
         }
     }
@@ -92,7 +92,7 @@ Item {
         if (step < 6) {
             step += 1
         } else {
-            backend.setupComplete()
+            backend.setup.complete()
         }
     }
 
@@ -260,7 +260,7 @@ Item {
                     Text {
                         id: badgeText
                         anchors.centerIn: parent
-                        text: backend.setupCompleted ? qsTr("reconfigurar") : qsTr("primeira execução")
+                        text: backend.setup.completed ? qsTr("reconfigurar") : qsTr("primeira execução")
                         color: Theme.indigo400
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
@@ -271,7 +271,7 @@ Item {
                 Item { Layout.fillWidth: true }
 
                 ActionButton {
-                    visible: backend.setupCompleted
+                    visible: backend.setup.completed
                     text: ""
                     iconName: "x"
                     size: "sm"
@@ -438,12 +438,12 @@ Item {
                             ActionButton {
                                 text: qsTr("Escanear novamente")
                                 iconName: "refresh"
-                                enabled: !backend.setupBusy && !setupWindow.jobActive
-                                onClicked: backend.setupCheck()
+                                enabled: !backend.setup.busy && !setupWindow.jobActive
+                                onClicked: backend.setup.check()
                             }
 
                             Text {
-                                visible: backend.setupBusy
+                                visible: backend.setup.busy
                                 text: qsTr("Detectando…")
                                 color: Theme.textTertiary
                                 font.family: Theme.fontFamily
@@ -535,7 +535,7 @@ Item {
                                 variant: "primary"
                                 enabled: setupWindow.podmanAction.length > 0
                                          && !setupWindow.jobActive
-                                onClicked: backend.setupApply(setupWindow.podmanAction)
+                                onClicked: backend.setup.apply(setupWindow.podmanAction)
                             }
                         }
 
@@ -601,7 +601,7 @@ Item {
                                      && (setupWindow.qemuCheck.status === "missing"
                                          || setupWindow.ovmfCheck.status === "missing"
                                          || setupWindow.virtiofsdCheck.status === "missing")
-                            onClicked: backend.setupApply("install-qemu")
+                            onClicked: backend.setup.apply("install-qemu")
                         }
 
                         Item { Layout.preferredHeight: 24 }
@@ -713,7 +713,7 @@ Item {
                                 enabled: !setupWindow.jobActive && setupWindow.installCaddy
                                 onClicked: {
                                     const components = setupWindow.installCaddy ? ["caddy"] : []
-                                    backend.setupApply("install-components", components)
+                                    backend.setup.apply("install-components", components)
                                 }
                             }
                         }
@@ -747,13 +747,13 @@ Item {
                             visible: setupWindow.validated
                             implicitHeight: validationText.implicitHeight + 20
                             radius: Theme.radiusSm
-                            color: (backend.setupSummary.ready === true) ? Theme.successSoft : Theme.warningSoft
+                            color: (backend.setup.summary.ready === true) ? Theme.successSoft : Theme.warningSoft
                             border.width: 1
-                            border.color: Qt.rgba((backend.setupSummary.ready === true ? Theme.success
+                            border.color: Qt.rgba((backend.setup.summary.ready === true ? Theme.success
                                                                                         : Theme.warning).r,
-                                                  (backend.setupSummary.ready === true ? Theme.success
+                                                  (backend.setup.summary.ready === true ? Theme.success
                                                                                        : Theme.warning).g,
-                                                  (backend.setupSummary.ready === true ? Theme.success
+                                                  (backend.setup.summary.ready === true ? Theme.success
                                                                                        : Theme.warning).b,
                                                   0.35)
 
@@ -761,10 +761,10 @@ Item {
                                 id: validationText
                                 anchors.fill: parent
                                 anchors.margins: 10
-                                text: (backend.setupSummary.ready === true)
+                                text: (backend.setup.summary.ready === true)
                                       ? qsTr("Tudo pronto para abrir o PodStack.")
                                       : qsTr("Alguns itens precisam de atenção. Você pode corrigir ou continuar mesmo assim.")
-                                color: (backend.setupSummary.ready === true) ? Theme.success : Theme.warning
+                                color: (backend.setup.summary.ready === true) ? Theme.success : Theme.warning
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontBody
                                 font.weight: Font.DemiBold
@@ -784,8 +784,8 @@ Item {
                             text: qsTr("Validar instalação")
                             iconName: "shield"
                             variant: "primary"
-                            enabled: !backend.setupBusy && !setupWindow.jobActive
-                            onClicked: backend.setupValidate()
+                            enabled: !backend.setup.busy && !setupWindow.jobActive
+                            onClicked: backend.setup.validate()
                         }
 
                         Item { Layout.preferredHeight: 28 }
@@ -827,9 +827,9 @@ Item {
                             Layout.alignment: Qt.AlignHCenter
                             Layout.preferredWidth: Math.min(560, donePage.availableWidth - 48)
                             centered: true
-                            title: backend.setupMandatoryOk ? qsTr("Tudo pronto")
+                            title: backend.setup.mandatoryOk ? qsTr("Tudo pronto")
                                                             : qsTr("Itens obrigatórios pendentes")
-                            subtitle: backend.setupMandatoryOk
+                            subtitle: backend.setup.mandatoryOk
                                       ? qsTr("Revise o resumo e abra o PodStack.")
                                       : qsTr("Volte às etapas anteriores e conclua os itens "
                                              + "obrigatórios para abrir o PodStack.")
@@ -926,17 +926,17 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: backend.setupError.length > 0
-                              ? backend.setupError
-                              : (backend.setupStatus || qsTr("Trabalhando…"))
-                        color: backend.setupError.length > 0 ? Theme.danger : Theme.textSecondary
+                        text: backend.setup.error.length > 0
+                              ? backend.setup.error
+                              : (backend.setup.status || qsTr("Trabalhando…"))
+                        color: backend.setup.error.length > 0 ? Theme.danger : Theme.textSecondary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
                         elide: Text.ElideRight
                     }
 
                     Text {
-                        text: backend.setupProgress + "%"
+                        text: backend.setup.progress + "%"
                         color: Theme.textTertiary
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
@@ -944,7 +944,7 @@ Item {
 
                     ActionButton {
                         // Enquanto o job roda não há como fechar o log.
-                        visible: !setupWindow.jobActive && backend.setupError.length > 0
+                        visible: !setupWindow.jobActive && backend.setup.error.length > 0
                         text: ""
                         iconName: "x"
                         size: "sm"
@@ -961,7 +961,7 @@ Item {
                     color: Theme.bgElevated
 
                     Rectangle {
-                        width: parent.width * Math.max(0, Math.min(100, backend.setupProgress)) / 100
+                        width: parent.width * Math.max(0, Math.min(100, backend.setup.progress)) / 100
                         height: parent.height
                         radius: 3
                         color: Theme.indigo500
@@ -973,7 +973,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    model: backend.setupLog
+                    model: backend.setup.log
                     boundsBehavior: Flickable.StopAtBounds
 
                     onCountChanged: positionViewAtEnd()
@@ -1013,14 +1013,14 @@ Item {
 
                 Text {
                     readonly property bool gateBlocked: setupWindow.step === 6
-                                                        && !backend.setupCompleted
-                                                        && !backend.setupMandatoryOk
+                                                        && !backend.setup.completed
+                                                        && !backend.setup.mandatoryOk
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    text: backend.setupError.length > 0 ? backend.setupError
+                    text: backend.setup.error.length > 0 ? backend.setup.error
                           : gateBlocked ? qsTr("Conclua os itens obrigatórios para abrir o PodStack.")
                           : qsTr("Etapa %1 de 7").arg(setupWindow.step + 1)
-                    color: backend.setupError.length > 0 ? Theme.danger
+                    color: backend.setup.error.length > 0 ? Theme.danger
                            : gateBlocked ? Theme.warning : Theme.textTertiary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMicro
@@ -1032,7 +1032,7 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     text: qsTr("Cancelar")
                     variant: "danger"
-                    onClicked: backend.setupCancel()
+                    onClicked: backend.setup.cancel()
                 }
 
                 ActionButton {
@@ -1056,14 +1056,14 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     iconName: "check"
                     variant: "primary"
-                    enabled: backend.setupCompleted || backend.setupMandatoryOk
-                    text: backend.setupCompleted ? qsTr("Fechar") : qsTr("Abrir PodStack")
+                    enabled: backend.setup.completed || backend.setup.mandatoryOk
+                    text: backend.setup.completed ? qsTr("Fechar") : qsTr("Abrir PodStack")
                     onClicked: {
-                        if (backend.setupCompleted) {
+                        if (backend.setup.completed) {
                             setupWindow.closeOverlay()
                         } else {
                             setupWindow.manuallyOpen = false
-                            backend.setupComplete()
+                            backend.setup.complete()
                         }
                     }
                 }
@@ -1076,7 +1076,7 @@ Item {
     Connections {
         target: backend
         function onSetupJobChanged() {
-            if (backend.setupJobActive || backend.setupError.length > 0) {
+            if (backend.setup.jobActive || backend.setup.error.length > 0) {
                 setupWindow.jobPanelDismissed = false
             }
         }
@@ -1086,7 +1086,7 @@ Item {
         id: removeDockerDialog
         title: qsTr("Remover o Docker?")
         width: Math.min(520, setupWindow.width - 48)
-        onOpened: backend.setupLoadDockerImpact()
+        onOpened: backend.setup.loadDockerImpact()
 
         contentItem: ColumnLayout {
             spacing: 12
@@ -1123,7 +1123,7 @@ Item {
                 variant: "danger"
                 onClicked: {
                     removeDockerDialog.close()
-                    backend.setupRemoveDocker()
+                    backend.setup.removeDocker()
                 }
             }
         }

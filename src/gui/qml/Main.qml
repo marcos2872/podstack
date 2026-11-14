@@ -61,14 +61,14 @@ Rectangle {
     Component.onCompleted: {
         applyAppearance()
         backend.settings.refresh()
-        backend.setupRefresh()
+        backend.setup.refreshStatus()
     }
 
     Connections {
         target: backend
 
         function onSetupChanged() {
-            if (backend.setupError.length > 0 && !backend.setupCompleted) {
+            if (backend.setup.error.length > 0 && !backend.setup.completed) {
                 appWindow.reveal()
             }
         }
@@ -1278,18 +1278,18 @@ Rectangle {
         }
         function onActivityMonitorRequested() {
             window.reveal()
-            if (backend.setupCompleted) {
+            if (backend.setup.completed) {
                 activityWindow.open()
             }
         }
         function onSettingsRequested() {
             window.reveal()
-            if (backend.setupCompleted) {
+            if (backend.setup.completed) {
                 settingsDialog.open()
             }
         }
         function onOpenContainerRequested(id, tab) {
-            if (!backend.setupCompleted) {
+            if (!backend.setup.completed) {
                 window.reveal()
                 return
             }
@@ -1304,7 +1304,7 @@ Rectangle {
             }
         }
         function onOpenComposeRequested(project, service, logs) {
-            if (!backend.setupCompleted) {
+            if (!backend.setup.completed) {
                 window.reveal()
                 return
             }
@@ -1314,7 +1314,7 @@ Rectangle {
         }
         function onOpenViewRequested(section) {
             window.reveal()
-            if (backend.setupCompleted) {
+            if (backend.setup.completed) {
                 window.section = section
             }
         }

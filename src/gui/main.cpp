@@ -83,10 +83,10 @@ int main(int argc, char *argv[])
                      [&backend, &tray]() { tray.setContainers(backend.containers()->items()); });
     QObject::connect(&backend, &PodStack::Backend::stateChanged, &tray, [&backend, &tray]() {
         tray.setConnected(backend.connected());
-        tray.setSetupPending(backend.setupPending());
+        tray.setSetupPending(backend.setup()->pending());
     });
-    QObject::connect(&backend, &PodStack::Backend::setupChanged, &tray,
-                     [&backend, &tray]() { tray.setSetupPending(backend.setupPending()); });
+    QObject::connect(backend.setup(), &PodStack::SetupController::changed, &tray,
+                     [&backend, &tray]() { tray.setSetupPending(backend.setup()->pending()); });
     QObject::connect(&backend, &PodStack::Backend::machinesChanged, &tray,
                      [&backend, &tray]() { tray.setMachines(backend.machines()); });
     QObject::connect(backend.k8s(), &PodStack::K8sController::changed, &tray,
@@ -140,7 +140,7 @@ int main(int argc, char *argv[])
     QObject::connect(&backend, &PodStack::Backend::diskLow, &notifications,
                      &PodStack::NotificationService::notifyDiskLow);
     tray.setConnected(backend.connected());
-    tray.setSetupPending(backend.setupPending());
+    tray.setSetupPending(backend.setup()->pending());
     tray.setComposeProjects(backend.compose()->items());
     tray.setMachines(backend.machines());
     tray.setKubernetes(backend.k8s()->enabled());

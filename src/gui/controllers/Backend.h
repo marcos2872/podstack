@@ -6,6 +6,7 @@
 #include "gui/controllers/ContainerDetailController.h"
 #include "gui/controllers/K8sController.h"
 #include "gui/controllers/SettingsController.h"
+#include "gui/controllers/SetupController.h"
 #include "gui/controllers/ComposeController.h"
 #include "gui/controllers/ImageController.h"
 #include "gui/controllers/NetworkController.h"
@@ -30,6 +31,7 @@ class Backend : public QObject {
     Q_OBJECT
     Q_PROPERTY(PodStack::K8sController *k8s READ k8s CONSTANT)
     Q_PROPERTY(PodStack::SettingsController *settings READ settings CONSTANT)
+    Q_PROPERTY(PodStack::SetupController *setup READ setup CONSTANT)
     Q_PROPERTY(PodStack::ContainerController *containers READ containers CONSTANT)
     Q_PROPERTY(PodStack::ContainerDetailController *containerDetail READ containerDetail CONSTANT)
     Q_PROPERTY(PodStack::ImageController *images READ images CONSTANT)
@@ -90,13 +92,6 @@ class Backend : public QObject {
                NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
     Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
-    Q_PROPERTY(bool setupCompleted READ setupCompleted NOTIFY setupChanged)
-    Q_PROPERTY(bool setupPending READ setupPending NOTIFY setupChanged)
-    Q_PROPERTY(QString setupPodmanAction READ setupPodmanAction NOTIFY setupChanged)
-    Q_PROPERTY(bool setupMandatoryOk READ setupMandatoryOk NOTIFY setupChanged)
-    Q_PROPERTY(QVariantList setupChecks READ setupChecks NOTIFY setupChanged)
-    Q_PROPERTY(QVariantMap setupSummary READ setupSummary NOTIFY setupChanged)
-    Q_PROPERTY(QVariantMap setupDockerImpact READ setupDockerImpact NOTIFY setupChanged)
     Q_PROPERTY(QVariantMap updateStatus READ updateStatus NOTIFY updateStatusChanged)
     Q_PROPERTY(QVariantList systemLogs READ systemLogs NOTIFY systemLogsChanged)
     Q_PROPERTY(QString systemLogsError READ systemLogsError NOTIFY systemLogsChanged)
@@ -105,97 +100,13 @@ class Backend : public QObject {
     Q_PROPERTY(
         QString diagnosticReportPath READ diagnosticReportPath NOTIFY diagnosticReportChanged)
     Q_PROPERTY(QVariantMap diskHealth READ diskHealth NOTIFY diskHealthChanged)
-    Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
-    Q_PROPERTY(QString setupJobId READ setupJobId NOTIFY setupJobChanged)
-    Q_PROPERTY(bool setupJobActive READ setupJobActive NOTIFY setupJobChanged)
-    Q_PROPERTY(int setupProgress READ setupProgress NOTIFY setupJobChanged)
-    Q_PROPERTY(QStringList setupLog READ setupLog NOTIFY setupJobChanged)
-    Q_PROPERTY(QString setupStatus READ setupStatus NOTIFY setupJobChanged)
-    Q_PROPERTY(QString setupError READ setupError NOTIFY setupChanged)
-    Q_PROPERTY(bool setupBusy READ setupBusy NOTIFY setupChanged)
-    Q_PROPERTY(bool setupLoaded READ setupLoaded NOTIFY setupChanged)
-    Q_PROPERTY(bool connected READ connected NOTIFY stateChanged)
-    Q_PROPERTY(QString error READ error NOTIFY stateChanged)
-    Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
-    Q_PROPERTY(QString version READ version CONSTANT)
-    Q_PROPERTY(QVariantMap activityStats READ activityStats NOTIFY activityChanged)
-    Q_PROPERTY(QVariantList activityCpuHistory READ activityCpuHistory NOTIFY activityChanged)
-    Q_PROPERTY(QVariantList activityMemHistory READ activityMemHistory NOTIFY activityChanged)
-    Q_PROPERTY(bool activityActive READ activityActive NOTIFY activityChanged)
-    Q_PROPERTY(bool actionActive READ actionActive NOTIFY actionStateChanged)
-    Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
-    Q_PROPERTY(QVariantMap prunePreview READ prunePreview NOTIFY prunePreviewChanged)
-    Q_PROPERTY(QVariantList machines READ machines NOTIFY machinesChanged)
-    Q_PROPERTY(QVariantList machineDistros READ machineDistros NOTIFY machineDistrosChanged)
-    Q_PROPERTY(QVariantMap machineInfo READ machineInfo NOTIFY machineInfoChanged)
-    Q_PROPERTY(
-        QVariantList machineSerialPorts READ machineSerialPorts NOTIFY machineSerialPortsChanged)
-    Q_PROPERTY(
-        QVariantList machineUsbDevices READ machineUsbDevices NOTIFY machineUsbDevicesChanged)
-    Q_PROPERTY(QStringList machineLogLines READ machineLogLines NOTIFY machineLogsChanged)
-    Q_PROPERTY(QString machineLogsCapturedAt READ machineLogsCapturedAt
-               NOTIFY machineLogsChanged)
-    Q_PROPERTY(QVariantMap machineStats READ machineStats NOTIFY machineStatsChanged)
-    Q_PROPERTY(QVariantList machineCpuHistory READ machineCpuHistory
-               NOTIFY machineStatsChanged)
-    Q_PROPERTY(QVariantList machineMemHistory READ machineMemHistory
-               NOTIFY machineStatsChanged)
-    Q_PROPERTY(QVariantList machineNetRxHistory READ machineNetRxHistory
-               NOTIFY machineStatsChanged)
-    Q_PROPERTY(QVariantList machineNetTxHistory READ machineNetTxHistory
-               NOTIFY machineStatsChanged)
-    Q_PROPERTY(QString machineStatsError READ machineStatsError NOTIFY machineStatsChanged)
-    Q_PROPERTY(bool machineConsoleActive READ machineConsoleActive NOTIFY machineConsoleChanged)
-    Q_PROPERTY(QString machineConsoleText READ machineConsoleText NOTIFY machineConsoleChanged)
-    Q_PROPERTY(QString machineConsoleError READ machineConsoleError NOTIFY machineConsoleChanged)
-    Q_PROPERTY(QVariantList machineFiles READ machineFiles NOTIFY machineFilesChanged)
-    Q_PROPERTY(QString machineFilesPath READ machineFilesPath NOTIFY machineFilesChanged)
-    Q_PROPERTY(bool machineFilesBusy READ machineFilesBusy NOTIFY machineFilesChanged)
-    Q_PROPERTY(QString machineFilesError READ machineFilesError NOTIFY machineFilesChanged)
-    Q_PROPERTY(QVariantList machineSnapshots READ machineSnapshots
-               NOTIFY machineSnapshotsChanged)
-    Q_PROPERTY(QString machineSnapshotsError READ machineSnapshotsError
-               NOTIFY machineSnapshotsChanged)
-    Q_PROPERTY(bool machineCreateActive READ machineCreateActive NOTIFY machineCreateStateChanged)
-    Q_PROPERTY(QString machineJobKind READ machineJobKind NOTIFY machineCreateStateChanged)
-    Q_PROPERTY(QString machineCreateJobId READ machineCreateJobId NOTIFY machineCreateStateChanged)
-    Q_PROPERTY(QString machineCreateStage READ machineCreateStage NOTIFY machineCreateStateChanged)
-    Q_PROPERTY(int machineCreateProgress READ machineCreateProgress
-               NOTIFY machineCreateStateChanged)
-    Q_PROPERTY(QString machineCreateError READ machineCreateError
-               NOTIFY machineCreateStateChanged)
-    Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
-    Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
-    Q_PROPERTY(bool setupCompleted READ setupCompleted NOTIFY setupChanged)
-    Q_PROPERTY(bool setupPending READ setupPending NOTIFY setupChanged)
-    Q_PROPERTY(QString setupPodmanAction READ setupPodmanAction NOTIFY setupChanged)
-    Q_PROPERTY(bool setupMandatoryOk READ setupMandatoryOk NOTIFY setupChanged)
-    Q_PROPERTY(QVariantList setupChecks READ setupChecks NOTIFY setupChanged)
-    Q_PROPERTY(QVariantMap setupSummary READ setupSummary NOTIFY setupChanged)
-    Q_PROPERTY(QVariantMap setupDockerImpact READ setupDockerImpact NOTIFY setupChanged)
-    Q_PROPERTY(QVariantMap updateStatus READ updateStatus NOTIFY updateStatusChanged)
-    Q_PROPERTY(QVariantList systemLogs READ systemLogs NOTIFY systemLogsChanged)
-    Q_PROPERTY(QString systemLogsError READ systemLogsError NOTIFY systemLogsChanged)
-    Q_PROPERTY(bool systemLogsTruncated READ systemLogsTruncated NOTIFY systemLogsChanged)
-    Q_PROPERTY(bool systemLogsBusy READ systemLogsBusy NOTIFY systemLogsChanged)
-    Q_PROPERTY(
-        QString diagnosticReportPath READ diagnosticReportPath NOTIFY diagnosticReportChanged)
-    Q_PROPERTY(QVariantMap diskHealth READ diskHealth NOTIFY diskHealthChanged)
-    Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
-    Q_PROPERTY(QString setupJobId READ setupJobId NOTIFY setupJobChanged)
-    Q_PROPERTY(bool setupJobActive READ setupJobActive NOTIFY setupJobChanged)
-    Q_PROPERTY(int setupProgress READ setupProgress NOTIFY setupJobChanged)
-    Q_PROPERTY(QStringList setupLog READ setupLog NOTIFY setupJobChanged)
-    Q_PROPERTY(QString setupStatus READ setupStatus NOTIFY setupJobChanged)
-    Q_PROPERTY(QString setupError READ setupError NOTIFY setupChanged)
-    Q_PROPERTY(bool setupBusy READ setupBusy NOTIFY setupChanged)
-    Q_PROPERTY(bool setupLoaded READ setupLoaded NOTIFY setupChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
 
     K8sController *k8s() { return &m_k8s; }
     SettingsController *settings() { return &m_settings; }
+    SetupController *setup() { return &m_setup; }
     ContainerController *containers() { return &m_containers; }
     ContainerDetailController *containerDetail() { return &m_containerDetail; }
     ImageController *images() { return &m_images; }
@@ -245,13 +156,6 @@ public:
     QString machineCreateError() const { return m_machineCreateError; }
     QString eventMessage() const { return m_eventMessage; }
     QString eventKind() const { return m_eventKind; }
-    bool setupCompleted() const { return m_setupCompleted; }
-    bool setupPending() const { return !m_setupCompleted && m_setupShowOnboarding; }
-    QString setupPodmanAction() const;
-    bool setupMandatoryOk() const;
-    QVariantList setupChecks() const { return m_setupChecks; }
-    QVariantMap setupSummary() const { return m_setupSummary; }
-    QVariantMap setupDockerImpact() const { return m_setupDockerImpact; }
     QVariantMap updateStatus() const { return m_updateStatus; }
     QVariantList systemLogs() const { return m_systemLogs; }
     QString systemLogsError() const { return m_systemLogsError; }
@@ -259,15 +163,6 @@ public:
     bool systemLogsBusy() const { return m_systemLogsBusy; }
     QString diagnosticReportPath() const { return m_diagnosticReportPath; }
     QVariantMap diskHealth() const { return m_diskHealth; }
-    QString setupDockerPolicy() const { return m_setupDockerPolicy; }
-    QString setupJobId() const { return m_setupJobId; }
-    bool setupJobActive() const { return m_setupJobActive; }
-    int setupProgress() const { return m_setupProgress; }
-    QStringList setupLog() const { return m_setupLog; }
-    QString setupStatus() const { return m_setupStatus; }
-    QString setupError() const { return m_setupError; }
-    bool setupBusy() const { return m_setupBusy; }
-    bool setupLoaded() const { return m_setupLoaded; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
@@ -320,12 +215,6 @@ public:
                                    bool force = false);
     Q_INVOKABLE void startActivityMonitor();
     Q_INVOKABLE void stopActivityMonitor();
-    Q_INVOKABLE void setupRefresh();
-    Q_INVOKABLE void setupCheck();
-    Q_INVOKABLE void setupValidate();
-    Q_INVOKABLE void setupApply(const QString &action, const QVariantList &components = {});
-    Q_INVOKABLE void setupLoadDockerImpact();
-    Q_INVOKABLE void setupRemoveDocker();
     Q_INVOKABLE void checkForUpdates(bool interactive = false);
     Q_INVOKABLE void installUpdate();
     Q_INVOKABLE void resumeUpdate();
@@ -337,9 +226,6 @@ public:
     Q_INVOKABLE void generateDiagnosticReport();
     Q_INVOKABLE void openLogsFolder();
     Q_INVOKABLE void checkDiskHealth();
-    Q_INVOKABLE void setupCancel();
-    Q_INVOKABLE void setupComplete();
-    Q_INVOKABLE void setupSkip();
 
 signals:
     void actionStateChanged();
@@ -371,8 +257,6 @@ signals:
     void containerEvent(const QVariantMap &event);
     void terminalRequested(const QString &title, const QString &program,
                            const QStringList &args);
-    void setupChanged();
-    void setupJobChanged();
 
 private:
     void onRefreshFinished();
@@ -417,7 +301,6 @@ private:
 
     QFutureWatcher<QJsonObject> m_actionWatcher;
     QFutureWatcher<QJsonObject> m_catalogWatcher;
-    QFutureWatcher<QJsonObject> m_setupWatcher;
     QFutureWatcher<QJsonObject> m_updateWatcher;
     QFutureWatcher<QJsonObject> m_diskWatcher;
     QFutureWatcher<QJsonObject> m_machinesWatcher;
@@ -429,14 +312,12 @@ private:
     QFutureWatcher<QJsonObject> m_machineFilesWatcher;
     QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
-    QString m_setupPendingMethod;
     QString m_catalogSection;
     QStringList m_catalogQueue;
     StreamClient m_activityStream;
     StreamClient m_machineCreateStream;
     StreamClient m_machineStatsStream;
     StreamClient m_machineConsoleStream;
-    StreamClient m_setupStream;
     StreamClient m_eventsStream;
     QTimer m_eventTimer;
     QTimer m_refreshTimer;
@@ -456,6 +337,7 @@ private:
     bool m_activityActive = false;
     K8sController m_k8s;
     SettingsController m_settings;
+    SetupController m_setup;
     ContainerController m_containers;
     ContainerDetailController m_containerDetail{&m_containers};
     ImageController m_images;
@@ -508,11 +390,6 @@ private:
     QString m_eventMessage;
     QString m_eventKind;
     QSet<QString> m_recentEvents;
-    bool m_setupCompleted = false;
-    bool m_setupShowOnboarding = true;
-    QVariantList m_setupChecks;
-    QVariantMap m_setupSummary;
-    QVariantMap m_setupDockerImpact;
     QVariantMap m_updateStatus;
     QVariantList m_systemLogs;
     QString m_systemLogsError;
@@ -533,15 +410,6 @@ private:
     bool m_updateInteractive = false;
     QVariantMap m_diskHealth;
     bool m_diskCheckRunning = false;
-    QString m_setupDockerPolicy = QStringLiteral("keep");
-    QString m_setupJobId;
-    bool m_setupJobActive = false;
-    int m_setupProgress = 0;
-    QStringList m_setupLog;
-    QString m_setupStatus;
-    QString m_setupError;
-    bool m_setupBusy = false;
-    bool m_setupLoaded = false;
 };
 
 } // namespace PodStack

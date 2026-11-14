@@ -214,8 +214,6 @@ Backend::Backend(QObject *parent)
             &Backend::terminalRequested);
     connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onCatalogFinished);
-    connect(&m_setupWatcher, &QFutureWatcher<QJsonObject>::finished, this,
-            &Backend::onSetupFinished);
     connect(&m_updateWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onUpdateFinished);
     connect(&m_systemLogsWatcher, &QFutureWatcher<SystemLogsTask>::finished, this,
@@ -318,23 +316,6 @@ Backend::Backend(QObject *parent)
                 }
             });
 
-    connect(&m_setupStream, &StreamClient::setupEvent, this,
-            [this](const QJsonObject &event) { applySetupJob(event); });
-    connect(&m_setupStream, &StreamClient::setupFinished, this,
-            [this](const QJsonObject &event) {
-                applySetupJob(event);
-                m_setupJobActive = false;
-                m_setupStatus = event.value(QStringLiteral("state")).toString();
-                emit setupJobChanged();
-                setupRefresh();
-            });
-    connect(&m_setupStream, &StreamClient::error, this, [this](const QString &message) {
-        m_setupJobActive = false;
-        m_setupError = message;
-        m_setupBusy = false;
-        emit setupJobChanged();
-        emit setupChanged();
-    });
 
     connect(&m_activityStream, &StreamClient::systemStats, this,
             [this](const QJsonObject &sample) {
@@ -791,191 +772,6 @@ void Backend::stopMachineConsole()
     emit machineConsoleChanged();
 }
 
-void Backend::runSetupRequest(const QString &method, const QJsonObject &params)
-{
-    if (m_setupWatcher.isRunning()) {
-        return;
-    }
-    m_setupPendingMethod = method;
-    m_setupBusy = true;
-    m_setupError.clear();
-    emit setupChanged();
-
-    m_setupWatcher.setFuture(QtConcurrent::run([method, params] {
-        RpcClient client;
-        Error error;
-        const QJsonObject result = client.call(method, params, &error);
-        QJsonObject object = result;
-        if (!error.isEmpty()) {
-            object.insert(QStringLiteral("__error"), error.message);
-        }
-        return object;
-    }));
-}
-
-void Backend::onSetupFinished()
-{
-    const QJsonObject result = m_setupWatcher.result();
-    m_setupBusy = false;
-
-    if (result.contains(QStringLiteral("__error"))) {
-        m_setupError = result.value(QStringLiteral("__error")).toString();
-        if (m_setupPendingMethod == QStringLiteral("setup.status")) {
-            m_setupLoaded = true;
-        }
-        emit setupChanged();
-        return;
-    }
-
-    m_setupError.clear();
-
-    if (m_setupPendingMethod == QStringLiteral("setup.status")) {
-        applySetupStatus(result);
-    } else if (m_setupPendingMethod == QStringLiteral("setup.check")) {
-        m_setupChecks = result.value(QStringLiteral("checks")).toArray().toVariantList();
-        emit setupChanged();
-    } else if (m_setupPendingMethod == QStringLiteral("setup.validate")) {
-        m_setupChecks = result.value(QStringLiteral("checks")).toArray().toVariantList();
-        bool ready = true;
-        for (const QVariant &checkValue : m_setupChecks) {
-            const QVariantMap check = checkValue.toMap();
-            if (!SetupPolicy::isCheckSatisfied(check.value(QStringLiteral("id")).toString(),
-                                               check.value(QStringLiteral("status")).toString())) {
-                ready = false;
-                break;
-            }
-        }
-        m_setupSummary.insert(QStringLiteral("ready"), ready);
-        m_setupStatus = ready ? QStringLiteral("Tudo pronto.")
-                              : QStringLiteral("Alguns itens precisam de atenção.");
-        emit setupChanged();
-    } else if (m_setupPendingMethod == QStringLiteral("setup.dockerImpact")) {
-        m_setupDockerImpact = result.toVariantMap();
-        emit setupChanged();
-    } else if (m_setupPendingMethod == QStringLiteral("setup.complete")) {
-        m_setupCompleted = result.value(QStringLiteral("completed")).toBool();
-        if (result.value(QStringLiteral("skipped")).toBool()) {
-            m_setupShowOnboarding = false;
-        }
-        emit setupChanged();
-    }
-
-    m_setupPendingMethod.clear();
-}
-
-void Backend::applySetupStatus(const QJsonObject &status)
-{
-    m_setupLoaded = true;
-    m_setupCompleted = status.value(QStringLiteral("completed")).toBool();
-    m_setupShowOnboarding = status.value(QStringLiteral("showOnboarding")).toBool(true);
-    m_setupDockerPolicy = status.value(QStringLiteral("dockerPolicy")).toString();
-    m_setupChecks = status.value(QStringLiteral("checks")).toArray().toVariantList();
-    m_setupSummary = status.value(QStringLiteral("summary")).toObject().toVariantMap();
-    const QJsonObject active = status.value(QStringLiteral("activeJob")).toObject();
-    applySetupJob(active);
-    if (!active.isEmpty() && !m_setupJobActive) {
-        const QString jobId = active.value(QStringLiteral("jobId")).toString();
-        if (!jobId.isEmpty()) {
-            m_setupStream.subscribeSetup(jobId);
-        }
-    }
-    emit setupChanged();
-}
-
-void Backend::applySetupJob(const QJsonObject &job)
-{
-    if (job.isEmpty()) {
-        return;
-    }
-
-    const QString state = job.value(QStringLiteral("state")).toString();
-    m_setupJobId = job.value(QStringLiteral("jobId")).toString();
-    m_setupProgress = job.value(QStringLiteral("progress")).toInt();
-    m_setupJobActive = state == QStringLiteral("running") || state == QStringLiteral("queued")
-                       || state == QStringLiteral("cancelling");
-    if (!state.isEmpty()) {
-        m_setupStatus = state;
-    }
-    const QString error = job.value(QStringLiteral("error")).toString();
-    const bool errorChanged = !error.isEmpty() && error != m_setupError;
-    if (errorChanged) {
-        m_setupError = error;
-    }
-    m_setupLog.clear();
-    const QJsonArray lines = job.value(QStringLiteral("lines")).toArray();
-    for (const QJsonValue &line : lines) {
-        m_setupLog.append(line.toString());
-    }
-    emit setupJobChanged();
-    if (errorChanged) {
-        emit setupChanged();
-    }
-}
-
-QString Backend::setupPodmanAction() const
-{
-    for (const QVariant &value : m_setupChecks) {
-        const QVariantMap check = value.toMap();
-        if (check.value(QStringLiteral("id")).toString() == QStringLiteral("podman")) {
-            return SetupActions::podmanActionForStatus(
-                check.value(QStringLiteral("status")).toString());
-        }
-    }
-    return {};
-}
-
-bool Backend::setupMandatoryOk() const
-{
-    if (m_setupChecks.isEmpty()) {
-        return false;
-    }
-    for (const QVariant &value : m_setupChecks) {
-        const QVariantMap check = value.toMap();
-        const QString id = check.value(QStringLiteral("id")).toString();
-        const QString status = check.value(QStringLiteral("status")).toString();
-        if (!SetupPolicy::isCheckSatisfied(id, status)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-void Backend::setupRefresh()
-{
-    runSetupRequest(QStringLiteral("setup.status"), {});
-}
-
-void Backend::setupCheck()
-{
-    runSetupRequest(QStringLiteral("setup.check"), {});
-}
-
-void Backend::setupValidate()
-{
-    runSetupRequest(QStringLiteral("setup.validate"), {});
-}
-
-void Backend::setupApply(const QString &action, const QVariantList &components)
-{
-    if (m_setupJobActive) {
-        return;
-    }
-
-    QJsonObject params;
-    params.insert(QStringLiteral("action"), action);
-    if (!components.isEmpty()) {
-        params.insert(QStringLiteral("components"), QJsonArray::fromVariantList(components));
-    }
-
-    m_setupError.clear();
-    m_setupLog.clear();
-    m_setupProgress = 0;
-    m_setupJobActive = true;
-    m_setupStatus = QStringLiteral("Iniciando…");
-    emit setupJobChanged();
-    m_setupStream.startSetup(params);
-}
-
 void Backend::checkForUpdates(bool interactive)
 {
     if (m_updateCheckRunning) {
@@ -1245,16 +1041,6 @@ void Backend::openLogsFolder()
     QDesktopServices::openUrl(QUrl::fromLocalFile(Paths::stateDir() + QStringLiteral("/logs")));
 }
 
-void Backend::setupLoadDockerImpact()
-{
-    if (m_setupWatcher.isRunning()) {
-        return;
-    }
-    m_setupDockerImpact.clear();
-    emit setupChanged();
-    runSetupRequest(QStringLiteral("setup.dockerImpact"), {});
-}
-
 void Backend::checkDiskHealth()
 {
     if (m_diskCheckRunning) {
@@ -1295,56 +1081,6 @@ void Backend::onDiskFinished()
             }
         }
     }
-}
-
-void Backend::setupRemoveDocker()
-{
-    if (m_setupJobActive) {
-        return;
-    }
-
-    QJsonObject params;
-    params.insert(QStringLiteral("confirm"), true);
-    m_setupError.clear();
-    m_setupLog.clear();
-    m_setupProgress = 0;
-    m_setupJobActive = true;
-    m_setupStatus = QStringLiteral("Removendo o Docker…");
-    emit setupJobChanged();
-    m_setupStream.startSetupRemoveDocker(params);
-}
-
-void Backend::setupCancel()
-{
-    if (m_setupJobId.isEmpty()) {
-        return;
-    }
-    QJsonObject params;
-    params.insert(QStringLiteral("jobId"), m_setupJobId);
-    runSetupRequest(QStringLiteral("setup.cancel"), params);
-}
-
-void Backend::setupComplete()
-{
-    if (!setupMandatoryOk()) {
-        m_setupError = QStringLiteral(
-            "Conclua os itens obrigatórios antes de abrir o PodStack.");
-        emit setupChanged();
-        return;
-    }
-
-    m_setupError.clear();
-    emit setupChanged();
-    QJsonObject params;
-    params.insert(QStringLiteral("skipped"), false);
-    runSetupRequest(QStringLiteral("setup.complete"), params);
-}
-
-void Backend::setupSkip()
-{
-    QJsonObject params;
-    params.insert(QStringLiteral("skipped"), true);
-    runSetupRequest(QStringLiteral("setup.complete"), params);
 }
 
 void Backend::openMachineSsh(const QString &id)
