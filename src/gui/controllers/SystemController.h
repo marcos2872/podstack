@@ -20,8 +20,8 @@ class SystemController : public ControllerBase {
     Q_PROPERTY(QString logsError READ logsError NOTIFY logsChanged)
     Q_PROPERTY(bool logsTruncated READ logsTruncated NOTIFY logsChanged)
     Q_PROPERTY(bool logsBusy READ logsBusy NOTIFY logsChanged)
-    Q_PROPERTY(QString diagnosticReportPath READ diagnosticReportPath
-               NOTIFY diagnosticReportChanged)
+    Q_PROPERTY(
+        QString diagnosticReportPath READ diagnosticReportPath NOTIFY diagnosticReportChanged)
     Q_PROPERTY(QVariantMap diskHealth READ diskHealth NOTIFY diskHealthChanged)
     Q_PROPERTY(QVariantMap activityStats READ activityStats NOTIFY activityChanged)
     Q_PROPERTY(QVariantList activityCpuHistory READ activityCpuHistory NOTIFY activityChanged)

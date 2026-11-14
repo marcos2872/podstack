@@ -17,8 +17,7 @@
 
 namespace PodStack {
 
-UpdateController::UpdateController(QObject *parent)
-    : ControllerBase(parent)
+UpdateController::UpdateController(QObject *parent) : ControllerBase(parent)
 {
     connect(&m_watcher, &QFutureWatcher<QJsonObject>::finished, this,
             &UpdateController::onFinished);
@@ -43,9 +42,9 @@ void UpdateController::check(bool interactive)
     m_watcher.setFuture(QtConcurrent::run([interactive] {
         RpcClient client;
         Error error;
-        const QJsonObject result = client.call(
-            QStringLiteral("updates.check"),
-            QJsonObject{{QStringLiteral("force"), interactive}}, &error);
+        const QJsonObject result =
+            client.call(QStringLiteral("updates.check"),
+                        QJsonObject{{QStringLiteral("force"), interactive}}, &error);
         if (!error.isEmpty()) {
             return QJsonObject{{QStringLiteral("__error"), error.message}};
         }
@@ -77,12 +76,11 @@ void UpdateController::onFinished()
         emit available(m_status);
     }
     if (m_interactive) {
-        emit userMessage(
-            QStringLiteral("info"),
-            availableUpdate
-                ? QStringLiteral("PodStack %1 está disponível.")
-                      .arg(result.value(QStringLiteral("latestVersion")).toString())
-                : QStringLiteral("Nenhuma atualização disponível."));
+        emit userMessage(QStringLiteral("info"),
+                         availableUpdate
+                             ? QStringLiteral("PodStack %1 está disponível.")
+                                   .arg(result.value(QStringLiteral("latestVersion")).toString())
+                             : QStringLiteral("Nenhuma atualização disponível."));
     }
 }
 
@@ -121,15 +119,15 @@ void UpdateController::resume()
 
 void UpdateController::startRunner(bool resume)
 {
-    if (qEnvironmentVariableIsSet("FLATPAK_ID")
-        || QFileInfo::exists(QStringLiteral("/.flatpak-info"))) {
+    if (qEnvironmentVariableIsSet("FLATPAK_ID") ||
+        QFileInfo::exists(QStringLiteral("/.flatpak-info"))) {
         emit checkFailed(QStringLiteral(
             "O update assistido não está disponível no Flatpak; use o pacote do host."));
         return;
     }
     if (QStandardPaths::findExecutable(QStringLiteral("systemctl")).isEmpty()) {
-        emit checkFailed(QStringLiteral(
-            "O update assistido exige systemd de usuário; use o caminho manual."));
+        emit checkFailed(
+            QStringLiteral("O update assistido exige systemd de usuário; use o caminho manual."));
         return;
     }
     const QString stateDir = Paths::stateDir() + QStringLiteral("/updates");
@@ -137,16 +135,15 @@ void UpdateController::startRunner(bool resume)
         emit checkFailed(QStringLiteral("Não foi possível preparar o estado do update."));
         return;
     }
-    QFile::setPermissions(stateDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                        | QFileDevice::ExeOwner);
+    QFile::setPermissions(stateDir,
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
     QFile marker(stateDir + QStringLiteral("/gui-was-open"));
     if (!marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         emit checkFailed(QStringLiteral("Não foi possível gravar o marcador do update."));
         return;
     }
     marker.close();
-    QFile::setPermissions(marker.fileName(),
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    QFile::setPermissions(marker.fileName(), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 
     const QString sibling = QCoreApplication::applicationDirPath() + QStringLiteral("/podstack");
     QString program = QFileInfo(sibling).isExecutable()

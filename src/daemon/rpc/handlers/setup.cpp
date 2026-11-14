@@ -46,8 +46,7 @@ QJsonObject Daemon::setupDockerImpact()
     return m_setup.dockerImpact();
 }
 
-QJsonObject Daemon::setupRemoveDocker(const QJsonObject &params, const Notify &notify,
-                                      Error *error)
+QJsonObject Daemon::setupRemoveDocker(const QJsonObject &params, const Notify &notify, Error *error)
 {
     return m_setup.removeDocker(params, notify, error);
 }

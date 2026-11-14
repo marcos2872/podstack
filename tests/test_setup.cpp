@@ -4,11 +4,11 @@
 #include "core/helper/DbusUtils.h"
 #include "daemon/docker/DockerInventory.h"
 #include "daemon/setup/SetupManager.h"
+#include "helper/HelperService.h"
 #include "helper/ca/CaTrust.h"
 #include "helper/dns/DnsZone.h"
-#include "helper/ports/Firewall.h"
-#include "helper/HelperService.h"
 #include "helper/polkit/Polkit.h"
+#include "helper/ports/Firewall.h"
 #include "helper/ports/PortBinding.h"
 
 #include <QCoreApplication>

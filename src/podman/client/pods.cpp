@@ -36,8 +36,7 @@ QVector<PodInfo> PodmanClient::listPods(Error *error)
         info.status = object.value(QStringLiteral("Status")).toString();
         info.created = jsonTimestamp(object.value(QStringLiteral("Created")));
         info.infraId = object.value(QStringLiteral("InfraId")).toString();
-        info.containers =
-            object.value(QStringLiteral("Containers")).toArray().size();
+        info.containers = object.value(QStringLiteral("Containers")).toArray().size();
         info.labels = labelsFromJson(object);
         pods.append(info);
     }
@@ -67,10 +66,9 @@ QJsonObject PodmanClient::createPod(const QString &name, const QMap<QString, QSt
         body.insert(QStringLiteral("labels"), jsonFromLabels(labels));
     }
 
-    const HttpResponse response =
-        m_http.request(QByteArrayLiteral("POST"), path(QStringLiteral("/pods/create")),
-                       QJsonDocument(body).toJson(QJsonDocument::Compact),
-                       QStringLiteral("application/json"));
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("POST"), path(QStringLiteral("/pods/create")),
+        QJsonDocument(body).toJson(QJsonDocument::Compact), QStringLiteral("application/json"));
     if (response.status != 200 && response.status != 201) {
         if (error) {
             *error = errorFromResponse(response, QStringLiteral("Falha ao criar o pod."));
@@ -88,9 +86,9 @@ bool PodmanClient::podAction(const QString &id, const QString &action, Error *er
     if (!ensureVersion(error)) {
         return false;
     }
-    if (action != QStringLiteral("start") && action != QStringLiteral("stop")
-        && action != QStringLiteral("restart") && action != QStringLiteral("pause")
-        && action != QStringLiteral("unpause") && action != QStringLiteral("kill")) {
+    if (action != QStringLiteral("start") && action != QStringLiteral("stop") &&
+        action != QStringLiteral("restart") && action != QStringLiteral("pause") &&
+        action != QStringLiteral("unpause") && action != QStringLiteral("kill")) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
                                  QStringLiteral("Ação de pod inválida."), action);
@@ -118,9 +116,9 @@ bool PodmanClient::removePod(const QString &id, bool force, Error *error)
         return false;
     }
 
-    const QString suffix = QStringLiteral("/pods/%1?force=%2")
-                               .arg(encodeId(id), force ? QStringLiteral("true")
-                                                        : QStringLiteral("false"));
+    const QString suffix =
+        QStringLiteral("/pods/%1?force=%2")
+            .arg(encodeId(id), force ? QStringLiteral("true") : QStringLiteral("false"));
     const HttpResponse response = m_http.request(QByteArrayLiteral("DELETE"), path(suffix));
     if (response.status == 200 || response.status == 204) {
         return true;

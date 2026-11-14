@@ -102,9 +102,9 @@ bool PodmanClient::buildImage(const QString &contextPath, const QString &dockerf
     };
 
     QString streamFailure;
-    const bool ok = m_http.streamRequest(QByteArrayLiteral("POST"), this->path(suffix), tar,
-                                         QStringLiteral("application/x-tar"), onData, cancel,
-                                         &streamFailure);
+    const bool ok =
+        m_http.streamRequest(QByteArrayLiteral("POST"), this->path(suffix), tar,
+                             QStringLiteral("application/x-tar"), onData, cancel, &streamFailure);
     if (!buffer.trimmed().isEmpty()) {
         onLine(buffer.trimmed());
     }

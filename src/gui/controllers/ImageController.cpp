@@ -8,8 +8,7 @@
 
 namespace PodStack {
 
-ImageController::ImageController(QObject *parent)
-    : CatalogController(parent)
+ImageController::ImageController(QObject *parent) : CatalogController(parent)
 {
     connect(&m_pullStream, &StreamClient::pullEvent, this, [this](const QJsonObject &event) {
         const QString status = event.value(QStringLiteral("status")).toString();
@@ -103,10 +102,9 @@ void ImageController::tagImage(const QString &id, const QString &repoTag)
         tag = repo.mid(colon + 1);
         repo = repo.left(colon);
     }
-    runAction(QStringLiteral("images.tag"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("repo"), repo},
-                          {QStringLiteral("tag"), tag}});
+    runAction(QStringLiteral("images.tag"), QJsonObject{{QStringLiteral("id"), id},
+                                                        {QStringLiteral("repo"), repo},
+                                                        {QStringLiteral("tag"), tag}});
 }
 
 void ImageController::untagImage(const QString &id, const QString &repoTag)
@@ -119,10 +117,9 @@ void ImageController::untagImage(const QString &id, const QString &repoTag)
         tag = repo.mid(colon + 1);
         repo = repo.left(colon);
     }
-    runAction(QStringLiteral("images.untag"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("repo"), repo},
-                          {QStringLiteral("tag"), tag}});
+    runAction(QStringLiteral("images.untag"), QJsonObject{{QStringLiteral("id"), id},
+                                                          {QStringLiteral("repo"), repo},
+                                                          {QStringLiteral("tag"), tag}});
 }
 
 void ImageController::exportImage(const QString &id, const QString &path)

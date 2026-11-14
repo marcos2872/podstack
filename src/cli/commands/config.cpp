@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandConfigShow(const QStringList &args)
 {
     bool json = false;
@@ -49,8 +47,6 @@ int commandConfigShow(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int commandConfigGet(const QStringList &args)
 {
     QString key;
@@ -72,9 +68,8 @@ int commandConfigGet(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result =
-        client.call(QStringLiteral("settings.get"),
-                    QJsonObject{{QStringLiteral("key"), key}}, &error);
+    const QJsonObject result = client.call(QStringLiteral("settings.get"),
+                                           QJsonObject{{QStringLiteral("key"), key}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -87,8 +82,6 @@ int commandConfigGet(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int commandConfigSet(const QStringList &args)
 {
@@ -120,11 +113,9 @@ int commandConfigSet(const QStringList &args)
     }
 
     PodStack::RpcClient client;
-    const QJsonObject result =
-        client.call(QStringLiteral("settings.set"),
-                    QJsonObject{{QStringLiteral("key"), key},
-                                {QStringLiteral("value"), value}},
-                    &error);
+    const QJsonObject result = client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), key}, {QStringLiteral("value"), value}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -137,8 +128,6 @@ int commandConfigSet(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int commandConfigList(const QString &operation, const QStringList &args)
 {
@@ -163,22 +152,20 @@ int commandConfigList(const QString &operation, const QStringList &args)
         err().flush();
         return kExitError;
     }
-    if (schema.value(key).value(QStringLiteral("type")).toString()
-        != QStringLiteral("stringList")) {
+    if (schema.value(key).value(QStringLiteral("type")).toString() !=
+        QStringLiteral("stringList")) {
         err() << key << " não é uma lista de strings.\n";
         err().flush();
         return kExitError;
     }
 
     PodStack::RpcClient client;
-    const QJsonObject current =
-        client.call(QStringLiteral("settings.get"),
-                    QJsonObject{{QStringLiteral("key"), key}}, &error);
+    const QJsonObject current = client.call(QStringLiteral("settings.get"),
+                                            QJsonObject{{QStringLiteral("key"), key}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
-    QJsonArray entries =
-        current.value(QStringLiteral("values")).toObject().value(key).toArray();
+    QJsonArray entries = current.value(QStringLiteral("values")).toObject().value(key).toArray();
 
     if (operation == QStringLiteral("add")) {
         bool present = false;
@@ -209,11 +196,9 @@ int commandConfigList(const QString &operation, const QStringList &args)
         entries = filtered;
     }
 
-    const QJsonObject result =
-        client.call(QStringLiteral("settings.set"),
-                    QJsonObject{{QStringLiteral("key"), key},
-                                {QStringLiteral("value"), entries}},
-                    &error);
+    const QJsonObject result = client.call(
+        QStringLiteral("settings.set"),
+        QJsonObject{{QStringLiteral("key"), key}, {QStringLiteral("value"), entries}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -226,8 +211,6 @@ int commandConfigList(const QString &operation, const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int commandConfigReset(const QStringList &args)
 {
@@ -252,15 +235,14 @@ int commandConfigReset(const QStringList &args)
             err().flush();
             return kExitUsage;
         }
-        out() << (key.isEmpty()
-                      ? QStringLiteral("Restaurar todas as configurações? [s/N] ")
-                      : QStringLiteral("Restaurar %1 para o padrão? [s/N] ").arg(key));
+        out() << (key.isEmpty() ? QStringLiteral("Restaurar todas as configurações? [s/N] ")
+                                : QStringLiteral("Restaurar %1 para o padrão? [s/N] ").arg(key));
         out().flush();
         std::string answer;
         std::getline(std::cin, answer);
         QString normalized = QString::fromStdString(answer).trimmed().toLower();
-        if (normalized != QStringLiteral("s") && normalized != QStringLiteral("sim")
-            && normalized != QStringLiteral("y") && normalized != QStringLiteral("yes")) {
+        if (normalized != QStringLiteral("s") && normalized != QStringLiteral("sim") &&
+            normalized != QStringLiteral("y") && normalized != QStringLiteral("yes")) {
             out() << "cancelado\n";
             out().flush();
             return kExitOk;
@@ -274,8 +256,7 @@ int commandConfigReset(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result =
-        client.call(QStringLiteral("settings.reset"), params, &error);
+    const QJsonObject result = client.call(QStringLiteral("settings.reset"), params, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -289,8 +270,6 @@ int commandConfigReset(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int commandConfigSchema(const QStringList &args)
 {
@@ -306,8 +285,7 @@ int commandConfigSchema(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result =
-        client.call(QStringLiteral("settings.schema"), {}, &error);
+    const QJsonObject result = client.call(QStringLiteral("settings.schema"), {}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -328,20 +306,18 @@ int commandConfigSchema(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int commandConfig(const QStringList &args)
 {
     const QString sub = args.isEmpty() ? QStringLiteral("show") : args.first();
     const QStringList rest = args.mid(1);
 
-    if (sub == QStringLiteral("--help") || sub == QStringLiteral("-h")
-        || sub == QStringLiteral("help")) {
+    if (sub == QStringLiteral("--help") || sub == QStringLiteral("-h") ||
+        sub == QStringLiteral("help")) {
         printConfigUsage(out());
         return kExitOk;
     }
-    if (sub == QStringLiteral("show") || sub == QStringLiteral("ls")
-        || sub == QStringLiteral("list")) {
+    if (sub == QStringLiteral("show") || sub == QStringLiteral("ls") ||
+        sub == QStringLiteral("list")) {
         return commandConfigShow(rest);
     }
     if (sub == QStringLiteral("get")) {

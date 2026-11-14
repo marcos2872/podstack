@@ -12,8 +12,7 @@
 
 namespace PodStack {
 
-SettingsController::SettingsController(QObject *parent)
-    : ControllerBase(parent)
+SettingsController::SettingsController(QObject *parent) : ControllerBase(parent)
 {
     connect(&m_watcher, &QFutureWatcher<QJsonObject>::finished, this,
             &SettingsController::onFinished);
@@ -39,8 +38,7 @@ QVariantMap SettingsController::settings() const
     values.insert(QStringLiteral("proxy"),
                   m_values.value(QStringLiteral("network.proxy"), QStringLiteral("auto")));
     QStringList proxyExclude;
-    for (const QVariant &entry :
-         m_values.value(QStringLiteral("network.proxyExclude")).toList()) {
+    for (const QVariant &entry : m_values.value(QStringLiteral("network.proxyExclude")).toList()) {
         const QString text = entry.toString();
         if (!text.isEmpty()) {
             proxyExclude.append(text);
@@ -193,8 +191,8 @@ void SettingsController::onActionFinished()
         if (result.contains(QStringLiteral("values"))) {
             applyValues(result.value(QStringLiteral("values")).toObject().toVariantMap());
         }
-        if (result.value(QStringLiteral("restartRequired")).toBool(false) && !key.isEmpty()
-            && !m_pendingRestartKeys.contains(key)) {
+        if (result.value(QStringLiteral("restartRequired")).toBool(false) && !key.isEmpty() &&
+            !m_pendingRestartKeys.contains(key)) {
             m_pendingRestartKeys.append(key);
             emit pendingRestartKeysChanged();
         }
@@ -232,8 +230,8 @@ void SettingsController::saveEngineMode(const QString &mode)
     setSetting(QStringLiteral("engine.mode"), mode);
 }
 
-void SettingsController::saveTraySettings(bool keepRunning, bool showInTray,
-                                          bool startAtLogin, bool notifications)
+void SettingsController::saveTraySettings(bool keepRunning, bool showInTray, bool startAtLogin,
+                                          bool notifications)
 {
     setSetting(QStringLiteral("app.keepRunningInTray"), keepRunning);
     setSetting(QStringLiteral("app.showInTray"), showInTray);
@@ -268,8 +266,8 @@ void SettingsController::saveProxySettings(const QString &proxy, const QString &
 
 void SettingsController::saveTheme(const QString &theme)
 {
-    if (theme != QStringLiteral("system") && theme != QStringLiteral("dark")
-        && theme != QStringLiteral("light")) {
+    if (theme != QStringLiteral("system") && theme != QStringLiteral("dark") &&
+        theme != QStringLiteral("light")) {
         setError(QStringLiteral("Tema inválido."));
         return;
     }

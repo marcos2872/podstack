@@ -12,7 +12,6 @@ namespace PodStack {
 namespace {
 int g_logBufferLines = 10000;
 
-
 QJsonObject errorPayload(const Error &error)
 {
     QJsonObject payload;
@@ -22,10 +21,7 @@ QJsonObject errorPayload(const Error &error)
 
 } // namespace
 
-ControllerBase::ControllerBase(QObject *parent)
-    : QObject(parent)
-{
-}
+ControllerBase::ControllerBase(QObject *parent) : QObject(parent) {}
 
 void ControllerBase::clearLastError()
 {
@@ -55,8 +51,8 @@ QString ControllerBase::errorMessage(const QJsonObject &result)
 
 bool ControllerBase::isErrorResult(const QJsonObject &result)
 {
-    return result.value(QStringLiteral("__error")).isObject()
-           || result.value(QStringLiteral("error")).isObject();
+    return result.value(QStringLiteral("__error")).isObject() ||
+           result.value(QStringLiteral("error")).isObject();
 }
 
 void ControllerBase::callRpc(const QString &method, const QJsonObject &params, Callback done,
@@ -98,8 +94,8 @@ void ControllerBase::runAction(const QString &method, const QJsonObject &params,
     startAction(action, std::move(done));
 }
 
-void ControllerBase::runJob(const QString &label, const QJsonObject &params, Job job,
-                            Callback done, int timeoutMs)
+void ControllerBase::runJob(const QString &label, const QJsonObject &params, Job job, Callback done,
+                            int timeoutMs)
 {
     PendingAction action;
     action.method = label;
@@ -191,8 +187,8 @@ void ControllerBase::setLastError(const QString &message)
 }
 
 QJsonObject ControllerBase::runBatchCalls(const QString &prefix, const QString &idKey,
-                                          const QString &action, const QStringList &ids,
-                                          bool force, const QJsonObject &extra)
+                                          const QString &action, const QStringList &ids, bool force,
+                                          const QJsonObject &extra)
 {
     RpcClient client;
     int failed = 0;

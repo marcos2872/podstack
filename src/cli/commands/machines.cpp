@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandMachine(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -13,8 +11,8 @@ int commandMachine(const QStringList &args)
     }
 
     const QString &subcommand = args.first();
-    if (subcommand == QStringLiteral("--help") || subcommand == QStringLiteral("-h")
-        || subcommand == QStringLiteral("help")) {
+    if (subcommand == QStringLiteral("--help") || subcommand == QStringLiteral("-h") ||
+        subcommand == QStringLiteral("help")) {
         printMachineUsage(out());
         return kExitOk;
     }
@@ -33,8 +31,8 @@ int commandMachine(const QStringList &args)
     if (subcommand == QStringLiteral("create")) {
         return machineCreateCommand(args);
     }
-    if (subcommand == QStringLiteral("start") || subcommand == QStringLiteral("stop")
-        || subcommand == QStringLiteral("restart")) {
+    if (subcommand == QStringLiteral("start") || subcommand == QStringLiteral("stop") ||
+        subcommand == QStringLiteral("restart")) {
         return machineLifecycleCommand(subcommand, args);
     }
     if (subcommand == QStringLiteral("delete") || subcommand == QStringLiteral("rm")) {
@@ -113,8 +111,7 @@ int commandMachine(const QStringList &args)
                           QStringLiteral("VERSÃO").leftJustified(8),
                           QStringLiteral("ARCH").leftJustified(7),
                           QStringLiteral("PADRÃO").leftJustified(8),
-                          QStringLiteral("CACHE").leftJustified(7),
-                          QStringLiteral("URL"));
+                          QStringLiteral("CACHE").leftJustified(7), QStringLiteral("URL"));
         for (const QJsonValue &value : items) {
             const QJsonObject item = value.toObject();
             out() << QStringLiteral("%1 %2 %3 %4 %5 %6\n")
@@ -139,8 +136,6 @@ int commandMachine(const QStringList &args)
     printMachineUsage(err());
     return kExitUsage;
 }
-
-
 
 int machineListCommand(const QStringList &args)
 {
@@ -213,8 +208,6 @@ int machineListCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int machineInfoCommand(const QStringList &args)
 {
     QString id;
@@ -237,9 +230,8 @@ int machineInfoCommand(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject machine =
-        client.call(QStringLiteral("machines.get"),
-                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    const QJsonObject machine = client.call(QStringLiteral("machines.get"),
+                                            QJsonObject{{QStringLiteral("id"), id}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -258,8 +250,7 @@ int machineInfoCommand(const QStringList &args)
           << "cpus: " << machine.value(QStringLiteral("cpus")).toInt() << '\n'
           << "memória: " << formatSize(machine.value(QStringLiteral("memoryBytes")).toInteger())
           << '\n'
-          << "disco: " << formatSize(machine.value(QStringLiteral("diskBytes")).toInteger())
-          << '\n'
+          << "disco: " << formatSize(machine.value(QStringLiteral("diskBytes")).toInteger()) << '\n'
           << "ssh: " << machineSsh(machine) << '\n'
           << "criada: " << machine.value(QStringLiteral("createdAt")).toString() << '\n';
     const QString machineError = machine.value(QStringLiteral("error")).toString();
@@ -269,8 +260,6 @@ int machineInfoCommand(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineLogsCommand(const QStringList &args)
 {
@@ -302,11 +291,9 @@ int machineLogsCommand(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result =
-        client.call(QStringLiteral("machines.logs"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("tail"), tail}},
-                    &error, 30000);
+    const QJsonObject result = client.call(
+        QStringLiteral("machines.logs"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("tail"), tail}}, &error, 30000);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -324,8 +311,6 @@ int machineLogsCommand(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineConsoleCommand(const QStringList &args)
 {
@@ -369,8 +354,7 @@ int machineConsoleCommand(const QStringList &args)
         return kExitUsage;
     }
 
-    const QJsonObject params{{QStringLiteral("id"), id},
-                             {QStringLiteral("tailBytes"), tailBytes}};
+    const QJsonObject params{{QStringLiteral("id"), id}, {QStringLiteral("tailBytes"), tailBytes}};
 
     if (noFollow) {
         PodStack::RpcClient client;
@@ -409,8 +393,6 @@ int machineConsoleCommand(const QStringList &args)
         &error, 0, false);
     return ok ? kExitOk : fail(error);
 }
-
-
 
 int machineCreateCommand(const QStringList &args)
 {
@@ -470,8 +452,7 @@ int machineCreateCommand(const QStringList &args)
     if (!userDataPath.isEmpty()) {
         QFile file(userDataPath);
         if (!file.open(QIODevice::ReadOnly)) {
-            err() << "não foi possível ler " << userDataPath << ": " << file.errorString()
-                  << '\n';
+            err() << "não foi possível ler " << userDataPath << ": " << file.errorString() << '\n';
             err().flush();
             return kExitError;
         }
@@ -543,8 +524,6 @@ int machineCreateCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int machineLifecycleCommand(const QString &action, const QStringList &args)
 {
     QString id;
@@ -598,8 +577,7 @@ int machineLifecycleCommand(const QString &action, const QStringList &args)
     }
 
     const QString name = result.value(QStringLiteral("name")).toString();
-    const QString display = name.isEmpty() ? result.value(QStringLiteral("id")).toString()
-                                           : name;
+    const QString display = name.isEmpty() ? result.value(QStringLiteral("id")).toString() : name;
     const QString state = result.value(QStringLiteral("state")).toString();
     if (action == QStringLiteral("start")) {
         out() << "machine " << display << " iniciada (" << state << ")\n";
@@ -611,8 +589,6 @@ int machineLifecycleCommand(const QString &action, const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineDeleteCommand(const QStringList &args)
 {
@@ -662,8 +638,6 @@ int machineDeleteCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int machineExportCommand(const QStringList &args)
 {
     QString id;
@@ -712,8 +686,7 @@ int machineExportCommand(const QStringList &args)
                 }
             } else if (method == QStringLiteral("machines.done")) {
                 donePayload = payload;
-                const QJsonObject errorObject =
-                    payload.value(QStringLiteral("error")).toObject();
+                const QJsonObject errorObject = payload.value(QStringLiteral("error")).toObject();
                 if (!errorObject.isEmpty()) {
                     doneError = errorFromJson(errorObject);
                 }
@@ -739,8 +712,6 @@ int machineExportCommand(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineImportCommand(const QStringList &args)
 {
@@ -796,8 +767,7 @@ int machineImportCommand(const QStringList &args)
                 }
             } else if (method == QStringLiteral("machines.done")) {
                 donePayload = payload;
-                const QJsonObject errorObject =
-                    payload.value(QStringLiteral("error")).toObject();
+                const QJsonObject errorObject = payload.value(QStringLiteral("error")).toObject();
                 if (!errorObject.isEmpty()) {
                     doneError = errorFromJson(errorObject);
                 }
@@ -825,8 +795,6 @@ int machineImportCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int machineRenameCommand(const QStringList &args)
 {
     QString id;
@@ -852,11 +820,9 @@ int machineRenameCommand(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result =
-        client.call(QStringLiteral("machines.rename"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("name"), name}},
-                    &error);
+    const QJsonObject result = client.call(
+        QStringLiteral("machines.rename"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("name"), name}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -867,13 +833,11 @@ int machineRenameCommand(const QStringList &args)
         return kExitOk;
     }
 
-    out() << "machine " << result.value(QStringLiteral("id")).toString()
-          << " renomeada para " << result.value(QStringLiteral("name")).toString() << '\n';
+    out() << "machine " << result.value(QStringLiteral("id")).toString() << " renomeada para "
+          << result.value(QStringLiteral("name")).toString() << '\n';
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineCloneCommand(const QStringList &args)
 {
@@ -914,8 +878,7 @@ int machineCloneCommand(const QStringList &args)
                 }
             } else if (method == QStringLiteral("machines.done")) {
                 donePayload = payload;
-                const QJsonObject errorObject =
-                    payload.value(QStringLiteral("error")).toObject();
+                const QJsonObject errorObject = payload.value(QStringLiteral("error")).toObject();
                 if (!errorObject.isEmpty()) {
                     doneError = errorFromJson(errorObject);
                 }
@@ -942,8 +905,6 @@ int machineCloneCommand(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineUpdateCommand(const QStringList &args)
 {
@@ -981,8 +942,8 @@ int machineUpdateCommand(const QStringList &args)
                 return kExitUsage;
             }
             hasDisk = true;
-        } else if (arg == QStringLiteral("--forward-agent")
-                   || arg == QStringLiteral("--no-forward-agent")) {
+        } else if (arg == QStringLiteral("--forward-agent") ||
+                   arg == QStringLiteral("--no-forward-agent")) {
             const bool requested = arg == QStringLiteral("--forward-agent");
             if (hasForwardAgent && forwardAgent != requested) {
                 err() << "use apenas um de --forward-agent/--no-forward-agent\n";
@@ -1033,18 +994,15 @@ int machineUpdateCommand(const QStringList &args)
     }
 
     const QString name = result.value(QStringLiteral("name")).toString();
-    const QString display = name.isEmpty() ? result.value(QStringLiteral("id")).toString()
-                                           : name;
-    out() << "machine " << display << " atualizada: "
-          << result.value(QStringLiteral("cpus")).toInt() << " CPUs, "
+    const QString display = name.isEmpty() ? result.value(QStringLiteral("id")).toString() : name;
+    out() << "machine " << display
+          << " atualizada: " << result.value(QStringLiteral("cpus")).toInt() << " CPUs, "
           << formatSize(result.value(QStringLiteral("memoryBytes")).toInteger()) << " RAM, "
           << formatSize(result.value(QStringLiteral("diskBytes")).toInteger()) << " disco ("
           << result.value(QStringLiteral("state")).toString() << ")\n";
     out().flush();
     return kExitOk;
 }
-
-
 
 int machinePortListCommand(const QStringList &args)
 {
@@ -1068,9 +1026,8 @@ int machinePortListCommand(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result =
-        client.call(QStringLiteral("machines.ports.list"),
-                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    const QJsonObject result = client.call(QStringLiteral("machines.ports.list"),
+                                           QJsonObject{{QStringLiteral("id"), id}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -1091,17 +1048,15 @@ int machinePortListCommand(const QStringList &args)
     for (const QJsonValue &value : ports) {
         const QJsonObject port = value.toObject();
         idWidth = qMax(idWidth, port.value(QStringLiteral("id")).toString().size());
-        hostWidth = qMax(hostWidth,
-                         QString::number(port.value(QStringLiteral("hostPort")).toInt()).size());
+        hostWidth =
+            qMax(hostWidth, QString::number(port.value(QStringLiteral("hostPort")).toInt()).size());
         guestWidth = qMax(guestWidth,
                           QString::number(port.value(QStringLiteral("guestPort")).toInt()).size());
-        protoWidth = qMax(protoWidth,
-                          port.value(QStringLiteral("protocol")).toString().size());
-        bindWidth = qMax(bindWidth,
-                         (port.value(QStringLiteral("exposeLan")).toBool()
-                              ? QStringLiteral("0.0.0.0 (LAN)")
-                              : QStringLiteral("127.0.0.1"))
-                             .size());
+        protoWidth = qMax(protoWidth, port.value(QStringLiteral("protocol")).toString().size());
+        bindWidth = qMax(bindWidth, (port.value(QStringLiteral("exposeLan")).toBool()
+                                         ? QStringLiteral("0.0.0.0 (LAN)")
+                                         : QStringLiteral("127.0.0.1"))
+                                        .size());
         labelWidth = qMax(labelWidth, port.value(QStringLiteral("label")).toString().size());
     }
 
@@ -1110,29 +1065,26 @@ int machinePortListCommand(const QStringList &args)
                       QStringLiteral("HOST").leftJustified(hostWidth),
                       QStringLiteral("GUEST").leftJustified(guestWidth),
                       QStringLiteral("PROTO").leftJustified(protoWidth),
-                      QStringLiteral("BIND").leftJustified(bindWidth),
-                      QStringLiteral("LABEL"));
+                      QStringLiteral("BIND").leftJustified(bindWidth), QStringLiteral("LABEL"));
     for (const QJsonValue &value : ports) {
         const QJsonObject port = value.toObject();
-        out() << QStringLiteral("%1  %2  %3  %4  %5  %6\n")
-                     .arg(port.value(QStringLiteral("id")).toString().leftJustified(idWidth),
-                          QString::number(port.value(QStringLiteral("hostPort")).toInt())
-                              .leftJustified(hostWidth),
-                          QString::number(port.value(QStringLiteral("guestPort")).toInt())
-                              .leftJustified(guestWidth),
-                          port.value(QStringLiteral("protocol")).toString()
-                              .leftJustified(protoWidth),
-                          (port.value(QStringLiteral("exposeLan")).toBool()
-                               ? QStringLiteral("0.0.0.0 (LAN)")
-                               : QStringLiteral("127.0.0.1"))
-                              .leftJustified(bindWidth),
-                          port.value(QStringLiteral("label")).toString());
+        out()
+            << QStringLiteral("%1  %2  %3  %4  %5  %6\n")
+                   .arg(port.value(QStringLiteral("id")).toString().leftJustified(idWidth),
+                        QString::number(port.value(QStringLiteral("hostPort")).toInt())
+                            .leftJustified(hostWidth),
+                        QString::number(port.value(QStringLiteral("guestPort")).toInt())
+                            .leftJustified(guestWidth),
+                        port.value(QStringLiteral("protocol")).toString().leftJustified(protoWidth),
+                        (port.value(QStringLiteral("exposeLan")).toBool()
+                             ? QStringLiteral("0.0.0.0 (LAN)")
+                             : QStringLiteral("127.0.0.1"))
+                            .leftJustified(bindWidth),
+                        port.value(QStringLiteral("label")).toString());
     }
     out().flush();
     return kExitOk;
 }
-
-
 
 int machinePortAddCommand(const QStringList &args)
 {
@@ -1185,29 +1137,24 @@ int machinePortAddCommand(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject listed =
-        client.call(QStringLiteral("machines.ports.list"),
-                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    const QJsonObject listed = client.call(QStringLiteral("machines.ports.list"),
+                                           QJsonObject{{QStringLiteral("id"), id}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
 
-    QJsonArray ports =
-        machinePortsWithoutSsh(listed.value(QStringLiteral("items")).toArray());
+    QJsonArray ports = machinePortsWithoutSsh(listed.value(QStringLiteral("items")).toArray());
     QJsonObject port;
     port.insert(QStringLiteral("hostPort"), hostPort);
     port.insert(QStringLiteral("guestPort"), guestPort);
-    port.insert(QStringLiteral("protocol"),
-                udp ? QStringLiteral("udp") : QStringLiteral("tcp"));
+    port.insert(QStringLiteral("protocol"), udp ? QStringLiteral("udp") : QStringLiteral("tcp"));
     port.insert(QStringLiteral("exposeLan"), exposeLan);
     port.insert(QStringLiteral("label"), label);
     ports.append(port);
 
-    const QJsonObject result =
-        client.call(QStringLiteral("machines.ports.set"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("ports"), ports}},
-                    &error, 180000);
+    const QJsonObject result = client.call(
+        QStringLiteral("machines.ports.set"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("ports"), ports}}, &error, 180000);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -1225,8 +1172,6 @@ int machinePortAddCommand(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int machinePortRemoveCommand(const QStringList &args)
 {
@@ -1253,9 +1198,8 @@ int machinePortRemoveCommand(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject listed =
-        client.call(QStringLiteral("machines.ports.list"),
-                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    const QJsonObject listed = client.call(QStringLiteral("machines.ports.list"),
+                                           QJsonObject{{QStringLiteral("id"), id}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -1268,8 +1212,8 @@ int machinePortRemoveCommand(const QStringList &args)
         if (!machinePortIsSsh(port)) {
             continue;
         }
-        if (port.value(QStringLiteral("id")).toString() == target
-            || (numeric && port.value(QStringLiteral("hostPort")).toInt() == hostPort)) {
+        if (port.value(QStringLiteral("id")).toString() == target ||
+            (numeric && port.value(QStringLiteral("hostPort")).toInt() == hostPort)) {
             return fail(PodStack::Error::make(
                 QStringLiteral("PODSTACK_INVALID_PARAMS"),
                 QStringLiteral("A porta SSH é gerenciada pela machine e não pode ser removida."),
@@ -1300,8 +1244,7 @@ int machinePortRemoveCommand(const QStringList &args)
             if (removeIndex >= 0) {
                 return fail(PodStack::Error::make(
                     QStringLiteral("PODSTACK_INVALID_PARAMS"),
-                    QStringLiteral("Mais de uma porta usa esse hostPort; use o ID."),
-                    target));
+                    QStringLiteral("Mais de uma porta usa esse hostPort; use o ID."), target));
             }
             removeIndex = index;
         }
@@ -1321,8 +1264,7 @@ int machinePortRemoveCommand(const QStringList &args)
 
     const QJsonObject result =
         client.call(QStringLiteral("machines.ports.set"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("ports"), remaining}},
+                    QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("ports"), remaining}},
                     &error, 180000);
     if (!error.isEmpty()) {
         return fail(error);
@@ -1340,12 +1282,10 @@ int machinePortRemoveCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int machinePortCommand(const QStringList &args)
 {
-    if (args.isEmpty() || args.first() == QStringLiteral("--help")
-        || args.first() == QStringLiteral("-h") || args.first() == QStringLiteral("help")) {
+    if (args.isEmpty() || args.first() == QStringLiteral("--help") ||
+        args.first() == QStringLiteral("-h") || args.first() == QStringLiteral("help")) {
         printMachineUsage(args.isEmpty() ? err() : out());
         return args.isEmpty() ? kExitUsage : kExitOk;
     }
@@ -1362,8 +1302,6 @@ int machinePortCommand(const QStringList &args)
     printMachineUsage(err());
     return kExitUsage;
 }
-
-
 
 int machineSerialCommand(const QStringList &args)
 {
@@ -1464,8 +1402,6 @@ int machineSerialCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int machineAudioCommand(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -1514,8 +1450,6 @@ int machineAudioCommand(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineUsbCommand(const QStringList &args)
 {
@@ -1633,8 +1567,6 @@ int machineUsbCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int machineSnapshotListCommand(const QStringList &args)
 {
     QString id;
@@ -1657,9 +1589,8 @@ int machineSnapshotListCommand(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result =
-        client.call(QStringLiteral("machines.snapshots.list"),
-                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    const QJsonObject result = client.call(QStringLiteral("machines.snapshots.list"),
+                                           QJsonObject{{QStringLiteral("id"), id}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -1690,8 +1621,6 @@ int machineSnapshotListCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int machineSnapshotCreateCommand(const QStringList &args)
 {
     QString id;
@@ -1719,8 +1648,7 @@ int machineSnapshotCreateCommand(const QStringList &args)
     PodStack::Error error;
     const QJsonObject result =
         client.call(QStringLiteral("machines.snapshots.create"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("name"), snapshotName}},
+                    QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("name"), snapshotName}},
                     &error, 180000);
     if (!error.isEmpty()) {
         return fail(error);
@@ -1732,13 +1660,11 @@ int machineSnapshotCreateCommand(const QStringList &args)
         return kExitOk;
     }
 
-    out() << "snapshot " << result.value(QStringLiteral("name")).toString()
-          << " criado na machine " << id << '\n';
+    out() << "snapshot " << result.value(QStringLiteral("name")).toString() << " criado na machine "
+          << id << '\n';
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineSnapshotRestoreCommand(const QStringList &args)
 {
@@ -1771,8 +1697,7 @@ int machineSnapshotRestoreCommand(const QStringList &args)
     PodStack::Error error;
     const QJsonObject result =
         client.call(QStringLiteral("machines.snapshots.restore"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("name"), snapshotName}},
+                    QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("name"), snapshotName}},
                     &error, 180000);
     if (!error.isEmpty()) {
         return fail(error);
@@ -1790,8 +1715,6 @@ int machineSnapshotRestoreCommand(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineSnapshotRemoveCommand(const QStringList &args)
 {
@@ -1820,8 +1743,7 @@ int machineSnapshotRemoveCommand(const QStringList &args)
     PodStack::Error error;
     const QJsonObject result =
         client.call(QStringLiteral("machines.snapshots.remove"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("name"), snapshotName}},
+                    QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("name"), snapshotName}},
                     &error, 180000);
     if (!error.isEmpty()) {
         return fail(error);
@@ -1838,12 +1760,10 @@ int machineSnapshotRemoveCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int machineSnapshotCommand(const QStringList &args)
 {
-    if (args.isEmpty() || args.first() == QStringLiteral("--help")
-        || args.first() == QStringLiteral("-h") || args.first() == QStringLiteral("help")) {
+    if (args.isEmpty() || args.first() == QStringLiteral("--help") ||
+        args.first() == QStringLiteral("-h") || args.first() == QStringLiteral("help")) {
         printMachineUsage(args.isEmpty() ? err() : out());
         return args.isEmpty() ? kExitUsage : kExitOk;
     }
@@ -1863,8 +1783,6 @@ int machineSnapshotCommand(const QStringList &args)
     printMachineUsage(err());
     return kExitUsage;
 }
-
-
 
 int machineDefaultCommand(const QStringList &args)
 {
@@ -1891,8 +1809,7 @@ int machineDefaultCommand(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result =
-        client.call(QStringLiteral("machines.default"), params, &error);
+    const QJsonObject result = client.call(QStringLiteral("machines.default"), params, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -1912,8 +1829,6 @@ int machineDefaultCommand(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineSshCommand(const QStringList &args)
 {
@@ -1958,9 +1873,8 @@ int machineSshCommand(const QStringList &args)
         }
     }
 
-    const QJsonObject result =
-        client.call(QStringLiteral("machines.ssh"),
-                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+    const QJsonObject result = client.call(QStringLiteral("machines.ssh"),
+                                           QJsonObject{{QStringLiteral("id"), id}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -2014,12 +1928,10 @@ int machineSshCommand(const QStringList &args)
     return kExitError;
 }
 
-
-
 int machineFilesCommand(const QStringList &args)
 {
-    if (args.size() < 2 || args.at(1) == QStringLiteral("--help")
-        || args.at(1) == QStringLiteral("-h") || args.at(1) == QStringLiteral("help")) {
+    if (args.size() < 2 || args.at(1) == QStringLiteral("--help") ||
+        args.at(1) == QStringLiteral("-h") || args.at(1) == QStringLiteral("help")) {
         printMachineUsage(args.size() < 2 ? err() : out());
         return args.size() < 2 ? kExitUsage : kExitOk;
     }
@@ -2064,11 +1976,9 @@ int machineFilesCommand(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result =
-        client.call(QStringLiteral("machines.files.list"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("path"), path}},
-                    &error);
+    const QJsonObject result = client.call(
+        QStringLiteral("machines.files.list"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("path"), path}}, &error);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -2084,8 +1994,7 @@ int machineFilesCommand(const QStringList &args)
     out() << QStringLiteral("%1 %2 %3 %4\n")
                  .arg(QStringLiteral("TIPO").leftJustified(8),
                       QStringLiteral("TAMANHO").leftJustified(10),
-                      QStringLiteral("MODIFICADO").leftJustified(17),
-                      QStringLiteral("NOME"));
+                      QStringLiteral("MODIFICADO").leftJustified(17), QStringLiteral("NOME"));
     const QJsonArray items = result.value(QStringLiteral("items")).toArray();
     for (const QJsonValue &value : items) {
         const QJsonObject item = value.toObject();
@@ -2094,19 +2003,14 @@ int machineFilesCommand(const QStringList &args)
                      .arg((directory ? QStringLiteral("dir") : QStringLiteral("arquivo"))
                               .leftJustified(8),
                           (directory ? QStringLiteral("-")
-                                     : humanBytes(item.value(QStringLiteral("size"))
-                                                      .toInteger()))
+                                     : humanBytes(item.value(QStringLiteral("size")).toInteger()))
                               .leftJustified(10),
-                          item.value(QStringLiteral("modified"))
-                              .toString()
-                              .leftJustified(17),
+                          item.value(QStringLiteral("modified")).toString().leftJustified(17),
                           item.value(QStringLiteral("name")).toString());
     }
     out().flush();
     return kExitOk;
 }
-
-
 
 int machineTransferCommand(const QString &direction, const QStringList &args)
 {
@@ -2169,12 +2073,11 @@ int machineTransferCommand(const QString &direction, const QStringList &args)
     }
 
     if (pull) {
-        out() << "baixado " << result.value(QStringLiteral("path")).toString(remote)
-              << " -> "
+        out() << "baixado " << result.value(QStringLiteral("path")).toString(remote) << " -> "
               << result.value(QStringLiteral("destination")).toString(local) << '\n';
     } else {
-        out() << "enviado " << result.value(QStringLiteral("sourcePath")).toString(local)
-              << " -> " << result.value(QStringLiteral("path")).toString(remote) << '\n';
+        out() << "enviado " << result.value(QStringLiteral("sourcePath")).toString(local) << " -> "
+              << result.value(QStringLiteral("path")).toString(remote) << '\n';
     }
     out().flush();
     return kExitOk;

@@ -3,16 +3,12 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandVersion()
 {
     out() << "PodStack " << QStringLiteral(PODSTACK_VERSION) << '\n';
     out().flush();
     return kExitOk;
 }
-
-
 
 int commandStatus()
 {
@@ -38,8 +34,6 @@ int commandStatus()
     out().flush();
     return kExitOk;
 }
-
-
 
 int commandReport(const QStringList &args)
 {
@@ -118,8 +112,6 @@ int commandReport(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int commandUpdate(const QStringList &args)
 {
@@ -349,8 +341,6 @@ int commandUpdate(const QStringList &args)
     return PodStack::UpdateRunner::exitCodeFor(error);
 }
 
-
-
 int commandDoctor()
 {
     PodStack::RpcClient client;
@@ -376,8 +366,6 @@ int commandDoctor()
     out().flush();
     return allOk ? kExitOk : kExitError;
 }
-
-
 
 int commandTop(const QStringList &args)
 {
@@ -453,8 +441,6 @@ int commandTop(const QStringList &args)
     }
     return kExitOk;
 }
-
-
 
 int commandSystemLogs(const QStringList &args)
 {
@@ -638,8 +624,6 @@ int commandSystemLogs(const QStringList &args)
     }
 }
 
-
-
 int commandSystem(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -648,8 +632,8 @@ int commandSystem(const QStringList &args)
         return kExitUsage;
     }
     const QString &sub = args.first();
-    if (sub == QStringLiteral("--help") || sub == QStringLiteral("-h")
-        || sub == QStringLiteral("help")) {
+    if (sub == QStringLiteral("--help") || sub == QStringLiteral("-h") ||
+        sub == QStringLiteral("help")) {
         out() << "Uso: podstack system df [--detailed] [--json]\n"
               << "     podstack system disk [--json]\n";
         out().flush();
@@ -754,9 +738,9 @@ int commandSystem(const QStringList &args)
 
     PodStack::RpcClient client;
     PodStack::Error error;
-    const QJsonObject result = client.call(
-        QStringLiteral("system.df"),
-        QJsonObject{{QStringLiteral("detailed"), detailed}}, &error, 60000);
+    const QJsonObject result =
+        client.call(QStringLiteral("system.df"),
+                    QJsonObject{{QStringLiteral("detailed"), detailed}}, &error, 60000);
     if (!error.isEmpty()) {
         return fail(error);
     }
@@ -777,11 +761,12 @@ int commandSystem(const QStringList &args)
                      .arg(QString::number(value.value(QStringLiteral("count")).toInt())
                               .rightJustified(6))
                      .arg(humanBytes(static_cast<qint64>(
-                              value.value(QStringLiteral("sizeBytes")).toDouble()))
+                                         value.value(QStringLiteral("sizeBytes")).toDouble()))
                               .rightJustified(11))
-                     .arg(humanBytes(static_cast<qint64>(
-                              value.value(QStringLiteral("reclaimableBytes")).toDouble()))
-                              .rightJustified(11));
+                     .arg(
+                         humanBytes(static_cast<qint64>(
+                                        value.value(QStringLiteral("reclaimableBytes")).toDouble()))
+                             .rightJustified(11));
     };
 
     if (!detailed) {
@@ -813,12 +798,10 @@ int commandSystem(const QStringList &args)
         if (item.value(QStringLiteral("dangling")).toBool()) {
             flags.append(QStringLiteral("dangling"));
         }
-        flags.append(item.value(QStringLiteral("unused")).toBool()
-                         ? QStringLiteral("sem uso")
-                         : QStringLiteral("em uso"));
+        flags.append(item.value(QStringLiteral("unused")).toBool() ? QStringLiteral("sem uso")
+                                                                   : QStringLiteral("em uso"));
         out() << "  " << imageLabel(item).leftJustified(48) << "  "
-              << humanBytes(static_cast<qint64>(
-                     item.value(QStringLiteral("sizeBytes")).toDouble()))
+              << humanBytes(static_cast<qint64>(item.value(QStringLiteral("sizeBytes")).toDouble()))
                      .rightJustified(10)
               << "  " << flags.join(QStringLiteral(" · ")) << '\n';
     }
@@ -831,13 +814,11 @@ int commandSystem(const QStringList &args)
     for (const QJsonValue &value : containers) {
         const QJsonObject item = value.toObject();
         out() << "  " << item.value(QStringLiteral("name")).toString().leftJustified(48) << "  "
-              << humanBytes(static_cast<qint64>(
-                     item.value(QStringLiteral("sizeBytes")).toDouble()))
+              << humanBytes(static_cast<qint64>(item.value(QStringLiteral("sizeBytes")).toDouble()))
                      .rightJustified(10)
               << "  " << item.value(QStringLiteral("status")).toString()
-              << (item.value(QStringLiteral("running")).toBool()
-                      ? QStringLiteral(" (em execução)")
-                      : QStringLiteral(" (parado)"))
+              << (item.value(QStringLiteral("running")).toBool() ? QStringLiteral(" (em execução)")
+                                                                 : QStringLiteral(" (parado)"))
               << '\n';
     }
     if (containers.isEmpty()) {
@@ -850,11 +831,11 @@ int commandSystem(const QStringList &args)
         const QJsonObject item = value.toObject();
         const bool inUse = item.value(QStringLiteral("inUse")).toBool();
         out() << "  " << item.value(QStringLiteral("name")).toString().leftJustified(48) << "  "
-              << humanBytes(static_cast<qint64>(
-                     item.value(QStringLiteral("sizeBytes")).toDouble()))
+              << humanBytes(static_cast<qint64>(item.value(QStringLiteral("sizeBytes")).toDouble()))
                      .rightJustified(10)
-              << "  " << (inUse ? QStringLiteral("em uso · não será removido")
-                                : QStringLiteral("sem uso · será removido"))
+              << "  "
+              << (inUse ? QStringLiteral("em uso · não será removido")
+                        : QStringLiteral("sem uso · será removido"))
               << '\n';
     }
     if (volumes.isEmpty()) {

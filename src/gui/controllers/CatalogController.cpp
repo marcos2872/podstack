@@ -3,10 +3,7 @@
 
 namespace PodStack {
 
-CatalogController::CatalogController(QObject *parent)
-    : ControllerBase(parent)
-{
-}
+CatalogController::CatalogController(QObject *parent) : ControllerBase(parent) {}
 
 void CatalogController::refresh()
 {

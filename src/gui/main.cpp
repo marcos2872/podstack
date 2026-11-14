@@ -2,14 +2,14 @@
 #include "core/config/Config.h"
 #include "core/logging/Logging.h"
 #include "gui/app/Autostart.h"
-#include "gui/controllers/Backend.h"
-#include "gui/models/ContainerListModel.h"
 #include "gui/app/MainWindow.h"
-#include "gui/app/notifications/Notifications.h"
 #include "gui/app/SingleInstance.h"
 #include "gui/app/Translation.h"
-#include "gui/app/tray/Tray.h"
 #include "gui/app/UnixSignals.h"
+#include "gui/app/notifications/Notifications.h"
+#include "gui/app/tray/Tray.h"
+#include "gui/controllers/Backend.h"
+#include "gui/models/ContainerListModel.h"
 
 #include <QApplication>
 #include <QCommandLineOption>
@@ -92,18 +92,14 @@ int main(int argc, char *argv[])
     QObject::connect(backend.k8s(), &PodStack::K8sController::changed, &tray,
                      [&backend, &tray]() { tray.setKubernetes(backend.k8s()->enabled()); });
     QObject::connect(backend.compose(), &PodStack::ComposeController::itemsChanged, &tray,
-                     [&backend, &tray]() {
-                         tray.setComposeProjects(backend.compose()->items());
-                     });
-    QObject::connect(backend.containers(), &PodStack::ControllerBase::actionStateChanged, &tray,
-                     [&backend, &tray]() {
-                         tray.setActionActive(backend.containers()->actionActive());
-                     });
+                     [&backend, &tray]() { tray.setComposeProjects(backend.compose()->items()); });
     QObject::connect(
-        &tray, &PodStack::TrayController::containerActionRequested, &backend,
-        [&backend](const QString &action, const QString &id) {
-            backend.containers()->lifecycle(action, id);
-        });
+        backend.containers(), &PodStack::ControllerBase::actionStateChanged, &tray,
+        [&backend, &tray]() { tray.setActionActive(backend.containers()->actionActive()); });
+    QObject::connect(&tray, &PodStack::TrayController::containerActionRequested, &backend,
+                     [&backend](const QString &action, const QString &id) {
+                         backend.containers()->lifecycle(action, id);
+                     });
     QObject::connect(&tray, &PodStack::TrayController::composeActionRequested, &backend,
                      [&backend](const QString &action, const QString &path) {
                          if (action == QStringLiteral("start")) {

@@ -14,8 +14,8 @@ QVector<FileEntry> PodmanClient::listFiles(const QString &id, const QString &pat
         return {};
     }
 
-    const QString suffix = QStringLiteral("/containers/%1/archive?path=%2")
-                               .arg(encodeId(id), encodePath(path));
+    const QString suffix =
+        QStringLiteral("/containers/%1/archive?path=%2").arg(encodeId(id), encodePath(path));
     const HttpResponse response = m_http.request(QByteArrayLiteral("GET"), this->path(suffix));
     if (response.status != 200) {
         if (error) {
@@ -29,8 +29,7 @@ QVector<FileEntry> PodmanClient::listFiles(const QString &id, const QString &pat
     archive_read_support_format_tar(archive);
 
     if (archive_read_open_memory(archive, response.body.constData(),
-                                 static_cast<size_t>(response.body.size()))
-        != ARCHIVE_OK) {
+                                 static_cast<size_t>(response.body.size())) != ARCHIVE_OK) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_ARCHIVE_ERROR"),
                                  QStringLiteral("Falha ao abrir o tar do container."),
@@ -60,7 +59,8 @@ QVector<FileEntry> PodmanClient::listFiles(const QString &id, const QString &pat
         file.size = static_cast<qint64>(archive_entry_size(entry));
         file.directory = archive_entry_filetype(entry) == AE_IFDIR;
         file.mode = QString::number(archive_entry_mode(entry) & 07777, 8).rightJustified(4, '0');
-        file.modified = QDateTime::fromSecsSinceEpoch(archive_entry_mtime(entry)).toString(Qt::ISODate);
+        file.modified =
+            QDateTime::fromSecsSinceEpoch(archive_entry_mtime(entry)).toString(Qt::ISODate);
         entries.append(file);
         archive_read_data_skip(archive);
     }
@@ -69,8 +69,8 @@ QVector<FileEntry> PodmanClient::listFiles(const QString &id, const QString &pat
     return entries;
 }
 
-bool PodmanClient::downloadFile(const QString &id, const QString &path,
-                                const QString &destination, Error *error)
+bool PodmanClient::downloadFile(const QString &id, const QString &path, const QString &destination,
+                                Error *error)
 {
     if (error) {
         *error = {};
@@ -79,8 +79,8 @@ bool PodmanClient::downloadFile(const QString &id, const QString &path,
         return false;
     }
 
-    const QString suffix = QStringLiteral("/containers/%1/archive?path=%2")
-                               .arg(encodeId(id), encodePath(path));
+    const QString suffix =
+        QStringLiteral("/containers/%1/archive?path=%2").arg(encodeId(id), encodePath(path));
     const HttpResponse response = m_http.request(QByteArrayLiteral("GET"), this->path(suffix));
     if (response.status != 200) {
         if (error) {
@@ -93,8 +93,7 @@ bool PodmanClient::downloadFile(const QString &id, const QString &path,
     archive_read_support_filter_all(archive);
     archive_read_support_format_tar(archive);
     if (archive_read_open_memory(archive, response.body.constData(),
-                                 static_cast<size_t>(response.body.size()))
-        != ARCHIVE_OK) {
+                                 static_cast<size_t>(response.body.size())) != ARCHIVE_OK) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_ARCHIVE_ERROR"),
                                  QStringLiteral("Falha ao abrir o tar do container."),
@@ -117,8 +116,8 @@ bool PodmanClient::downloadFile(const QString &id, const QString &path,
         }
 
         const QString name = normalizeEntryName(QString::fromUtf8(rawName));
-        const bool matches = name == normalized || name == baseName
-                             || name.endsWith(QLatin1Char('/') + baseName);
+        const bool matches =
+            name == normalized || name == baseName || name.endsWith(QLatin1Char('/') + baseName);
         if (!matches) {
             archive_read_data_skip(archive);
             continue;
@@ -170,8 +169,8 @@ bool PodmanClient::downloadFile(const QString &id, const QString &path,
     return true;
 }
 
-bool PodmanClient::uploadFile(const QString &id, const QString &path,
-                              const QString &sourcePath, Error *error)
+bool PodmanClient::uploadFile(const QString &id, const QString &path, const QString &sourcePath,
+                              Error *error)
 {
     if (error) {
         *error = {};
@@ -184,8 +183,7 @@ bool PodmanClient::uploadFile(const QString &id, const QString &path,
     if (!info.exists() || !info.isFile()) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Arquivo de origem não encontrado."),
-                                 sourcePath);
+                                 QStringLiteral("Arquivo de origem não encontrado."), sourcePath);
         }
         return false;
     }
@@ -193,9 +191,9 @@ bool PodmanClient::uploadFile(const QString &id, const QString &path,
     QFile file(sourcePath);
     if (!file.open(QIODevice::ReadOnly)) {
         if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível ler o arquivo."),
-                                 file.errorString());
+            *error =
+                Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                            QStringLiteral("Não foi possível ler o arquivo."), file.errorString());
         }
         return false;
     }
@@ -206,8 +204,8 @@ bool PodmanClient::uploadFile(const QString &id, const QString &path,
 
     archive *writer = archive_write_new();
     archive_write_set_format_pax_restricted(writer);
-    if (archive_write_open_memory(writer, tar.data(), static_cast<size_t>(tar.size()), &used)
-        != ARCHIVE_OK) {
+    if (archive_write_open_memory(writer, tar.data(), static_cast<size_t>(tar.size()), &used) !=
+        ARCHIVE_OK) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_ARCHIVE_ERROR"),
                                  QStringLiteral("Falha ao montar o tar de upload."),
@@ -241,11 +239,10 @@ bool PodmanClient::uploadFile(const QString &id, const QString &path,
 
     tar.resize(static_cast<int>(used));
 
-    const QString suffix = QStringLiteral("/containers/%1/archive?path=%2")
-                               .arg(encodeId(id), encodePath(path));
-    const HttpResponse response = m_http.request(QByteArrayLiteral("PUT"), this->path(suffix),
-                                                 tar, QStringLiteral("application/x-tar"),
-                                                 600000);
+    const QString suffix =
+        QStringLiteral("/containers/%1/archive?path=%2").arg(encodeId(id), encodePath(path));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("PUT"), this->path(suffix), tar,
+                                                 QStringLiteral("application/x-tar"), 600000);
     if (response.status != 200 && response.status != 204) {
         if (error) {
             *error = errorFromResponse(response, QStringLiteral("Falha ao enviar o arquivo."));

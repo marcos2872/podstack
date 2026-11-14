@@ -31,10 +31,9 @@ QVector<MachineSnapshot> MachineManager::snapshots(const QString &idOrName, Erro
 QVector<MachineSnapshot> MachineManager::parseSnapshots(const MachineMeta &meta, Error *error)
 {
     if (meta.diskPath.isEmpty() || !QFileInfo(meta.diskPath).isFile()) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                          QStringLiteral("O disco da machine não existe."), meta.diskPath,
-                          QStringLiteral("Recrie a machine.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O disco da machine não existe."), meta.diskPath,
+                                 QStringLiteral("Recrie a machine.")));
         return {};
     }
 
@@ -50,17 +49,15 @@ QVector<MachineSnapshot> MachineManager::parseSnapshots(const MachineMeta &meta,
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(output, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                          QStringLiteral("Não foi possível interpretar as informações do "
-                                         "disco."),
-                          parseError.errorString()));
+        fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível interpretar as informações do "
+                                                "disco."),
+                                 parseError.errorString()));
         return {};
     }
 
     QVector<MachineSnapshot> items;
-    const QJsonArray array =
-        document.object().value(QStringLiteral("snapshots")).toArray();
+    const QJsonArray array = document.object().value(QStringLiteral("snapshots")).toArray();
     items.reserve(array.size());
     for (const QJsonValue &value : array) {
         const QJsonObject object = value.toObject();
@@ -127,9 +124,9 @@ bool MachineManager::removeSnapshot(const QString &idOrName, const QString &name
     if (spec.machineId.isEmpty()) {
         return false;
     }
-    const bool wasRunning = meta.state == QStringLiteral("running")
-                            || meta.state == QStringLiteral("starting")
-                            || m_runtime->isRunning(spec, nullptr);
+    const bool wasRunning = meta.state == QStringLiteral("running") ||
+                            meta.state == QStringLiteral("starting") ||
+                            m_runtime->isRunning(spec, nullptr);
     if (wasRunning) {
         Error stopError;
         meta = stop(meta.id, false, &stopError);
@@ -152,8 +149,7 @@ bool MachineManager::removeSnapshot(const QString &idOrName, const QString &name
     };
 
     Error removeError;
-    if (!qemuImgSnapshot({QStringLiteral("snapshot"), QStringLiteral("-d"), name,
-                          meta.diskPath},
+    if (!qemuImgSnapshot({QStringLiteral("snapshot"), QStringLiteral("-d"), name, meta.diskPath},
                          nullptr, &removeError)) {
         const Error resumeError = resume();
         if (!resumeError.isEmpty()) {
@@ -170,13 +166,12 @@ bool MachineManager::removeSnapshot(const QString &idOrName, const QString &name
     if (!resumeError.isEmpty()) {
         qCWarning(lcCore) << "Falha ao reiniciar a machine" << machineId
                           << "após remover o snapshot:" << resumeError.code;
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("O snapshot foi removido, mas a machine não "
-                                         "reiniciou."),
-                          errorText(resumeError),
-                          QStringLiteral("Inicie a machine manualmente; o snapshot já foi "
-                                         "removido do disco.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("O snapshot foi removido, mas a machine não "
+                                                "reiniciou."),
+                                 errorText(resumeError),
+                                 QStringLiteral("Inicie a machine manualmente; o snapshot já foi "
+                                                "removido do disco.")));
         return false;
     }
     return true;
@@ -220,9 +215,9 @@ MachineMeta MachineManager::restoreSnapshot(const QString &idOrName, const QStri
     if (spec.machineId.isEmpty()) {
         return {};
     }
-    const bool wasRunning = meta.state == QStringLiteral("running")
-                            || meta.state == QStringLiteral("starting")
-                            || m_runtime->isRunning(spec, nullptr);
+    const bool wasRunning = meta.state == QStringLiteral("running") ||
+                            meta.state == QStringLiteral("starting") ||
+                            m_runtime->isRunning(spec, nullptr);
     if (wasRunning) {
         Error stopError;
         meta = stop(meta.id, false, &stopError);
@@ -245,8 +240,7 @@ MachineMeta MachineManager::restoreSnapshot(const QString &idOrName, const QStri
     };
 
     Error restoreError;
-    if (!qemuImgSnapshot({QStringLiteral("snapshot"), QStringLiteral("-a"), name,
-                          meta.diskPath},
+    if (!qemuImgSnapshot({QStringLiteral("snapshot"), QStringLiteral("-a"), name, meta.diskPath},
                          nullptr, &restoreError)) {
         const Error resumeError = resume();
         if (!resumeError.isEmpty()) {
@@ -271,13 +265,12 @@ MachineMeta MachineManager::restoreSnapshot(const QString &idOrName, const QStri
         if (restarted.id.isEmpty()) {
             restarted = meta;
         }
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("O snapshot foi restaurado, mas a machine não "
-                                         "reiniciou."),
-                          errorText(resumeError),
-                          QStringLiteral("Inicie a machine manualmente; o disco já foi "
-                                         "restaurado.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("O snapshot foi restaurado, mas a machine não "
+                                                "reiniciou."),
+                                 errorText(resumeError),
+                                 QStringLiteral("Inicie a machine manualmente; o disco já foi "
+                                                "restaurado.")));
     }
     return restarted;
 }
@@ -297,18 +290,16 @@ bool MachineManager::qemuImgSnapshot(const QStringList &args, QByteArray *output
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start(binary, args);
     if (!process.waitForStarted(kQemuImgStartTimeoutMs)) {
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível executar o qemu-img."),
-                                 process.errorString()));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                        QStringLiteral("Não foi possível executar o qemu-img."),
+                                        process.errorString()));
     }
     if (!process.waitForFinished(kQemuImgTimeoutMs)) {
         process.kill();
         process.waitForFinished(1000);
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_TIMEOUT"),
-                                 QStringLiteral("O qemu-img excedeu o tempo limite ao "
-                                                "gerenciar snapshots.")));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_TIMEOUT"),
+                                        QStringLiteral("O qemu-img excedeu o tempo limite ao "
+                                                       "gerenciar snapshots.")));
     }
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
         return fails(error,
@@ -354,11 +345,10 @@ MachineSnapshot MachineManager::createSnapshot(const QString &idOrName, const QS
     }
     for (const MachineSnapshot &snapshot : existing) {
         if (snapshot.name == name) {
-            fails(error,
-                  Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                              QStringLiteral("Já existe um snapshot com esse nome."), name,
-                              QStringLiteral("Escolha outro nome ou remova o snapshot "
-                                             "existente.")));
+            fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                     QStringLiteral("Já existe um snapshot com esse nome."), name,
+                                     QStringLiteral("Escolha outro nome ou remova o snapshot "
+                                                    "existente.")));
             return {};
         }
     }
@@ -367,9 +357,9 @@ MachineSnapshot MachineManager::createSnapshot(const QString &idOrName, const QS
     if (spec.machineId.isEmpty()) {
         return {};
     }
-    const bool wasRunning = meta.state == QStringLiteral("running")
-                            || meta.state == QStringLiteral("starting")
-                            || m_runtime->isRunning(spec, nullptr);
+    const bool wasRunning = meta.state == QStringLiteral("running") ||
+                            meta.state == QStringLiteral("starting") ||
+                            m_runtime->isRunning(spec, nullptr);
     if (wasRunning) {
         Error stopError;
         meta = stop(meta.id, false, &stopError);
@@ -392,8 +382,7 @@ MachineSnapshot MachineManager::createSnapshot(const QString &idOrName, const QS
     };
 
     Error snapshotError;
-    if (!qemuImgSnapshot({QStringLiteral("snapshot"), QStringLiteral("-c"), name,
-                          meta.diskPath},
+    if (!qemuImgSnapshot({QStringLiteral("snapshot"), QStringLiteral("-c"), name, meta.diskPath},
                          nullptr, &snapshotError)) {
         const Error resumeError = resume();
         if (!resumeError.isEmpty()) {
@@ -431,29 +420,27 @@ MachineSnapshot MachineManager::createSnapshot(const QString &idOrName, const QS
     if (!resumeError.isEmpty()) {
         qCWarning(lcCore) << "Falha ao reiniciar a machine" << machineId
                           << "após criar o snapshot:" << resumeError.code;
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("O snapshot foi criado, mas a machine não "
-                                         "reiniciou."),
-                          errorText(resumeError),
-                          QStringLiteral("Inicie a machine manualmente; o snapshot já foi "
-                                         "gravado no disco.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("O snapshot foi criado, mas a machine não "
+                                                "reiniciou."),
+                                 errorText(resumeError),
+                                 QStringLiteral("Inicie a machine manualmente; o snapshot já foi "
+                                                "gravado no disco.")));
     }
     return created;
 }
 
 MachineSnapshot MachineManager::findSnapshot(const QVector<MachineSnapshot> &items,
-                                              const QString &name, Error *error)
+                                             const QString &name, Error *error)
 {
     for (const MachineSnapshot &snapshot : items) {
         if (snapshot.name == name) {
             return snapshot;
         }
     }
-    fails(error,
-          Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
-                      QStringLiteral("Snapshot não encontrado."), name,
-                      QStringLiteral("Liste os snapshots com `machine snapshot ls`.")));
+    fails(error, Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                             QStringLiteral("Snapshot não encontrado."), name,
+                             QStringLiteral("Liste os snapshots com `machine snapshot ls`.")));
     return {};
 }
 

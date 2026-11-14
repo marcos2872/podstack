@@ -437,7 +437,7 @@ void TerminalTest::selectionState()
     QQmlEngine engine;
     QQmlComponent component(&engine);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-    component.loadFromModule(QStringLiteral("PodStack"), QStringLiteral("SelectionState"));
+    component.loadFromModule(QStringLiteral("PodStack.Design"), QStringLiteral("SelectionState"));
 #else
     component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Design/patterns/SelectionState.qml")));
 #endif
@@ -985,7 +985,7 @@ void TerminalTest::appSelectKeepsSelectionWhenOpened()
     const QByteArray qml = R"(
 import QtQuick
 import QtQuick.Window
-import PodStack
+import PodStack.Design
 
 Window {
     width: 320

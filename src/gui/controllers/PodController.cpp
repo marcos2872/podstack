@@ -5,10 +5,7 @@
 
 namespace PodStack {
 
-PodController::PodController(QObject *parent)
-    : CatalogController(parent)
-{
-}
+PodController::PodController(QObject *parent) : CatalogController(parent) {}
 
 QVariantList PodController::parseItems(const QJsonArray &items) const
 {
@@ -20,8 +17,7 @@ QVariantList PodController::parseItems(const QJsonArray &items) const
         item.insert(QStringLiteral("id"), pod.value(QStringLiteral("id")).toString());
         item.insert(QStringLiteral("name"), pod.value(QStringLiteral("name")).toString());
         item.insert(QStringLiteral("status"), pod.value(QStringLiteral("status")).toString());
-        item.insert(QStringLiteral("containers"),
-                    pod.value(QStringLiteral("containers")).toInt());
+        item.insert(QStringLiteral("containers"), pod.value(QStringLiteral("containers")).toInt());
         item.insert(QStringLiteral("created"), pod.value(QStringLiteral("created")).toString());
         parsed.append(item);
     }
@@ -49,8 +45,8 @@ void PodController::batchPods(const QStringList &ids, const QString &action, boo
     runJob(
         QStringLiteral("pods.batch"), {},
         [ids, action, force] {
-            return runBatchCalls(QStringLiteral("pods."), QStringLiteral("id"), action, ids,
-                                 force, {});
+            return runBatchCalls(QStringLiteral("pods."), QStringLiteral("id"), action, ids, force,
+                                 {});
         },
         {}, 120000);
 }

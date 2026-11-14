@@ -24,17 +24,14 @@ bool MachineManager::sshInfo(const QString &idOrName, SshInfo *info, Error *erro
     if (meta.sshKeyPath.isEmpty() || keyInfo.isSymLink() || !keyInfo.isFile()) {
         return fails(error,
                      Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("A chave SSH da machine não existe."),
-                                 meta.id,
+                                 QStringLiteral("A chave SSH da machine não existe."), meta.id,
                                  QStringLiteral("Recrie a machine para gerar uma nova chave.")));
     }
-    if (!QFile::setPermissions(meta.sshKeyPath, QFileDevice::ReadOwner
-                                                   | QFileDevice::WriteOwner)) {
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
-                                 QStringLiteral("Não foi possível restringir a chave SSH "
-                                                "a 0600."),
-                                 meta.id));
+    if (!QFile::setPermissions(meta.sshKeyPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
+        return fails(error, Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
+                                        QStringLiteral("Não foi possível restringir a chave SSH "
+                                                       "a 0600."),
+                                        meta.id));
     }
 
     Error syncError;
@@ -86,8 +83,7 @@ bool MachineManager::startVirtiofs(const MachineMeta &meta, Error *error)
         const QString socketPath = virtiofsSocketPath(meta.id, mount.tag);
         if (socketPath.isEmpty()) {
             stopVirtiofs(meta.id);
-            return fails(error,
-                         invalidParams(QStringLiteral("Tag de mount inválida."), mount.tag));
+            return fails(error, invalidParams(QStringLiteral("Tag de mount inválida."), mount.tag));
         }
 
         auto process = std::make_unique<VirtiofsdProcess>();
@@ -127,8 +123,8 @@ bool MachineManager::stopVirtiofs(const QString &machineId, Error *error)
         Error stopError;
         if (!processIt->second->stop(&stopError)) {
             ok = false;
-            qCWarning(lcCore) << "Falha ao encerrar o virtiofsd da machine" << machineId
-                              << "tag" << processIt->first << ":" << stopError.code;
+            qCWarning(lcCore) << "Falha ao encerrar o virtiofsd da machine" << machineId << "tag"
+                              << processIt->first << ":" << stopError.code;
             if (error && error->isEmpty()) {
                 *error = stopError;
             }

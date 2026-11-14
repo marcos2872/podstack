@@ -15,8 +15,7 @@
 
 namespace PodStack {
 
-MachineDetailController::MachineDetailController(QObject *parent)
-    : ControllerBase(parent)
+MachineDetailController::MachineDetailController(QObject *parent) : ControllerBase(parent)
 {
     connect(&m_machineLogsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &MachineDetailController::onMachineLogsFinished);
@@ -31,20 +30,17 @@ MachineDetailController::MachineDetailController(QObject *parent)
                         list.removeFirst();
                     }
                 };
-                append(m_machineCpuHistory,
-                       sample.value(QStringLiteral("cpuPercent")).toDouble());
-                append(m_machineMemHistory,
-                       sample.value(QStringLiteral("memPercent")).toDouble());
+                append(m_machineCpuHistory, sample.value(QStringLiteral("cpuPercent")).toDouble());
+                append(m_machineMemHistory, sample.value(QStringLiteral("memPercent")).toDouble());
                 append(m_machineNetRxHistory, sample.value(QStringLiteral("netRx")).toDouble());
                 append(m_machineNetTxHistory, sample.value(QStringLiteral("netTx")).toDouble());
                 m_machineStatsError.clear();
                 emit statsChanged();
             });
-    connect(&m_machineStatsStream, &StreamClient::error, this,
-            [this](const QString &message) {
-                m_machineStatsError = message;
-                emit statsChanged();
-            });
+    connect(&m_machineStatsStream, &StreamClient::error, this, [this](const QString &message) {
+        m_machineStatsError = message;
+        emit statsChanged();
+    });
 
     connect(&m_machineConsoleStream, &StreamClient::machineConsoleEvent, this,
             [this](const QJsonObject &event) {
@@ -56,20 +52,17 @@ MachineDetailController::MachineDetailController(QObject *parent)
                 }
                 constexpr int kMaxConsoleChars = 512 * 1024;
                 if (m_machineConsoleText.size() > kMaxConsoleChars) {
-                    m_machineConsoleText.remove(
-                        0, m_machineConsoleText.size() - kMaxConsoleChars);
+                    m_machineConsoleText.remove(0, m_machineConsoleText.size() - kMaxConsoleChars);
                 }
                 m_machineConsoleActive = true;
                 m_machineConsoleError.clear();
                 emit consoleChanged();
             });
-    connect(&m_machineConsoleStream, &StreamClient::error, this,
-            [this](const QString &message) {
-                m_machineConsoleActive = false;
-                m_machineConsoleError = message;
-                emit consoleChanged();
-            });
-
+    connect(&m_machineConsoleStream, &StreamClient::error, this, [this](const QString &message) {
+        m_machineConsoleActive = false;
+        m_machineConsoleError = message;
+        emit consoleChanged();
+    });
 }
 
 void MachineDetailController::startStats(const QString &id)
@@ -97,8 +90,8 @@ void MachineDetailController::stopStats()
 {
     m_machineStatsStream.unsubscribe();
 
-    const bool clearGlobalError = !m_machineStatsError.isEmpty()
-                                  && m_lastError == m_machineStatsError;
+    const bool clearGlobalError =
+        !m_machineStatsError.isEmpty() && m_lastError == m_machineStatsError;
     m_machineStatsError.clear();
     emit statsChanged();
     if (clearGlobalError) {
@@ -160,11 +153,9 @@ void MachineDetailController::loadLogs(const QString &id, int tail)
     m_machineLogsWatcher.setFuture(QtConcurrent::run([id, tail] {
         RpcClient client;
         Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("machines.logs"),
-                        QJsonObject{{QStringLiteral("id"), id},
-                                    {QStringLiteral("tail"), tail}},
-                        &error);
+        const QJsonObject result = client.call(
+            QStringLiteral("machines.logs"),
+            QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("tail"), tail}}, &error);
         if (!error.isEmpty()) {
             return QJsonObject{{QStringLiteral("error"), error.toJson()}};
         }
@@ -213,15 +204,13 @@ void MachineDetailController::refreshFiles(const QString &id, const QString &pat
     if (!m_machineFilesWatcher.isRunning()) {
         m_machineFiles.clear();
     }
-    startMachineFilesRequest(QStringLiteral("list"), id,
-                             QStringLiteral("machines.files.list"),
-                             QJsonObject{{QStringLiteral("id"), id},
-                                         {QStringLiteral("path"), target}},
-                             30000);
+    startMachineFilesRequest(
+        QStringLiteral("list"), id, QStringLiteral("machines.files.list"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("path"), target}}, 30000);
 }
 
 void MachineDetailController::downloadFile(const QString &id, const QString &path,
-                                  const QString &fileName)
+                                           const QString &fileName)
 {
     if (id.isEmpty() || path.isEmpty()) {
         m_machineFilesError = QStringLiteral("Informe a machine e o arquivo remoto.");
@@ -233,8 +222,8 @@ void MachineDetailController::downloadFile(const QString &id, const QString &pat
     if (name.isEmpty()) {
         name = QFileInfo(path).fileName();
     }
-    if (name.isEmpty() || name == QStringLiteral(".") || name == QStringLiteral("..")
-        || name.contains(QLatin1Char('/')) || name.contains(QLatin1Char('\\'))) {
+    if (name.isEmpty() || name == QStringLiteral(".") || name == QStringLiteral("..") ||
+        name.contains(QLatin1Char('/')) || name.contains(QLatin1Char('\\'))) {
         m_machineFilesError = QStringLiteral("Nome de arquivo remoto inválido.");
         emit filesChanged();
         return;
@@ -260,7 +249,7 @@ void MachineDetailController::downloadFile(const QString &id, const QString &pat
 }
 
 void MachineDetailController::uploadFile(const QString &id, const QString &remoteDir,
-                                const QString &localPath)
+                                         const QString &localPath)
 {
     if (id.isEmpty() || remoteDir.isEmpty() || localPath.isEmpty()) {
         m_machineFilesError = QStringLiteral("Informe a machine, o destino e o arquivo local.");
@@ -276,10 +265,9 @@ void MachineDetailController::uploadFile(const QString &id, const QString &remot
         return;
     }
 
-    const QString base = remoteDir.endsWith(QLatin1Char('/')) ? remoteDir
-                                                              : remoteDir + QLatin1Char('/');
-    startMachineFilesRequest(QStringLiteral("upload"), id,
-                             QStringLiteral("machines.files.upload"),
+    const QString base =
+        remoteDir.endsWith(QLatin1Char('/')) ? remoteDir : remoteDir + QLatin1Char('/');
+    startMachineFilesRequest(QStringLiteral("upload"), id, QStringLiteral("machines.files.upload"),
                              QJsonObject{{QStringLiteral("id"), id},
                                          {QStringLiteral("path"), base + name},
                                          {QStringLiteral("sourcePath"), localPath}},
@@ -287,12 +275,11 @@ void MachineDetailController::uploadFile(const QString &id, const QString &remot
 }
 
 void MachineDetailController::startMachineFilesRequest(const QString &operation, const QString &id,
-                                       const QString &method, const QJsonObject &params,
-                                       int timeoutMs)
+                                                       const QString &method,
+                                                       const QJsonObject &params, int timeoutMs)
 {
     if (m_machineFilesWatcher.isRunning()) {
-        m_machineFilesError =
-            QStringLiteral("Aguarde a operação de arquivos atual terminar.");
+        m_machineFilesError = QStringLiteral("Aguarde a operação de arquivos atual terminar.");
         emit filesChanged();
         return;
     }
@@ -322,9 +309,10 @@ void MachineDetailController::onMachineFilesFinished()
     m_machineFilesBusy = false;
 
     if (result.value(QStringLiteral("error")).isObject()) {
-        m_machineFilesError =
-            result.value(QStringLiteral("error")).toObject().value(QStringLiteral("message"))
-                .toString();
+        m_machineFilesError = result.value(QStringLiteral("error"))
+                                  .toObject()
+                                  .value(QStringLiteral("message"))
+                                  .toString();
         if (m_machineFilesError.isEmpty()) {
             m_machineFilesError = QStringLiteral("A operação de arquivos da machine falhou.");
         }
@@ -337,21 +325,17 @@ void MachineDetailController::onMachineFilesFinished()
 
     m_machineFilesError.clear();
     if (operation == QStringLiteral("list")) {
-        m_machineFilesPath = result.value(QStringLiteral("path"))
-                                 .toString(m_machineFilesPath);
+        m_machineFilesPath = result.value(QStringLiteral("path")).toString(m_machineFilesPath);
         m_machineFiles.clear();
         const QJsonArray entries = result.value(QStringLiteral("items")).toArray();
         for (const QJsonValue &value : entries) {
             const QJsonObject entry = value.toObject();
             QVariantMap item;
-            item.insert(QStringLiteral("name"),
-                        entry.value(QStringLiteral("name")).toString());
-            item.insert(QStringLiteral("path"),
-                        entry.value(QStringLiteral("path")).toString());
+            item.insert(QStringLiteral("name"), entry.value(QStringLiteral("name")).toString());
+            item.insert(QStringLiteral("path"), entry.value(QStringLiteral("path")).toString());
             item.insert(QStringLiteral("directory"),
                         entry.value(QStringLiteral("directory")).toBool());
-            item.insert(QStringLiteral("size"),
-                        entry.value(QStringLiteral("size")).toDouble());
+            item.insert(QStringLiteral("size"), entry.value(QStringLiteral("size")).toDouble());
             item.insert(QStringLiteral("modified"),
                         entry.value(QStringLiteral("modified")).toString());
             m_machineFiles.append(item);
@@ -364,9 +348,7 @@ void MachineDetailController::onMachineFilesFinished()
     if (operation == QStringLiteral("upload") && !m_machineFilesMachineId.isEmpty()) {
         const QString machineId = m_machineFilesMachineId;
         const QString path = m_machineFilesPath;
-        QTimer::singleShot(0, this, [this, machineId, path] {
-            refreshFiles(machineId, path);
-        });
+        QTimer::singleShot(0, this, [this, machineId, path] { refreshFiles(machineId, path); });
     }
 }
 

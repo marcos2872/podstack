@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "gui/windows/MachineDetailDialog.h"
 
+#include "gui/app/terminal/ExternalTerminal.h"
 #include "gui/controllers/Backend.h"
 #include "gui/controllers/MachineController.h"
 #include "gui/controllers/MachineDetailController.h"
-#include "gui/app/terminal/ExternalTerminal.h"
 #include "gui/windows/terminal/TerminalView.h"
 
 #include <QColor>

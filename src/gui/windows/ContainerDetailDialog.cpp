@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "gui/windows/ContainerDetailDialog.h"
 
-#include "gui/controllers/Backend.h"
 #include "gui/app/terminal/ExternalTerminal.h"
+#include "gui/controllers/Backend.h"
 #include "gui/windows/terminal/TerminalView.h"
 
 #include <QColor>
@@ -106,8 +106,8 @@ void ContainerDetailDialog::setupInterface(bool loadQml)
         m_quickWidget->loadFromModule(QStringLiteral("PodStack"),
                                       QStringLiteral("ContainerDetail"));
 #else
-        m_quickWidget->setSource(
-            QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Pages/containers/detail/ContainerDetail.qml")));
+        m_quickWidget->setSource(QUrl(
+            QStringLiteral("qrc:/qt/qml/PodStack/Pages/containers/detail/ContainerDetail.qml")));
 #endif
         connectQmlSignals();
         cardLayout->addWidget(m_quickWidget);

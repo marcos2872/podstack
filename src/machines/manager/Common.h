@@ -6,14 +6,14 @@
 #include "machines/MachineManager.h"
 
 #include "core/config/Config.h"
-#include "core/util/Ids.h"
-#include "core/logging/Logging.h"
 #include "core/config/Paths.h"
+#include "core/logging/Logging.h"
 #include "core/system/Proxy.h"
-#include "machines/provision/CloudInit.h"
+#include "core/util/Ids.h"
 #include "machines/operations/MachineArchive.h"
 #include "machines/operations/SerialPorts.h"
 #include "machines/operations/UsbDevices.h"
+#include "machines/provision/CloudInit.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -32,6 +32,5 @@
 #include <QTimeZone>
 
 #include <utility>
-
 
 #include "machines/manager/Internal.h"

@@ -25,8 +25,7 @@ bool portNumberFromJson(const QJsonValue &value, int *number)
         return false;
     }
     const double raw = value.toDouble();
-    if (raw < 1.0 || raw > 65535.0
-        || raw != static_cast<double>(static_cast<int>(raw))) {
+    if (raw < 1.0 || raw > 65535.0 || raw != static_cast<double>(static_cast<int>(raw))) {
         return false;
     }
     *number = static_cast<int>(raw);
@@ -59,8 +58,7 @@ QStringList aliasesFromParams(const QJsonObject &params)
 QStringList proxyExcludesFromConfig(const Config &config)
 {
     QStringList excludes;
-    const QJsonArray array =
-        config.get(QStringLiteral("network.proxyExclude")).toArray();
+    const QJsonArray array = config.get(QStringLiteral("network.proxyExclude")).toArray();
     for (const QJsonValue &value : array) {
         const QString entry = value.toString();
         if (!entry.isEmpty()) {
@@ -114,8 +112,8 @@ void applyCaTrustMount(ContainerCreateSpec &spec)
 
 bool isWildcardHostIp(const QString &hostIp)
 {
-    return hostIp.isEmpty() || hostIp == QStringLiteral("0.0.0.0")
-           || hostIp == QStringLiteral("::");
+    return hostIp.isEmpty() || hostIp == QStringLiteral("0.0.0.0") ||
+           hostIp == QStringLiteral("::");
 }
 
 qint64 consoleTailBytes(const QJsonObject &params)
@@ -156,8 +154,8 @@ bool checkMachineConsoleFile(const QString &directory, bool *exists, Error *erro
 
     const QString canonicalDir = QFileInfo(directory).canonicalFilePath();
     const QString canonicalFile = info.canonicalFilePath();
-    if (canonicalDir.isEmpty() || canonicalFile.isEmpty()
-        || !canonicalFile.startsWith(canonicalDir + QLatin1Char('/'))) {
+    if (canonicalDir.isEmpty() || canonicalFile.isEmpty() ||
+        !canonicalFile.startsWith(canonicalDir + QLatin1Char('/'))) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
                                  QStringLiteral("O console da machine está fora do diretório "
@@ -213,8 +211,8 @@ bool readMachineConsoleTail(const QString &path, qint64 tailBytes, QByteArray *d
     return true;
 }
 
-bool readMachineConsoleChunk(const QString &path, qint64 offset, qint64 maxBytes,
-                             QByteArray *data, qint64 *endOffset, Error *error)
+bool readMachineConsoleChunk(const QString &path, qint64 offset, qint64 maxBytes, QByteArray *data,
+                             qint64 *endOffset, Error *error)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {

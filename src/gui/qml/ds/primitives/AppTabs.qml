@@ -10,7 +10,7 @@ Item {
     property var model: []
     property int currentIndex: 0
     property bool compact: false
-    signal activated(int index)
+    signal activated(int tabIndex)
 
     implicitHeight: 40
 

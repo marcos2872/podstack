@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandVolumes(const QStringList &args)
 {
     const QString sub = args.isEmpty() ? QStringLiteral("ls") : args.first();
@@ -30,8 +28,8 @@ int commandVolumes(const QStringList &args)
             Row row;
             row.name = volume.value(QStringLiteral("name")).toString();
             row.driver = volume.value(QStringLiteral("driver")).toString();
-            row.size = humanBytes(
-                static_cast<qint64>(volume.value(QStringLiteral("size")).toDouble()));
+            row.size =
+                humanBytes(static_cast<qint64>(volume.value(QStringLiteral("size")).toDouble()));
             row.links = QString::number(volume.value(QStringLiteral("links")).toInt());
             row.mountpoint = volume.value(QStringLiteral("mountpoint")).toString();
             nameWidth = qMax(nameWidth, row.name.size());
@@ -71,11 +69,10 @@ int commandVolumes(const QStringList &args)
         }
         PodStack::RpcClient client;
         PodStack::Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("volumes.create"),
-                        QJsonObject{{QStringLiteral("name"), name},
-                                    {QStringLiteral("driver"), driver}},
-                        &error);
+        const QJsonObject result = client.call(
+            QStringLiteral("volumes.create"),
+            QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("driver"), driver}},
+            &error);
         if (!error.isEmpty()) {
             return fail(error);
         }
@@ -101,8 +98,7 @@ int commandVolumes(const QStringList &args)
         PodStack::RpcClient client;
         PodStack::Error error;
         client.call(QStringLiteral("volumes.remove"),
-                    QJsonObject{{QStringLiteral("name"), name},
-                                {QStringLiteral("force"), force}},
+                    QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("force"), force}},
                     &error);
         if (!error.isEmpty()) {
             return fail(error);
@@ -115,21 +111,20 @@ int commandVolumes(const QStringList &args)
     if (sub == QStringLiteral("prune")) {
         PodStack::RpcClient client;
         PodStack::Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("volumes.prune"), {}, &error, 600000);
+        const QJsonObject result = client.call(QStringLiteral("volumes.prune"), {}, &error, 600000);
         if (!error.isEmpty()) {
             return fail(error);
         }
         out() << "liberado "
-              << humanBytes(static_cast<qint64>(
-                     result.value(QStringLiteral("reclaimedBytes")).toDouble()))
+              << humanBytes(
+                     static_cast<qint64>(result.value(QStringLiteral("reclaimedBytes")).toDouble()))
               << '\n';
         out().flush();
         return kExitOk;
     }
 
-    if (sub == QStringLiteral("clone") || sub == QStringLiteral("export")
-        || sub == QStringLiteral("import") || sub == QStringLiteral("import-host")) {
+    if (sub == QStringLiteral("clone") || sub == QStringLiteral("export") ||
+        sub == QStringLiteral("import") || sub == QStringLiteral("import-host")) {
         bool force = args.contains(QStringLiteral("--force"));
         QStringList positional;
         for (int i = 1; i < args.size(); ++i) {
@@ -155,9 +150,8 @@ int commandVolumes(const QStringList &args)
         }
         PodStack::RpcClient client;
         PodStack::Error error;
-        client.call(sub == QStringLiteral("import-host")
-                        ? QStringLiteral("volumes.importHostPath")
-                        : QStringLiteral("volumes.") + sub,
+        client.call(sub == QStringLiteral("import-host") ? QStringLiteral("volumes.importHostPath")
+                                                         : QStringLiteral("volumes.") + sub,
                     params, &error, 600000);
         if (!error.isEmpty()) {
             return fail(error);

@@ -50,9 +50,9 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         return {};
     }
     if (image.url.isEmpty() || image.checksum.isEmpty()) {
-        fails(error, Error::make(QStringLiteral("PODSTACK_INTERNAL"),
-                                 QStringLiteral("A distro resolvida não tem imagem válida."),
-                                 distroSpec));
+        fails(error,
+              Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                          QStringLiteral("A distro resolvida não tem imagem válida."), distroSpec));
         return {};
     }
 
@@ -65,17 +65,15 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
         return {};
     }
     if (nameExists(existing, request.name)) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("Já existe uma machine com esse nome."), request.name,
-                          QStringLiteral("Escolha outro nome.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("Já existe uma machine com esse nome."),
+                                 request.name, QStringLiteral("Escolha outro nome.")));
         return {};
     }
 
     const DownloadProgress downloadProgress =
         progress ? DownloadProgress([&progress](qint64 received, qint64 total) {
-            const int percent =
-                total > 0 ? static_cast<int>((received * 70) / total) : 0;
+            const int percent = total > 0 ? static_cast<int>((received * 70) / total) : 0;
             progress(QStringLiteral("image"), qBound(0, percent, 70));
         })
                  : DownloadProgress();
@@ -188,8 +186,7 @@ MachineMeta MachineManager::create(const CreateMachineRequest &request,
     meta.createdAt = timestamp;
     meta.updatedAt = timestamp;
     meta.ports = {
-        MachinePort{newUuidV7(), sshPort, 22, QStringLiteral("tcp"), false,
-                    QStringLiteral("ssh")},
+        MachinePort{newUuidV7(), sshPort, 22, QStringLiteral("tcp"), false, QStringLiteral("ssh")},
     };
     meta.mounts = request.isolated ? QVector<MachineMount>() : mounts;
 
@@ -291,31 +288,27 @@ bool MachineManager::createDisk(const QString &diskPath, const QString &backingP
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start(binary, arguments);
     if (!process.waitForStarted(kQemuImgStartTimeoutMs)) {
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível executar o qemu-img."),
-                                 process.errorString()));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                        QStringLiteral("Não foi possível executar o qemu-img."),
+                                        process.errorString()));
     }
     if (!process.waitForFinished(kQemuImgTimeoutMs)) {
         process.kill();
         process.waitForFinished(1000);
         return fails(error,
                      Error::make(QStringLiteral("PODSTACK_TIMEOUT"),
-                                 QStringLiteral("O qemu-img excedeu o tempo limite."),
-                                 diskPath));
+                                 QStringLiteral("O qemu-img excedeu o tempo limite."), diskPath));
     }
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("O qemu-img falhou ao criar o disco."),
-                                 processDetail(process.readAllStandardError())));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                        QStringLiteral("O qemu-img falhou ao criar o disco."),
+                                        processDetail(process.readAllStandardError())));
     }
 
     const QFileInfo diskInfo(diskPath);
     if (!diskInfo.isFile()) {
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("O disco qcow2 não foi criado."), diskPath));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                        QStringLiteral("O disco qcow2 não foi criado."), diskPath));
     }
     setOwnerOnly(diskPath, false);
     return true;
@@ -342,10 +335,9 @@ bool MachineManager::flattenDisk(const QString &diskPath, const QString &targetP
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start(binary, arguments);
     if (!process.waitForStarted(kQemuImgStartTimeoutMs)) {
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível executar o qemu-img."),
-                                 process.errorString()));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                        QStringLiteral("Não foi possível executar o qemu-img."),
+                                        process.errorString()));
     }
 
     constexpr qint64 kExportTimeoutMs = 30LL * 60LL * 1000LL;
@@ -360,9 +352,8 @@ bool MachineManager::flattenDisk(const QString &diskPath, const QString &targetP
                 process.kill();
                 process.waitForFinished(1000);
                 QFile::remove(targetPath);
-                return fails(error,
-                             Error::make(QStringLiteral("PODSTACK_CANCELLED"),
-                                         QStringLiteral("%1 cancelada.").arg(operation)));
+                return fails(error, Error::make(QStringLiteral("PODSTACK_CANCELLED"),
+                                                QStringLiteral("%1 cancelada.").arg(operation)));
             }
             if (timer.elapsed() > kExportTimeoutMs) {
                 process.kill();
@@ -377,16 +368,14 @@ bool MachineManager::flattenDisk(const QString &diskPath, const QString &targetP
     }
 
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("O qemu-img falhou ao preparar o disco."),
-                                 processDetail(process.readAllStandardError())));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                        QStringLiteral("O qemu-img falhou ao preparar o disco."),
+                                        processDetail(process.readAllStandardError())));
     }
     if (!QFileInfo(targetPath).isFile()) {
         return fails(error,
                      Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("O disco do export não foi gerado."),
-                                 targetPath));
+                                 QStringLiteral("O disco do export não foi gerado."), targetPath));
     }
     setOwnerOnly(targetPath, false);
     return true;
@@ -395,8 +384,7 @@ bool MachineManager::flattenDisk(const QString &diskPath, const QString &targetP
 bool MachineManager::resizeDisk(const QString &diskPath, qint64 bytes, Error *error)
 {
     if (diskPath.isEmpty() || bytes <= 0) {
-        return fails(error, invalidParams(QStringLiteral("Destino de resize inválido."),
-                                          diskPath));
+        return fails(error, invalidParams(QStringLiteral("Destino de resize inválido."), diskPath));
     }
 
     const QString binary = qemuImgBinary(error);
@@ -414,19 +402,17 @@ bool MachineManager::resizeDisk(const QString &diskPath, qint64 bytes, Error *er
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start(binary, arguments);
     if (!process.waitForStarted(kQemuImgStartTimeoutMs)) {
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível executar o qemu-img."),
-                                 process.errorString()));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                        QStringLiteral("Não foi possível executar o qemu-img."),
+                                        process.errorString()));
     }
     if (!process.waitForFinished(kQemuImgTimeoutMs)) {
         process.kill();
         process.waitForFinished(1000);
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_TIMEOUT"),
-                                 QStringLiteral("O qemu-img excedeu o tempo limite ao "
-                                                "redimensionar o disco."),
-                                 diskPath));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_TIMEOUT"),
+                                        QStringLiteral("O qemu-img excedeu o tempo limite ao "
+                                                       "redimensionar o disco."),
+                                        diskPath));
     }
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
         return fails(error,
@@ -444,9 +430,8 @@ bool MachineManager::resolveFirmware(const QString &arch, const QString &machine
     QString vars = m_options.ovmfVarsPath;
 
     if (code.isEmpty() != vars.isEmpty()) {
-        return fails(error,
-                     invalidParams(
-                         QStringLiteral("O firmware UEFI exige OVMF code e vars juntos.")));
+        return fails(
+            error, invalidParams(QStringLiteral("O firmware UEFI exige OVMF code e vars juntos.")));
     }
 
     if (code.isEmpty()) {
@@ -456,8 +441,8 @@ bool MachineManager::resolveFirmware(const QString &arch, const QString &machine
             code = kAavmfCodeArm64;
             vars = kAavmfVarsArm64;
         } else {
-            return fails(error, invalidParams(QStringLiteral("Arquitetura inválida para firmware."),
-                                              arch));
+            return fails(
+                error, invalidParams(QStringLiteral("Arquitetura inválida para firmware."), arch));
         }
     }
 
@@ -468,10 +453,9 @@ bool MachineManager::resolveFirmware(const QString &arch, const QString &machine
                 ? QStringLiteral("Instale edk2-aarch64 (Fedora) ou qemu-efi-aarch64 "
                                  "(Debian/Ubuntu).")
                 : QStringLiteral("Instale edk2-ovmf (Fedora) ou ovmf (Debian/Ubuntu).");
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
-                                 QStringLiteral("Firmware UEFI (OVMF) não encontrado."), code,
-                                 remediation));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                                        QStringLiteral("Firmware UEFI (OVMF) não encontrado."),
+                                        code, remediation));
     }
 
     const QString target = machineDir + QStringLiteral("/OVMF_VARS.fd");
@@ -483,16 +467,14 @@ bool MachineManager::resolveFirmware(const QString &arch, const QString &machine
                     ? QStringLiteral("Instale edk2-aarch64 (Fedora) ou qemu-efi-aarch64 "
                                      "(Debian/Ubuntu).")
                     : QStringLiteral("Instale edk2-ovmf (Fedora) ou ovmf (Debian/Ubuntu).");
-            return fails(error,
-                         Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
-                                     QStringLiteral("Template OVMF_VARS não encontrado."), vars,
-                                     remediation));
+            return fails(error, Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                                            QStringLiteral("Template OVMF_VARS não encontrado."),
+                                            vars, remediation));
         }
         if (!QFile::copy(vars, target)) {
-            return fails(error,
-                         Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                     QStringLiteral("Não foi possível copiar o OVMF_VARS."),
-                                     target));
+            return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                            QStringLiteral("Não foi possível copiar o OVMF_VARS."),
+                                            target));
         }
     }
     setOwnerOnly(target, false);
@@ -558,12 +540,11 @@ QString MachineManager::qemuImgBinary(Error *error) const
     }
     if (binary.isEmpty()) {
         fails(error,
-              Error::make(
-                  QStringLiteral("PODSTACK_UNSUPPORTED"),
-                  QStringLiteral("O binário qemu-img não foi encontrado."),
-                  QStringLiteral("qemu-img"),
-                  QStringLiteral("Instale o QEMU/KVM (qemu-kvm no Fedora ou qemu-utils "
-                                 "no Debian/Ubuntu).")));
+              Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                          QStringLiteral("O binário qemu-img não foi encontrado."),
+                          QStringLiteral("qemu-img"),
+                          QStringLiteral("Instale o QEMU/KVM (qemu-kvm no Fedora ou qemu-utils "
+                                         "no Debian/Ubuntu).")));
         return {};
     }
     return binary;
@@ -590,10 +571,9 @@ QString MachineManager::normalizeArch(const QString &arch)
     return normalized;
 }
 
-MachineMeta MachineManager::clone(
-    const QString &idOrName, const QString &newName,
-    const std::function<void(const QString &, int)> &progress,
-    const std::function<bool()> &cancelled, Error *error)
+MachineMeta MachineManager::clone(const QString &idOrName, const QString &newName,
+                                  const std::function<void(const QString &, int)> &progress,
+                                  const std::function<bool()> &cancelled, Error *error)
 {
     if (error) {
         *error = {};
@@ -603,23 +583,20 @@ MachineMeta MachineManager::clone(
     if (source.id.isEmpty()) {
         return {};
     }
-    if (source.state == QStringLiteral("provisioning")
-        || source.state == QStringLiteral("deleting")
-        || source.state == QStringLiteral("deleted")) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("A machine está em transição; tente novamente."),
-                          source.id));
+    if (source.state == QStringLiteral("provisioning") ||
+        source.state == QStringLiteral("deleting") || source.state == QStringLiteral("deleted")) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em transição; tente novamente."),
+                                 source.id));
         return {};
     }
 
     std::shared_ptr<std::recursive_mutex> lockHolder;
     std::unique_lock<std::recursive_mutex> machineGuard;
     if (!tryLockMachine(source.id, &lockHolder, &machineGuard)) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("A machine está em outra operação."), source.id,
-                          QStringLiteral("Aguarde a operação atual terminar.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em outra operação."), source.id,
+                                 QStringLiteral("Aguarde a operação atual terminar.")));
         return {};
     }
 
@@ -638,16 +615,13 @@ MachineMeta MachineManager::clone(
         return {};
     }
     if (nameExists(existing, targetName)) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("Já existe uma machine com esse nome."), targetName,
-                          QStringLiteral("Escolha outro nome.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("Já existe uma machine com esse nome."), targetName,
+                                 QStringLiteral("Escolha outro nome.")));
         return {};
     }
 
-    const auto cancelledNow = [&cancelled]() {
-        return cancelled && cancelled();
-    };
+    const auto cancelledNow = [&cancelled]() { return cancelled && cancelled(); };
     if (cancelledNow()) {
         fails(error, Error::make(QStringLiteral("PODSTACK_CANCELLED"),
                                  QStringLiteral("Clonagem cancelada.")));
@@ -658,9 +632,9 @@ MachineMeta MachineManager::clone(
     if (spec.machineId.isEmpty()) {
         return {};
     }
-    const bool wasRunning = source.state == QStringLiteral("running")
-                            || source.state == QStringLiteral("starting")
-                            || m_runtime->isRunning(spec, nullptr);
+    const bool wasRunning = source.state == QStringLiteral("running") ||
+                            source.state == QStringLiteral("starting") ||
+                            m_runtime->isRunning(spec, nullptr);
     if (wasRunning) {
         if (progress) {
             progress(QStringLiteral("stopping"), 5);
@@ -781,9 +755,9 @@ MachineMeta MachineManager::clone(
     };
 
     Error copyError;
-    if (!copyPrivate(source.seedPath, seedPath, &copyError)
-        || !copyPrivate(source.sshKeyPath, sshKeyPath, &copyError)
-        || !copyPrivate(source.sshKeyPath + QStringLiteral(".pub"), publicKeyPath, &copyError)) {
+    if (!copyPrivate(source.seedPath, seedPath, &copyError) ||
+        !copyPrivate(source.sshKeyPath, sshKeyPath, &copyError) ||
+        !copyPrivate(source.sshKeyPath + QStringLiteral(".pub"), publicKeyPath, &copyError)) {
         cleanup();
         resume();
         if (error) {
@@ -791,9 +765,9 @@ MachineMeta MachineManager::clone(
         }
         return {};
     }
-    if (!QFile::setPermissions(publicKeyPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                                  | QFileDevice::ReadGroup
-                                                  | QFileDevice::ReadOther)) {
+    if (!QFile::setPermissions(publicKeyPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                                  QFileDevice::ReadGroup |
+                                                  QFileDevice::ReadOther)) {
         cleanup();
         resume();
         fails(error, Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
@@ -836,8 +810,7 @@ MachineMeta MachineManager::clone(
     meta.createdAt = timestamp;
     meta.updatedAt = timestamp;
     meta.ports = {
-        MachinePort{newUuidV7(), sshPort, 22, QStringLiteral("tcp"), false,
-                    QStringLiteral("ssh")},
+        MachinePort{newUuidV7(), sshPort, 22, QStringLiteral("tcp"), false, QStringLiteral("ssh")},
     };
 
     Error persistError;

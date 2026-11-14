@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "core/config/Config.h"
+#include "core/config/Paths.h"
+#include "core/config/Settings.h"
 #include "core/logging/LogReader.h"
 #include "core/logging/LogRotation.h"
 #include "core/logging/LogWriter.h"
 #include "core/logging/Logging.h"
-#include "core/config/Paths.h"
-#include "core/config/Settings.h"
 
 #include <QDateTime>
 #include <QDir>

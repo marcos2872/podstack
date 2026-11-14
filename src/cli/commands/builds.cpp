@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandBuild(const QStringList &args)
 {
     QString contextPath;
@@ -19,8 +17,7 @@ int commandBuild(const QStringList &args)
         } else if (args.at(i) == QStringLiteral("-f") && i + 1 < args.size()) {
             dockerfile = args.at(++i);
         } else if (args.at(i) == QStringLiteral("--platform") && i + 1 < args.size()) {
-            for (const QString &part : args.at(++i).split(QLatin1Char(','),
-                                                           Qt::SkipEmptyParts)) {
+            for (const QString &part : args.at(++i).split(QLatin1Char(','), Qt::SkipEmptyParts)) {
                 const QString platform = part.trimmed();
                 if (!platform.isEmpty() && !platforms.contains(platform)) {
                     platforms.append(platform);
@@ -105,8 +102,6 @@ int commandBuild(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int commandBuilds(const QStringList &args)
 {
     const QString sub = args.isEmpty() ? QStringLiteral("ls") : args.first();
@@ -114,9 +109,8 @@ int commandBuilds(const QStringList &args)
     if (sub == QStringLiteral("ls") || sub == QStringLiteral("list")) {
         PodStack::RpcClient client;
         PodStack::Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("builds.list"),
-                        QJsonObject{{QStringLiteral("limit"), 50}}, &error);
+        const QJsonObject result = client.call(QStringLiteral("builds.list"),
+                                               QJsonObject{{QStringLiteral("limit"), 50}}, &error);
         if (!error.isEmpty()) {
             return fail(error);
         }
@@ -138,13 +132,12 @@ int commandBuilds(const QStringList &args)
             row.id = build.value(QStringLiteral("id")).toString();
             row.image = build.value(QStringLiteral("imageRef")).toString();
             row.status = build.value(QStringLiteral("status")).toString();
-            row.duration = QString::number(build.value(QStringLiteral("durationMs")).toInt()
-                                           / 1000.0, 'f', 1)
-                           + QStringLiteral("s");
+            row.duration = QString::number(
+                               build.value(QStringLiteral("durationMs")).toInt() / 1000.0, 'f', 1) +
+                           QStringLiteral("s");
             row.started = build.value(QStringLiteral("startedAt")).toString();
             QStringList platforms;
-            for (const QJsonValue &platform :
-                 build.value(QStringLiteral("platforms")).toArray()) {
+            for (const QJsonValue &platform : build.value(QStringLiteral("platforms")).toArray()) {
                 const QString value = platform.toString();
                 if (!value.isEmpty()) {
                     platforms.append(value);

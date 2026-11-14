@@ -141,8 +141,7 @@ MachineMeta MachineManager::stop(const QString &idOrName, bool force, Error *err
         return meta;
     }
 
-    if (meta.state == QStringLiteral("stopped")
-        && !m_runtime->isRunning(spec, nullptr)) {
+    if (meta.state == QStringLiteral("stopped") && !m_runtime->isRunning(spec, nullptr)) {
         stopVirtiofs(meta.id);
         for (const MachineMount &mount : meta.mounts) {
             QFile::remove(virtiofsSocketPath(meta.id, mount.tag));
@@ -203,8 +202,7 @@ MachineMeta MachineManager::restart(const QString &idOrName, Error *error)
     std::unique_lock<std::recursive_mutex> machineGuard;
     if (!tryLockMachine(current.id, &lockHolder, &machineGuard)) {
         fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                                 QStringLiteral("A machine está em outra operação."),
-                                 current.id,
+                                 QStringLiteral("A machine está em outra operação."), current.id,
                                  QStringLiteral("Aguarde a operação atual terminar.")));
         return current;
     }
@@ -287,11 +285,10 @@ bool MachineManager::remove(const QString &idOrName, bool force, Error *error)
     if (directoryInfo.exists()) {
         const QString canonical = directoryInfo.canonicalFilePath();
         if (canonical.isEmpty() || !canonical.startsWith(rootCanonical + QLatin1Char('/'))) {
-            fails(error,
-                  Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
-                              QStringLiteral("O caminho da machine escapa do diretório "
-                                             "permitido."),
-                              directory));
+            fails(error, Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
+                                     QStringLiteral("O caminho da machine escapa do diretório "
+                                                    "permitido."),
+                                     directory));
             return false;
         }
     }
@@ -325,8 +322,8 @@ bool MachineManager::remove(const QString &idOrName, bool force, Error *error)
         config.set(QStringLiteral("machines.default"), QJsonValue::Null);
         QString configError;
         if (!config.save(&configError)) {
-            qCWarning(lcCore) << "Não foi possível limpar a machine default ao remover"
-                              << meta.name << configError;
+            qCWarning(lcCore) << "Não foi possível limpar a machine default ao remover" << meta.name
+                              << configError;
         }
     }
     return true;
@@ -359,8 +356,8 @@ void MachineManager::reconcile(Error *error)
     for (MachineMeta meta : machines) {
         const qint64 pid = processes.value(meta.id, 0);
         if (pid > 0) {
-            if (meta.state == QStringLiteral("deleting")
-                || meta.state == QStringLiteral("deleted")) {
+            if (meta.state == QStringLiteral("deleting") ||
+                meta.state == QStringLiteral("deleted")) {
                 continue;
             }
             if (meta.state == QStringLiteral("running") && !meta.lastBootAt.isEmpty()) {
@@ -387,9 +384,8 @@ void MachineManager::reconcile(Error *error)
             continue;
         }
 
-        if (meta.state != QStringLiteral("running")
-            && meta.state != QStringLiteral("starting")
-            && meta.state != QStringLiteral("stopping")) {
+        if (meta.state != QStringLiteral("running") && meta.state != QStringLiteral("starting") &&
+            meta.state != QStringLiteral("stopping")) {
             continue;
         }
 
@@ -417,12 +413,10 @@ void MachineManager::reconcile(Error *error)
         // impede que um daemon de teste (store temporário) encerre QEMUs de
         // outra instalação do mesmo usuário que usem o mesmo prefixo.
         const QString orphanDirectory = machineDirFor(it.key());
-        const bool ownsDirectory = !orphanDirectory.isEmpty()
-                                   && QFileInfo(orphanDirectory).isDir();
-        if (!ownsDirectory
-            && !processReferencesPath(it.value(), m_options.machinesRoot)) {
-            qCDebug(lcCore) << "Processo com marcador podstack:" << it.key()
-                            << "ignorado: fora de" << m_options.machinesRoot;
+        const bool ownsDirectory = !orphanDirectory.isEmpty() && QFileInfo(orphanDirectory).isDir();
+        if (!ownsDirectory && !processReferencesPath(it.value(), m_options.machinesRoot)) {
+            qCDebug(lcCore) << "Processo com marcador podstack:" << it.key() << "ignorado: fora de"
+                            << m_options.machinesRoot;
             continue;
         }
 
@@ -435,9 +429,8 @@ void MachineManager::reconcile(Error *error)
             if (error && error->isEmpty()) {
                 *error = terminateError;
             }
-            qCWarning(lcCore) << QStringLiteral(
-                                     "Falha ao encerrar processo órfão da machine %1 "
-                                     "(pid %2): %3")
+            qCWarning(lcCore) << QStringLiteral("Falha ao encerrar processo órfão da machine %1 "
+                                                "(pid %2): %3")
                                      .arg(it.key())
                                      .arg(it.value())
                                      .arg(terminateError.code);
@@ -458,9 +451,8 @@ void MachineManager::reconcile(Error *error)
     for (const QString &machineId : managedMachines) {
         Error lookupError;
         const MachineMeta meta = m_store.get(machineId, &lookupError);
-        const bool active = meta.id == machineId
-                            && (meta.state == QStringLiteral("running")
-                                || meta.state == QStringLiteral("starting"));
+        const bool active = meta.id == machineId && (meta.state == QStringLiteral("running") ||
+                                                     meta.state == QStringLiteral("starting"));
         if (active) {
             continue;
         }
@@ -468,8 +460,8 @@ void MachineManager::reconcile(Error *error)
         if (stopVirtiofs(machineId, &stopError)) {
             qCInfo(lcCore) << "virtiofsd remanescente encerrado para a machine" << machineId;
         } else {
-            qCWarning(lcCore) << "Falha ao encerrar virtiofsd remanescente da machine"
-                              << machineId << stopError.code;
+            qCWarning(lcCore) << "Falha ao encerrar virtiofsd remanescente da machine" << machineId
+                              << stopError.code;
         }
     }
 }
@@ -503,8 +495,8 @@ bool MachineManager::persist(MachineMeta &meta, Error *error)
     meta.updatedAt = nowIso();
     const QString directory = machineDirFor(meta.id);
     if (directory.isEmpty()) {
-        return fails(error, invalidParams(QStringLiteral("Identificador de machine inválido."),
-                                          meta.id));
+        return fails(error,
+                     invalidParams(QStringLiteral("Identificador de machine inválido."), meta.id));
     }
 
     const QString metaPath = directory + QStringLiteral("/meta.json");
@@ -553,9 +545,9 @@ int MachineManager::findFreePort(const QVector<MachineMeta> &existing, Error *er
             usedPorts.insert(meta.sshPort);
         }
         for (const MachinePort &port : meta.ports) {
-            if (port.hostPort > 0
-                && (port.protocol.isEmpty()
-                    || port.protocol.compare(QStringLiteral("tcp"), Qt::CaseInsensitive) == 0)) {
+            if (port.hostPort > 0 &&
+                (port.protocol.isEmpty() ||
+                 port.protocol.compare(QStringLiteral("tcp"), Qt::CaseInsensitive) == 0)) {
                 usedPorts.insert(port.hostPort);
             }
         }
@@ -578,22 +570,20 @@ int MachineManager::findFreePort(const QVector<MachineMeta> &existing, Error *er
         return candidate;
     }
 
-    fails(error,
-          Error::make(
-              QStringLiteral("PODSTACK_CONFLICT"),
-              QStringLiteral("Nenhuma porta SSH livre na faixa configurada."),
-              QStringLiteral("%1..%2")
-                  .arg(m_options.sshPortStart)
-                  .arg(m_options.sshPortStart + kPortAttempts - 1),
-              QStringLiteral("Libere uma porta ou ajuste machine.sshPortStart.")));
+    fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                             QStringLiteral("Nenhuma porta SSH livre na faixa configurada."),
+                             QStringLiteral("%1..%2")
+                                 .arg(m_options.sshPortStart)
+                                 .arg(m_options.sshPortStart + kPortAttempts - 1),
+                             QStringLiteral("Libere uma porta ou ajuste machine.sshPortStart.")));
     return 0;
 }
 
 QString MachineManager::machineDirFor(const QString &id) const
 {
     static const QRegularExpression validId(QStringLiteral("^[A-Za-z0-9._:-]+$"));
-    if (id.isEmpty() || id == QStringLiteral(".") || id.contains(QStringLiteral(".."))
-        || !validId.match(id).hasMatch()) {
+    if (id.isEmpty() || id == QStringLiteral(".") || id.contains(QStringLiteral("..")) ||
+        !validId.match(id).hasMatch()) {
         return {};
     }
     return m_options.machinesRoot + QLatin1Char('/') + id;
@@ -618,22 +608,17 @@ QString MachineManager::nowIso()
     return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
 }
 
-MachineManager::MachineManager()
-    : MachineManager(Options{})
-{
-}
+MachineManager::MachineManager() : MachineManager(Options{}) {}
 
 MachineManager::MachineManager(Options options)
-    : m_options(std::move(options))
-    , m_runtime(m_options.runtime ? std::move(m_options.runtime)
-                                  : std::make_unique<QemuProcessRuntime>())
-    , m_store(m_options.storePath.isEmpty()
-                  ? QString()
-                  : QFileInfo(m_options.storePath).absoluteFilePath())
-    , m_cache(m_options.imageCacheDir.isEmpty()
-                  ? QString()
-                  : QDir(m_options.imageCacheDir).absolutePath())
-    , m_sshConfig(m_options.sshConfigPath)
+    : m_options(std::move(options)),
+      m_runtime(m_options.runtime ? std::move(m_options.runtime)
+                                  : std::make_unique<QemuProcessRuntime>()),
+      m_store(m_options.storePath.isEmpty() ? QString()
+                                            : QFileInfo(m_options.storePath).absoluteFilePath()),
+      m_cache(m_options.imageCacheDir.isEmpty() ? QString()
+                                                : QDir(m_options.imageCacheDir).absolutePath()),
+      m_sshConfig(m_options.sshConfigPath)
 {
     if (m_options.machinesRoot.isEmpty()) {
         m_options.machinesRoot = Paths::machinesDir();

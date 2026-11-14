@@ -5,8 +5,7 @@
 
 namespace PodStack {
 
-ComposeController::ComposeController(QObject *parent)
-    : CatalogController(parent)
+ComposeController::ComposeController(QObject *parent) : CatalogController(parent)
 {
     connect(&m_stream, &StreamClient::composeLog, this,
             [this](const QString &service, const QString &line) {
@@ -28,8 +27,7 @@ QVariantList ComposeController::parseItems(const QJsonArray &items) const
         const QJsonObject project = value.toObject();
         QVariantMap item;
         item.insert(QStringLiteral("name"), project.value(QStringLiteral("name")).toString());
-        item.insert(QStringLiteral("status"),
-                    project.value(QStringLiteral("status")).toString());
+        item.insert(QStringLiteral("status"), project.value(QStringLiteral("status")).toString());
         item.insert(QStringLiteral("workingDir"),
                     project.value(QStringLiteral("workingDir")).toString());
         const QJsonArray configFiles = project.value(QStringLiteral("configFiles")).toArray();
@@ -47,42 +45,42 @@ QVariantList ComposeController::parseItems(const QJsonArray &items) const
 
 void ComposeController::composeUp(const QString &projectPath)
 {
-    runAction(QStringLiteral("compose.up"),
-              QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("detach"), true}}, {},
-               600000);
+    runAction(
+        QStringLiteral("compose.up"),
+        QJsonObject{{QStringLiteral("projectPath"), projectPath}, {QStringLiteral("detach"), true}},
+        {}, 600000);
 }
 
 void ComposeController::composeDown(const QString &projectPath, bool volumes)
 {
     runAction(QStringLiteral("compose.down"),
               QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("volumes"), volumes}}, {},
-               600000);
+                          {QStringLiteral("volumes"), volumes}},
+              {}, 600000);
 }
 
 void ComposeController::composeRestart(const QString &projectPath, const QString &service)
 {
     runAction(QStringLiteral("compose.restart"),
               QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("service"), service}}, {},
-               600000);
+                          {QStringLiteral("service"), service}},
+              {}, 600000);
 }
 
 void ComposeController::composeStop(const QString &projectPath, const QString &service)
 {
     runAction(QStringLiteral("compose.stop"),
               QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("service"), service}}, {},
-               600000);
+                          {QStringLiteral("service"), service}},
+              {}, 600000);
 }
 
 void ComposeController::composeStart(const QString &projectPath, const QString &service)
 {
     runAction(QStringLiteral("compose.start"),
               QJsonObject{{QStringLiteral("projectPath"), projectPath},
-                          {QStringLiteral("service"), service}}, {},
-               600000);
+                          {QStringLiteral("service"), service}},
+              {}, 600000);
 }
 
 void ComposeController::subscribeComposeLogs(const QString &project, const QString &service)
@@ -99,9 +97,9 @@ void ComposeController::unsubscribeComposeLogs()
 
 void ComposeController::batchCompose(const QStringList &projectPaths, const QString &action)
 {
-    if (action != QStringLiteral("up") && action != QStringLiteral("down")
-        && action != QStringLiteral("restart") && action != QStringLiteral("stop")
-        && action != QStringLiteral("start")) {
+    if (action != QStringLiteral("up") && action != QStringLiteral("down") &&
+        action != QStringLiteral("restart") && action != QStringLiteral("stop") &&
+        action != QStringLiteral("start")) {
         setLastError(QStringLiteral("Ação de lote inválida."));
         return;
     }
@@ -116,8 +114,8 @@ void ComposeController::batchCompose(const QStringList &projectPaths, const QStr
     runJob(
         QStringLiteral("compose.batch"), {},
         [projectPaths, action, extra] {
-            return runBatchCalls(QStringLiteral("compose."), QStringLiteral("projectPath"),
-                                 action, projectPaths, false, extra);
+            return runBatchCalls(QStringLiteral("compose."), QStringLiteral("projectPath"), action,
+                                 projectPaths, false, extra);
         },
         {}, 600000);
 }

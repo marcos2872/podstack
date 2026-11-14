@@ -128,14 +128,12 @@ QString statsHumanBytes(qint64 bytes)
         value /= 1000.0;
         ++unit;
     }
-    return QString::number(value, 'f', unit == 0 ? 0 : 2)
-           + QString::fromLatin1(units[unit]);
+    return QString::number(value, 'f', unit == 0 ? 0 : 2) + QString::fromLatin1(units[unit]);
 }
 
 QJsonObject formatContainerStats(const QJsonObject &raw)
 {
-    if (raw.contains(QStringLiteral("cpu_percent"))
-        && raw.contains(QStringLiteral("mem_usage"))) {
+    if (raw.contains(QStringLiteral("cpu_percent")) && raw.contains(QStringLiteral("mem_usage"))) {
         return raw;
     }
 
@@ -143,48 +141,41 @@ QJsonObject formatContainerStats(const QJsonObject &raw)
     if (!statsArray.isEmpty()) {
         const QJsonObject entry = statsArray.first().toObject();
         QJsonObject out;
-        out.insert(QStringLiteral("id"),
-                   entry.value(QStringLiteral("ContainerID")).toString());
-        out.insert(QStringLiteral("name"),
-                   entry.value(QStringLiteral("Name")).toString());
+        out.insert(QStringLiteral("id"), entry.value(QStringLiteral("ContainerID")).toString());
+        out.insert(QStringLiteral("name"), entry.value(QStringLiteral("Name")).toString());
 
         double cpu = entry.value(QStringLiteral("AvgCPU")).toDouble();
         if (cpu <= 0.0) {
             cpu = entry.value(QStringLiteral("CPU")).toDouble();
         }
-        out.insert(QStringLiteral("cpu_percent"),
-                   QString::number(cpu, 'f', 2) + QLatin1Char('%'));
+        out.insert(QStringLiteral("cpu_percent"), QString::number(cpu, 'f', 2) + QLatin1Char('%'));
 
         const qint64 memoryUsage =
             static_cast<qint64>(entry.value(QStringLiteral("MemUsage")).toDouble());
         const qint64 memoryLimit =
             static_cast<qint64>(entry.value(QStringLiteral("MemLimit")).toDouble());
-        out.insert(QStringLiteral("mem_usage"),
-                   statsHumanBytes(memoryUsage) + QStringLiteral(" / ")
-                       + statsHumanBytes(memoryLimit));
+        out.insert(QStringLiteral("mem_usage"), statsHumanBytes(memoryUsage) +
+                                                    QStringLiteral(" / ") +
+                                                    statsHumanBytes(memoryLimit));
         out.insert(QStringLiteral("mem_percent"),
-                   QString::number(entry.value(QStringLiteral("MemPerc")).toDouble(),
-                                   'f', 2)
-                       + QLatin1Char('%'));
+                   QString::number(entry.value(QStringLiteral("MemPerc")).toDouble(), 'f', 2) +
+                       QLatin1Char('%'));
 
         qint64 rxBytes = 0;
         qint64 txBytes = 0;
         const QJsonObject networks = entry.value(QStringLiteral("Network")).toObject();
         for (auto it = networks.constBegin(); it != networks.constEnd(); ++it) {
             const QJsonObject network = it.value().toObject();
-            rxBytes += static_cast<qint64>(
-                network.value(QStringLiteral("RxBytes")).toDouble());
-            txBytes += static_cast<qint64>(
-                network.value(QStringLiteral("TxBytes")).toDouble());
+            rxBytes += static_cast<qint64>(network.value(QStringLiteral("RxBytes")).toDouble());
+            txBytes += static_cast<qint64>(network.value(QStringLiteral("TxBytes")).toDouble());
         }
         out.insert(QStringLiteral("net_io"),
-                   statsHumanBytes(rxBytes) + QStringLiteral(" / ")
-                       + statsHumanBytes(txBytes));
+                   statsHumanBytes(rxBytes) + QStringLiteral(" / ") + statsHumanBytes(txBytes));
         out.insert(QStringLiteral("block_io"),
-                   statsHumanBytes(static_cast<qint64>(
-                       entry.value(QStringLiteral("BlockInput")).toDouble()))
-                       + QStringLiteral(" / ")
-                       + statsHumanBytes(static_cast<qint64>(
+                   statsHumanBytes(
+                       static_cast<qint64>(entry.value(QStringLiteral("BlockInput")).toDouble())) +
+                       QStringLiteral(" / ") +
+                       statsHumanBytes(static_cast<qint64>(
                            entry.value(QStringLiteral("BlockOutput")).toDouble())));
         out.insert(QStringLiteral("pids"),
                    QString::number(entry.value(QStringLiteral("PIDs")).toInt()));
@@ -225,12 +216,10 @@ QJsonObject formatContainerStats(const QJsonObject &raw)
     const qint64 memoryLimit =
         static_cast<qint64>(memory.value(QStringLiteral("limit")).toDouble());
     out.insert(QStringLiteral("mem_usage"),
-               statsHumanBytes(memoryUsage) + QStringLiteral(" / ")
-                   + statsHumanBytes(memoryLimit));
+               statsHumanBytes(memoryUsage) + QStringLiteral(" / ") + statsHumanBytes(memoryLimit));
     if (memoryLimit > 0) {
         out.insert(QStringLiteral("mem_percent"),
-                   QString::number(memoryUsage * 100.0 / memoryLimit, 'f', 2)
-                       + QLatin1Char('%'));
+                   QString::number(memoryUsage * 100.0 / memoryLimit, 'f', 2) + QLatin1Char('%'));
     }
 
     qint64 rxBytes = 0;
@@ -238,14 +227,11 @@ QJsonObject formatContainerStats(const QJsonObject &raw)
     const QJsonObject networks = raw.value(QStringLiteral("networks")).toObject();
     for (auto it = networks.constBegin(); it != networks.constEnd(); ++it) {
         const QJsonObject network = it.value().toObject();
-        rxBytes += static_cast<qint64>(
-            network.value(QStringLiteral("rx_bytes")).toDouble());
-        txBytes += static_cast<qint64>(
-            network.value(QStringLiteral("tx_bytes")).toDouble());
+        rxBytes += static_cast<qint64>(network.value(QStringLiteral("rx_bytes")).toDouble());
+        txBytes += static_cast<qint64>(network.value(QStringLiteral("tx_bytes")).toDouble());
     }
     out.insert(QStringLiteral("net_io"),
-               statsHumanBytes(rxBytes) + QStringLiteral(" / ")
-                   + statsHumanBytes(txBytes));
+               statsHumanBytes(rxBytes) + QStringLiteral(" / ") + statsHumanBytes(txBytes));
 
     qint64 readBytes = 0;
     qint64 writeBytes = 0;
@@ -256,8 +242,7 @@ QJsonObject formatContainerStats(const QJsonObject &raw)
     for (const QJsonValue &value : io) {
         const QJsonObject entry = value.toObject();
         const QString op = entry.value(QStringLiteral("op")).toString();
-        const qint64 bytes = static_cast<qint64>(
-            entry.value(QStringLiteral("value")).toDouble());
+        const qint64 bytes = static_cast<qint64>(entry.value(QStringLiteral("value")).toDouble());
         if (op == QStringLiteral("read")) {
             readBytes += bytes;
         } else if (op == QStringLiteral("write")) {
@@ -265,13 +250,11 @@ QJsonObject formatContainerStats(const QJsonObject &raw)
         }
     }
     out.insert(QStringLiteral("block_io"),
-               statsHumanBytes(readBytes) + QStringLiteral(" / ")
-                   + statsHumanBytes(writeBytes));
-    out.insert(QStringLiteral("pids"),
-               QString::number(raw.value(QStringLiteral("pids_stats"))
-                                   .toObject()
-                                   .value(QStringLiteral("current"))
-                                   .toInt()));
+               statsHumanBytes(readBytes) + QStringLiteral(" / ") + statsHumanBytes(writeBytes));
+    out.insert(QStringLiteral("pids"), QString::number(raw.value(QStringLiteral("pids_stats"))
+                                                           .toObject()
+                                                           .value(QStringLiteral("current"))
+                                                           .toInt()));
     return out;
 }
 
@@ -280,9 +263,8 @@ bool buildContextTar(const QString &contextPath, QByteArray *tar, Error *error)
     static constexpr qint64 kMaxContextBytes = 512LL * 1024 * 1024;
     const QDir base(contextPath);
     const auto skipped = [](const QString &relative) {
-        return relative == QStringLiteral(".git")
-               || relative.startsWith(QStringLiteral(".git/"))
-               || relative.contains(QStringLiteral("/.git/"));
+        return relative == QStringLiteral(".git") || relative.startsWith(QStringLiteral(".git/")) ||
+               relative.contains(QStringLiteral("/.git/"));
     };
 
     qint64 estimated = 65536;
@@ -310,8 +292,8 @@ bool buildContextTar(const QString &contextPath, QByteArray *tar, Error *error)
     size_t used = 0;
     archive *writer = archive_write_new();
     archive_write_set_format_pax_restricted(writer);
-    if (archive_write_open_memory(writer, tar->data(), static_cast<size_t>(tar->size()), &used)
-        != ARCHIVE_OK) {
+    if (archive_write_open_memory(writer, tar->data(), static_cast<size_t>(tar->size()), &used) !=
+        ARCHIVE_OK) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_ARCHIVE_ERROR"),
                                  QStringLiteral("Falha ao montar o contexto de build."),

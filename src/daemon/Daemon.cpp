@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "daemon/Daemon.h"
-#include "daemon/rpc/Internal.h"
 #include "core/logging/Logging.h"
+#include "daemon/rpc/Internal.h"
 
 using namespace PodStack::DaemonInternal;
 

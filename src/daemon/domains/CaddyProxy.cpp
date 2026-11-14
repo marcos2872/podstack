@@ -2,8 +2,8 @@
 
 #include "daemon/domains/CaddyProxy.h"
 
-#include "core/logging/Logging.h"
 #include "core/config/Paths.h"
+#include "core/logging/Logging.h"
 
 #include <QDir>
 #include <QElapsedTimer>

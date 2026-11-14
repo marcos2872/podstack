@@ -88,8 +88,7 @@ QJsonObject Daemon::systemDoctor()
     podmanCheck.insert(QStringLiteral("id"), QStringLiteral("podman.socket"));
     podmanCheck.insert(QStringLiteral("status"),
                        podmanOk ? QStringLiteral("ok") : QStringLiteral("fail"));
-    podmanCheck.insert(QStringLiteral("detail"),
-                       podmanOk ? m_podman.socketPath() : error.message);
+    podmanCheck.insert(QStringLiteral("detail"), podmanOk ? m_podman.socketPath() : error.message);
     if (!podmanOk && !error.remediation.isEmpty()) {
         podmanCheck.insert(QStringLiteral("remediation"), error.remediation);
     }

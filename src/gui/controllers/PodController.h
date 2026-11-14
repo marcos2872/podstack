@@ -14,8 +14,7 @@ public:
     Q_INVOKABLE void createPod(const QString &name);
     Q_INVOKABLE void podAction(const QString &action, const QString &id);
     Q_INVOKABLE void removePod(const QString &id, bool force);
-    Q_INVOKABLE void batchPods(const QStringList &ids, const QString &action,
-                               bool force = false);
+    Q_INVOKABLE void batchPods(const QStringList &ids, const QString &action, bool force = false);
 
 protected:
     QString listMethod() const override { return QStringLiteral("pods.list"); }

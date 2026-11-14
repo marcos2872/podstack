@@ -29,8 +29,8 @@ QJsonObject Daemon::buildCancel(const QJsonObject &params, Error *error)
         return {};
     }
 
-    QJsonObject result = unsubscribe(QJsonObject{{QStringLiteral("subscriptionId"),
-                                                  subscriptionId}});
+    QJsonObject result =
+        unsubscribe(QJsonObject{{QStringLiteral("subscriptionId"), subscriptionId}});
     result.insert(QStringLiteral("id"), id);
     return result;
 }
@@ -114,8 +114,7 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
     const QString tag = params.value(QStringLiteral("tag")).toString();
     const QString dockerfile =
         params.value(QStringLiteral("dockerfile")).toString(QStringLiteral("Dockerfile"));
-    const QString trigger =
-        params.value(QStringLiteral("trigger")).toString(QStringLiteral("gui"));
+    const QString trigger = params.value(QStringLiteral("trigger")).toString(QStringLiteral("gui"));
 
     if (contextPath.isEmpty() || tag.isEmpty()) {
         if (error) {
@@ -170,9 +169,8 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
         buildArgs.insert(it.key(), it.value().toString());
     }
 
-    const QString buildId = QStringLiteral("build-%1-%2")
-                                .arg(QDateTime::currentSecsSinceEpoch())
-                                .arg(m_nextBuild++);
+    const QString buildId =
+        QStringLiteral("build-%1-%2").arg(QDateTime::currentSecsSinceEpoch()).arg(m_nextBuild++);
     const QString logDir = Paths::stateDir() + QStringLiteral("/builds");
     QDir().mkpath(logDir);
     const QString logPath = logDir + QLatin1Char('/') + buildId + QStringLiteral(".log");
@@ -200,15 +198,15 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
 
     if (platforms.size() > 1) {
         // Manifest list: o Libpod REST não cria manifest lists, então usamos o CLI.
-        (void)QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs,
-                                 platforms, logPath, subscriptionId, subscription, notify] {
+        (void) QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs, platforms,
+                                  logPath, subscriptionId, subscription, notify] {
             QElapsedTimer timer;
             timer.start();
 
             QFile logFile(logPath);
             if (!logFile.open(QIODevice::WriteOnly | QIODevice::Append)) {
-                qCWarning(lcPodman) << "Não foi possível abrir o log do build:"
-                                    << logFile.errorString();
+                qCWarning(lcPodman)
+                    << "Não foi possível abrir o log do build:" << logFile.errorString();
             }
 
             const auto onLine = [&](const QString &line) {
@@ -222,9 +220,7 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
                 payload.insert(QStringLiteral("line"), line);
                 notify(QStringLiteral("builds.delta"), payload);
             };
-            const auto cancelled = [subscription] {
-                return subscription->cancel.load();
-            };
+            const auto cancelled = [subscription] { return subscription->cancel.load(); };
 
             ManifestBuilder builder;
             Error buildError;
@@ -235,10 +231,9 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
             }
 
             const bool wasCancelled = subscription->cancel.load();
-            const QString status = wasCancelled
-                                       ? QStringLiteral("cancelled")
-                                       : (ok ? QStringLiteral("success")
-                                             : QStringLiteral("failed"));
+            const QString status =
+                wasCancelled ? QStringLiteral("cancelled")
+                             : (ok ? QStringLiteral("success") : QStringLiteral("failed"));
             const int durationMs = static_cast<int>(timer.elapsed());
             const QString errorText = ok ? QString() : buildError.message;
 
@@ -268,8 +263,8 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
     }
 
     const QString platform = platforms.isEmpty() ? QString() : platforms.first();
-    (void)QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs,
-                             platform, logPath, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs, platform,
+                              logPath, subscriptionId, subscription, notify] {
         QElapsedTimer timer;
         timer.start();
 
@@ -317,14 +312,12 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
                 const QRegularExpressionMatch match = expression.match(text.trimmed());
                 if (match.hasMatch()) {
                     BuildStepRecord step;
-                    step.id = buildId + QStringLiteral("-step-")
-                              + match.captured(1);
+                    step.id = buildId + QStringLiteral("-step-") + match.captured(1);
                     step.buildId = buildId;
                     step.index = match.captured(1).toInt();
                     step.name = match.captured(3);
                     step.status = QStringLiteral("running");
-                    step.startedAt =
-                        QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+                    step.startedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
                     step.logPath = logPath;
                     m_buildStore.addStep(step);
                     stepIndex = step.index;
@@ -337,24 +330,22 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
         QString imageId;
         Error buildError;
         const bool ok = m_podman.buildImage(contextPath, dockerfile, tag, buildArgs, platform,
-                                            onLine, &subscription->cancel, &imageId,
-                                            &buildError);
+                                            onLine, &subscription->cancel, &imageId, &buildError);
         if (logFile.isOpen()) {
             logFile.close();
         }
 
         const bool cancelled = subscription->cancel.load();
-        const QString status = cancelled ? QStringLiteral("cancelled")
-                                         : (ok ? QStringLiteral("success")
-                                               : QStringLiteral("failed"));
+        const QString status = cancelled
+                                   ? QStringLiteral("cancelled")
+                                   : (ok ? QStringLiteral("success") : QStringLiteral("failed"));
         const int durationMs = static_cast<int>(timer.elapsed());
         const QString errorText = ok ? QString() : buildError.message;
 
         m_buildStore.finish(buildId, status, errorText, durationMs);
-        m_buildStore.finishSteps(buildId,
-                                 status == QStringLiteral("success")
-                                     ? QStringLiteral("success")
-                                     : QStringLiteral("failed"));
+        m_buildStore.finishSteps(buildId, status == QStringLiteral("success")
+                                              ? QStringLiteral("success")
+                                              : QStringLiteral("failed"));
 
         QJsonObject payload;
         payload.insert(QStringLiteral("buildId"), buildId);

@@ -5,8 +5,8 @@
 #include "core/error/Error.h"
 #include "helper/ca/CaTrust.h"
 #include "helper/dns/DnsZone.h"
-#include "helper/ports/Firewall.h"
 #include "helper/polkit/Polkit.h"
+#include "helper/ports/Firewall.h"
 #include "helper/ports/PortBinding.h"
 #include "helper/updates/UpdateService.h"
 

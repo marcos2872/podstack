@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandPs(const QStringList &args)
 {
     bool all = false;
@@ -49,9 +47,9 @@ int commandPs(const QStringList &args)
     PodStack::Error error;
     QJsonObject params;
     params.insert(QStringLiteral("all"), all);
-    params.insert(QStringLiteral("state"), running ? QStringLiteral("running")
-                                     : stopped ? QStringLiteral("stopped")
-                                               : QString());
+    params.insert(QStringLiteral("state"), running   ? QStringLiteral("running")
+                                           : stopped ? QStringLiteral("stopped")
+                                                     : QString());
 
     const QJsonObject result = client.call(QStringLiteral("containers.list"), params, &error);
     if (!error.isEmpty()) {
@@ -131,8 +129,6 @@ int commandPs(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int commandLifecycle(const QString &action, const QStringList &args)
 {
     QString id;
@@ -176,8 +172,6 @@ int commandLifecycle(const QString &action, const QStringList &args)
     return kExitOk;
 }
 
-
-
 int commandInspect(const QStringList &args)
 {
     if (args.size() != 1) {
@@ -199,8 +193,6 @@ int commandInspect(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int commandExec(const QStringList &args)
 {
@@ -248,8 +240,6 @@ int commandExec(const QStringList &args)
     return (exitCode >= 0 && exitCode <= 255) ? exitCode : kExitError;
 }
 
-
-
 int commandCheckpoint(const QStringList &args)
 {
     QString id;
@@ -295,8 +285,6 @@ int commandCheckpoint(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int commandRestore(const QStringList &args)
 {

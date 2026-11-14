@@ -21,11 +21,10 @@ QJsonObject Daemon::settingsGet(const QJsonObject &params, Error *error)
         key = keyValue.toString().trimmed();
         if (!Settings::find(key)) {
             if (error) {
-                *error = Error::make(QStringLiteral("PODSTACK_VALIDATION"),
-                                     QStringLiteral("Chave de configuração desconhecida: %1.")
-                                         .arg(key),
-                                     key,
-                                     QStringLiteral("Consulte `podstack config schema`."));
+                *error =
+                    Error::make(QStringLiteral("PODSTACK_VALIDATION"),
+                                QStringLiteral("Chave de configuração desconhecida: %1.").arg(key),
+                                key, QStringLiteral("Consulte `podstack config schema`."));
             }
             return {};
         }
@@ -60,24 +59,22 @@ QJsonObject Daemon::settingsReset(const QJsonObject &params, Error *error)
         const SettingDef *definition = Settings::find(key);
         if (!definition) {
             if (error) {
-                *error = Error::make(QStringLiteral("PODSTACK_VALIDATION"),
-                                     QStringLiteral("Chave de configuração desconhecida: %1.")
-                                         .arg(key),
-                                     key,
-                                     QStringLiteral("Consulte `podstack config schema`."));
+                *error =
+                    Error::make(QStringLiteral("PODSTACK_VALIDATION"),
+                                QStringLiteral("Chave de configuração desconhecida: %1.").arg(key),
+                                key, QStringLiteral("Consulte `podstack config schema`."));
             }
             return {};
         }
         const QJsonValue previous = config.get(key);
         config.reset(key);
-        restartRequired = definition->restartRequired
-                          && !(previous == definition->defaultValue);
+        restartRequired = definition->restartRequired && !(previous == definition->defaultValue);
     } else {
         const QJsonObject previous = config.flatValues();
         config.resetAll();
         for (const SettingDef &definition : Settings::definitions()) {
-            if (definition.restartRequired
-                && !(previous.value(definition.key) == definition.defaultValue)) {
+            if (definition.restartRequired &&
+                !(previous.value(definition.key) == definition.defaultValue)) {
                 restartRequired = true;
                 break;
             }
@@ -87,10 +84,10 @@ QJsonObject Daemon::settingsReset(const QJsonObject &params, Error *error)
     QString saveError;
     if (!config.save(&saveError)) {
         if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível salvar a configuração."),
-                                 saveError,
-                                 QStringLiteral("Verifique as permissões de ~/.config/podstack."));
+            *error =
+                Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                            QStringLiteral("Não foi possível salvar a configuração."), saveError,
+                            QStringLiteral("Verifique as permissões de ~/.config/podstack."));
         }
         return {};
     }
@@ -111,9 +108,9 @@ QJsonObject Daemon::settingsSet(const QJsonObject &params, Error *error)
     const QJsonValue keyValue = params.value(QStringLiteral("key"));
     if (!keyValue.isString() || keyValue.toString().trimmed().isEmpty()) {
         if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
-                                 QStringLiteral("O campo key é obrigatório."),
-                                 QStringLiteral("key"));
+            *error =
+                Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                            QStringLiteral("O campo key é obrigatório."), QStringLiteral("key"));
         }
         return {};
     }
@@ -146,17 +143,16 @@ QJsonObject Daemon::settingsSet(const QJsonObject &params, Error *error)
     QString saveError;
     if (!config.save(&saveError)) {
         if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível salvar a configuração."),
-                                 saveError,
-                                 QStringLiteral("Verifique as permissões de ~/.config/podstack."));
+            *error =
+                Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                            QStringLiteral("Não foi possível salvar a configuração."), saveError,
+                            QStringLiteral("Verifique as permissões de ~/.config/podstack."));
         }
         return {};
     }
 
     const SettingDef *definition = Settings::find(key);
-    const bool restartRequired = definition && definition->restartRequired
-                                 && !(previous == value);
+    const bool restartRequired = definition && definition->restartRequired && !(previous == value);
     Logging::reload();
     QJsonObject result;
     result.insert(QStringLiteral("values"), config.flatValues());

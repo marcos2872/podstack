@@ -118,7 +118,7 @@ QJsonObject Daemon::imagePull(const QJsonObject &params, const Notify &notify, E
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void)QtConcurrent::run([this, reference, platform, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run([this, reference, platform, subscriptionId, subscription, notify] {
         Error streamError;
         const auto onLine = [&](const QByteArray &line) {
             const QJsonDocument document = QJsonDocument::fromJson(line);
@@ -170,7 +170,7 @@ QJsonObject Daemon::imagePush(const QJsonObject &params, const Notify &notify, E
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void)QtConcurrent::run([this, id, destination, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run([this, id, destination, subscriptionId, subscription, notify] {
         Error streamError;
         const auto onLine = [&](const QByteArray &line) {
             const QJsonDocument document = QJsonDocument::fromJson(line);

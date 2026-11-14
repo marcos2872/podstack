@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandSetup(const QStringList &args)
 {
     PodStack::RpcClient client;
@@ -85,7 +83,8 @@ int commandSetup(const QStringList &args)
     QString action;
     const int applyIndex = args.indexOf(QStringLiteral("--apply"));
     if (applyIndex >= 0) {
-        if (applyIndex + 1 < args.size() && !args.at(applyIndex + 1).startsWith(QStringLiteral("--"))) {
+        if (applyIndex + 1 < args.size() &&
+            !args.at(applyIndex + 1).startsWith(QStringLiteral("--"))) {
             action = args.at(applyIndex + 1);
         } else {
             action = QStringLiteral("podman");
@@ -115,17 +114,16 @@ int commandSetup(const QStringList &args)
 
         QJsonObject params;
         params.insert(QStringLiteral("action"), type);
-        if (type == QStringLiteral("install-components")
-            && args.contains(QStringLiteral("--caddy"))) {
+        if (type == QStringLiteral("install-components") &&
+            args.contains(QStringLiteral("--caddy"))) {
             params.insert(QStringLiteral("components"), QJsonArray{QStringLiteral("caddy")});
         }
-        const QJsonObject result =
-            client.call(QStringLiteral("setup.apply"), params, &error);
+        const QJsonObject result = client.call(QStringLiteral("setup.apply"), params, &error);
         if (!error.isEmpty()) {
             return fail(error);
         }
-        out() << "Job iniciado: " << result.value(QStringLiteral("jobId")).toString()
-              << " (" << result.value(QStringLiteral("state")).toString() << ")\n";
+        out() << "Job iniciado: " << result.value(QStringLiteral("jobId")).toString() << " ("
+              << result.value(QStringLiteral("state")).toString() << ")\n";
         out().flush();
         return kExitOk;
     }
@@ -161,8 +159,8 @@ int commandSetup(const QStringList &args)
           << (status.value(QStringLiteral("completed")).toBool() ? "sim" : "não") << '\n'
           << "Onboarding habilitado: "
           << (status.value(QStringLiteral("showOnboarding")).toBool() ? "sim" : "não") << '\n'
-          << "Política do Docker: "
-          << status.value(QStringLiteral("dockerPolicy")).toString() << '\n';
+          << "Política do Docker: " << status.value(QStringLiteral("dockerPolicy")).toString()
+          << '\n';
     printChecks(status.value(QStringLiteral("checks")).toArray());
     out().flush();
     return kExitOk;

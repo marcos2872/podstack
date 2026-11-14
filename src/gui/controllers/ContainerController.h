@@ -42,8 +42,7 @@ public:
 
     Q_INVOKABLE void listFiles(const QString &id, const QString &path);
     Q_INVOKABLE void downloadFile(const QString &id, const QString &path);
-    Q_INVOKABLE void uploadFile(const QString &id, const QString &path,
-                                const QString &sourcePath);
+    Q_INVOKABLE void uploadFile(const QString &id, const QString &path, const QString &sourcePath);
     Q_INVOKABLE void openTerminal(const QString &id);
 
     Q_INVOKABLE void subscribeLogs(const QString &id, int tail, bool follow);
@@ -57,17 +56,13 @@ signals:
     void logsChanged();
     void statsChanged();
     void connectionChanged(bool connected, const QString &error);
-    void terminalRequested(const QString &title, const QString &program,
-                           const QStringList &args);
+    void terminalRequested(const QString &title, const QString &program, const QStringList &args);
     /// Emitido depois de uma ação bem-sucedida para o hub recarregar catálogos.
     void catalogDirty();
 
 protected:
     QString listMethod() const override { return QStringLiteral("containers.list"); }
-    QJsonObject listParams() const override
-    {
-        return QJsonObject{{QStringLiteral("all"), true}};
-    }
+    QJsonObject listParams() const override { return QJsonObject{{QStringLiteral("all"), true}}; }
     QVariantList parseItems(const QJsonArray &items) const override;
     void onActionFinished(const QString &method, const QJsonObject &params,
                           const QJsonObject &result) override;

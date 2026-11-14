@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandPods(const QStringList &args)
 {
     const QString sub = args.isEmpty() ? QStringLiteral("ls") : args.first();
@@ -69,16 +67,16 @@ int commandPods(const QStringList &args)
         return kExitOk;
     }
 
-    if (sub == QStringLiteral("start") || sub == QStringLiteral("stop")
-        || sub == QStringLiteral("restart")) {
+    if (sub == QStringLiteral("start") || sub == QStringLiteral("stop") ||
+        sub == QStringLiteral("restart")) {
         if (args.size() < 2) {
             err() << "Uso: podstack pods " << sub << " <id|nome>\n";
             return kExitUsage;
         }
         PodStack::RpcClient client;
         PodStack::Error error;
-        client.call(QStringLiteral("pods.") + sub,
-                    QJsonObject{{QStringLiteral("id"), args.at(1)}}, &error);
+        client.call(QStringLiteral("pods.") + sub, QJsonObject{{QStringLiteral("id"), args.at(1)}},
+                    &error);
         if (!error.isEmpty()) {
             return fail(error);
         }
@@ -104,8 +102,7 @@ int commandPods(const QStringList &args)
         PodStack::RpcClient client;
         PodStack::Error error;
         client.call(QStringLiteral("pods.remove"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("force"), force}},
+                    QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}},
                     &error);
         if (!error.isEmpty()) {
             return fail(error);

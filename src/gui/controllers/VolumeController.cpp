@@ -5,10 +5,7 @@
 
 namespace PodStack {
 
-VolumeController::VolumeController(QObject *parent)
-    : CatalogController(parent)
-{
-}
+VolumeController::VolumeController(QObject *parent) : CatalogController(parent) {}
 
 QVariantList VolumeController::parseItems(const QJsonArray &items) const
 {
@@ -55,9 +52,9 @@ void VolumeController::cloneVolume(const QString &source, const QString &destina
 
 void VolumeController::importHostPath(const QString &name, const QString &sourcePath)
 {
-    runAction(QStringLiteral("volumes.importHostPath"),
-              QJsonObject{{QStringLiteral("name"), name},
-                          {QStringLiteral("sourcePath"), sourcePath}});
+    runAction(
+        QStringLiteral("volumes.importHostPath"),
+        QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("sourcePath"), sourcePath}});
 }
 
 void VolumeController::batchVolumes(const QStringList &names, bool force)

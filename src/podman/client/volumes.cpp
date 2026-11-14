@@ -28,10 +28,8 @@ QVector<VolumeInfo> PodmanClient::listVolumes(Error *error)
     const HttpResponse df =
         m_http.request(QByteArrayLiteral("GET"), path(QStringLiteral("/system/df")));
     if (df.status == 200) {
-        const QJsonArray volumes = QJsonDocument::fromJson(df.body)
-                                       .object()
-                                       .value(QStringLiteral("Volumes"))
-                                       .toArray();
+        const QJsonArray volumes =
+            QJsonDocument::fromJson(df.body).object().value(QStringLiteral("Volumes")).toArray();
         for (const QJsonValue &value : volumes) {
             const QJsonObject object = value.toObject();
             const QString name = object.value(QStringLiteral("VolumeName")).toString();
@@ -113,10 +111,9 @@ QJsonObject PodmanClient::createVolume(const QString &name, const QString &drive
         body.insert(QStringLiteral("Options"), jsonFromLabels(options));
     }
 
-    const HttpResponse response =
-        m_http.request(QByteArrayLiteral("POST"), path(QStringLiteral("/volumes/create")),
-                       QJsonDocument(body).toJson(QJsonDocument::Compact),
-                       QStringLiteral("application/json"));
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("POST"), path(QStringLiteral("/volumes/create")),
+        QJsonDocument(body).toJson(QJsonDocument::Compact), QStringLiteral("application/json"));
     if (response.status != 200 && response.status != 201) {
         if (error) {
             *error = errorFromResponse(response, QStringLiteral("Falha ao criar o volume."));
@@ -135,9 +132,9 @@ bool PodmanClient::removeVolume(const QString &name, bool force, Error *error)
         return false;
     }
 
-    const QString suffix = QStringLiteral("/volumes/%1?force=%2")
-                               .arg(encodeId(name), force ? QStringLiteral("true")
-                                                          : QStringLiteral("false"));
+    const QString suffix =
+        QStringLiteral("/volumes/%1?force=%2")
+            .arg(encodeId(name), force ? QStringLiteral("true") : QStringLiteral("false"));
     const HttpResponse response = m_http.request(QByteArrayLiteral("DELETE"), path(suffix));
     if (response.status == 200 || response.status == 204) {
         return true;
@@ -227,8 +224,7 @@ bool PodmanClient::cloneVolume(const QString &source, const QString &destination
     if (error && !error->isEmpty()) {
         return false;
     }
-    const QString destinationPath =
-        destinationInfo.value(QStringLiteral("Mountpoint")).toString();
+    const QString destinationPath = destinationInfo.value(QStringLiteral("Mountpoint")).toString();
 
     const QString cp = QStandardPaths::findExecutable(QStringLiteral("cp"));
     if (cp.isEmpty()) {
@@ -354,8 +350,9 @@ bool PodmanClient::importVolume(const QString &name, const QString &source, bool
     inspectVolume(name, &inspectError);
     if (inspectError.isEmpty() && !force) {
         if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                                 QStringLiteral("O volume já existe. Use force para sobrescrever."));
+            *error =
+                Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                            QStringLiteral("O volume já existe. Use force para sobrescrever."));
         }
         return false;
     }
@@ -412,9 +409,9 @@ bool PodmanClient::importVolume(const QString &name, const QString &source, bool
         }
         if (relative.startsWith(QLatin1Char('/')) || relative.contains(QStringLiteral(".."))) {
             if (error) {
-                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
-                                     QStringLiteral("O arquivo contém caminhos inseguros."),
-                                     relative);
+                *error =
+                    Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                QStringLiteral("O arquivo contém caminhos inseguros."), relative);
             }
             archive_read_free(reader);
             return false;
@@ -487,9 +484,9 @@ bool PodmanClient::importHostPath(const QString &name, const QString &sourcePath
     }
     if (!QFileInfo(sourcePath).isDir()) {
         if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("O caminho de origem não é um diretório."),
-                                 sourcePath);
+            *error =
+                Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                            QStringLiteral("O caminho de origem não é um diretório."), sourcePath);
         }
         return false;
     }
@@ -534,8 +531,7 @@ bool PodmanClient::importHostPath(const QString &name, const QString &sourcePath
 
     QProcess process;
     process.start(cp, {QStringLiteral("-a"), QStringLiteral("--reflink=auto"),
-                       sourcePath + QStringLiteral("/."),
-                       destinationPath + QStringLiteral("/")});
+                       sourcePath + QStringLiteral("/."), destinationPath + QStringLiteral("/")});
     process.waitForFinished(600000);
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
         const QString detail = QString::fromUtf8(process.readAllStandardError()).trimmed();

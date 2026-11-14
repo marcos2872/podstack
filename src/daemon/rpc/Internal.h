@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include "core/error/Error.h"
 #include "core/config/Config.h"
-#include "podman/PodmanClient.h"
+#include "core/error/Error.h"
 #include "core/helper/HelperClient.h"
+#include "podman/PodmanClient.h"
 
 #include <QJsonObject>
 #include <QString>
@@ -30,8 +30,8 @@ Error helperRequiredError();
 
 bool readMachineConsoleTail(const QString &path, qint64 tailBytes, QByteArray *data,
                             qint64 *endOffset, Error *error);
-bool readMachineConsoleChunk(const QString &path, qint64 offset, qint64 maxBytes,
-                             QByteArray *data, qint64 *endOffset, Error *error);
+bool readMachineConsoleChunk(const QString &path, qint64 offset, qint64 maxBytes, QByteArray *data,
+                             qint64 *endOffset, Error *error);
 QJsonArray collectReportLogs(const QString &directory, HelperClient *helper);
 
 } // namespace PodStack::DaemonInternal

@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandNetworks(const QStringList &args)
 {
     const QString sub = args.isEmpty() ? QStringLiteral("ls") : args.first();
@@ -30,8 +28,7 @@ int commandNetworks(const QStringList &args)
             row.name = network.value(QStringLiteral("name")).toString();
             row.driver = network.value(QStringLiteral("driver")).toString();
             row.subnet = network.value(QStringLiteral("subnet")).toString();
-            row.containers =
-                QString::number(network.value(QStringLiteral("containers")).toInt());
+            row.containers = QString::number(network.value(QStringLiteral("containers")).toInt());
             nameWidth = qMax(nameWidth, row.name.size());
             rows.append(row);
         }
@@ -76,14 +73,13 @@ int commandNetworks(const QStringList &args)
         }
         PodStack::RpcClient client;
         PodStack::Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("networks.create"),
-                        QJsonObject{{QStringLiteral("name"), name},
-                                    {QStringLiteral("driver"), driver},
-                                    {QStringLiteral("subnet"), subnet},
-                                    {QStringLiteral("gateway"), gateway},
-                                    {QStringLiteral("ipv6"), ipv6}},
-                        &error);
+        const QJsonObject result = client.call(QStringLiteral("networks.create"),
+                                               QJsonObject{{QStringLiteral("name"), name},
+                                                           {QStringLiteral("driver"), driver},
+                                                           {QStringLiteral("subnet"), subnet},
+                                                           {QStringLiteral("gateway"), gateway},
+                                                           {QStringLiteral("ipv6"), ipv6}},
+                                               &error);
         if (!error.isEmpty()) {
             return fail(error);
         }
@@ -109,8 +105,7 @@ int commandNetworks(const QStringList &args)
         PodStack::RpcClient client;
         PodStack::Error error;
         client.call(QStringLiteral("networks.remove"),
-                    QJsonObject{{QStringLiteral("name"), name},
-                                {QStringLiteral("force"), force}},
+                    QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("force"), force}},
                     &error);
         if (!error.isEmpty()) {
             return fail(error);

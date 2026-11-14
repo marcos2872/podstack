@@ -5,8 +5,7 @@ using namespace PodStack::DaemonInternal;
 
 namespace PodStack {
 
-QJsonObject Daemon::composeAction(const QString &method, const QJsonObject &params,
-                                  Error *error)
+QJsonObject Daemon::composeAction(const QString &method, const QJsonObject &params, Error *error)
 {
     const QString projectPath = params.value(QStringLiteral("projectPath")).toString();
     if (projectPath.isEmpty()) {
@@ -21,8 +20,7 @@ QJsonObject Daemon::composeAction(const QString &method, const QJsonObject &para
     const QString service = params.value(QStringLiteral("service")).toString();
     bool ok = false;
     if (action == QStringLiteral("up")) {
-        ok = m_compose.up(projectPath, params.value(QStringLiteral("detach")).toBool(true),
-                          error);
+        ok = m_compose.up(projectPath, params.value(QStringLiteral("detach")).toBool(true), error);
     } else if (action == QStringLiteral("down")) {
         ok = m_compose.down(projectPath, params.value(QStringLiteral("volumes")).toBool(false),
                             error);
@@ -87,8 +85,8 @@ QJsonObject Daemon::subscribeComposeLogs(const QJsonObject &params, const Notify
         if (container.labels.value(QStringLiteral("com.docker.compose.project")) != project) {
             continue;
         }
-        const QString service = container.labels.value(
-            QStringLiteral("com.docker.compose.service"));
+        const QString service =
+            container.labels.value(QStringLiteral("com.docker.compose.service"));
         if (!serviceFilter.isEmpty() && service != serviceFilter) {
             continue;
         }
@@ -96,9 +94,9 @@ QJsonObject Daemon::subscribeComposeLogs(const QJsonObject &params, const Notify
     }
     if (targets.isEmpty()) {
         if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
-                                 QStringLiteral("Nenhum container do projeto encontrado."),
-                                 project);
+            *error =
+                Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                            QStringLiteral("Nenhum container do projeto encontrado."), project);
         }
         return {};
     }
@@ -110,39 +108,39 @@ QJsonObject Daemon::subscribeComposeLogs(const QJsonObject &params, const Notify
     for (const auto &target : targets) {
         const QString containerId = target.first;
         const QString service = target.second;
-        (void)QtConcurrent::run([this, project, service, containerId, subscriptionId,
-                                 subscription, remaining, notify] {
-            QByteArray buffer;
-            Error streamError;
-            const auto onData = [&](const QByteArray &data) {
-                buffer.append(data);
-                int newline = -1;
-                while ((newline = buffer.indexOf('\n')) >= 0) {
-                    QByteArray line = buffer.left(newline);
-                    buffer.remove(0, newline + 1);
-                    if (line.endsWith('\r')) {
-                        line.chop(1);
+        (void) QtConcurrent::run(
+            [this, project, service, containerId, subscriptionId, subscription, remaining, notify] {
+                QByteArray buffer;
+                Error streamError;
+                const auto onData = [&](const QByteArray &data) {
+                    buffer.append(data);
+                    int newline = -1;
+                    while ((newline = buffer.indexOf('\n')) >= 0) {
+                        QByteArray line = buffer.left(newline);
+                        buffer.remove(0, newline + 1);
+                        if (line.endsWith('\r')) {
+                            line.chop(1);
+                        }
+                        QJsonObject payload;
+                        payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                        payload.insert(QStringLiteral("project"), project);
+                        payload.insert(QStringLiteral("service"), service);
+                        payload.insert(QStringLiteral("containerId"), containerId);
+                        payload.insert(QStringLiteral("line"), QString::fromUtf8(line));
+                        notify(QStringLiteral("compose.logs.delta"), payload);
+                        if (subscription->cancel.load()) {
+                            return false;
+                        }
                     }
-                    QJsonObject payload;
-                    payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
-                    payload.insert(QStringLiteral("project"), project);
-                    payload.insert(QStringLiteral("service"), service);
-                    payload.insert(QStringLiteral("containerId"), containerId);
-                    payload.insert(QStringLiteral("line"), QString::fromUtf8(line));
-                    notify(QStringLiteral("compose.logs.delta"), payload);
-                    if (subscription->cancel.load()) {
-                        return false;
-                    }
-                }
-                return !subscription->cancel.load();
-            };
+                    return !subscription->cancel.load();
+                };
 
-            m_podman.streamLogs(containerId, 200, true, onData, &subscription->cancel,
-                                &streamError);
-            if (--(*remaining) == 0) {
-                removeSubscription(subscriptionId);
-            }
-        });
+                m_podman.streamLogs(containerId, 200, true, onData, &subscription->cancel,
+                                    &streamError);
+                if (--(*remaining) == 0) {
+                    removeSubscription(subscriptionId);
+                }
+            });
     }
 
     QJsonObject result;

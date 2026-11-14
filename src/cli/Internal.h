@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "core/config/Paths.h"
 #include "core/error/Error.h"
+#include "core/helper/HelperClient.h"
 #include "core/logging/LogReader.h"
 #include "core/logging/Logging.h"
-#include "core/config/Paths.h"
 #include "core/logging/Redaction.h"
 #include "core/rpc/RpcClient.h"
 #include "core/rpc/RpcStream.h"
 #include "core/update/UpdateRunner.h"
-#include "core/helper/HelperClient.h"
 
 #include <QCoreApplication>
 #include <QDate>
@@ -35,7 +35,6 @@
 #include <cstring>
 #include <string>
 #include <vector>
-
 
 namespace PodStack::CliInternal {
 
@@ -98,8 +97,8 @@ QString formatConfigValue(const QJsonValue &value);
 
 bool fetchConfigSchema(QHash<QString, QJsonObject> *schema, PodStack::Error *error);
 
-bool parseConfigValue(const QJsonObject &definition, const QString &raw,
-                      QJsonValue *value, QString *error);
+bool parseConfigValue(const QJsonObject &definition, const QString &raw, QJsonValue *value,
+                      QString *error);
 
 class DbusUpdateHelper : public PodStack::UpdateHelper {
 public:

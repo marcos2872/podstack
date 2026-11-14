@@ -33,16 +33,14 @@ QVariantMap machineVariant(const QJsonObject &machine)
         sshUser = QStringLiteral("podstack");
     }
     item.insert(QStringLiteral("ssh"),
-                sshPort > 0
-                    ? QStringLiteral("%1@127.0.0.1:%2").arg(sshUser).arg(sshPort)
-                    : QStringLiteral("-"));
+                sshPort > 0 ? QStringLiteral("%1@127.0.0.1:%2").arg(sshUser).arg(sshPort)
+                            : QStringLiteral("-"));
     return item;
 }
 
 } // namespace
 
-MachineController::MachineController(QObject *parent)
-    : ControllerBase(parent)
+MachineController::MachineController(QObject *parent) : ControllerBase(parent)
 {
     connect(&m_machinesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &MachineController::onMachinesFinished);
@@ -56,60 +54,51 @@ MachineController::MachineController(QObject *parent)
             &MachineController::onMachineUsbFinished);
     connect(&m_machineSnapshotsWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &MachineController::onMachineSnapshotsFinished);
-    connect(&m_machineSshWatcher, &QFutureWatcher<QJsonObject>::finished, this,
-            [this] {
-                const QJsonObject result = m_machineSshWatcher.result();
-                if (result.contains(QStringLiteral("error"))) {
-                    const QJsonObject errorObject =
-                        result.value(QStringLiteral("error")).toObject();
-                    m_lastError = errorObject.value(QStringLiteral("message")).toString();
-                    emit lastErrorChanged();
-                    return;
-                }
+    connect(&m_machineSshWatcher, &QFutureWatcher<QJsonObject>::finished, this, [this] {
+        const QJsonObject result = m_machineSshWatcher.result();
+        if (result.contains(QStringLiteral("error"))) {
+            const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+            m_lastError = errorObject.value(QStringLiteral("message")).toString();
+            emit lastErrorChanged();
+            return;
+        }
 
-                const QString host = result.value(QStringLiteral("host")).toString();
-                const int port = result.value(QStringLiteral("port")).toInt();
-                const QString user = result.value(QStringLiteral("user")).toString();
-                const QString identityFile =
-                    result.value(QStringLiteral("identityFile")).toString();
-                const bool forwardAgent =
-                    result.value(QStringLiteral("forwardAgent")).toBool();
-                if (host.isEmpty() || port <= 0 || user.isEmpty()
-                    || identityFile.isEmpty()) {
-                    m_lastError = QStringLiteral("Resposta SSH inválida do daemon.");
-                    emit lastErrorChanged();
-                    return;
-                }
+        const QString host = result.value(QStringLiteral("host")).toString();
+        const int port = result.value(QStringLiteral("port")).toInt();
+        const QString user = result.value(QStringLiteral("user")).toString();
+        const QString identityFile = result.value(QStringLiteral("identityFile")).toString();
+        const bool forwardAgent = result.value(QStringLiteral("forwardAgent")).toBool();
+        if (host.isEmpty() || port <= 0 || user.isEmpty() || identityFile.isEmpty()) {
+            m_lastError = QStringLiteral("Resposta SSH inválida do daemon.");
+            emit lastErrorChanged();
+            return;
+        }
 
-                QString title = m_machineSshTitle;
-                if (title.isEmpty()) {
-                    title = QStringLiteral("machine");
-                }
-                QStringList arguments;
-                if (forwardAgent) {
-                    arguments << QStringLiteral("-A");
-                }
-                arguments << QStringLiteral("-i") << identityFile << QStringLiteral("-p")
-                          << QString::number(port) << QStringLiteral("-o")
-                          << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
-                          << QStringLiteral("StrictHostKeyChecking=accept-new")
-                          << QStringLiteral("-o")
-                          << QStringLiteral("UserKnownHostsFile=%1/known_hosts")
-                                 .arg(QFileInfo(identityFile).absolutePath())
-                          << QStringLiteral("%1@%2").arg(user, host);
-                if (isSignalConnected(
-                        QMetaMethod::fromSignal(&MachineController::terminalRequested))) {
-                    emit terminalRequested(title, QStringLiteral("ssh"), arguments);
-                } else {
-                    // Fallback para uso do Backend sem a MainWindow.
-                    auto *window =
-                        new TerminalWindow(title, QStringLiteral("ssh"), arguments);
-                    window->show();
-                    window->raise();
-                    window->activateWindow();
-                }
-            });
-
+        QString title = m_machineSshTitle;
+        if (title.isEmpty()) {
+            title = QStringLiteral("machine");
+        }
+        QStringList arguments;
+        if (forwardAgent) {
+            arguments << QStringLiteral("-A");
+        }
+        arguments << QStringLiteral("-i") << identityFile << QStringLiteral("-p")
+                  << QString::number(port) << QStringLiteral("-o")
+                  << QStringLiteral("IdentitiesOnly=yes") << QStringLiteral("-o")
+                  << QStringLiteral("StrictHostKeyChecking=accept-new") << QStringLiteral("-o")
+                  << QStringLiteral("UserKnownHostsFile=%1/known_hosts")
+                         .arg(QFileInfo(identityFile).absolutePath())
+                  << QStringLiteral("%1@%2").arg(user, host);
+        if (isSignalConnected(QMetaMethod::fromSignal(&MachineController::terminalRequested))) {
+            emit terminalRequested(title, QStringLiteral("ssh"), arguments);
+        } else {
+            // Fallback para uso do Backend sem a MainWindow.
+            auto *window = new TerminalWindow(title, QStringLiteral("ssh"), arguments);
+            window->show();
+            window->raise();
+            window->activateWindow();
+        }
+    });
 
     connect(&m_machineCreateStream, &StreamClient::subscriptionReady, this,
             [this](const QJsonObject &result) {
@@ -138,16 +127,14 @@ MachineController::MachineController(QObject *parent)
 
     connect(&m_machineCreateStream, &StreamClient::machineCreateFinished, this,
             [this](const QJsonObject &result) {
-                const QJsonObject errorObject =
-                    result.value(QStringLiteral("error")).toObject();
+                const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
                 const QString code = errorObject.value(QStringLiteral("code")).toString();
                 m_machineCreateActive = false;
                 m_machineCreateProgress = 100;
                 m_machineCreateError.clear();
                 if (!errorObject.isEmpty() && code != QStringLiteral("PODSTACK_CANCELLED")) {
                     m_machineCreateStage = QStringLiteral("error");
-                    m_machineCreateError =
-                        errorObject.value(QStringLiteral("message")).toString();
+                    m_machineCreateError = errorObject.value(QStringLiteral("message")).toString();
                     const QString remediation =
                         errorObject.value(QStringLiteral("remediation")).toString();
                     if (!remediation.isEmpty()) {
@@ -169,20 +156,18 @@ MachineController::MachineController(QObject *parent)
                 }
             });
 
-    connect(&m_machineCreateStream, &StreamClient::error, this,
-            [this](const QString &message) {
-                if (!m_machineCreateActive) {
-                    return;
-                }
-                m_machineCreateActive = false;
-                m_machineCreateStage = QStringLiteral("error");
-                m_machineCreateError = message;
-                emit createStateChanged();
-                m_lastError = message;
-                emit lastErrorChanged();
-                emit actionFinished(false, message);
-            });
-
+    connect(&m_machineCreateStream, &StreamClient::error, this, [this](const QString &message) {
+        if (!m_machineCreateActive) {
+            return;
+        }
+        m_machineCreateActive = false;
+        m_machineCreateStage = QStringLiteral("error");
+        m_machineCreateError = message;
+        emit createStateChanged();
+        m_lastError = message;
+        emit lastErrorChanged();
+        emit actionFinished(false, message);
+    });
 }
 
 void MachineController::onActionFinished(const QString &method, const QJsonObject &params,
@@ -242,9 +227,8 @@ void MachineController::openSsh(const QString &id)
     m_machineSshWatcher.setFuture(QtConcurrent::run([id] {
         RpcClient client;
         Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("machines.ssh"),
-                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        const QJsonObject result = client.call(QStringLiteral("machines.ssh"),
+                                               QJsonObject{{QStringLiteral("id"), id}}, &error);
         if (!error.isEmpty()) {
             return QJsonObject{{QStringLiteral("error"), error.toJson()}};
         }
@@ -303,8 +287,7 @@ void MachineController::refreshDistros()
     m_machineDistrosWatcher.setFuture(QtConcurrent::run([] {
         RpcClient client;
         Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("machines.distros"), {}, &error);
+        const QJsonObject result = client.call(QStringLiteral("machines.distros"), {}, &error);
         if (!error.isEmpty()) {
             return QJsonObject{{QStringLiteral("error"), error.toJson()}};
         }
@@ -445,8 +428,8 @@ void MachineController::setAudio(const QString &id, bool enabled)
         return;
     }
     runAction(QStringLiteral("machines.audio.set"),
-              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("enabled"), enabled}},
-              {}, 180000);
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("enabled"), enabled}}, {},
+              180000);
 }
 
 void MachineController::loadInfo(const QString &id)
@@ -465,9 +448,8 @@ void MachineController::loadInfo(const QString &id)
     m_machineInfoWatcher.setFuture(QtConcurrent::run([id] {
         RpcClient client;
         Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("machines.get"),
-                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        const QJsonObject result = client.call(QStringLiteral("machines.get"),
+                                               QJsonObject{{QStringLiteral("id"), id}}, &error);
         if (!error.isEmpty()) {
             return QJsonObject{{QStringLiteral("error"), error.toJson()}};
         }
@@ -497,9 +479,8 @@ void MachineController::onMachineInfoFinished()
 
 void MachineController::lifecycle(const QString &action, const QString &id, bool force)
 {
-    if (id.isEmpty()
-        || (action != QStringLiteral("start") && action != QStringLiteral("stop")
-            && action != QStringLiteral("restart"))) {
+    if (id.isEmpty() || (action != QStringLiteral("start") && action != QStringLiteral("stop") &&
+                         action != QStringLiteral("restart"))) {
         m_lastError = QStringLiteral("Ação ou machine inválida.");
         emit lastErrorChanged();
         emit actionFinished(false, m_lastError);
@@ -524,8 +505,8 @@ void MachineController::remove(const QString &id, bool force)
     }
 
     runAction(QStringLiteral("machines.delete"),
-              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}},
-              {}, 120000);
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}}, {},
+              120000);
 }
 
 void MachineController::rename(const QString &id, const QString &name)
@@ -538,8 +519,7 @@ void MachineController::rename(const QString &id, const QString &name)
     }
 
     runAction(QStringLiteral("machines.rename"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("name"), name.trimmed()}});
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("name"), name.trimmed()}});
 }
 
 void MachineController::clone(const QString &id, const QString &name)
@@ -662,9 +642,10 @@ void MachineController::setPorts(const QString &id, const QVariantList &ports)
             return;
         }
 
-        QString protocol =
-            entry.value(QStringLiteral("protocol"), QStringLiteral("tcp")).toString().trimmed()
-                .toLower();
+        QString protocol = entry.value(QStringLiteral("protocol"), QStringLiteral("tcp"))
+                               .toString()
+                               .trimmed()
+                               .toLower();
         if (protocol.isEmpty()) {
             protocol = QStringLiteral("tcp");
         }
@@ -683,15 +664,13 @@ void MachineController::setPorts(const QString &id, const QVariantList &ports)
         object.insert(QStringLiteral("protocol"), protocol);
         object.insert(QStringLiteral("exposeLan"),
                       entry.value(QStringLiteral("exposeLan")).toBool());
-        object.insert(QStringLiteral("label"),
-                      entry.value(QStringLiteral("label")).toString());
+        object.insert(QStringLiteral("label"), entry.value(QStringLiteral("label")).toString());
         array.append(object);
     }
 
     runAction(QStringLiteral("machines.ports.set"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("ports"), array}},
-              {}, 180000);
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("ports"), array}}, {},
+              180000);
 }
 
 void MachineController::createSnapshot(const QString &id, const QString &name)
@@ -711,9 +690,8 @@ void MachineController::createSnapshot(const QString &id, const QString &name)
         return;
     }
     runAction(QStringLiteral("machines.snapshots.create"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("name"), name.trimmed()}},
-              {}, 180000);
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("name"), name.trimmed()}}, {},
+              180000);
 }
 
 void MachineController::restoreSnapshot(const QString &id, const QString &name)
@@ -733,9 +711,8 @@ void MachineController::restoreSnapshot(const QString &id, const QString &name)
         return;
     }
     runAction(QStringLiteral("machines.snapshots.restore"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("name"), name.trimmed()}},
-              {}, 180000);
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("name"), name.trimmed()}}, {},
+              180000);
 }
 
 void MachineController::removeSnapshot(const QString &id, const QString &name)
@@ -755,9 +732,8 @@ void MachineController::removeSnapshot(const QString &id, const QString &name)
         return;
     }
     runAction(QStringLiteral("machines.snapshots.remove"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("name"), name.trimmed()}},
-              {}, 180000);
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("name"), name.trimmed()}}, {},
+              180000);
 }
 
 void MachineController::refreshSnapshots(const QString &id)
@@ -777,9 +753,8 @@ void MachineController::refreshSnapshots(const QString &id)
     m_machineSnapshotsWatcher.setFuture(QtConcurrent::run([id] {
         RpcClient client;
         Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("machines.snapshots.list"),
-                        QJsonObject{{QStringLiteral("id"), id}}, &error);
+        const QJsonObject result = client.call(QStringLiteral("machines.snapshots.list"),
+                                               QJsonObject{{QStringLiteral("id"), id}}, &error);
         if (!error.isEmpty()) {
             return QJsonObject{{QStringLiteral("error"), error.toJson()}};
         }
@@ -791,9 +766,10 @@ void MachineController::onMachineSnapshotsFinished()
 {
     const QJsonObject result = m_machineSnapshotsWatcher.result();
     if (result.value(QStringLiteral("error")).isObject()) {
-        m_machineSnapshotsError =
-            result.value(QStringLiteral("error")).toObject().value(QStringLiteral("message"))
-                .toString();
+        m_machineSnapshotsError = result.value(QStringLiteral("error"))
+                                      .toObject()
+                                      .value(QStringLiteral("message"))
+                                      .toString();
         if (m_machineSnapshotsError.isEmpty()) {
             m_machineSnapshotsError =
                 QStringLiteral("Não foi possível listar os snapshots da machine.");
@@ -888,12 +864,9 @@ void MachineController::create(const QVariantMap &spec)
     params.insert(QStringLiteral("isolated"), isolated);
     // O modo isolado implica rede restrita e sem SSH agent; o daemon reforça.
     params.insert(QStringLiteral("isolateNetwork"),
-                  isolated
-                      || spec.value(QStringLiteral("isolateNetwork")).toBool());
+                  isolated || spec.value(QStringLiteral("isolateNetwork")).toBool());
     params.insert(QStringLiteral("forwardSshAgent"),
-                  isolated
-                      ? false
-                      : spec.value(QStringLiteral("forwardSshAgent")).toBool());
+                  isolated ? false : spec.value(QStringLiteral("forwardSshAgent")).toBool());
 
     QJsonArray mounts;
     const QString mountsText = spec.value(QStringLiteral("mountsText")).toString();
@@ -911,8 +884,8 @@ void MachineController::create(const QVariantMap &spec)
         const QString source = parts.at(0).trimmed();
         const QString target = parts.at(1).trimmed();
         const QString mode = parts.size() == 3 ? parts.at(2).trimmed() : QString();
-        if (source.isEmpty() || target.isEmpty() || !source.startsWith(QLatin1Char('/'))
-            || !target.startsWith(QLatin1Char('/'))) {
+        if (source.isEmpty() || target.isEmpty() || !source.startsWith(QLatin1Char('/')) ||
+            !target.startsWith(QLatin1Char('/'))) {
             fail(QStringLiteral("Mount inválido: origem e destino precisam ser absolutos."));
             return;
         }
@@ -953,7 +926,7 @@ void MachineController::cancelCreate()
     const QString jobId = m_machineCreateJobId;
     m_machineCreateStage = QStringLiteral("cancelling");
     emit createStateChanged();
-    (void)QtConcurrent::run([jobId] {
+    (void) QtConcurrent::run([jobId] {
         RpcClient client;
         Error error;
         client.call(QStringLiteral("machines.cancel"),
@@ -975,7 +948,8 @@ void MachineController::resetCreateState()
 }
 
 void MachineController::exportTo(const QString &id, const QString &path, bool force)
-{    const auto fail = [this](const QString &message) {
+{
+    const auto fail = [this](const QString &message) {
         m_lastError = message;
         emit lastErrorChanged();
         emit actionFinished(false, message);

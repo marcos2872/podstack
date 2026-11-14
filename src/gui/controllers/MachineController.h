@@ -84,8 +84,7 @@ signals:
     void snapshotsChanged();
     void createStateChanged();
     void actionFinished(bool ok, const QString &error);
-    void terminalRequested(const QString &title, const QString &program,
-                           const QStringList &args);
+    void terminalRequested(const QString &title, const QString &program, const QStringList &args);
 
 protected:
     void onActionFinished(const QString &method, const QJsonObject &params,

@@ -5,10 +5,10 @@ using namespace PodStack::MachineInternal;
 
 namespace PodStack {
 
-MachineMeta MachineManager::exportMachine(
-    const QString &idOrName, const QString &archivePath, bool force,
-    const std::function<void(const QString &, int)> &progress,
-    const std::function<bool()> &cancelled, Error *error)
+MachineMeta MachineManager::exportMachine(const QString &idOrName, const QString &archivePath,
+                                          bool force,
+                                          const std::function<void(const QString &, int)> &progress,
+                                          const std::function<bool()> &cancelled, Error *error)
 {
     if (error) {
         *error = {};
@@ -22,12 +22,11 @@ MachineMeta MachineManager::exportMachine(
     if (meta.id.isEmpty()) {
         return {};
     }
-    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("starting")
-        || meta.state == QStringLiteral("stopping") || meta.state == QStringLiteral("deleting")) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("A machine está em transição; tente novamente."),
-                          meta.id));
+    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("starting") ||
+        meta.state == QStringLiteral("stopping") || meta.state == QStringLiteral("deleting")) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em transição; tente novamente."),
+                                 meta.id));
         return {};
     }
 
@@ -47,24 +46,23 @@ MachineMeta MachineManager::exportMachine(
         return {};
     }
     const QString target = targetInfo.absoluteFilePath();
-    if (target == meta.diskPath || target == meta.seedPath || target == meta.sshKeyPath
-        || target == meta.sshKeyPath + QStringLiteral(".pub")) {
+    if (target == meta.diskPath || target == meta.seedPath || target == meta.sshKeyPath ||
+        target == meta.sshKeyPath + QStringLiteral(".pub")) {
         fails(error, invalidParams(QStringLiteral("O export não pode sobrescrever um arquivo "
                                                   "interno da machine."),
                                    target));
         return {};
     }
     if (targetInfo.exists() && !targetInfo.isFile()) {
-        fails(error, invalidParams(QStringLiteral("O destino do export não é um arquivo."),
-                                   target));
+        fails(error,
+              invalidParams(QStringLiteral("O destino do export não é um arquivo."), target));
         return {};
     }
     if (targetInfo.exists() && !force) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("O arquivo de export já existe."), target,
-                          QStringLiteral("Escolha outro caminho ou use --force para "
-                                         "substituir.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("O arquivo de export já existe."), target,
+                                 QStringLiteral("Escolha outro caminho ou use --force para "
+                                                "substituir.")));
         return {};
     }
     if (!QFileInfo(targetInfo.absolutePath()).isDir()) {
@@ -77,9 +75,9 @@ MachineMeta MachineManager::exportMachine(
     if (spec.machineId.isEmpty()) {
         return {};
     }
-    const bool wasRunning =
-        meta.state == QStringLiteral("running") || meta.state == QStringLiteral("starting")
-        || m_runtime->isRunning(spec, nullptr);
+    const bool wasRunning = meta.state == QStringLiteral("running") ||
+                            meta.state == QStringLiteral("starting") ||
+                            m_runtime->isRunning(spec, nullptr);
 
     if (wasRunning) {
         if (progress) {
@@ -107,9 +105,7 @@ MachineMeta MachineManager::exportMachine(
                               << "após o export:" << resumeError.code;
         }
     };
-    const auto cancelledNow = [&cancelled]() {
-        return cancelled && cancelled();
-    };
+    const auto cancelledNow = [&cancelled]() { return cancelled && cancelled(); };
 
     if (cancelledNow()) {
         resume();
@@ -175,8 +171,8 @@ MachineMeta MachineManager::exportMachine(
 
     Error archiveError;
     if (!MachineArchive::write(partPath, manifest, flattened, meta.seedPath, meta.sshKeyPath,
-                               meta.sshKeyPath + QStringLiteral(".pub"), archiveProgress,
-                               cancelled, &archiveError)) {
+                               meta.sshKeyPath + QStringLiteral(".pub"), archiveProgress, cancelled,
+                               &archiveError)) {
         QFile::remove(partPath);
         if (error) {
             *error = archiveError;
@@ -210,8 +206,7 @@ MachineMeta MachineManager::exportMachine(
                                  target));
         return {};
     }
-    if (!QFile::setPermissions(target,
-                               QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
+    if (!QFile::setPermissions(target, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
         QFile::remove(target);
         resume();
         fails(error, Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
@@ -247,10 +242,10 @@ MachineMeta MachineManager::exportMachine(
     return meta;
 }
 
-MachineMeta MachineManager::importMachine(
-    const QString &archivePath, const QString &requestedName, bool force,
-    const std::function<void(const QString &, int)> &progress,
-    const std::function<bool()> &cancelled, Error *error)
+MachineMeta MachineManager::importMachine(const QString &archivePath, const QString &requestedName,
+                                          bool force,
+                                          const std::function<void(const QString &, int)> &progress,
+                                          const std::function<bool()> &cancelled, Error *error)
 {
     if (error) {
         *error = {};
@@ -259,8 +254,8 @@ MachineMeta MachineManager::importMachine(
     std::lock_guard<std::mutex> archiveGuard(m_archiveMutex);
 
     const QFileInfo archiveInfo(archivePath);
-    if (archivePath.trimmed().isEmpty() || !archiveInfo.isAbsolute() || !archiveInfo.isFile()
-        || archiveInfo.isSymLink()) {
+    if (archivePath.trimmed().isEmpty() || !archiveInfo.isAbsolute() || !archiveInfo.isFile() ||
+        archiveInfo.isSymLink()) {
         fails(error, invalidParams(QStringLiteral("Informe um arquivo de machine existente."),
                                    archivePath));
         return {};
@@ -296,8 +291,8 @@ MachineMeta MachineManager::importMachine(
         }
     };
     Error extractError;
-    if (!MachineArchive::extract(archivePath, staging.path(), &manifest, &paths,
-                                 extractProgress, cancelled, &extractError)) {
+    if (!MachineArchive::extract(archivePath, staging.path(), &manifest, &paths, extractProgress,
+                                 cancelled, &extractError)) {
         if (error) {
             *error = extractError;
         }
@@ -354,8 +349,7 @@ MachineMeta MachineManager::importMachine(
             fails(error,
                   Error::make(QStringLiteral("PODSTACK_CONFLICT"),
                               QStringLiteral("A machine existente está em outra operação."),
-                              machine.id,
-                              QStringLiteral("Aguarde a operação atual terminar.")));
+                              machine.id, QStringLiteral("Aguarde a operação atual terminar.")));
             return {};
         }
         if (!remove(machine.id, true, error)) {
@@ -420,8 +414,7 @@ MachineMeta MachineManager::importMachine(
     meta.createdAt = timestamp;
     meta.updatedAt = timestamp;
     meta.ports = {
-        MachinePort{newUuidV7(), sshPort, 22, QStringLiteral("tcp"), false,
-                    QStringLiteral("ssh")},
+        MachinePort{newUuidV7(), sshPort, 22, QStringLiteral("tcp"), false, QStringLiteral("ssh")},
     };
 
     for (const QString &path : {meta.diskPath, meta.seedPath, meta.sshKeyPath}) {

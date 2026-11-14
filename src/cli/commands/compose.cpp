@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandCompose(const QStringList &args)
 {
     const QString sub = args.isEmpty() ? QStringLiteral("ls") : args.first();
@@ -12,8 +10,7 @@ int commandCompose(const QStringList &args)
     if (sub == QStringLiteral("ls") || sub == QStringLiteral("list")) {
         PodStack::RpcClient client;
         PodStack::Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("compose.projects.list"), {}, &error);
+        const QJsonObject result = client.call(QStringLiteral("compose.projects.list"), {}, &error);
         if (!error.isEmpty()) {
             return fail(error);
         }
@@ -32,8 +29,7 @@ int commandCompose(const QStringList &args)
             row.name = project.value(QStringLiteral("name")).toString();
             row.status = project.value(QStringLiteral("status")).toString();
             QStringList services;
-            for (const QJsonValue &service :
-                 project.value(QStringLiteral("services")).toArray()) {
+            for (const QJsonValue &service : project.value(QStringLiteral("services")).toArray()) {
                 services.append(service.toObject().value(QStringLiteral("name")).toString());
             }
             row.services = services.join(QStringLiteral(","));
@@ -58,9 +54,9 @@ int commandCompose(const QStringList &args)
         return kExitOk;
     }
 
-    if (sub == QStringLiteral("up") || sub == QStringLiteral("down")
-        || sub == QStringLiteral("restart") || sub == QStringLiteral("stop")
-        || sub == QStringLiteral("start")) {
+    if (sub == QStringLiteral("up") || sub == QStringLiteral("down") ||
+        sub == QStringLiteral("restart") || sub == QStringLiteral("stop") ||
+        sub == QStringLiteral("start")) {
         QString projectPath;
         QString service;
         bool volumes = false;
@@ -74,8 +70,7 @@ int commandCompose(const QStringList &args)
             }
         }
         if (projectPath.isEmpty()) {
-            err() << "Uso: podstack compose " << sub
-                  << " <diretório> [serviço] [--volumes]\n";
+            err() << "Uso: podstack compose " << sub << " <diretório> [serviço] [--volumes]\n";
             return kExitUsage;
         }
         PodStack::RpcClient client;

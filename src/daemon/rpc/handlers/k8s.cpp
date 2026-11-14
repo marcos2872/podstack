@@ -281,30 +281,30 @@ QJsonObject Daemon::k8sPortForwardStart(const QJsonObject &params, const Notify 
         m_k8sForwards.insert(id, subscription);
     }
 
-    (void) QtConcurrent::run([this, id, resource, ns, pod, localPort, remotePort, exposeLan,
-                              subscription, notify] {
-        const auto onLine = [&notify, &id](const QString &line) {
+    (void) QtConcurrent::run(
+        [this, id, resource, ns, pod, localPort, remotePort, exposeLan, subscription, notify] {
+            const auto onLine = [&notify, &id](const QString &line) {
+                QJsonObject payload;
+                payload.insert(QStringLiteral("id"), id);
+                payload.insert(QStringLiteral("line"), line);
+                notify(QStringLiteral("k8s.portforward.delta"), payload);
+            };
+            const auto cancelled = [subscription] { return subscription->cancel.load(); };
+            Error forwardError;
+            m_k8s.portForward(resource, ns, pod, localPort, remotePort, exposeLan, onLine,
+                              cancelled, &forwardError);
+
             QJsonObject payload;
             payload.insert(QStringLiteral("id"), id);
-            payload.insert(QStringLiteral("line"), line);
-            notify(QStringLiteral("k8s.portforward.delta"), payload);
-        };
-        const auto cancelled = [subscription] { return subscription->cancel.load(); };
-        Error forwardError;
-        m_k8s.portForward(resource, ns, pod, localPort, remotePort, exposeLan, onLine, cancelled,
-                          &forwardError);
-
-        QJsonObject payload;
-        payload.insert(QStringLiteral("id"), id);
-        if (!forwardError.isEmpty()) {
-            payload.insert(QStringLiteral("error"), forwardError.toJson());
-        }
-        notify(QStringLiteral("k8s.portforward.done"), payload);
-        {
-            std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
-            m_k8sForwards.remove(id);
-        }
-    });
+            if (!forwardError.isEmpty()) {
+                payload.insert(QStringLiteral("error"), forwardError.toJson());
+            }
+            notify(QStringLiteral("k8s.portforward.done"), payload);
+            {
+                std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
+                m_k8sForwards.remove(id);
+            }
+        });
 
     return QJsonObject{{QStringLiteral("id"), id},
                        {QStringLiteral("resource"), resource},

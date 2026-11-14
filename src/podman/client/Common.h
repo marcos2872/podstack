@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "core/config/Paths.h"
 #include "podman/PodmanClient.h"
 #include "podman/client/Internal.h"
-#include "core/config/Paths.h"
 
 #include <QDateTime>
 #include <QDir>

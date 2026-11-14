@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandKube(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -36,8 +34,6 @@ int commandKube(const QStringList &args)
     printKubeUsage(err());
     return kExitUsage;
 }
-
-
 
 int kubeInfoCommand(const QStringList &args)
 {
@@ -87,8 +83,6 @@ int kubeInfoCommand(const QStringList &args)
     return kExitOk;
 }
 
-
-
 int kubeEnvCommand(const QStringList &args)
 {
     QString cluster = QStringLiteral("default");
@@ -123,8 +117,6 @@ int kubeEnvCommand(const QStringList &args)
     out().flush();
     return kExitOk;
 }
-
-
 
 int kubeJobCommand(const QString &method, const QString &label, const QJsonObject &params)
 {
@@ -162,15 +154,11 @@ int kubeJobCommand(const QString &method, const QString &label, const QJsonObjec
     return kExitOk;
 }
 
-
-
 int kubeStartCommand()
 {
     return kubeJobCommand(QStringLiteral("k8s.enable"), QStringLiteral("cluster pronto"),
                           QJsonObject{});
 }
-
-
 
 int kubeDisableCommand(const QStringList &args)
 {
@@ -186,8 +174,6 @@ int kubeDisableCommand(const QStringList &args)
     return kubeJobCommand(QStringLiteral("k8s.disable"), QStringLiteral("cluster removido"),
                           QJsonObject{{QStringLiteral("force"), force}});
 }
-
-
 
 int kubeContextCommand(const QStringList &args)
 {

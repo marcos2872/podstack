@@ -5,10 +5,7 @@
 
 namespace PodStack {
 
-NetworkController::NetworkController(QObject *parent)
-    : CatalogController(parent)
-{
-}
+NetworkController::NetworkController(QObject *parent) : CatalogController(parent) {}
 
 QVariantList NetworkController::parseItems(const QJsonArray &items) const
 {
@@ -20,8 +17,7 @@ QVariantList NetworkController::parseItems(const QJsonArray &items) const
         item.insert(QStringLiteral("name"), network.value(QStringLiteral("name")).toString());
         item.insert(QStringLiteral("driver"), network.value(QStringLiteral("driver")).toString());
         item.insert(QStringLiteral("subnet"), network.value(QStringLiteral("subnet")).toString());
-        item.insert(QStringLiteral("gateway"),
-                    network.value(QStringLiteral("gateway")).toString());
+        item.insert(QStringLiteral("gateway"), network.value(QStringLiteral("gateway")).toString());
         item.insert(QStringLiteral("containers"),
                     network.value(QStringLiteral("containers")).toInt());
         parsed.append(item);
@@ -32,10 +28,9 @@ QVariantList NetworkController::parseItems(const QJsonArray &items) const
 void NetworkController::createNetwork(const QString &name, const QString &subnet,
                                       const QString &gateway)
 {
-    runAction(QStringLiteral("networks.create"),
-              QJsonObject{{QStringLiteral("name"), name},
-                          {QStringLiteral("subnet"), subnet},
-                          {QStringLiteral("gateway"), gateway}});
+    runAction(QStringLiteral("networks.create"), QJsonObject{{QStringLiteral("name"), name},
+                                                             {QStringLiteral("subnet"), subnet},
+                                                             {QStringLiteral("gateway"), gateway}});
 }
 
 void NetworkController::removeNetwork(const QString &name, bool force)
@@ -46,16 +41,16 @@ void NetworkController::removeNetwork(const QString &name, bool force)
 
 void NetworkController::connectNetwork(const QString &name, const QString &containerId)
 {
-    runAction(QStringLiteral("networks.connect"),
-              QJsonObject{{QStringLiteral("name"), name},
-                          {QStringLiteral("containerId"), containerId}});
+    runAction(
+        QStringLiteral("networks.connect"),
+        QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("containerId"), containerId}});
 }
 
 void NetworkController::disconnectNetwork(const QString &name, const QString &containerId)
 {
-    runAction(QStringLiteral("networks.disconnect"),
-              QJsonObject{{QStringLiteral("name"), name},
-                          {QStringLiteral("containerId"), containerId}});
+    runAction(
+        QStringLiteral("networks.disconnect"),
+        QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("containerId"), containerId}});
 }
 
 void NetworkController::batchNetworks(const QStringList &names, bool force)

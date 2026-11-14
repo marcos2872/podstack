@@ -21,34 +21,31 @@ QJsonObject withError(QJsonObject result, const Error &error)
 
 } // namespace
 
-K8sController::K8sController(QObject *parent)
-    : ControllerBase(parent)
+K8sController::K8sController(QObject *parent) : ControllerBase(parent)
 {
     connect(&m_jobStream, &StreamClient::k8sJobEvent, this, [this](const QJsonObject &event) {
         m_jobStage = event.value(QStringLiteral("stage")).toString();
         m_jobProgress = event.value(QStringLiteral("progress")).toInt();
         emit jobChanged();
     });
-    connect(&m_jobStream, &StreamClient::k8sJobFinished, this,
-            [this](const QJsonObject &result) {
-                m_jobActive = false;
-                const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
-                if (!errorObject.isEmpty()) {
-                    m_jobError = errorObject.value(QStringLiteral("message")).toString();
-                } else {
-                    const QJsonObject cluster =
-                        result.value(QStringLiteral("cluster")).toObject();
-                    m_state = cluster.value(QStringLiteral("state")).toString();
-                    m_enabled = !m_state.isEmpty() && m_state != QStringLiteral("disabled");
-                    m_jobError.clear();
-                }
-                emit jobChanged();
-                emit changed();
-                refreshStatus();
-                if (m_enabled) {
-                    refresh();
-                }
-            });
+    connect(&m_jobStream, &StreamClient::k8sJobFinished, this, [this](const QJsonObject &result) {
+        m_jobActive = false;
+        const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
+        if (!errorObject.isEmpty()) {
+            m_jobError = errorObject.value(QStringLiteral("message")).toString();
+        } else {
+            const QJsonObject cluster = result.value(QStringLiteral("cluster")).toObject();
+            m_state = cluster.value(QStringLiteral("state")).toString();
+            m_enabled = !m_state.isEmpty() && m_state != QStringLiteral("disabled");
+            m_jobError.clear();
+        }
+        emit jobChanged();
+        emit changed();
+        refreshStatus();
+        if (m_enabled) {
+            refresh();
+        }
+    });
     connect(&m_jobStream, &StreamClient::error, this, [this](const QString &message) {
         m_jobActive = false;
         m_jobError = message;
@@ -97,8 +94,8 @@ K8sController::K8sController(QObject *parent)
         if (result.contains(QStringLiteral("error"))) {
             const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
             m_error = errorObject.value(QStringLiteral("message")).toString();
-            if (errorObject.value(QStringLiteral("code")).toString()
-                == QStringLiteral("PODSTACK_NOT_FOUND")) {
+            if (errorObject.value(QStringLiteral("code")).toString() ==
+                QStringLiteral("PODSTACK_NOT_FOUND")) {
                 m_state = QStringLiteral("disabled");
                 m_enabled = false;
                 m_timer.stop();
@@ -117,8 +114,8 @@ K8sController::K8sController(QObject *parent)
         if (result.contains(QStringLiteral("error"))) {
             const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
             m_error = errorObject.value(QStringLiteral("message")).toString();
-            if (errorObject.value(QStringLiteral("code")).toString()
-                == QStringLiteral("PODSTACK_NOT_FOUND")) {
+            if (errorObject.value(QStringLiteral("code")).toString() ==
+                QStringLiteral("PODSTACK_NOT_FOUND")) {
                 m_state = QStringLiteral("disabled");
                 m_enabled = false;
                 m_timer.stop();
@@ -161,8 +158,7 @@ void K8sController::refreshStatus()
     m_statusWatcher.setFuture(QtConcurrent::run([] {
         RpcClient client;
         Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("k8s.status"), QJsonObject{}, &error);
+        const QJsonObject result = client.call(QStringLiteral("k8s.status"), QJsonObject{}, &error);
         return withError(result, error);
     }));
 }
@@ -237,16 +233,16 @@ void K8sController::clearLogs()
 
 void K8sController::deletePod(const QString &namespaceName, const QString &name)
 {
-    runAction(QStringLiteral("k8s.pod.delete"),
-              QJsonObject{{QStringLiteral("namespace"), namespaceName},
-                          {QStringLiteral("name"), name}});
+    runAction(
+        QStringLiteral("k8s.pod.delete"),
+        QJsonObject{{QStringLiteral("namespace"), namespaceName}, {QStringLiteral("name"), name}});
 }
 
 void K8sController::deleteService(const QString &namespaceName, const QString &name)
 {
-    runAction(QStringLiteral("k8s.service.delete"),
-              QJsonObject{{QStringLiteral("namespace"), namespaceName},
-                          {QStringLiteral("name"), name}});
+    runAction(
+        QStringLiteral("k8s.service.delete"),
+        QJsonObject{{QStringLiteral("namespace"), namespaceName}, {QStringLiteral("name"), name}});
 }
 
 void K8sController::startPortForward(const QString &namespaceName, const QString &name,
@@ -256,20 +252,20 @@ void K8sController::startPortForward(const QString &namespaceName, const QString
         return;
     }
     m_portForwardError.clear();
-    m_forwardWatcher.setFuture(QtConcurrent::run([namespaceName, name, localPort, remotePort,
-                                                  resource] {
-        RpcClient client;
-        Error error;
-        const QJsonObject result = client.call(
-            QStringLiteral("k8s.portforward.start"),
-            QJsonObject{{QStringLiteral("resource"), resource},
-                        {QStringLiteral("namespace"), namespaceName},
-                        {QStringLiteral("pod"), name},
-                        {QStringLiteral("localPort"), localPort},
-                        {QStringLiteral("remotePort"), remotePort}},
-            &error);
-        return withError(result, error);
-    }));
+    m_forwardWatcher.setFuture(
+        QtConcurrent::run([namespaceName, name, localPort, remotePort, resource] {
+            RpcClient client;
+            Error error;
+            const QJsonObject result =
+                client.call(QStringLiteral("k8s.portforward.start"),
+                            QJsonObject{{QStringLiteral("resource"), resource},
+                                        {QStringLiteral("namespace"), namespaceName},
+                                        {QStringLiteral("pod"), name},
+                                        {QStringLiteral("localPort"), localPort},
+                                        {QStringLiteral("remotePort"), remotePort}},
+                            &error);
+            return withError(result, error);
+        }));
 }
 
 void K8sController::stopPortForward()
@@ -284,8 +280,8 @@ void K8sController::stopPortForward()
     (void) QtConcurrent::run([id] {
         RpcClient client;
         Error error;
-        client.call(QStringLiteral("k8s.portforward.stop"),
-                    QJsonObject{{QStringLiteral("id"), id}}, &error);
+        client.call(QStringLiteral("k8s.portforward.stop"), QJsonObject{{QStringLiteral("id"), id}},
+                    &error);
     });
 }
 

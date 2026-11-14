@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "machines/manager/Common.h"
 #include "machines/manager/Internal.h"
+#include "machines/manager/Common.h"
 
 namespace PodStack::MachineInternal {
-
-
 
 QTimeZone utcTimeZone()
 {
@@ -15,9 +13,7 @@ QTimeZone utcTimeZone()
 #endif
 }
 
-
-Error invalidParams(const QString &message, const QString &detail,
-                    const QString &remediation)
+Error invalidParams(const QString &message, const QString &detail, const QString &remediation)
 {
     return Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"), message, detail, remediation);
 }
@@ -38,8 +34,7 @@ Error invalidMachineName(const QString &name)
 
 bool validSnapshotName(const QString &name)
 {
-    static const QRegularExpression pattern(
-        QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"));
+    static const QRegularExpression pattern(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"));
     return pattern.match(name).hasMatch();
 }
 
@@ -83,23 +78,21 @@ QString normalizedPortProtocol(const QString &protocol)
 
 bool isSshPort(const MachinePort &port)
 {
-    return port.guestPort == 22
-           && normalizedPortProtocol(port.protocol) == QStringLiteral("tcp");
+    return port.guestPort == 22 && normalizedPortProtocol(port.protocol) == QStringLiteral("tcp");
 }
 
 bool samePort(const MachinePort &left, const MachinePort &right)
 {
-    return left.id == right.id && left.hostPort == right.hostPort
-           && left.guestPort == right.guestPort
-           && normalizedPortProtocol(left.protocol) == normalizedPortProtocol(right.protocol)
-           && left.exposeLan == right.exposeLan && left.label == right.label;
+    return left.id == right.id && left.hostPort == right.hostPort &&
+           left.guestPort == right.guestPort &&
+           normalizedPortProtocol(left.protocol) == normalizedPortProtocol(right.protocol) &&
+           left.exposeLan == right.exposeLan && left.label == right.label;
 }
 
 QStringList proxyExcludesFromConfig(const Config &config)
 {
     QStringList excludes;
-    const QJsonArray array =
-        config.get(QStringLiteral("network.proxyExclude")).toArray();
+    const QJsonArray array = config.get(QStringLiteral("network.proxyExclude")).toArray();
     for (const QJsonValue &value : array) {
         const QString entry = value.toString();
         if (!entry.isEmpty()) {
@@ -126,8 +119,7 @@ QMap<QString, QString> proxyEnvironmentFromConfig()
 
 void setOwnerOnly(const QString &path, bool directory)
 {
-    QFileDevice::Permissions permissions =
-        QFileDevice::ReadOwner | QFileDevice::WriteOwner;
+    QFileDevice::Permissions permissions = QFileDevice::ReadOwner | QFileDevice::WriteOwner;
     if (directory) {
         permissions |= QFileDevice::ExeOwner;
     }
@@ -179,6 +171,5 @@ bool processReferencesPath(qint64 pid, const QString &root)
     }
     return false;
 }
-
 
 } // namespace PodStack::MachineInternal

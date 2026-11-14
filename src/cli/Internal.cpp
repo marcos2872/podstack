@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 QTextStream &out()
 {
     static QTextStream stream(stdout);
@@ -12,16 +10,12 @@ QTextStream &out()
     return stream;
 }
 
-
-
 QTextStream &err()
 {
     static QTextStream stream(stderr);
     stream.setEncoding(QStringConverter::Utf8);
     return stream;
 }
-
-
 
 void printUsage()
 {
@@ -88,8 +82,6 @@ void printUsage()
     out().flush();
 }
 
-
-
 int fail(const PodStack::Error &error)
 {
     err() << error.message << '\n';
@@ -101,14 +93,12 @@ int fail(const PodStack::Error &error)
     }
     err().flush();
 
-    if (error.code == QStringLiteral("PODSTACK_DAEMON_UNAVAILABLE")
-        || error.code == QStringLiteral("PODSTACK_ENGINE_UNAVAILABLE")) {
+    if (error.code == QStringLiteral("PODSTACK_DAEMON_UNAVAILABLE") ||
+        error.code == QStringLiteral("PODSTACK_ENGINE_UNAVAILABLE")) {
         return kExitEngineUnavailable;
     }
     return kExitError;
 }
-
-
 
 QString humanBytes(qint64 bytes)
 {
@@ -119,18 +109,14 @@ QString humanBytes(qint64 bytes)
         value /= 1024.0;
         ++unit;
     }
-    return QString::number(value, 'f', unit == 0 ? 0 : 1) + QLatin1Char(' ')
-           + QString::fromLatin1(units[unit]);
+    return QString::number(value, 'f', unit == 0 ? 0 : 1) + QLatin1Char(' ') +
+           QString::fromLatin1(units[unit]);
 }
-
-
 
 QString epochDate(qint64 epoch)
 {
     return QDateTime::fromSecsSinceEpoch(epoch).toString(QStringLiteral("yyyy-MM-dd"));
 }
-
-
 
 void printMachineUsage(QTextStream &stream)
 {
@@ -208,8 +194,6 @@ void printMachineUsage(QTextStream &stream)
     stream.flush();
 }
 
-
-
 bool parseSize(const QString &text, qint64 *bytes)
 {
     if (!bytes) {
@@ -223,8 +207,8 @@ bool parseSize(const QString &text, qint64 *bytes)
 
     qint64 multiplier = 1;
     const QChar suffix = value.back().toUpper();
-    if (suffix == QLatin1Char('K') || suffix == QLatin1Char('M')
-        || suffix == QLatin1Char('G') || suffix == QLatin1Char('T')) {
+    if (suffix == QLatin1Char('K') || suffix == QLatin1Char('M') || suffix == QLatin1Char('G') ||
+        suffix == QLatin1Char('T')) {
         if (suffix == QLatin1Char('K')) {
             multiplier = 1024LL;
         } else if (suffix == QLatin1Char('M')) {
@@ -239,15 +223,12 @@ bool parseSize(const QString &text, qint64 *bytes)
 
     bool ok = false;
     const qint64 number = value.toLongLong(&ok);
-    if (!ok || number <= 0
-        || number > std::numeric_limits<qint64>::max() / multiplier) {
+    if (!ok || number <= 0 || number > std::numeric_limits<qint64>::max() / multiplier) {
         return false;
     }
     *bytes = number * multiplier;
     return true;
 }
-
-
 
 PodStack::Error errorFromJson(const QJsonObject &object)
 {
@@ -266,8 +247,6 @@ PodStack::Error errorFromJson(const QJsonObject &object)
     return error;
 }
 
-
-
 QString formatSize(qint64 bytes)
 {
     constexpr double kGiB = 1024.0 * 1024.0 * 1024.0;
@@ -276,8 +255,6 @@ QString formatSize(qint64 bytes)
     }
     return QStringLiteral("%1 GiB").arg(QString::number(bytes / kGiB, 'f', 1));
 }
-
-
 
 QString machineSsh(const QJsonObject &machine)
 {
@@ -292,8 +269,6 @@ QString machineSsh(const QJsonObject &machine)
     return QStringLiteral("%1@127.0.0.1:%2").arg(user).arg(port);
 }
 
-
-
 QString machineDistroLabel(const QJsonObject &machine)
 {
     QString distro = machine.value(QStringLiteral("distro")).toString();
@@ -304,8 +279,6 @@ QString machineDistroLabel(const QJsonObject &machine)
     return distro;
 }
 
-
-
 bool machinePortIsSsh(const QJsonObject &port)
 {
     if (port.value(QStringLiteral("guestPort")).toInt() != 22) {
@@ -314,8 +287,6 @@ bool machinePortIsSsh(const QJsonObject &port)
     const QString protocol = port.value(QStringLiteral("protocol")).toString();
     return protocol.isEmpty() || protocol.compare(QStringLiteral("tcp"), Qt::CaseInsensitive) == 0;
 }
-
-
 
 QJsonArray machinePortsWithoutSsh(const QJsonArray &ports)
 {
@@ -329,32 +300,28 @@ QJsonArray machinePortsWithoutSsh(const QJsonArray &ports)
     return result;
 }
 
-
-
 QString machinePortLabel(const QJsonObject &machine)
 {
     const QString name = machine.value(QStringLiteral("name")).toString();
     return name.isEmpty() ? machine.value(QStringLiteral("id")).toString() : name;
 }
 
-
-
 void printTopSample(const QJsonObject &sample)
 {
     const QJsonObject host = sample.value(QStringLiteral("host")).toObject();
     const QJsonObject totals = sample.value(QStringLiteral("totals")).toObject();
 
-    out() << "HOST   cpu " << QString::number(host.value(QStringLiteral("cpuPercent")).toDouble(),
-                                             'f', 1)
+    out() << "HOST   cpu "
+          << QString::number(host.value(QStringLiteral("cpuPercent")).toDouble(), 'f', 1)
           << "%  mem " << humanBytes(host.value(QStringLiteral("memUsed")).toInteger()) << " / "
           << humanBytes(host.value(QStringLiteral("memTotal")).toInteger()) << "  net "
           << humanBytes(host.value(QStringLiteral("netRx")).toInteger()) << "/s rx, "
           << humanBytes(host.value(QStringLiteral("netTx")).toInteger()) << "/s tx\n";
     out() << "TOTAL  cpu "
           << QString::number(totals.value(QStringLiteral("cpuPercent")).toDouble(), 'f', 1)
-          << "%  mem " << humanBytes(totals.value(QStringLiteral("memUsed")).toInteger())
-          << " / " << humanBytes(totals.value(QStringLiteral("memLimit")).toInteger())
-          << "  pids " << totals.value(QStringLiteral("pids")).toInt() << '\n';
+          << "%  mem " << humanBytes(totals.value(QStringLiteral("memUsed")).toInteger()) << " / "
+          << humanBytes(totals.value(QStringLiteral("memLimit")).toInteger()) << "  pids "
+          << totals.value(QStringLiteral("pids")).toInt() << '\n';
 
     struct Row {
         QString name;
@@ -399,8 +366,6 @@ void printTopSample(const QJsonObject &sample)
     out().flush();
 }
 
-
-
 QString imageLabel(const QJsonObject &item)
 {
     const QString repository = item.value(QStringLiteral("repository")).toString();
@@ -410,8 +375,6 @@ QString imageLabel(const QJsonObject &item)
     }
     return tag.isEmpty() ? repository : repository + QLatin1Char(':') + tag;
 }
-
-
 
 int levelRank(const QString &level)
 {
@@ -430,16 +393,12 @@ int levelRank(const QString &level)
     return 2;
 }
 
-
-
 bool validLogLevel(const QString &level)
 {
     return level == QStringLiteral("error") || level == QStringLiteral("warn") ||
            level == QStringLiteral("info") || level == QStringLiteral("debug") ||
            level == QStringLiteral("trace");
 }
-
-
 
 bool validLogComponent(const QString &component)
 {
@@ -449,8 +408,6 @@ bool validLogComponent(const QString &component)
                                         QStringLiteral("helper"), QStringLiteral("package")};
     return components.contains(component);
 }
-
-
 
 QDate parseSince(const QString &text)
 {
@@ -466,8 +423,6 @@ QDate parseSince(const QString &text)
     return QDate::fromString(value.left(10), Qt::ISODate);
 }
 
-
-
 void printKubeUsage(QTextStream &stream)
 {
     stream << "Uso: podstack kube <comando> [opções]\n\n"
@@ -480,8 +435,6 @@ void printKubeUsage(QTextStream &stream)
     stream.flush();
 }
 
-
-
 int kubeStatus(const QString &cluster, QJsonObject *result, PodStack::Error *error)
 {
     PodStack::RpcClient client;
@@ -489,8 +442,6 @@ int kubeStatus(const QString &cluster, QJsonObject *result, PodStack::Error *err
                           QJsonObject{{QStringLiteral("cluster"), cluster}}, error);
     return error->isEmpty() ? kExitOk : fail(*error);
 }
-
-
 
 void printConfigUsage(QTextStream &stream)
 {
@@ -505,8 +456,6 @@ void printConfigUsage(QTextStream &stream)
            << "  schema [--json]         Mostra o schema (86 chaves)\n";
     stream.flush();
 }
-
-
 
 QString formatConfigValue(const QJsonValue &value)
 {
@@ -531,19 +480,15 @@ QString formatConfigValue(const QJsonValue &value)
         return entries.join(QLatin1Char(','));
     }
     if (value.isObject()) {
-        return QString::fromUtf8(
-            QJsonDocument(value.toObject()).toJson(QJsonDocument::Compact));
+        return QString::fromUtf8(QJsonDocument(value.toObject()).toJson(QJsonDocument::Compact));
     }
     return value.toString();
 }
 
-
-
 bool fetchConfigSchema(QHash<QString, QJsonObject> *schema, PodStack::Error *error)
 {
     PodStack::RpcClient client;
-    const QJsonObject result =
-        client.call(QStringLiteral("settings.schema"), {}, error);
+    const QJsonObject result = client.call(QStringLiteral("settings.schema"), {}, error);
     if (error && !error->isEmpty()) {
         return false;
     }
@@ -558,24 +503,22 @@ bool fetchConfigSchema(QHash<QString, QJsonObject> *schema, PodStack::Error *err
     return true;
 }
 
-
-
-bool parseConfigValue(const QJsonObject &definition, const QString &raw,
-                      QJsonValue *value, QString *error)
+bool parseConfigValue(const QJsonObject &definition, const QString &raw, QJsonValue *value,
+                      QString *error)
 {
     const QString type = definition.value(QStringLiteral("type")).toString();
     const QString trimmed = raw.trimmed();
 
     if (type == QStringLiteral("bool")) {
         const QString normalized = trimmed.toLower();
-        if (normalized == QStringLiteral("true") || normalized == QStringLiteral("1")
-            || normalized == QStringLiteral("sim") || normalized == QStringLiteral("yes")) {
+        if (normalized == QStringLiteral("true") || normalized == QStringLiteral("1") ||
+            normalized == QStringLiteral("sim") || normalized == QStringLiteral("yes")) {
             *value = true;
             return true;
         }
-        if (normalized == QStringLiteral("false") || normalized == QStringLiteral("0")
-            || normalized == QStringLiteral("não") || normalized == QStringLiteral("nao")
-            || normalized == QStringLiteral("no")) {
+        if (normalized == QStringLiteral("false") || normalized == QStringLiteral("0") ||
+            normalized == QStringLiteral("não") || normalized == QStringLiteral("nao") ||
+            normalized == QStringLiteral("no")) {
             *value = false;
             return true;
         }
@@ -597,8 +540,7 @@ bool parseConfigValue(const QJsonObject &definition, const QString &raw,
     if (type == QStringLiteral("stringList")) {
         if (trimmed.startsWith(QLatin1Char('['))) {
             QJsonParseError parseError{};
-            const QJsonDocument document =
-                QJsonDocument::fromJson(trimmed.toUtf8(), &parseError);
+            const QJsonDocument document = QJsonDocument::fromJson(trimmed.toUtf8(), &parseError);
             if (parseError.error != QJsonParseError::NoError || !document.isArray()) {
                 *error = QStringLiteral("lista JSON inválida.");
                 return false;
@@ -619,9 +561,8 @@ bool parseConfigValue(const QJsonObject &definition, const QString &raw,
     }
 
     if (type == QStringLiteral("timestamp")) {
-        if (trimmed.isEmpty() || trimmed.compare(QStringLiteral("null"),
-                                                 Qt::CaseInsensitive)
-                                     == 0) {
+        if (trimmed.isEmpty() ||
+            trimmed.compare(QStringLiteral("null"), Qt::CaseInsensitive) == 0) {
             *value = QJsonValue::Null;
             return true;
         }
@@ -631,9 +572,8 @@ bool parseConfigValue(const QJsonObject &definition, const QString &raw,
 
     if (type == QStringLiteral("string") || type == QStringLiteral("enum")) {
         const bool nullable = definition.value(QStringLiteral("nullable")).toBool();
-        if (nullable && (trimmed.isEmpty()
-                         || trimmed.compare(QStringLiteral("null"), Qt::CaseInsensitive)
-                                == 0)) {
+        if (nullable && (trimmed.isEmpty() ||
+                         trimmed.compare(QStringLiteral("null"), Qt::CaseInsensitive) == 0)) {
             *value = QJsonValue::Null;
             return true;
         }

@@ -17,8 +17,7 @@
 
 namespace PodStack {
 
-SystemController::SystemController(QObject *parent)
-    : ControllerBase(parent)
+SystemController::SystemController(QObject *parent) : ControllerBase(parent)
 {
     connect(&m_logsWatcher, &QFutureWatcher<Task>::finished, this,
             &SystemController::onLogsFinished);
@@ -26,28 +25,27 @@ SystemController::SystemController(QObject *parent)
             &SystemController::onDiskFinished);
     connect(&m_reportWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &SystemController::onReportFinished);
-    connect(&m_activityStream, &StreamClient::systemStats, this,
-            [this](const QJsonObject &sample) {
-                m_activityStats = sample.toVariantMap();
-                const QJsonObject host = sample.value(QStringLiteral("host")).toObject();
-                const auto append = [](QVariantList &list, const QString &text) {
-                    QString copy = text;
-                    copy.remove(QLatin1Char('%'));
-                    bool ok = false;
-                    const double value = copy.toDouble(&ok);
-                    if (ok) {
-                        list.append(value);
-                        if (list.size() > 60) {
-                            list.removeFirst();
-                        }
-                    }
-                };
-                append(m_activityCpuHistory,
-                       host.value(QStringLiteral("cpuPercent")).toVariant().toString());
-                append(m_activityMemHistory,
-                       host.value(QStringLiteral("memPercent")).toVariant().toString());
-                emit activityChanged();
-            });
+    connect(&m_activityStream, &StreamClient::systemStats, this, [this](const QJsonObject &sample) {
+        m_activityStats = sample.toVariantMap();
+        const QJsonObject host = sample.value(QStringLiteral("host")).toObject();
+        const auto append = [](QVariantList &list, const QString &text) {
+            QString copy = text;
+            copy.remove(QLatin1Char('%'));
+            bool ok = false;
+            const double value = copy.toDouble(&ok);
+            if (ok) {
+                list.append(value);
+                if (list.size() > 60) {
+                    list.removeFirst();
+                }
+            }
+        };
+        append(m_activityCpuHistory,
+               host.value(QStringLiteral("cpuPercent")).toVariant().toString());
+        append(m_activityMemHistory,
+               host.value(QStringLiteral("memPercent")).toVariant().toString());
+        emit activityChanged();
+    });
 
     auto *diskTimer = new QTimer(this);
     diskTimer->setInterval(5 * 60 * 1000);
@@ -91,8 +89,8 @@ void SystemController::onLogsFinished()
     m_lastLogs = task.result.lines;
     m_logsTruncated = task.result.truncated;
 
-    if (m_pendingComponent.isEmpty() || m_pendingComponent == QStringLiteral("helper")
-        || m_pendingComponent == QStringLiteral("package")) {
+    if (m_pendingComponent.isEmpty() || m_pendingComponent == QStringLiteral("helper") ||
+        m_pendingComponent == QStringLiteral("package")) {
         HelperClient helper;
         QVariantMap reply;
         QString helperError;
@@ -109,11 +107,9 @@ void SystemController::onLogsFinished()
                 }
                 LogLine line;
                 line.ts = object.value(QStringLiteral("ts")).toString();
-                line.level =
-                    object.value(QStringLiteral("level")).toString(QStringLiteral("info"));
+                line.level = object.value(QStringLiteral("level")).toString(QStringLiteral("info"));
                 line.component = helperComponent;
-                line.message =
-                    Redaction::text(object.value(QStringLiteral("message")).toString());
+                line.message = Redaction::text(object.value(QStringLiteral("message")).toString());
                 line.raw = Redaction::text(raw);
                 m_lastLogs.append(line);
             }
@@ -215,8 +211,7 @@ void SystemController::onDiskFinished()
     emit diskHealthChanged();
     if (result.value(QStringLiteral("low")).toBool()) {
         const int threshold = result.value(QStringLiteral("thresholdPercent")).toInt();
-        for (const QJsonValue &value :
-             result.value(QStringLiteral("filesystems")).toArray()) {
+        for (const QJsonValue &value : result.value(QStringLiteral("filesystems")).toArray()) {
             const QJsonObject filesystem = value.toObject();
             if (filesystem.value(QStringLiteral("usedPercent")).toDouble() >= threshold) {
                 QVariantMap sample = filesystem.toVariantMap();
@@ -230,8 +225,7 @@ void SystemController::onDiskFinished()
 
 void SystemController::openLogsFolder()
 {
-    QDesktopServices::openUrl(
-        QUrl::fromLocalFile(Paths::stateDir() + QStringLiteral("/logs")));
+    QDesktopServices::openUrl(QUrl::fromLocalFile(Paths::stateDir() + QStringLiteral("/logs")));
 }
 
 void SystemController::startActivityMonitor()

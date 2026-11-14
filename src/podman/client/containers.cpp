@@ -19,8 +19,7 @@ QVector<ContainerInfo> PodmanClient::listContainers(bool all, Error *error)
     const HttpResponse response = m_http.request(QByteArrayLiteral("GET"), this->path(suffix));
     if (response.status != 200) {
         if (error) {
-            *error = errorFromResponse(response,
-                                       QStringLiteral("Falha ao listar containers."));
+            *error = errorFromResponse(response, QStringLiteral("Falha ao listar containers."));
         }
         return {};
     }
@@ -95,7 +94,8 @@ QVector<ContainerInfo> PodmanClient::listContainers(bool all, Error *error)
                                .arg(containerPort)
                                .arg(protocol);
                 } else {
-                    text = QStringLiteral("%1->%2/%3").arg(hostPort).arg(containerPort).arg(protocol);
+                    text =
+                        QStringLiteral("%1->%2/%3").arg(hostPort).arg(containerPort).arg(protocol);
                 }
             } else if (containerPort > 0) {
                 text = QStringLiteral("%1/%2").arg(containerPort).arg(protocol);
@@ -187,8 +187,7 @@ bool PodmanClient::removeContainer(const QString &id, bool force, bool volumes, 
                                .arg(encodeId(id))
                                .arg(force ? QStringLiteral("true") : QStringLiteral("false"))
                                .arg(volumes ? QStringLiteral("true") : QStringLiteral("false"));
-    const HttpResponse response =
-        m_http.request(QByteArrayLiteral("DELETE"), path(suffix));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("DELETE"), path(suffix));
     if (response.status == 204 || response.status == 200) {
         return true;
     }
@@ -272,8 +271,9 @@ bool PodmanClient::unpauseContainer(const QString &id, Error *error)
     if (!ensureVersion(error)) {
         return false;
     }
-    const HttpResponse response = m_http.request(
-        QByteArrayLiteral("POST"), path(QStringLiteral("/containers/%1/unpause").arg(encodeId(id))));
+    const HttpResponse response =
+        m_http.request(QByteArrayLiteral("POST"),
+                       path(QStringLiteral("/containers/%1/unpause").arg(encodeId(id))));
     if (response.status == 204) {
         return true;
     }
@@ -294,8 +294,7 @@ bool PodmanClient::killContainer(const QString &id, const QString &signal, Error
 
     QString suffix = QStringLiteral("/containers/%1/kill").arg(encodeId(id));
     if (!signal.isEmpty()) {
-        suffix += QStringLiteral("?signal=")
-                  + QString::fromLatin1(QUrl::toPercentEncoding(signal));
+        suffix += QStringLiteral("?signal=") + QString::fromLatin1(QUrl::toPercentEncoding(signal));
     }
 
     const HttpResponse response = m_http.request(QByteArrayLiteral("POST"), path(suffix));
@@ -324,8 +323,8 @@ bool PodmanClient::renameContainer(const QString &id, const QString &name, Error
         return false;
     }
 
-    const QString suffix = QStringLiteral("/containers/%1/rename?name=%2")
-                               .arg(encodeId(id), encodeId(name));
+    const QString suffix =
+        QStringLiteral("/containers/%1/rename?name=%2").arg(encodeId(id), encodeId(name));
     const HttpResponse response = m_http.request(QByteArrayLiteral("POST"), this->path(suffix));
     if (response.status == 204) {
         return true;
@@ -349,7 +348,8 @@ QJsonObject PodmanClient::inspectContainer(const QString &id, Error *error)
         QByteArrayLiteral("GET"), path(QStringLiteral("/containers/%1/json").arg(encodeId(id))));
     if (response.status != 200) {
         if (error) {
-            *error = errorFromResponse(response, QStringLiteral("Falha ao inspecionar o container."));
+            *error =
+                errorFromResponse(response, QStringLiteral("Falha ao inspecionar o container."));
         }
         return {};
     }
@@ -382,9 +382,9 @@ QString PodmanClient::createContainer(const ContainerCreateSpec &spec, Error *er
     }
 
     const QByteArray body = QJsonDocument(spec.toJson()).toJson(QJsonDocument::Compact);
-    const HttpResponse response = m_http.request(QByteArrayLiteral("POST"),
-                                                  path(QStringLiteral("/containers/create")),
-                                                  body, QStringLiteral("application/json"));
+    const HttpResponse response =
+        m_http.request(QByteArrayLiteral("POST"), path(QStringLiteral("/containers/create")), body,
+                       QStringLiteral("application/json"));
     if (response.status != 201 && response.status != 200) {
         if (error) {
             *error = errorFromResponse(response, QStringLiteral("Falha ao criar o container."));

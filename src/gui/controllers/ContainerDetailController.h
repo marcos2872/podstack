@@ -31,8 +31,7 @@ class ContainerDetailController : public ControllerBase {
     Q_PROPERTY(QString logsError READ logsError NOTIFY logsChanged)
 
 public:
-    explicit ContainerDetailController(ContainerController *containers,
-                                       QObject *parent = nullptr);
+    explicit ContainerDetailController(ContainerController *containers, QObject *parent = nullptr);
 
     QVariantMap detail() const { return m_detail; }
     QString error() const { return m_error; }

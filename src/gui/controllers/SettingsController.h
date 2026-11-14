@@ -17,8 +17,8 @@ class SettingsController : public ControllerBase {
     Q_PROPERTY(QVariantList schema READ schema NOTIFY schemaChanged)
     Q_PROPERTY(QVariantMap values READ values NOTIFY valuesChanged)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
-    Q_PROPERTY(QStringList pendingRestartKeys READ pendingRestartKeys
-               NOTIFY pendingRestartKeysChanged)
+    Q_PROPERTY(
+        QStringList pendingRestartKeys READ pendingRestartKeys NOTIFY pendingRestartKeysChanged)
 
 public:
     explicit SettingsController(QObject *parent = nullptr);

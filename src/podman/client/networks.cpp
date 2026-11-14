@@ -48,9 +48,9 @@ QVector<NetworkInfo> PodmanClient::listNetworks(Error *error)
             info.gateway = subnet.value(QStringLiteral("gateway")).toString();
         }
 
-        const HttpResponse inspect = m_http.request(
-            QByteArrayLiteral("GET"),
-            path(QStringLiteral("/networks/%1/json").arg(encodeId(info.name))));
+        const HttpResponse inspect =
+            m_http.request(QByteArrayLiteral("GET"),
+                           path(QStringLiteral("/networks/%1/json").arg(encodeId(info.name))));
         if (inspect.status == 200) {
             info.containers = QJsonDocument::fromJson(inspect.body)
                                   .object()
@@ -64,9 +64,8 @@ QVector<NetworkInfo> PodmanClient::listNetworks(Error *error)
 }
 
 QJsonObject PodmanClient::createNetwork(const QString &name, const QString &driver,
-                                        const QString &subnet, const QString &gateway,
-                                        bool ipv6, const QMap<QString, QString> &labels,
-                                        Error *error)
+                                        const QString &subnet, const QString &gateway, bool ipv6,
+                                        const QMap<QString, QString> &labels, Error *error)
 {
     if (error) {
         *error = {};
@@ -84,8 +83,7 @@ QJsonObject PodmanClient::createNetwork(const QString &name, const QString &driv
 
     QJsonObject body;
     body.insert(QStringLiteral("name"), name);
-    body.insert(QStringLiteral("driver"),
-                driver.isEmpty() ? QStringLiteral("bridge") : driver);
+    body.insert(QStringLiteral("driver"), driver.isEmpty() ? QStringLiteral("bridge") : driver);
     body.insert(QStringLiteral("ipv6_enabled"), ipv6);
     if (!labels.isEmpty()) {
         body.insert(QStringLiteral("labels"), jsonFromLabels(labels));
@@ -99,10 +97,9 @@ QJsonObject PodmanClient::createNetwork(const QString &name, const QString &driv
         body.insert(QStringLiteral("subnets"), QJsonArray{subnetObject});
     }
 
-    const HttpResponse response =
-        m_http.request(QByteArrayLiteral("POST"), path(QStringLiteral("/networks/create")),
-                       QJsonDocument(body).toJson(QJsonDocument::Compact),
-                       QStringLiteral("application/json"));
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("POST"), path(QStringLiteral("/networks/create")),
+        QJsonDocument(body).toJson(QJsonDocument::Compact), QStringLiteral("application/json"));
     if (response.status != 200 && response.status != 201) {
         if (error) {
             *error = errorFromResponse(response, QStringLiteral("Falha ao criar a rede."));
@@ -121,9 +118,9 @@ bool PodmanClient::removeNetwork(const QString &name, bool force, Error *error)
         return false;
     }
 
-    const QString suffix = QStringLiteral("/networks/%1?force=%2")
-                               .arg(encodeId(name), force ? QStringLiteral("true")
-                                                          : QStringLiteral("false"));
+    const QString suffix =
+        QStringLiteral("/networks/%1?force=%2")
+            .arg(encodeId(name), force ? QStringLiteral("true") : QStringLiteral("false"));
     const HttpResponse response = m_http.request(QByteArrayLiteral("DELETE"), path(suffix));
     if (response.status == 200 || response.status == 204) {
         return true;
@@ -150,10 +147,9 @@ bool PodmanClient::connectNetwork(const QString &name, const QString &containerI
         body.insert(QStringLiteral("aliases"), jsonFromStringList(aliases));
     }
     const QString suffix = QStringLiteral("/networks/%1/connect").arg(encodeId(name));
-    const HttpResponse response =
-        m_http.request(QByteArrayLiteral("POST"), path(suffix),
-                       QJsonDocument(body).toJson(QJsonDocument::Compact),
-                       QStringLiteral("application/json"));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("POST"), path(suffix),
+                                                 QJsonDocument(body).toJson(QJsonDocument::Compact),
+                                                 QStringLiteral("application/json"));
     if (response.status == 200 || response.status == 204) {
         return true;
     }
@@ -163,8 +159,7 @@ bool PodmanClient::connectNetwork(const QString &name, const QString &containerI
     return false;
 }
 
-bool PodmanClient::disconnectNetwork(const QString &name, const QString &containerId,
-                                     Error *error)
+bool PodmanClient::disconnectNetwork(const QString &name, const QString &containerId, Error *error)
 {
     if (error) {
         *error = {};
@@ -176,16 +171,14 @@ bool PodmanClient::disconnectNetwork(const QString &name, const QString &contain
     QJsonObject body;
     body.insert(QStringLiteral("container"), containerId);
     const QString suffix = QStringLiteral("/networks/%1/disconnect").arg(encodeId(name));
-    const HttpResponse response =
-        m_http.request(QByteArrayLiteral("POST"), path(suffix),
-                       QJsonDocument(body).toJson(QJsonDocument::Compact),
-                       QStringLiteral("application/json"));
+    const HttpResponse response = m_http.request(QByteArrayLiteral("POST"), path(suffix),
+                                                 QJsonDocument(body).toJson(QJsonDocument::Compact),
+                                                 QStringLiteral("application/json"));
     if (response.status == 200 || response.status == 204) {
         return true;
     }
     if (error) {
-        *error = errorFromResponse(response,
-                                   QStringLiteral("Falha ao desconectar o container."));
+        *error = errorFromResponse(response, QStringLiteral("Falha ao desconectar o container."));
     }
     return false;
 }

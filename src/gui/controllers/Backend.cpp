@@ -1,16 +1,16 @@
 #include "gui/controllers/Backend.h"
 
-#include "core/system/DiskUsage.h"
+#include "core/config/Paths.h"
 #include "core/error/Error.h"
+#include "core/helper/HelperClient.h"
 #include "core/logging/LogReader.h"
 #include "core/logging/Logging.h"
-#include "core/config/Paths.h"
-#include "core/system/Proxy.h"
 #include "core/logging/Redaction.h"
 #include "core/rpc/RpcClient.h"
 #include "core/setup/SetupActions.h"
 #include "core/setup/SetupPolicy.h"
-#include "core/helper/HelperClient.h"
+#include "core/system/DiskUsage.h"
+#include "core/system/Proxy.h"
 #include "gui/app/Autostart.h"
 #include "gui/windows/TerminalWindow.h"
 
@@ -49,8 +49,8 @@ QString humanBytes(qint64 bytes)
         value /= 1024.0;
         ++unit;
     }
-    return QString::number(value, 'f', unit == 0 ? 0 : 1) + QLatin1Char(' ')
-           + QString::fromLatin1(units[unit]);
+    return QString::number(value, 'f', unit == 0 ? 0 : 1) + QLatin1Char(' ') +
+           QString::fromLatin1(units[unit]);
 }
 
 double parsePercent(const QString &text)
@@ -177,16 +177,14 @@ QVariantMap machineVariant(const QJsonObject &machine)
         sshUser = QStringLiteral("podstack");
     }
     item.insert(QStringLiteral("ssh"),
-                sshPort > 0
-                    ? QStringLiteral("%1@127.0.0.1:%2").arg(sshUser).arg(sshPort)
-                    : QStringLiteral("-"));
+                sshPort > 0 ? QStringLiteral("%1@127.0.0.1:%2").arg(sshUser).arg(sshPort)
+                            : QStringLiteral("-"));
     return item;
 }
 
 } // namespace
 
-Backend::Backend(QObject *parent)
-    : QObject(parent)
+Backend::Backend(QObject *parent) : QObject(parent)
 {
     connect(&m_actionWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onActionFinished);
@@ -208,19 +206,16 @@ Backend::Backend(QObject *parent)
                 m_error = error;
                 emit stateChanged();
             });
-    connect(&m_containers, &ContainerController::catalogDirty, this,
-            &Backend::refreshCatalog);
+    connect(&m_containers, &ContainerController::catalogDirty, this, &Backend::refreshCatalog);
     connect(&m_containers, &ContainerController::terminalRequested, this,
             &Backend::terminalRequested);
-    connect(&m_machines, &MachineController::terminalRequested, this,
-            &Backend::terminalRequested);
+    connect(&m_machines, &MachineController::terminalRequested, this, &Backend::terminalRequested);
     connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onCatalogFinished);
     connect(&m_settings, &SettingsController::valuesChanged, this, [this] {
-        m_updates.setEnabled(
-            m_settings.values().value(QStringLiteral("updates.mode"), QStringLiteral("check"))
-                .toString()
-            != QStringLiteral("off"));
+        m_updates.setEnabled(m_settings.values()
+                                 .value(QStringLiteral("updates.mode"), QStringLiteral("check"))
+                                 .toString() != QStringLiteral("off"));
     });
     connect(&m_updates, &UpdateController::userMessage, this,
             [this](const QString &kind, const QString &text) {
@@ -255,78 +250,69 @@ Backend::Backend(QObject *parent)
         m_eventsRetryDelayMs = qMin(m_eventsRetryDelayMs * 2, 30000);
     });
 
-    connect(&m_eventsStream, &StreamClient::eventReceived, this,
-            [this](const QJsonObject &event) {
-                if (event.value(QStringLiteral("Type")).toString()
-                    != QStringLiteral("container")) {
-                    return;
-                }
-                QString action = event.value(QStringLiteral("Action")).toString();
-                if (action == QStringLiteral("died")) {
-                    action = QStringLiteral("die");
-                } else if (action == QStringLiteral("stopped")) {
-                    action = QStringLiteral("stop");
-                }
-                if (action != QStringLiteral("start") && action != QStringLiteral("stop")
-                    && action != QStringLiteral("die") && action != QStringLiteral("create")
-                    && action != QStringLiteral("remove")
-                    && action != QStringLiteral("pause")
-                    && action != QStringLiteral("unpause")
-                    && action != QStringLiteral("health_status")
-                    && action != QStringLiteral("oom")) {
-                    return;
-                }
-                const QJsonObject actor = event.value(QStringLiteral("Actor")).toObject();
-                const QJsonObject attributes =
-                    actor.value(QStringLiteral("Attributes")).toObject();
-                const QString id = actor.value(QStringLiteral("ID")).toString();
-                const QString name = actor.value(QStringLiteral("Attributes"))
-                                         .toObject()
-                                         .value(QStringLiteral("name"))
-                                         .toString();
-                const QString key = id + QLatin1Char('|') + action + QLatin1Char('|')
-                                    + QString::number(
-                                        event.value(QStringLiteral("time")).toDouble());
-                if (m_recentEvents.contains(key)) {
-                    return;
-                }
-                if (m_recentEvents.size() > 500) {
-                    m_recentEvents.clear();
-                }
-                m_recentEvents.insert(key);
+    connect(&m_eventsStream, &StreamClient::eventReceived, this, [this](const QJsonObject &event) {
+        if (event.value(QStringLiteral("Type")).toString() != QStringLiteral("container")) {
+            return;
+        }
+        QString action = event.value(QStringLiteral("Action")).toString();
+        if (action == QStringLiteral("died")) {
+            action = QStringLiteral("die");
+        } else if (action == QStringLiteral("stopped")) {
+            action = QStringLiteral("stop");
+        }
+        if (action != QStringLiteral("start") && action != QStringLiteral("stop") &&
+            action != QStringLiteral("die") && action != QStringLiteral("create") &&
+            action != QStringLiteral("remove") && action != QStringLiteral("pause") &&
+            action != QStringLiteral("unpause") && action != QStringLiteral("health_status") &&
+            action != QStringLiteral("oom")) {
+            return;
+        }
+        const QJsonObject actor = event.value(QStringLiteral("Actor")).toObject();
+        const QJsonObject attributes = actor.value(QStringLiteral("Attributes")).toObject();
+        const QString id = actor.value(QStringLiteral("ID")).toString();
+        const QString name = actor.value(QStringLiteral("Attributes"))
+                                 .toObject()
+                                 .value(QStringLiteral("name"))
+                                 .toString();
+        const QString key = id + QLatin1Char('|') + action + QLatin1Char('|') +
+                            QString::number(event.value(QStringLiteral("time")).toDouble());
+        if (m_recentEvents.contains(key)) {
+            return;
+        }
+        if (m_recentEvents.size() > 500) {
+            m_recentEvents.clear();
+        }
+        m_recentEvents.insert(key);
 
-                m_eventKind = action;
-                QString detail = action;
-                QString health = attributes.value(QStringLiteral("health_status")).toString();
-                if (health.isEmpty()) {
-                    health =
-                        attributes.value(QStringLiteral("containerHealthStatus")).toString();
-                }
-                if (action == QStringLiteral("health_status")) {
-                    detail = health.isEmpty() ? QStringLiteral("health") : health;
-                }
-                m_eventMessage = (name.isEmpty() ? id.left(12) : name)
-                                 + QLatin1Char(' ') + detail;
-                emit eventsChanged();
-                m_eventTimer.start();
-                m_refreshTimer.start();
+        m_eventKind = action;
+        QString detail = action;
+        QString health = attributes.value(QStringLiteral("health_status")).toString();
+        if (health.isEmpty()) {
+            health = attributes.value(QStringLiteral("containerHealthStatus")).toString();
+        }
+        if (action == QStringLiteral("health_status")) {
+            detail = health.isEmpty() ? QStringLiteral("health") : health;
+        }
+        m_eventMessage = (name.isEmpty() ? id.left(12) : name) + QLatin1Char(' ') + detail;
+        emit eventsChanged();
+        m_eventTimer.start();
+        m_refreshTimer.start();
 
-                QVariantMap payload;
-                payload.insert(QStringLiteral("action"), action);
-                payload.insert(QStringLiteral("id"), id);
-                payload.insert(QStringLiteral("name"), name);
-                QString exitCode = attributes.value(QStringLiteral("containerExitCode")).toString();
-                if (exitCode.isEmpty()) {
-                    exitCode = attributes.value(QStringLiteral("exitCode")).toString();
-                }
-                if (exitCode.isEmpty()) {
-                    exitCode =
-                        event.value(QStringLiteral("ContainerExitCode")).toVariant().toString();
-                }
-                payload.insert(QStringLiteral("health"), health);
-                payload.insert(QStringLiteral("exitCode"), exitCode);
-                emit containerEvent(payload);
-            });
+        QVariantMap payload;
+        payload.insert(QStringLiteral("action"), action);
+        payload.insert(QStringLiteral("id"), id);
+        payload.insert(QStringLiteral("name"), name);
+        QString exitCode = attributes.value(QStringLiteral("containerExitCode")).toString();
+        if (exitCode.isEmpty()) {
+            exitCode = attributes.value(QStringLiteral("exitCode")).toString();
+        }
+        if (exitCode.isEmpty()) {
+            exitCode = event.value(QStringLiteral("ContainerExitCode")).toVariant().toString();
+        }
+        payload.insert(QStringLiteral("health"), health);
+        payload.insert(QStringLiteral("exitCode"), exitCode);
+        emit containerEvent(payload);
+    });
 
     m_eventsStream.subscribeEvents();
 
@@ -425,35 +411,32 @@ void Backend::onCatalogFinished()
         const QJsonObject df = result.value(QStringLiteral("json")).toObject();
         qint64 volumesSize = 0;
         for (const QJsonValue &value : df.value(QStringLiteral("Volumes")).toArray()) {
-            volumesSize += static_cast<qint64>(
-                value.toObject().value(QStringLiteral("Size")).toDouble());
+            volumesSize +=
+                static_cast<qint64>(value.toObject().value(QStringLiteral("Size")).toDouble());
         }
         qint64 containersSize = 0;
         for (const QJsonValue &value : df.value(QStringLiteral("Containers")).toArray()) {
-            containersSize += static_cast<qint64>(
-                value.toObject().value(QStringLiteral("Size")).toDouble());
+            containersSize +=
+                static_cast<qint64>(value.toObject().value(QStringLiteral("Size")).toDouble());
         }
         m_diskUsage.clear();
-        m_diskUsage.insert(QStringLiteral("images"),
-                           humanBytes(static_cast<qint64>(
-                               df.value(QStringLiteral("ImagesSize")).toDouble())));
+        m_diskUsage.insert(
+            QStringLiteral("images"),
+            humanBytes(static_cast<qint64>(df.value(QStringLiteral("ImagesSize")).toDouble())));
         m_diskUsage.insert(QStringLiteral("volumes"), humanBytes(volumesSize));
         m_diskUsage.insert(QStringLiteral("containers"), humanBytes(containersSize));
         emit diskUsageChanged();
 
         QJsonObject sections = result.value(QStringLiteral("sections")).toObject();
-        double totalReclaimable =
-            result.value(QStringLiteral("totalReclaimableBytes")).toDouble();
+        double totalReclaimable = result.value(QStringLiteral("totalReclaimableBytes")).toDouble();
         if (sections.isEmpty()) {
             const QJsonObject normalized = normalizeDiskUsage(df, true);
             sections = normalized.value(QStringLiteral("sections")).toObject();
-            totalReclaimable =
-                normalized.value(QStringLiteral("totalReclaimableBytes")).toDouble();
+            totalReclaimable = normalized.value(QStringLiteral("totalReclaimableBytes")).toDouble();
         }
         m_prunePreview = sections.toVariantMap();
         m_prunePreview.insert(QStringLiteral("totalReclaimableBytes"), totalReclaimable);
         emit prunePreviewChanged();
-
     }
 
     startNextCatalog();
@@ -491,22 +474,19 @@ void Backend::openPath(const QString &path)
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
-QString Backend::choosePath(const QString &mode, const QString &title,
-                            const QString &filter, const QString &initialPath)
+QString Backend::choosePath(const QString &mode, const QString &title, const QString &filter,
+                            const QString &initialPath)
 {
-    const QString resolvedTitle =
-        title.isEmpty() ? QStringLiteral("Selecionar arquivo") : title;
+    const QString resolvedTitle = title.isEmpty() ? QStringLiteral("Selecionar arquivo") : title;
     const QString resolvedFilter =
         filter.isEmpty() ? QStringLiteral("Todos os arquivos (*)") : filter;
     if (mode == QStringLiteral("save")) {
-        return QFileDialog::getSaveFileName(nullptr, resolvedTitle, initialPath,
-                                            resolvedFilter);
+        return QFileDialog::getSaveFileName(nullptr, resolvedTitle, initialPath, resolvedFilter);
     }
     if (mode == QStringLiteral("directory")) {
         return QFileDialog::getExistingDirectory(nullptr, resolvedTitle, initialPath);
     }
-    return QFileDialog::getOpenFileName(nullptr, resolvedTitle, initialPath,
-                                        resolvedFilter);
+    return QFileDialog::getOpenFileName(nullptr, resolvedTitle, initialPath, resolvedFilter);
 }
 
 void Backend::runAction(const QString &method, const QJsonObject &params, int timeoutMs)
@@ -591,8 +571,7 @@ void Backend::onActionFinished()
         if (!detail.isEmpty() && !message.contains(detail)) {
             message += QLatin1Char(' ') + detail;
         }
-        const QString remediation =
-            errorObject.value(QStringLiteral("remediation")).toString();
+        const QString remediation = errorObject.value(QStringLiteral("remediation")).toString();
         if (!remediation.isEmpty()) {
             message += QLatin1Char(' ') + remediation;
         }

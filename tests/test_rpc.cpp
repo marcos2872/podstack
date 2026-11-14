@@ -234,7 +234,7 @@ void RpcTest::initTestCase()
     QFile::remove(m_controlSocket);
 
     const QString daemonPath =
-        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../podstackd"));
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("podstackd"));
 
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     m_dockerMock.setResponse(QStringLiteral("/system/df"), 200, R"({

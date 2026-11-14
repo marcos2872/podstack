@@ -32,8 +32,8 @@ bool PodmanClient::streamLogs(const QString &id, int tail, bool follow,
 
         if (!detected && demuxBuffer.size() >= 8) {
             const auto streamType = static_cast<quint8>(demuxBuffer.at(0));
-            const bool zeroPadding = demuxBuffer.at(1) == 0 && demuxBuffer.at(2) == 0
-                                     && demuxBuffer.at(3) == 0;
+            const bool zeroPadding =
+                demuxBuffer.at(1) == 0 && demuxBuffer.at(2) == 0 && demuxBuffer.at(3) == 0;
             multipart = streamType <= 2 && zeroPadding;
             detected = true;
         }
@@ -86,8 +86,8 @@ bool PodmanClient::streamStats(const QString &id, int intervalSeconds,
         return false;
     }
 
-    const QString suffix = QStringLiteral("/containers/stats?stream=false&containers=%1")
-                               .arg(encodeId(id));
+    const QString suffix =
+        QStringLiteral("/containers/stats?stream=false&containers=%1").arg(encodeId(id));
     const int safeInterval = qBound(1, intervalSeconds, 60);
 
     while (true) {
@@ -140,10 +140,9 @@ bool PodmanClient::statsSnapshot(QJsonArray *containers, Error *error)
         return false;
     }
 
-    const HttpResponse response =
-        m_http.request(QByteArrayLiteral("GET"),
-                       path(QStringLiteral("/containers/stats?stream=false&all=true")), {}, {},
-                       20000);
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("GET"), path(QStringLiteral("/containers/stats?stream=false&all=true")),
+        {}, {}, 20000);
     if (response.status != 200) {
         if (error) {
             *error = errorFromResponse(
@@ -176,8 +175,8 @@ bool PodmanClient::streamEvents(const std::function<bool(const QByteArray &)> &o
     }
 
     QString streamError;
-    const bool ok = m_http.stream(path(QStringLiteral("/events?stream=true")), onData, cancel,
-                                  &streamError);
+    const bool ok =
+        m_http.stream(path(QStringLiteral("/events?stream=true")), onData, cancel, &streamError);
     if (!ok && error) {
         *error = Error::make(QStringLiteral("PODSTACK_ENGINE_ERROR"),
                              QStringLiteral("Falha ao ler os eventos do Podman."), streamError);

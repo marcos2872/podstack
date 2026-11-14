@@ -55,8 +55,7 @@ public:
     Q_INVOKABLE void followConsole(const QString &id, int tailBytes = 64 * 1024);
     Q_INVOKABLE void stopConsole();
     Q_INVOKABLE void refreshFiles(const QString &id, const QString &path);
-    Q_INVOKABLE void downloadFile(const QString &id, const QString &path,
-                                  const QString &fileName);
+    Q_INVOKABLE void downloadFile(const QString &id, const QString &path, const QString &fileName);
     Q_INVOKABLE void uploadFile(const QString &id, const QString &remoteDir,
                                 const QString &localPath);
     Q_INVOKABLE void copyLogs();
@@ -71,8 +70,7 @@ private:
     void onMachineLogsFinished();
     void onMachineFilesFinished();
     void startMachineFilesRequest(const QString &operation, const QString &id,
-                                  const QString &method, const QJsonObject &params,
-                                  int timeoutMs);
+                                  const QString &method, const QJsonObject &params, int timeoutMs);
 
     QFutureWatcher<QJsonObject> m_machineLogsWatcher;
     QFutureWatcher<QJsonObject> m_machineFilesWatcher;

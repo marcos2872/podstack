@@ -5,8 +5,7 @@ using namespace PodStack::MachineInternal;
 
 namespace PodStack {
 
-MachineMeta MachineManager::rename(const QString &idOrName, const QString &newName,
-                                   Error *error)
+MachineMeta MachineManager::rename(const QString &idOrName, const QString &newName, Error *error)
 {
     if (error) {
         *error = {};
@@ -16,22 +15,20 @@ MachineMeta MachineManager::rename(const QString &idOrName, const QString &newNa
     if (meta.id.isEmpty()) {
         return {};
     }
-    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("deleting")
-        || meta.state == QStringLiteral("deleted")) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("A machine está em transição; tente novamente."),
-                          meta.id));
+    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("deleting") ||
+        meta.state == QStringLiteral("deleted")) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em transição; tente novamente."),
+                                 meta.id));
         return {};
     }
 
     std::shared_ptr<std::recursive_mutex> lockHolder;
     std::unique_lock<std::recursive_mutex> machineGuard;
     if (!tryLockMachine(meta.id, &lockHolder, &machineGuard)) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("A machine está em outra operação."), meta.id,
-                          QStringLiteral("Aguarde a operação atual terminar.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em outra operação."), meta.id,
+                                 QStringLiteral("Aguarde a operação atual terminar.")));
         return {};
     }
 
@@ -54,10 +51,9 @@ MachineMeta MachineManager::rename(const QString &idOrName, const QString &newNa
     }
     for (const MachineMeta &machine : existing) {
         if (machine.id != meta.id && machine.name == targetName) {
-            fails(error,
-                  Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                              QStringLiteral("Já existe uma machine com esse nome."), targetName,
-                              QStringLiteral("Escolha outro nome.")));
+            fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                     QStringLiteral("Já existe uma machine com esse nome."),
+                                     targetName, QStringLiteral("Escolha outro nome.")));
             return {};
         }
     }
@@ -136,11 +132,9 @@ bool MachineManager::setDefaultMachine(const QString &idOrName, Error *error)
         const QString code = configError.contains(QStringLiteral("ermission"), Qt::CaseInsensitive)
                                  ? QStringLiteral("PODSTACK_PERMISSION_DENIED")
                                  : QStringLiteral("PODSTACK_IO_ERROR");
-        fails(error,
-              Error::make(code,
-                          QStringLiteral("Não foi possível salvar a machine default."),
-                          configError,
-                          QStringLiteral("Verifique as permissões de ~/.config/podstack.")));
+        fails(error, Error::make(code, QStringLiteral("Não foi possível salvar a machine default."),
+                                 configError,
+                                 QStringLiteral("Verifique as permissões de ~/.config/podstack.")));
         return false;
     }
     return true;
@@ -160,34 +154,30 @@ MachineMeta MachineManager::setPorts(const QString &idOrName, const QVector<Mach
     if (meta.isolated) {
         for (const MachinePort &port : ports) {
             if (port.exposeLan) {
-                fails(error,
-                      invalidParams(
-                          QStringLiteral("A machine está em modo isolado e não pode expor "
-                                         "portas na LAN."),
-                          QStringLiteral("hostPort=%1").arg(port.hostPort),
-                          QStringLiteral("Desative exposeLan ou recrie a machine sem o modo "
-                                         "isolado.")));
+                fails(error, invalidParams(
+                                 QStringLiteral("A machine está em modo isolado e não pode expor "
+                                                "portas na LAN."),
+                                 QStringLiteral("hostPort=%1").arg(port.hostPort),
+                                 QStringLiteral("Desative exposeLan ou recrie a machine sem o modo "
+                                                "isolado.")));
                 return meta;
             }
         }
     }
-    if (meta.state == QStringLiteral("provisioning")
-        || meta.state == QStringLiteral("deleting")
-        || meta.state == QStringLiteral("deleted")) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("A machine está em transição; tente novamente."),
-                          meta.id));
+    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("deleting") ||
+        meta.state == QStringLiteral("deleted")) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em transição; tente novamente."),
+                                 meta.id));
         return meta;
     }
 
     std::shared_ptr<std::recursive_mutex> lockHolder;
     std::unique_lock<std::recursive_mutex> machineGuard;
     if (!tryLockMachine(meta.id, &lockHolder, &machineGuard)) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("A machine está em outra operação."), meta.id,
-                          QStringLiteral("Aguarde a operação atual terminar.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em outra operação."), meta.id,
+                                 QStringLiteral("Aguarde a operação atual terminar.")));
         return meta;
     }
 
@@ -245,9 +235,8 @@ MachineMeta MachineManager::setPorts(const QString &idOrName, const QVector<Mach
         sshPort.hostPort = meta.sshPort;
     }
     if (sshPort.hostPort < 1 || sshPort.hostPort > 65535) {
-        fails(error,
-              invalidParams(QStringLiteral("A machine não tem uma porta SSH válida."),
-                            QString::number(sshPort.hostPort)));
+        fails(error, invalidParams(QStringLiteral("A machine não tem uma porta SSH válida."),
+                                   QString::number(sshPort.hostPort)));
         return meta;
     }
     if (sshPort.id.isEmpty()) {
@@ -285,9 +274,9 @@ MachineMeta MachineManager::setPorts(const QString &idOrName, const QVector<Mach
     if (spec.machineId.isEmpty()) {
         return meta;
     }
-    const bool wasRunning = meta.state == QStringLiteral("running")
-                            || meta.state == QStringLiteral("starting")
-                            || m_runtime->isRunning(spec, nullptr);
+    const bool wasRunning = meta.state == QStringLiteral("running") ||
+                            meta.state == QStringLiteral("starting") ||
+                            m_runtime->isRunning(spec, nullptr);
 
     if (wasRunning) {
         Error stopError;
@@ -655,8 +644,8 @@ MachineMeta MachineManager::setAudioEnabled(const QString &idOrName, bool enable
     return result;
 }
 
-MachineMeta MachineManager::update(const QString &idOrName,
-                                   const UpdateMachineRequest &request, Error *error)
+MachineMeta MachineManager::update(const QString &idOrName, const UpdateMachineRequest &request,
+                                   Error *error)
 {
     if (error) {
         *error = {};
@@ -666,19 +655,16 @@ MachineMeta MachineManager::update(const QString &idOrName,
     if (meta.id.isEmpty()) {
         return {};
     }
-    if (!request.cpus && !request.memoryBytes && !request.diskBytes
-        && !request.forwardSshAgent) {
+    if (!request.cpus && !request.memoryBytes && !request.diskBytes && !request.forwardSshAgent) {
         fails(error, invalidParams(QStringLiteral("Informe ao menos um recurso para atualizar "
                                                   "(CPUs, memória, disco ou SSH agent).")));
         return meta;
     }
-    if (meta.state == QStringLiteral("provisioning")
-        || meta.state == QStringLiteral("deleting")
-        || meta.state == QStringLiteral("deleted")) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                          QStringLiteral("A machine está em transição; tente novamente."),
-                          meta.id));
+    if (meta.state == QStringLiteral("provisioning") || meta.state == QStringLiteral("deleting") ||
+        meta.state == QStringLiteral("deleted")) {
+        fails(error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                 QStringLiteral("A machine está em transição; tente novamente."),
+                                 meta.id));
         return meta;
     }
 
@@ -692,21 +678,18 @@ MachineMeta MachineManager::update(const QString &idOrName,
     }
 
     if (request.cpus && (*request.cpus < 1 || *request.cpus > kMaximumCpus)) {
-        fails(error,
-              invalidParams(QStringLiteral("Número de CPUs fora do intervalo 1..256."),
-                            QString::number(*request.cpus)));
+        fails(error, invalidParams(QStringLiteral("Número de CPUs fora do intervalo 1..256."),
+                                   QString::number(*request.cpus)));
         return meta;
     }
     if (request.memoryBytes && *request.memoryBytes < kMinimumMemoryBytes) {
-        fails(error,
-              invalidParams(QStringLiteral("Memória insuficiente (mínimo 1 GiB)."),
-                            QString::number(*request.memoryBytes)));
+        fails(error, invalidParams(QStringLiteral("Memória insuficiente (mínimo 1 GiB)."),
+                                   QString::number(*request.memoryBytes)));
         return meta;
     }
     if (request.diskBytes && *request.diskBytes < kMinimumDiskBytes) {
-        fails(error,
-              invalidParams(QStringLiteral("Disco insuficiente (mínimo 1 GiB)."),
-                            QString::number(*request.diskBytes)));
+        fails(error, invalidParams(QStringLiteral("Disco insuficiente (mínimo 1 GiB)."),
+                                   QString::number(*request.diskBytes)));
         return meta;
     }
     if (request.diskBytes && *request.diskBytes < meta.diskBytes) {
@@ -718,12 +701,11 @@ MachineMeta MachineManager::update(const QString &idOrName,
         return meta;
     }
 
-    const bool changes =
-        (request.cpus && *request.cpus != meta.cpus)
-        || (request.memoryBytes && *request.memoryBytes != meta.memoryBytes)
-        || (request.diskBytes && *request.diskBytes > meta.diskBytes);
-    const bool agentChanges = request.forwardSshAgent
-                              && *request.forwardSshAgent != meta.forwardSshAgent;
+    const bool changes = (request.cpus && *request.cpus != meta.cpus) ||
+                         (request.memoryBytes && *request.memoryBytes != meta.memoryBytes) ||
+                         (request.diskBytes && *request.diskBytes > meta.diskBytes);
+    const bool agentChanges =
+        request.forwardSshAgent && *request.forwardSshAgent != meta.forwardSshAgent;
     if (!changes && !agentChanges) {
         return meta;
     }
@@ -763,9 +745,9 @@ MachineMeta MachineManager::update(const QString &idOrName,
     if (spec.machineId.isEmpty()) {
         return meta;
     }
-    const bool wasRunning = meta.state == QStringLiteral("running")
-                            || meta.state == QStringLiteral("starting")
-                            || m_runtime->isRunning(spec, nullptr);
+    const bool wasRunning = meta.state == QStringLiteral("running") ||
+                            meta.state == QStringLiteral("starting") ||
+                            m_runtime->isRunning(spec, nullptr);
 
     if (wasRunning) {
         Error stopError;
@@ -879,40 +861,37 @@ bool MachineManager::validate(const CreateMachineRequest &request, Error *error)
                                    QString::number(request.cpus)));
     }
     if (request.memoryBytes < kMinimumMemoryBytes) {
-        return fails(error,
-                     invalidParams(QStringLiteral("Memória insuficiente (mínimo 1 GiB)."),
-                                   QString::number(request.memoryBytes)));
+        return fails(error, invalidParams(QStringLiteral("Memória insuficiente (mínimo 1 GiB)."),
+                                          QString::number(request.memoryBytes)));
     }
     if (request.diskBytes < kMinimumDiskBytes) {
-        return fails(error,
-                     invalidParams(QStringLiteral("Disco insuficiente (mínimo 1 GiB)."),
-                                   QString::number(request.diskBytes)));
+        return fails(error, invalidParams(QStringLiteral("Disco insuficiente (mínimo 1 GiB)."),
+                                          QString::number(request.diskBytes)));
     }
 
     const QString arch = normalizeArch(request.arch);
     if (arch != QStringLiteral("amd64") && arch != QStringLiteral("arm64")) {
-        return fails(error, invalidParams(QStringLiteral("Arquitetura inválida para a machine."),
-                                          arch));
+        return fails(error,
+                     invalidParams(QStringLiteral("Arquitetura inválida para a machine."), arch));
     }
     if (request.distro.trimmed().isEmpty()) {
         return fails(error, invalidParams(QStringLiteral("Informe a distro da machine.")));
     }
     if (request.isolated) {
         if (!request.mounts.isEmpty()) {
-            return fails(error,
-                         invalidParams(
-                             QStringLiteral("O modo isolado não permite mounts do host."),
-                             QString::number(request.mounts.size()),
-                             QStringLiteral("Remova os mounts ou desative o modo isolado.")));
+            return fails(
+                error,
+                invalidParams(QStringLiteral("O modo isolado não permite mounts do host."),
+                              QString::number(request.mounts.size()),
+                              QStringLiteral("Remova os mounts ou desative o modo isolado.")));
         }
         if (request.forwardSshAgent) {
-            return fails(error,
-                         invalidParams(
-                             QStringLiteral("O modo isolado não permite encaminhar o SSH "
-                                            "agent."),
-                             {},
-                             QStringLiteral("Desative o encaminhamento do agent ou o modo "
-                                            "isolado.")));
+            return fails(
+                error, invalidParams(QStringLiteral("O modo isolado não permite encaminhar o SSH "
+                                                    "agent."),
+                                     {},
+                                     QStringLiteral("Desative o encaminhamento do agent ou o modo "
+                                                    "isolado.")));
         }
     }
     return normalizeMounts(request.mounts, nullptr, error);
@@ -949,9 +928,8 @@ bool MachineManager::normalizeMounts(const QVector<MachineMount> &mounts,
         normalized->clear();
     }
     if (mounts.size() > kMaximumMounts) {
-        return fails(error,
-                     invalidParams(QStringLiteral("Número de mounts acima do limite (8)."),
-                                   QString::number(mounts.size())));
+        return fails(error, invalidParams(QStringLiteral("Número de mounts acima do limite (8)."),
+                                          QString::number(mounts.size())));
     }
 
     static const QRegularExpression tagPattern(QStringLiteral("^[a-z0-9-]{1,32}$"));
@@ -962,9 +940,8 @@ bool MachineManager::normalizeMounts(const QVector<MachineMount> &mounts,
             continue;
         }
         if (!tagPattern.match(tag).hasMatch()) {
-            return fails(error,
-                         invalidParams(QStringLiteral("Tag de mount inválida."), tag,
-                                       QStringLiteral("Use 1..32 caracteres [a-z0-9-].")));
+            return fails(error, invalidParams(QStringLiteral("Tag de mount inválida."), tag,
+                                              QStringLiteral("Use 1..32 caracteres [a-z0-9-].")));
         }
         if (tags.contains(tag)) {
             return fails(error,
@@ -989,40 +966,37 @@ bool MachineManager::normalizeMounts(const QVector<MachineMount> &mounts,
     for (const MachineMount &input : mounts) {
         const QString source = input.source.trimmed();
         if (source.isEmpty() || !QDir::isAbsolutePath(source)) {
-            return fails(error,
-                         invalidParams(
-                             QStringLiteral("O diretório compartilhado (source) do mount deve "
-                                            "ser absoluto."),
-                             source));
+            return fails(
+                error,
+                invalidParams(QStringLiteral("O diretório compartilhado (source) do mount deve "
+                                             "ser absoluto."),
+                              source));
         }
         const QFileInfo sourceInfo(source);
         if (!sourceInfo.exists() || !sourceInfo.isDir()) {
-            return fails(error,
-                         invalidParams(
-                             QStringLiteral("O diretório compartilhado do mount não existe."),
-                             source,
-                             QStringLiteral("Crie o diretório no host antes de montar.")));
+            return fails(
+                error,
+                invalidParams(QStringLiteral("O diretório compartilhado do mount não existe."),
+                              source, QStringLiteral("Crie o diretório no host antes de montar.")));
         }
         const QString canonicalSource = sourceInfo.canonicalFilePath();
         if (canonicalSource.isEmpty()) {
-            return fails(error,
-                         invalidParams(
-                             QStringLiteral("Não foi possível resolver o diretório do mount."),
-                             source));
+            return fails(
+                error,
+                invalidParams(QStringLiteral("Não foi possível resolver o diretório do mount."),
+                              source));
         }
 
         const QString rawTarget = input.target.trimmed();
         if (rawTarget.isEmpty() || !QDir::isAbsolutePath(rawTarget)) {
-            return fails(error,
-                         invalidParams(
-                             QStringLiteral("O destino (target) do mount deve ser absoluto."),
-                             rawTarget));
+            return fails(error, invalidParams(QStringLiteral(
+                                                  "O destino (target) do mount deve ser absoluto."),
+                                              rawTarget));
         }
         if (rawTarget.split(QLatin1Char('/')).contains(QStringLiteral(".."))) {
             return fails(error,
-                         invalidParams(
-                             QStringLiteral("O destino do mount não pode conter '..'."),
-                             rawTarget));
+                         invalidParams(QStringLiteral("O destino do mount não pode conter '..'."),
+                                       rawTarget));
         }
         const QString target = QDir::cleanPath(rawTarget);
 
@@ -1057,8 +1031,8 @@ bool MachineManager::normalizePorts(const QString &machineId, const QVector<Mach
         for (const MachinePort &port : meta.ports) {
             if (port.hostPort > 0) {
                 if (!current || isSshPort(port)) {
-                    usedHostPorts.insert(normalizedPortProtocol(port.protocol) + QLatin1Char(':')
-                                         + QString::number(port.hostPort));
+                    usedHostPorts.insert(normalizedPortProtocol(port.protocol) + QLatin1Char(':') +
+                                         QString::number(port.hostPort));
                 }
             }
             if (!port.id.isEmpty() && (!current || isSshPort(port))) {
@@ -1092,23 +1066,20 @@ bool MachineManager::normalizePorts(const QString &machineId, const QVector<Mach
         MachinePort port;
         port.protocol = normalizedPortProtocol(input.protocol);
         if (port.protocol != QStringLiteral("tcp") && port.protocol != QStringLiteral("udp")) {
-            return fails(error,
-                         invalidParams(QStringLiteral("Protocolo de porta inválido."),
-                                       input.protocol, QStringLiteral("Use tcp ou udp.")));
+            return fails(error, invalidParams(QStringLiteral("Protocolo de porta inválido."),
+                                              input.protocol, QStringLiteral("Use tcp ou udp.")));
         }
         port.hostPort = input.hostPort;
         if (port.hostPort < 1 || port.hostPort > 65535) {
             return fails(error,
-                         invalidParams(
-                             QStringLiteral("Porta do host fora do intervalo 1..65535."),
-                             QString::number(port.hostPort)));
+                         invalidParams(QStringLiteral("Porta do host fora do intervalo 1..65535."),
+                                       QString::number(port.hostPort)));
         }
         port.guestPort = input.guestPort;
         if (port.guestPort < 1 || port.guestPort > 65535) {
             return fails(error,
-                         invalidParams(
-                             QStringLiteral("Porta do guest fora do intervalo 1..65535."),
-                             QString::number(port.guestPort)));
+                         invalidParams(QStringLiteral("Porta do guest fora do intervalo 1..65535."),
+                                       QString::number(port.guestPort)));
         }
         port.label = input.label.trimmed();
         if (port.label.size() > 64) {
@@ -1117,11 +1088,10 @@ bool MachineManager::normalizePorts(const QString &machineId, const QVector<Mach
                                        QString::number(port.label.size())));
         }
         for (const QChar character : port.label) {
-            if (character.unicode() < 0x20
-                || (character.unicode() >= 0x7f && character.unicode() <= 0x9f)) {
-                return fails(error,
-                             invalidParams(QStringLiteral("O rótulo da porta contém "
-                                                          "caracteres de controle.")));
+            if (character.unicode() < 0x20 ||
+                (character.unicode() >= 0x7f && character.unicode() <= 0x9f)) {
+                return fails(error, invalidParams(QStringLiteral("O rótulo da porta contém "
+                                                                 "caracteres de controle.")));
             }
         }
         port.exposeLan = input.exposeLan;
@@ -1139,8 +1109,7 @@ bool MachineManager::normalizePorts(const QString &machineId, const QVector<Mach
             continue;
         }
 
-        const QString hostKey =
-            port.protocol + QLatin1Char(':') + QString::number(port.hostPort);
+        const QString hostKey = port.protocol + QLatin1Char(':') + QString::number(port.hostPort);
         if (usedHostPorts.contains(hostKey)) {
             return fails(error,
                          Error::make(QStringLiteral("PODSTACK_CONFLICT"),
@@ -1149,10 +1118,10 @@ bool MachineManager::normalizePorts(const QString &machineId, const QVector<Mach
                                      QStringLiteral("Escolha outra porta ou protocolo.")));
         }
         if (seenHostPorts.contains(hostKey)) {
-            return fails(error,
-                         Error::make(QStringLiteral("PODSTACK_CONFLICT"),
-                                     QStringLiteral("Porta do host duplicada na lista."),
-                                     QStringLiteral("%1/%2").arg(port.hostPort).arg(port.protocol)));
+            return fails(
+                error, Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                                   QStringLiteral("Porta do host duplicada na lista."),
+                                   QStringLiteral("%1/%2").arg(port.hostPort).arg(port.protocol)));
         }
         seenHostPorts.insert(hostKey);
 
@@ -1161,9 +1130,8 @@ bool MachineManager::normalizePorts(const QString &machineId, const QVector<Mach
             port.id = newUuidV7();
         }
         if (usedIds.contains(port.id) || seenIds.contains(port.id)) {
-            return fails(error,
-                         invalidParams(QStringLiteral("Identificador de porta duplicado."),
-                                       port.id));
+            return fails(
+                error, invalidParams(QStringLiteral("Identificador de porta duplicado."), port.id));
         }
         seenIds.insert(port.id);
         result.append(port);
@@ -1204,25 +1172,22 @@ bool MachineManager::ensureSshKey(const QString &directory, const QString &name,
     const QFileInfo publicInfo(publicPath);
 
     if (privateInfo.exists() && publicInfo.exists()) {
-        if (privateInfo.isSymLink() || !privateInfo.isFile() || publicInfo.isSymLink()
-            || !publicInfo.isFile()) {
+        if (privateInfo.isSymLink() || !privateInfo.isFile() || publicInfo.isSymLink() ||
+            !publicInfo.isFile()) {
             return fails(error,
                          Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                     QStringLiteral("A chave SSH existente é inválida."),
-                                     keyPath));
+                                     QStringLiteral("A chave SSH existente é inválida."), keyPath));
         }
-        if (!QFile::setPermissions(keyPath, QFileDevice::ReadOwner
-                                                | QFileDevice::WriteOwner)) {
+        if (!QFile::setPermissions(keyPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
             return fails(error,
                          Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
                                      QStringLiteral("Não foi possível restringir a chave SSH "
                                                     "a 0600."),
                                      keyPath));
         }
-        if (!QFile::setPermissions(publicPath, QFileDevice::ReadOwner
-                                                   | QFileDevice::WriteOwner
-                                                   | QFileDevice::ReadGroup
-                                                   | QFileDevice::ReadOther)) {
+        if (!QFile::setPermissions(publicPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                                   QFileDevice::ReadGroup |
+                                                   QFileDevice::ReadOther)) {
             return fails(error,
                          Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
                                      QStringLiteral("Não foi possível ajustar a chave pública "
@@ -1260,16 +1225,14 @@ bool MachineManager::ensureSshKey(const QString &directory, const QString &name,
         if (!process.waitForFinished(kSshKeygenTimeoutMs)) {
             process.kill();
             process.waitForFinished(1000);
-            return fails(error,
-                         Error::make(QStringLiteral("PODSTACK_TIMEOUT"),
-                                     QStringLiteral("O ssh-keygen excedeu o tempo limite."),
-                                     keyPath));
+            return fails(error, Error::make(QStringLiteral("PODSTACK_TIMEOUT"),
+                                            QStringLiteral("O ssh-keygen excedeu o tempo limite."),
+                                            keyPath));
         }
         if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-            return fails(error,
-                         Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                     QStringLiteral("O ssh-keygen falhou ao gerar a chave."),
-                                     processDetail(process.readAllStandardError())));
+            return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                            QStringLiteral("O ssh-keygen falhou ao gerar a chave."),
+                                            processDetail(process.readAllStandardError())));
         }
         if (!QFileInfo(keyPath).isFile() || !QFileInfo(publicPath).isFile()) {
             return fails(error,
@@ -1277,18 +1240,16 @@ bool MachineManager::ensureSshKey(const QString &directory, const QString &name,
                                      QStringLiteral("O ssh-keygen não criou o par de chaves."),
                                      keyPath));
         }
-        if (!QFile::setPermissions(keyPath, QFileDevice::ReadOwner
-                                                | QFileDevice::WriteOwner)) {
+        if (!QFile::setPermissions(keyPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
             return fails(error,
                          Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
                                      QStringLiteral("Não foi possível restringir a chave SSH "
                                                     "a 0600."),
                                      keyPath));
         }
-        if (!QFile::setPermissions(publicPath, QFileDevice::ReadOwner
-                                                   | QFileDevice::WriteOwner
-                                                   | QFileDevice::ReadGroup
-                                                   | QFileDevice::ReadOther)) {
+        if (!QFile::setPermissions(publicPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                                   QFileDevice::ReadGroup |
+                                                   QFileDevice::ReadOther)) {
             return fails(error,
                          Error::make(QStringLiteral("PODSTACK_PERMISSION_DENIED"),
                                      QStringLiteral("Não foi possível ajustar a chave pública "
@@ -1299,15 +1260,13 @@ bool MachineManager::ensureSshKey(const QString &directory, const QString &name,
 
     QFile file(publicPath);
     if (!file.open(QIODevice::ReadOnly)) {
-        return fails(error,
-                     Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível ler a chave pública SSH."),
-                                 file.errorString()));
+        return fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                        QStringLiteral("Não foi possível ler a chave pública SSH."),
+                                        file.errorString()));
     }
     const QByteArray payload = file.read(kMaxPublicKeyBytes);
     const QString key = QString::fromUtf8(payload).trimmed();
-    if (key.isEmpty() || key.contains(QLatin1Char('\n'))
-        || key.contains(QLatin1Char('\r'))) {
+    if (key.isEmpty() || key.contains(QLatin1Char('\n')) || key.contains(QLatin1Char('\r'))) {
         return fails(error,
                      Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
                                  QStringLiteral("A chave pública SSH está vazia ou inválida."),
@@ -1366,8 +1325,8 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
     }
     if (spec.ports.isEmpty() && meta.sshPort > 0) {
         // Metadados antigos (anteriores à T4-12) guardavam só a porta SSH.
-        spec.ports.append(QemuPort{QStringLiteral("tcp"), meta.sshPort, 22,
-                                   QStringLiteral("127.0.0.1")});
+        spec.ports.append(
+            QemuPort{QStringLiteral("tcp"), meta.sshPort, 22, QStringLiteral("127.0.0.1")});
     }
 
     if (!forStart) {
@@ -1375,17 +1334,15 @@ QemuSpec MachineManager::specFor(const MachineMeta &meta, bool forStart, Error *
     }
 
     if (!QFileInfo(meta.diskPath).isFile()) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                          QStringLiteral("O disco da machine não existe."), meta.diskPath,
-                          QStringLiteral("Recrie a machine.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O disco da machine não existe."), meta.diskPath,
+                                 QStringLiteral("Recrie a machine.")));
         return {};
     }
     if (meta.seedPath.isEmpty() || !QFileInfo(meta.seedPath).isFile()) {
-        fails(error,
-              Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                          QStringLiteral("O seed cloud-init da machine não existe."),
-                          meta.seedPath, QStringLiteral("Recrie a machine.")));
+        fails(error, Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("O seed cloud-init da machine não existe."),
+                                 meta.seedPath, QStringLiteral("Recrie a machine.")));
         return {};
     }
 

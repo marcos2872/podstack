@@ -149,8 +149,8 @@ bool PodmanClient::pullImage(const QString &reference, const QString &platform,
     };
 
     QString streamFailure;
-    const bool ok = m_http.streamRequest(QByteArrayLiteral("POST"), path(suffix), {}, {},
-                                         onData, cancel, &streamFailure);
+    const bool ok = m_http.streamRequest(QByteArrayLiteral("POST"), path(suffix), {}, {}, onData,
+                                         cancel, &streamFailure);
     if (!buffer.trimmed().isEmpty()) {
         onLine(buffer.trimmed());
     }
@@ -186,8 +186,8 @@ bool PodmanClient::pushImage(const QString &id, const QString &destination,
         return false;
     }
 
-    const QString suffix = QStringLiteral("/images/%1/push?destination=%2")
-                               .arg(encodeId(id), encodeId(destination));
+    const QString suffix =
+        QStringLiteral("/images/%1/push?destination=%2").arg(encodeId(id), encodeId(destination));
     QByteArray buffer;
     QString streamError;
 
@@ -217,8 +217,8 @@ bool PodmanClient::pushImage(const QString &id, const QString &destination,
     };
 
     QString streamFailure;
-    const bool ok = m_http.streamRequest(QByteArrayLiteral("POST"), path(suffix), {}, {},
-                                         onData, cancel, &streamFailure);
+    const bool ok = m_http.streamRequest(QByteArrayLiteral("POST"), path(suffix), {}, {}, onData,
+                                         cancel, &streamFailure);
     if (!streamError.isEmpty()) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_ENGINE_ERROR"),
@@ -297,9 +297,9 @@ bool PodmanClient::removeImage(const QString &id, bool force, Error *error)
         return false;
     }
 
-    const QString suffix = QStringLiteral("/images/%1?force=%2")
-                               .arg(encodeId(id), force ? QStringLiteral("true")
-                                                        : QStringLiteral("false"));
+    const QString suffix =
+        QStringLiteral("/images/%1?force=%2")
+            .arg(encodeId(id), force ? QStringLiteral("true") : QStringLiteral("false"));
     const HttpResponse response = m_http.request(QByteArrayLiteral("DELETE"), path(suffix));
     if (response.status == 200 || response.status == 204) {
         return true;
@@ -410,8 +410,7 @@ bool PodmanClient::loadImage(const QString &source, Error *error)
 
     const HttpResponse response = m_http.request(
         QByteArrayLiteral("POST"), path(QStringLiteral("/images/load")), body,
-        QStringLiteral("multipart/form-data; boundary=") + QString::fromLatin1(boundary),
-        600000);
+        QStringLiteral("multipart/form-data; boundary=") + QString::fromLatin1(boundary), 600000);
     if (response.status != 200) {
         if (error) {
             *error = errorFromResponse(response, QStringLiteral("Falha ao carregar a imagem."));

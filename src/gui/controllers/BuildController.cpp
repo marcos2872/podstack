@@ -6,17 +6,15 @@
 
 namespace PodStack {
 
-BuildController::BuildController(QObject *parent)
-    : CatalogController(parent)
+BuildController::BuildController(QObject *parent) : CatalogController(parent)
 {
-    connect(&m_stream, &StreamClient::subscriptionReady, this,
-            [this](const QJsonObject &result) {
-                const QString buildId = result.value(QStringLiteral("buildId")).toString();
-                if (!buildId.isEmpty()) {
-                    m_activeBuildId = buildId;
-                    emit buildStateChanged();
-                }
-            });
+    connect(&m_stream, &StreamClient::subscriptionReady, this, [this](const QJsonObject &result) {
+        const QString buildId = result.value(QStringLiteral("buildId")).toString();
+        if (!buildId.isEmpty()) {
+            m_activeBuildId = buildId;
+            emit buildStateChanged();
+        }
+    });
     connect(&m_stream, &StreamClient::buildEvent, this, [this](const QJsonObject &event) {
         const QString line = event.value(QStringLiteral("line")).toString();
         if (line.isEmpty()) {
@@ -32,11 +30,10 @@ BuildController::BuildController(QObject *parent)
     connect(&m_stream, &StreamClient::buildFinished, this, [this](const QJsonObject &result) {
         const QString status = result.value(QStringLiteral("status")).toString();
         m_buildActive = false;
-        m_buildStatus = status == QStringLiteral("success")
-                            ? QStringLiteral("Build concluído")
-                            : status == QStringLiteral("cancelled")
-                              ? QStringLiteral("Build cancelado")
-                              : result.value(QStringLiteral("error")).toString();
+        m_buildStatus = status == QStringLiteral("success") ? QStringLiteral("Build concluído")
+                        : status == QStringLiteral("cancelled")
+                            ? QStringLiteral("Build cancelado")
+                            : result.value(QStringLiteral("error")).toString();
         if (m_buildStatus.isEmpty()) {
             m_buildStatus = status;
         }
@@ -59,8 +56,7 @@ QVariantList BuildController::parseItems(const QJsonArray &items) const
         const QJsonObject build = value.toObject();
         QVariantMap item;
         item.insert(QStringLiteral("id"), build.value(QStringLiteral("id")).toString());
-        item.insert(QStringLiteral("imageRef"),
-                    build.value(QStringLiteral("imageRef")).toString());
+        item.insert(QStringLiteral("imageRef"), build.value(QStringLiteral("imageRef")).toString());
         item.insert(QStringLiteral("status"), build.value(QStringLiteral("status")).toString());
         const int durationMs = build.value(QStringLiteral("durationMs")).toInt();
         item.insert(QStringLiteral("durationMs"), durationMs);

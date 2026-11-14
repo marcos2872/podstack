@@ -6,7 +6,8 @@ using namespace PodStack::PodmanInternal;
 namespace PodStack {
 
 QJsonObject ContainerInfo::toJson() const
-{    QJsonObject obj;
+{
+    QJsonObject obj;
     obj.insert(QStringLiteral("id"), id);
     obj.insert(QStringLiteral("name"), name);
     obj.insert(QStringLiteral("image"), image);

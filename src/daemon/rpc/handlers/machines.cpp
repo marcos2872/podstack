@@ -100,8 +100,7 @@ QJsonObject Daemon::machineCancel(const QJsonObject &params, Error *error)
     return result;
 }
 
-QJsonObject Daemon::machineClone(const QJsonObject &params, const Notify &notify,
-                                 Error *error)
+QJsonObject Daemon::machineClone(const QJsonObject &params, const Notify &notify, Error *error)
 {
     const QString id = requireMachineId(params, error);
     if (id.isEmpty()) {
@@ -132,7 +131,7 @@ QJsonObject Daemon::machineClone(const QJsonObject &params, const Notify &notify
         m_machineSubscriptions.insert(jobId, subscriptionId);
     }
 
-    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, id, name, notify] {
+    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, id, name, notify] {
         const auto progress = [jobId, notify](const QString &stage, int value) {
             if (!notify) {
                 return;
@@ -143,9 +142,7 @@ QJsonObject Daemon::machineClone(const QJsonObject &params, const Notify &notify
             payload.insert(QStringLiteral("progress"), value);
             notify(QStringLiteral("machines.delta"), payload);
         };
-        const auto cancelled = [subscription] {
-            return subscription->cancel.load();
-        };
+        const auto cancelled = [subscription] { return subscription->cancel.load(); };
 
         Error cloneError;
         MachineMeta machine = m_machines.clone(id, name, progress, cancelled, &cloneError);
@@ -221,8 +218,7 @@ QJsonObject Daemon::machineConsoleRead(const QJsonObject &params, Error *error)
     return result;
 }
 
-QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notify,
-                                  Error *error)
+QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notify, Error *error)
 {
     // Defaults de criação vêm de Configurações (machines.*) quando o cliente
     // não envia o parâmetro (ex.: CLI sem flags).
@@ -302,7 +298,7 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
         m_machineSubscriptions.insert(jobId, subscriptionId);
     }
 
-    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, request, notify] {
+    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, request, notify] {
         const auto progress = [jobId, notify](const QString &stage, int value) {
             if (!notify) {
                 return;
@@ -313,9 +309,7 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
             payload.insert(QStringLiteral("progress"), value);
             notify(QStringLiteral("machines.delta"), payload);
         };
-        const auto cancelled = [subscription] {
-            return subscription->cancel.load();
-        };
+        const auto cancelled = [subscription] { return subscription->cancel.load(); };
 
         Error createError;
         MachineMeta machine = m_machines.create(request, progress, cancelled, &createError);
@@ -385,8 +379,7 @@ QJsonObject Daemon::machineDelete(const QJsonObject &params, Error *error)
     return QJsonObject{{QStringLiteral("deleted"), true}};
 }
 
-QJsonObject Daemon::machineExport(const QJsonObject &params, const Notify &notify,
-                                  Error *error)
+QJsonObject Daemon::machineExport(const QJsonObject &params, const Notify &notify, Error *error)
 {
     const QString id = requireMachineId(params, error);
     if (id.isEmpty()) {
@@ -404,8 +397,7 @@ QJsonObject Daemon::machineExport(const QJsonObject &params, const Notify &notif
     if (!QFileInfo(path).isAbsolute()) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
-                                 QStringLiteral("O arquivo de export precisa ser absoluto."),
-                                 path);
+                                 QStringLiteral("O arquivo de export precisa ser absoluto."), path);
         }
         return {};
     }
@@ -426,8 +418,7 @@ QJsonObject Daemon::machineExport(const QJsonObject &params, const Notify &notif
         m_machineSubscriptions.insert(jobId, subscriptionId);
     }
 
-    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, id, path, force,
-                             notify] {
+    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, id, path, force, notify] {
         const auto progress = [jobId, notify](const QString &stage, int value) {
             if (!notify) {
                 return;
@@ -438,9 +429,7 @@ QJsonObject Daemon::machineExport(const QJsonObject &params, const Notify &notif
             payload.insert(QStringLiteral("progress"), value);
             notify(QStringLiteral("machines.delta"), payload);
         };
-        const auto cancelled = [subscription] {
-            return subscription->cancel.load();
-        };
+        const auto cancelled = [subscription] { return subscription->cancel.load(); };
 
         Error exportError;
         MachineMeta machine =
@@ -577,8 +566,7 @@ QJsonObject Daemon::machineGet(const QJsonObject &params, Error *error)
     return machine.toJson();
 }
 
-QJsonObject Daemon::machineImport(const QJsonObject &params, const Notify &notify,
-                                  Error *error)
+QJsonObject Daemon::machineImport(const QJsonObject &params, const Notify &notify, Error *error)
 {
     const QString path = params.value(QStringLiteral("path")).toString().trimmed();
     if (path.isEmpty()) {
@@ -591,8 +579,7 @@ QJsonObject Daemon::machineImport(const QJsonObject &params, const Notify &notif
     if (!QFileInfo(path).isAbsolute()) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
-                                 QStringLiteral("O arquivo de import precisa ser absoluto."),
-                                 path);
+                                 QStringLiteral("O arquivo de import precisa ser absoluto."), path);
         }
         return {};
     }
@@ -614,48 +601,46 @@ QJsonObject Daemon::machineImport(const QJsonObject &params, const Notify &notif
         m_machineSubscriptions.insert(jobId, subscriptionId);
     }
 
-    (void)QtConcurrent::run([this, jobId, subscriptionId, subscription, path, name, force,
-                             notify] {
-        const auto progress = [jobId, notify](const QString &stage, int value) {
-            if (!notify) {
-                return;
+    (void) QtConcurrent::run(
+        [this, jobId, subscriptionId, subscription, path, name, force, notify] {
+            const auto progress = [jobId, notify](const QString &stage, int value) {
+                if (!notify) {
+                    return;
+                }
+                QJsonObject payload;
+                payload.insert(QStringLiteral("jobId"), jobId);
+                payload.insert(QStringLiteral("stage"), stage);
+                payload.insert(QStringLiteral("progress"), value);
+                notify(QStringLiteral("machines.delta"), payload);
+            };
+            const auto cancelled = [subscription] { return subscription->cancel.load(); };
+
+            Error importError;
+            MachineMeta machine =
+                m_machines.importMachine(path, name, force, progress, cancelled, &importError);
+            if (importError.isEmpty() && machine.id.isEmpty()) {
+                importError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
+                                          QStringLiteral("Falha ao importar a machine."));
             }
+
             QJsonObject payload;
             payload.insert(QStringLiteral("jobId"), jobId);
-            payload.insert(QStringLiteral("stage"), stage);
-            payload.insert(QStringLiteral("progress"), value);
-            notify(QStringLiteral("machines.delta"), payload);
-        };
-        const auto cancelled = [subscription] {
-            return subscription->cancel.load();
-        };
+            payload.insert(QStringLiteral("path"), path);
+            if (importError.isEmpty()) {
+                payload.insert(QStringLiteral("machine"), machine.toJson());
+            } else {
+                payload.insert(QStringLiteral("error"), importError.toJson());
+            }
+            if (notify) {
+                notify(QStringLiteral("machines.done"), payload);
+            }
 
-        Error importError;
-        MachineMeta machine =
-            m_machines.importMachine(path, name, force, progress, cancelled, &importError);
-        if (importError.isEmpty() && machine.id.isEmpty()) {
-            importError = Error::make(QStringLiteral("PODSTACK_INTERNAL"),
-                                      QStringLiteral("Falha ao importar a machine."));
-        }
-
-        QJsonObject payload;
-        payload.insert(QStringLiteral("jobId"), jobId);
-        payload.insert(QStringLiteral("path"), path);
-        if (importError.isEmpty()) {
-            payload.insert(QStringLiteral("machine"), machine.toJson());
-        } else {
-            payload.insert(QStringLiteral("error"), importError.toJson());
-        }
-        if (notify) {
-            notify(QStringLiteral("machines.done"), payload);
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(m_machineJobsMutex);
-            m_machineSubscriptions.remove(jobId);
-        }
-        removeSubscription(subscriptionId);
-    });
+            {
+                std::lock_guard<std::mutex> lock(m_machineJobsMutex);
+                m_machineSubscriptions.remove(jobId);
+            }
+            removeSubscription(subscriptionId);
+        });
 
     QJsonObject result;
     result.insert(QStringLiteral("jobId"), jobId);
@@ -747,8 +732,8 @@ QJsonObject Daemon::machinePortsList(const QJsonObject &params, Error *error)
     if (machine.id.isEmpty() || (error && !error->isEmpty())) {
         return {};
     }
-    return QJsonObject{{QStringLiteral("items"),
-                        machine.toJson().value(QStringLiteral("ports")).toArray()}};
+    return QJsonObject{
+        {QStringLiteral("items"), machine.toJson().value(QStringLiteral("ports")).toArray()}};
 }
 
 QJsonObject Daemon::machinePortsSet(const QJsonObject &params, Error *error)
@@ -775,22 +760,19 @@ QJsonObject Daemon::machinePortsSet(const QJsonObject &params, Error *error)
         const QJsonValue entry = array.at(index);
         if (!entry.isObject()) {
             if (error) {
-                *error = Error::make(
-                    QStringLiteral("PODSTACK_INVALID_PARAMS"),
-                    QStringLiteral("Cada item de ports deve ser um objeto."),
-                    QStringLiteral("ports[%1]").arg(index));
+                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                     QStringLiteral("Cada item de ports deve ser um objeto."),
+                                     QStringLiteral("ports[%1]").arg(index));
             }
             return {};
         }
         const QJsonObject object = entry.toObject();
-        const auto invalidField = [error, index](const QString &field,
-                                                 const QString &expected) {
+        const auto invalidField = [error, index](const QString &field, const QString &expected) {
             if (error) {
-                *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
-                                     QStringLiteral("Campo inválido em ports."),
-                                     QStringLiteral("ports[%1].%2 (esperado %3)")
-                                         .arg(index)
-                                         .arg(field, expected));
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                    QStringLiteral("Campo inválido em ports."),
+                    QStringLiteral("ports[%1].%2 (esperado %3)").arg(index).arg(field, expected));
             }
             return QJsonObject{};
         };
@@ -804,19 +786,16 @@ QJsonObject Daemon::machinePortsSet(const QJsonObject &params, Error *error)
             port.id = idValue.toString();
         }
         if (!portNumberFromJson(object.value(QStringLiteral("hostPort")), &port.hostPort)) {
-            return invalidField(QStringLiteral("hostPort"),
-                                QStringLiteral("inteiro 1..65535"));
+            return invalidField(QStringLiteral("hostPort"), QStringLiteral("inteiro 1..65535"));
         }
         if (!portNumberFromJson(object.value(QStringLiteral("guestPort")), &port.guestPort)) {
-            return invalidField(QStringLiteral("guestPort"),
-                                QStringLiteral("inteiro 1..65535"));
+            return invalidField(QStringLiteral("guestPort"), QStringLiteral("inteiro 1..65535"));
         }
 
         const QJsonValue protocolValue = object.value(QStringLiteral("protocol"));
         if (!protocolValue.isUndefined() && !protocolValue.isNull()) {
             if (!protocolValue.isString()) {
-                return invalidField(QStringLiteral("protocol"),
-                                    QStringLiteral("string tcp|udp"));
+                return invalidField(QStringLiteral("protocol"), QStringLiteral("string tcp|udp"));
             }
             port.protocol = protocolValue.toString();
         }
@@ -1308,8 +1287,8 @@ QJsonObject Daemon::subscribeMachineConsole(const QJsonObject &params, const Not
     const QString path = directory + QStringLiteral("/console.log");
     QByteArray initial;
     qint64 offset = 0;
-    if (consoleExists
-        && !readMachineConsoleTail(path, consoleTailBytes(params), &initial, &offset, error)) {
+    if (consoleExists &&
+        !readMachineConsoleTail(path, consoleTailBytes(params), &initial, &offset, error)) {
         return {};
     }
     bool pendingReset = !consoleExists;
@@ -1370,8 +1349,8 @@ QJsonObject Daemon::subscribeMachineConsole(const QJsonObject &params, const Not
             QByteArray chunk;
             qint64 nextOffset = offset;
             Error readError;
-            if (!readMachineConsoleChunk(path, offset, kMachineConsoleMaxBytes, &chunk,
-                                         &nextOffset, &readError)) {
+            if (!readMachineConsoleChunk(path, offset, kMachineConsoleMaxBytes, &chunk, &nextOffset,
+                                         &readError)) {
                 sendError(readError);
                 break;
             }
@@ -1425,8 +1404,7 @@ QJsonObject Daemon::subscribeMachineStats(const QJsonObject &params, const Notif
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void)QtConcurrent::run([this, machine, info, interval, subscriptionId, subscription,
-                             notify] {
+    (void) QtConcurrent::run([this, machine, info, interval, subscriptionId, subscription, notify] {
         MachineStatsCollector collector;
         while (!subscription->cancel.load()) {
             Error sampleError;

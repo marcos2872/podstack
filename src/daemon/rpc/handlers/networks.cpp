@@ -30,13 +30,12 @@ QJsonObject Daemon::networkConnect(const QJsonObject &params, Error *error)
 
 QJsonObject Daemon::networkCreate(const QJsonObject &params, Error *error)
 {
-    const QJsonObject json =
-        m_podman.createNetwork(params.value(QStringLiteral("name")).toString(),
-                               params.value(QStringLiteral("driver")).toString(),
-                               params.value(QStringLiteral("subnet")).toString(),
-                               params.value(QStringLiteral("gateway")).toString(),
-                               params.value(QStringLiteral("ipv6")).toBool(false),
-                               labelsFromParams(params), error);
+    const QJsonObject json = m_podman.createNetwork(
+        params.value(QStringLiteral("name")).toString(),
+        params.value(QStringLiteral("driver")).toString(),
+        params.value(QStringLiteral("subnet")).toString(),
+        params.value(QStringLiteral("gateway")).toString(),
+        params.value(QStringLiteral("ipv6")).toBool(false), labelsFromParams(params), error);
     if (error && !error->isEmpty()) {
         return {};
     }

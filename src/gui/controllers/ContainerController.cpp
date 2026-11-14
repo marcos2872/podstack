@@ -36,8 +36,7 @@ void appendHistory(QVariantList &list, double value)
 
 } // namespace
 
-ContainerController::ContainerController(QObject *parent)
-    : CatalogController(parent)
+ContainerController::ContainerController(QObject *parent) : CatalogController(parent)
 {
     m_logsTimer = new QTimer(this);
     m_logsTimer->setSingleShot(true);
@@ -125,8 +124,7 @@ void ContainerController::lifecycle(const QString &action, const QString &id)
         setLastError(QStringLiteral("Ação ou container inválido."));
         return;
     }
-    runAction(QStringLiteral("containers.") + action,
-              QJsonObject{{QStringLiteral("id"), id}});
+    runAction(QStringLiteral("containers.") + action, QJsonObject{{QStringLiteral("id"), id}});
 }
 
 void ContainerController::removeContainer(const QString &id, bool force, bool volumes)
@@ -151,8 +149,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
     params.insert(QStringLiteral("user"), spec.value(QStringLiteral("user")).toString());
     params.insert(QStringLiteral("remove"), spec.value(QStringLiteral("remove")).toBool());
     params.insert(QStringLiteral("init"), spec.value(QStringLiteral("init")).toBool());
-    params.insert(QStringLiteral("privileged"),
-                  spec.value(QStringLiteral("privileged")).toBool());
+    params.insert(QStringLiteral("privileged"), spec.value(QStringLiteral("privileged")).toBool());
     const bool exposeLan = spec.value(QStringLiteral("exposeLan")).toBool();
     params.insert(QStringLiteral("exposeLan"), exposeLan);
     params.insert(QStringLiteral("start"), start);
@@ -194,8 +191,8 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         port.insert(QStringLiteral("protocol"), protocol);
         if (parts.size() == 2) {
             port.insert(QStringLiteral("hostPort"), parts.at(0).toInt());
-            port.insert(QStringLiteral("hostIp"), exposeLan ? QStringLiteral("0.0.0.0")
-                                                            : QStringLiteral("127.0.0.1"));
+            port.insert(QStringLiteral("hostIp"),
+                        exposeLan ? QStringLiteral("0.0.0.0") : QStringLiteral("127.0.0.1"));
         } else {
             port.insert(QStringLiteral("hostIp"),
                         exposeLan ? QStringLiteral("0.0.0.0") : parts.at(0));
@@ -267,8 +264,8 @@ void ContainerController::batchAll(const QString &action)
 
 void ContainerController::batchIds(const QStringList &ids, const QString &action)
 {
-    if (action != QStringLiteral("start") && action != QStringLiteral("stop")
-        && action != QStringLiteral("restart") && action != QStringLiteral("remove")) {
+    if (action != QStringLiteral("start") && action != QStringLiteral("stop") &&
+        action != QStringLiteral("restart") && action != QStringLiteral("remove")) {
         setLastError(QStringLiteral("Ação de lote inválida."));
         return;
     }
@@ -306,33 +303,30 @@ void ContainerController::batchIds(const QStringList &ids, const QString &action
 void ContainerController::listFiles(const QString &id, const QString &path)
 {
     m_filesPath = path;
-    callRpc(QStringLiteral("containers.files.list"),
-            QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("path"), path}},
-            [this](const QJsonObject &result) {
-                if (isErrorResult(result)) {
-                    setLastError(errorMessage(result));
-                    return;
-                }
-                m_filesPath = result.value(QStringLiteral("path")).toString(m_filesPath);
-                m_files.clear();
-                for (const QJsonValue &value :
-                     result.value(QStringLiteral("entries")).toArray()) {
-                    const QJsonObject entry = value.toObject();
-                    QVariantMap item;
-                    item.insert(QStringLiteral("name"),
-                                entry.value(QStringLiteral("name")).toString());
-                    item.insert(QStringLiteral("size"),
-                                entry.value(QStringLiteral("size")).toDouble());
-                    item.insert(QStringLiteral("directory"),
-                                entry.value(QStringLiteral("directory")).toBool());
-                    item.insert(QStringLiteral("mode"),
-                                entry.value(QStringLiteral("mode")).toString());
-                    item.insert(QStringLiteral("modified"),
-                                entry.value(QStringLiteral("modified")).toString());
-                    m_files.append(item);
-                }
-                emit filesChanged();
-            });
+    callRpc(
+        QStringLiteral("containers.files.list"),
+        QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("path"), path}},
+        [this](const QJsonObject &result) {
+            if (isErrorResult(result)) {
+                setLastError(errorMessage(result));
+                return;
+            }
+            m_filesPath = result.value(QStringLiteral("path")).toString(m_filesPath);
+            m_files.clear();
+            for (const QJsonValue &value : result.value(QStringLiteral("entries")).toArray()) {
+                const QJsonObject entry = value.toObject();
+                QVariantMap item;
+                item.insert(QStringLiteral("name"), entry.value(QStringLiteral("name")).toString());
+                item.insert(QStringLiteral("size"), entry.value(QStringLiteral("size")).toDouble());
+                item.insert(QStringLiteral("directory"),
+                            entry.value(QStringLiteral("directory")).toBool());
+                item.insert(QStringLiteral("mode"), entry.value(QStringLiteral("mode")).toString());
+                item.insert(QStringLiteral("modified"),
+                            entry.value(QStringLiteral("modified")).toString());
+                m_files.append(item);
+            }
+            emit filesChanged();
+        });
 }
 
 void ContainerController::downloadFile(const QString &id, const QString &path)
@@ -347,11 +341,11 @@ void ContainerController::downloadFile(const QString &id, const QString &path)
         directory = QDir::homePath();
     }
     QDir().mkpath(directory);
-    runAction(QStringLiteral("containers.files.download"),
-              QJsonObject{{QStringLiteral("id"), id},
-                          {QStringLiteral("path"), path},
-                          {QStringLiteral("destination"),
-                           directory + QLatin1Char('/') + baseName}});
+    runAction(
+        QStringLiteral("containers.files.download"),
+        QJsonObject{{QStringLiteral("id"), id},
+                    {QStringLiteral("path"), path},
+                    {QStringLiteral("destination"), directory + QLatin1Char('/') + baseName}});
 }
 
 void ContainerController::uploadFile(const QString &id, const QString &path,

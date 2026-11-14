@@ -1,30 +1,30 @@
 #pragma once
 
 #include "core/logging/LogReader.h"
+#include "core/rpc/StreamClient.h"
 #include "gui/controllers/BuildController.h"
+#include "gui/controllers/ComposeController.h"
 #include "gui/controllers/ContainerController.h"
 #include "gui/controllers/ContainerDetailController.h"
+#include "gui/controllers/ImageController.h"
 #include "gui/controllers/K8sController.h"
 #include "gui/controllers/MachineController.h"
 #include "gui/controllers/MachineDetailController.h"
+#include "gui/controllers/NetworkController.h"
+#include "gui/controllers/PodController.h"
 #include "gui/controllers/SettingsController.h"
 #include "gui/controllers/SetupController.h"
 #include "gui/controllers/SystemController.h"
 #include "gui/controllers/UpdateController.h"
-#include "gui/controllers/ComposeController.h"
-#include "gui/controllers/ImageController.h"
-#include "gui/controllers/NetworkController.h"
-#include "gui/controllers/PodController.h"
 #include "gui/controllers/VolumeController.h"
-#include "core/rpc/StreamClient.h"
 
 #include <QFutureWatcher>
 #include <QJsonObject>
 #include <QObject>
 #include <QQueue>
+#include <QSet>
 #include <QString>
 #include <QStringList>
-#include <QSet>
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
@@ -103,8 +103,7 @@ signals:
     void prunePreviewChanged();
     void eventsChanged();
     void containerEvent(const QVariantMap &event);
-    void terminalRequested(const QString &title, const QString &program,
-                           const QStringList &args);
+    void terminalRequested(const QString &title, const QString &program, const QStringList &args);
 
 private:
     void onRefreshFinished();
@@ -123,8 +122,7 @@ private:
     void runSetupRequest(const QString &method, const QJsonObject &params);
     void refreshSection(const QString &section);
     void startNextCatalog();
-    void runAction(const QString &method, const QJsonObject &params,
-                   int timeoutMs = 30000);
+    void runAction(const QString &method, const QJsonObject &params, int timeoutMs = 30000);
     void batchResource(const QString &prefix, const QString &idKey, const QString &action,
                        const QStringList &ids, bool force, const QJsonObject &extra, int timeoutMs);
 

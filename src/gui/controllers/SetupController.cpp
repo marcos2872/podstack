@@ -11,11 +11,9 @@
 
 namespace PodStack {
 
-SetupController::SetupController(QObject *parent)
-    : ControllerBase(parent)
+SetupController::SetupController(QObject *parent) : ControllerBase(parent)
 {
-    connect(&m_watcher, &QFutureWatcher<QJsonObject>::finished, this,
-            &SetupController::onFinished);
+    connect(&m_watcher, &QFutureWatcher<QJsonObject>::finished, this, &SetupController::onFinished);
     connect(&m_stream, &StreamClient::setupEvent, this,
             [this](const QJsonObject &event) { applyJob(event); });
     connect(&m_stream, &StreamClient::setupFinished, this, [this](const QJsonObject &event) {
@@ -167,8 +165,8 @@ void SetupController::applyJob(const QJsonObject &job)
     const QString state = job.value(QStringLiteral("state")).toString();
     m_jobId = job.value(QStringLiteral("jobId")).toString();
     m_progress = job.value(QStringLiteral("progress")).toInt();
-    m_jobActive = state == QStringLiteral("running") || state == QStringLiteral("queued")
-                  || state == QStringLiteral("cancelling");
+    m_jobActive = state == QStringLiteral("running") || state == QStringLiteral("queued") ||
+                  state == QStringLiteral("cancelling");
     if (!state.isEmpty()) {
         m_status = state;
     }
@@ -250,28 +248,24 @@ void SetupController::cancel()
     if (m_jobId.isEmpty()) {
         return;
     }
-    runRequest(QStringLiteral("setup.cancel"),
-               QJsonObject{{QStringLiteral("jobId"), m_jobId}});
+    runRequest(QStringLiteral("setup.cancel"), QJsonObject{{QStringLiteral("jobId"), m_jobId}});
 }
 
 void SetupController::complete()
 {
     if (!mandatoryOk()) {
-        m_error = QStringLiteral(
-            "Conclua os itens obrigatórios antes de abrir o PodStack.");
+        m_error = QStringLiteral("Conclua os itens obrigatórios antes de abrir o PodStack.");
         emit changed();
         return;
     }
     m_error.clear();
     emit changed();
-    runRequest(QStringLiteral("setup.complete"),
-               QJsonObject{{QStringLiteral("skipped"), false}});
+    runRequest(QStringLiteral("setup.complete"), QJsonObject{{QStringLiteral("skipped"), false}});
 }
 
 void SetupController::skip()
 {
-    runRequest(QStringLiteral("setup.complete"),
-               QJsonObject{{QStringLiteral("skipped"), true}});
+    runRequest(QStringLiteral("setup.complete"), QJsonObject{{QStringLiteral("skipped"), true}});
 }
 
 } // namespace PodStack

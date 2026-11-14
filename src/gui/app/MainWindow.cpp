@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "gui/app/MainWindow.h"
 
+#include "gui/app/SingleInstance.h"
+#include "gui/app/UiState.h"
+#include "gui/app/notifications/Notifications.h"
+#include "gui/app/tray/Tray.h"
 #include "gui/controllers/Backend.h"
 #include "gui/controllers/SettingsController.h"
 #include "gui/windows/ContainerDetailDialog.h"
 #include "gui/windows/MachineDetailDialog.h"
-#include "gui/app/notifications/Notifications.h"
-#include "gui/app/SingleInstance.h"
 #include "gui/windows/terminal/TerminalView.h"
-#include "gui/app/tray/Tray.h"
-#include "gui/app/UiState.h"
 
 #include <QApplication>
 #include <QCloseEvent>

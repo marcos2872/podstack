@@ -66,8 +66,7 @@ void appendHistory(QVariantList &list, double value)
 
 ContainerDetailController::ContainerDetailController(ContainerController *containers,
                                                      QObject *parent)
-    : ControllerBase(parent)
-    , m_containers(containers)
+    : ControllerBase(parent), m_containers(containers)
 {
     m_logsTimer = new QTimer(this);
     m_logsTimer->setSingleShot(true);
@@ -249,10 +248,9 @@ void ContainerDetailController::clearLogs()
 
 void ContainerDetailController::lifecycle(const QString &action, const QString &id)
 {
-    if (id.isEmpty()
-        || (action != QStringLiteral("start") && action != QStringLiteral("stop")
-            && action != QStringLiteral("restart") && action != QStringLiteral("pause")
-            && action != QStringLiteral("unpause") && action != QStringLiteral("kill"))) {
+    if (id.isEmpty() || (action != QStringLiteral("start") && action != QStringLiteral("stop") &&
+                         action != QStringLiteral("restart") && action != QStringLiteral("pause") &&
+                         action != QStringLiteral("unpause") && action != QStringLiteral("kill"))) {
         setLastError(QStringLiteral("Ação ou container inválido."));
         return;
     }

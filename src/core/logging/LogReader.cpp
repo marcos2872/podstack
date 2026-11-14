@@ -2,9 +2,9 @@
 
 #include "core/logging/LogReader.h"
 
+#include "core/config/Paths.h"
 #include "core/logging/LogRotation.h"
 #include "core/logging/Logging.h"
-#include "core/config/Paths.h"
 #include "core/logging/Redaction.h"
 
 #include <QDateTime>

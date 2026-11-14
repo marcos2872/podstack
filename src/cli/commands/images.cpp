@@ -3,8 +3,6 @@
 
 namespace PodStack::CliInternal {
 
-
-
 int commandImages(const QStringList &args)
 {
     const QString sub = args.isEmpty() ? QStringLiteral("ls") : args.first();
@@ -29,11 +27,10 @@ int commandImages(const QStringList &args)
             const QJsonObject image = value.toObject();
             const QJsonArray tags = image.value(QStringLiteral("repoTags")).toArray();
             Row row;
-            row.name = tags.isEmpty() ? QStringLiteral("<none>:<none>")
-                                      : tags.first().toString();
+            row.name = tags.isEmpty() ? QStringLiteral("<none>:<none>") : tags.first().toString();
             row.id = image.value(QStringLiteral("id")).toString().left(12);
-            row.size = humanBytes(static_cast<qint64>(
-                image.value(QStringLiteral("size")).toDouble()));
+            row.size =
+                humanBytes(static_cast<qint64>(image.value(QStringLiteral("size")).toDouble()));
             row.containers = QString::number(image.value(QStringLiteral("containers")).toInt());
             nameWidth = qMax(nameWidth, row.name.size());
             rows.append(row);
@@ -78,7 +75,7 @@ int commandImages(const QStringList &args)
 
         QJsonObject params;
         params.insert(sub == QStringLiteral("pull") ? QStringLiteral("reference")
-                                                     : QStringLiteral("id"),
+                                                    : QStringLiteral("id"),
                       reference);
         if (!platform.isEmpty()) {
             params.insert(QStringLiteral("platform"), platform);
@@ -89,9 +86,8 @@ int commandImages(const QStringList &args)
 
         PodStack::RpcStream stream;
         PodStack::Error error;
-        const QString prefix = sub == QStringLiteral("pull")
-                                   ? QStringLiteral("images.pull")
-                                   : QStringLiteral("images.push");
+        const QString prefix = sub == QStringLiteral("pull") ? QStringLiteral("images.pull")
+                                                             : QStringLiteral("images.push");
         const bool ok = stream.run(
             prefix, params,
             [&](const QString &method, const QJsonObject &payload) {
@@ -105,8 +101,7 @@ int commandImages(const QStringList &args)
                 }
                 const QString status = payload.value(QStringLiteral("status")).toString();
                 if (!status.isEmpty()) {
-                    const QString progress =
-                        payload.value(QStringLiteral("progress")).toString();
+                    const QString progress = payload.value(QStringLiteral("progress")).toString();
                     out() << status;
                     if (!progress.isEmpty()) {
                         out() << " " << progress;
@@ -115,8 +110,7 @@ int commandImages(const QStringList &args)
                     out().flush();
                 }
                 if (method.endsWith(QStringLiteral(".error"))) {
-                    const QJsonObject failure =
-                        payload.value(QStringLiteral("error")).toObject();
+                    const QJsonObject failure = payload.value(QStringLiteral("error")).toObject();
                     err() << failure.value(QStringLiteral("message")).toString() << '\n';
                     err().flush();
                 }
@@ -147,8 +141,7 @@ int commandImages(const QStringList &args)
         PodStack::RpcClient client;
         PodStack::Error error;
         client.call(QStringLiteral("images.remove"),
-                    QJsonObject{{QStringLiteral("id"), id},
-                                {QStringLiteral("force"), force}},
+                    QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("force"), force}},
                     &error);
         if (!error.isEmpty()) {
             return fail(error);
@@ -162,15 +155,14 @@ int commandImages(const QStringList &args)
         const bool all = args.contains(QStringLiteral("--all"));
         PodStack::RpcClient client;
         PodStack::Error error;
-        const QJsonObject result =
-            client.call(QStringLiteral("images.prune"),
-                        QJsonObject{{QStringLiteral("all"), all}}, &error);
+        const QJsonObject result = client.call(QStringLiteral("images.prune"),
+                                               QJsonObject{{QStringLiteral("all"), all}}, &error);
         if (!error.isEmpty()) {
             return fail(error);
         }
         out() << "liberado "
-              << humanBytes(static_cast<qint64>(
-                     result.value(QStringLiteral("reclaimedBytes")).toDouble()))
+              << humanBytes(
+                     static_cast<qint64>(result.value(QStringLiteral("reclaimedBytes")).toDouble()))
               << '\n';
         out().flush();
         return kExitOk;
@@ -191,11 +183,10 @@ int commandImages(const QStringList &args)
         }
         for (const QJsonValue &value : result.value(QStringLiteral("items")).toArray()) {
             const QJsonObject entry = value.toObject();
-            out() << epochDate(static_cast<qint64>(
-                       entry.value(QStringLiteral("created")).toDouble()))
+            out() << epochDate(
+                         static_cast<qint64>(entry.value(QStringLiteral("created")).toDouble()))
                   << "  "
-                  << humanBytes(static_cast<qint64>(
-                         entry.value(QStringLiteral("size")).toDouble()))
+                  << humanBytes(static_cast<qint64>(entry.value(QStringLiteral("size")).toDouble()))
                          .leftJustified(9)
                   << "  " << entry.value(QStringLiteral("createdBy")).toString() << '\n';
         }
@@ -226,8 +217,8 @@ int commandImages(const QStringList &args)
         if (!error.isEmpty()) {
             return fail(error);
         }
-        out() << (sub == QStringLiteral("tag") ? "tag aplicada" : "tag removida") << ": "
-              << repo << ':' << tag << '\n';
+        out() << (sub == QStringLiteral("tag") ? "tag aplicada" : "tag removida") << ": " << repo
+              << ':' << tag << '\n';
         out().flush();
         return kExitOk;
     }
@@ -266,7 +257,7 @@ int commandImages(const QStringList &args)
         PodStack::RpcClient client;
         PodStack::Error error;
         client.call(sub == QStringLiteral("export") ? QStringLiteral("images.export")
-                                                     : QStringLiteral("images.load"),
+                                                    : QStringLiteral("images.load"),
                     params, &error, 600000);
         if (!error.isEmpty()) {
             return fail(error);
