@@ -3,6 +3,13 @@
 # ---------------------------------------------------------------------------
 add_library(podstack_machines STATIC
     MachineManager.cpp
+    manager/Internal.cpp
+    manager/archive.cpp
+    manager/config.cpp
+    manager/lifecycle.cpp
+    manager/provision.cpp
+    manager/runtime.cpp
+    manager/snapshots.cpp
     model/MachineMeta.cpp
     model/MachineStore.cpp
     provision/CloudImageCache.cpp
