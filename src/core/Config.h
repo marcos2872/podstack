@@ -13,6 +13,7 @@ namespace PodStack {
 class Config {
 public:
     Config();
+    /// Carrega do disco e aplica migrações de schema (ex.: portas antigas do proxy).
     static Config load();
     bool save(QString *error = nullptr) const;
 

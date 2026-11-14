@@ -648,12 +648,15 @@ Host <name>.podstack <name>
 
 - Qualquer nome sob `.localhost` resolve para 127.0.0.1/::1 via systemd-resolved ou glibc.
 - `HttpProxy` (daemon) escuta **somente em loopback** (`127.0.0.1` e, quando
-  disponível, `::1`) em `network.httpPort` (default 47080) e encaminha por `Host`.
+  disponível, `::1`) em `network.httpPort` (default 18080) e encaminha por `Host`.
+- Configs do schema 1 com `network.httpPort=8080`/`network.httpsPort=8443` são migradas
+  automaticamente para os defaults atuais ao carregar (`Config::load`, `schemaVersion` 2);
+  valores customizados são preservados.
 - Mapeamento: `nome.localhost` → container `nome` na **primeira porta TCP
   publicada** (`[ip:]porta->porta/tcp`); sem porta publicada → 404.
 - `network.bridge=false` desabilita o proxy. `network.exposeLan=true` (opt-in,
   restart) faz o proxy escutar em `0.0.0.0`/`::`; o firewall das portas
-  8080/8443 precisa ser liberado explicitamente.
+  18080/18443 precisa ser liberado explicitamente.
 - A conexão é fechada após a resposta (`Connection: close`) e o proxy adiciona
   `X-Forwarded-For`, `X-Forwarded-Proto` e `X-Forwarded-Host`.
 - Fallback: porta publicada + `localhost:<porta>`.
@@ -666,7 +669,7 @@ Host <name>.podstack <name>
 
 **Critérios:**
 
-- [x] `curl http://nome.localhost:8080` retorna o serviço.
+- [x] `curl http://nome.localhost:18080` retorna o serviço.
 - [x] Nome inexistente retorna 404 com página de índice.
 - [x] Funciona sem root e sem alterar `/etc/hosts`.
 
@@ -702,7 +705,7 @@ Domains=~podstack.local
 
 - Caddy filho do daemon, ativado por `network.https` (default `false`), com CA
   interna e certificados on-demand para `*.localhost` e `*.podstack.local` na
-  `network.httpsPort` (default 47443).
+  `network.httpsPort` (default 18443).
 - O Caddyfile é gerado pelo daemon (`<data>/podstack/caddy/Caddyfile`), usa
   storage próprio (`<data>/podstack/caddy/storage`), `skip_install_trust` e
   encaminha o HTTP para o `HttpProxy` em `127.0.0.1:<network.httpPort>`; o
@@ -771,7 +774,7 @@ Domains=~podstack.local
 - O helper instala unidades systemd de sistema `podstack-http.socket` e/ou
   `podstack-https.socket` (`ListenStream=80`/`443`) mais serviços
   `systemd-socket-proxyd` que encaminham para `127.0.0.1:<httpPort|httpsPort>`
-  (default 8080/8443). Com isso o browser acessa `http://nome.localhost/` sem
+  (default 18080/18443). Com isso o browser acessa `http://nome.localhost/` sem
   porta.
 - Portas e alvos são allowlisted: apenas 80/443 e apenas `127.0.0.1:<porta>`.
 - `BindPorts`/`UnbindPorts` exigem polkit; a remoção é idempotente e apaga
