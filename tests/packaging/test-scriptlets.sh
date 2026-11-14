@@ -319,13 +319,13 @@ extract_section posttrans >"$posttrans_script"
 helper="$tmp/podstack-helper"
 cat >"$helper" <<'SCRIPT'
 #!/bin/sh
-echo "0.1.3"
+echo "0.1.4"
 SCRIPT
 chmod +x "$helper"
 sed -i \
     -e "s#/usr/libexec/podstack/podstack-helper#$helper#g" \
     -e "s/%{_datadir}/\/usr\/share/g" \
-    -e "s/%{version}/0.1.3/g" \
+    -e "s/%{version}/0.1.4/g" \
     "$post_script" "$posttrans_script"
 
 reset_state

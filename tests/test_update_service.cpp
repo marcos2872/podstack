@@ -94,7 +94,7 @@ private:
         uid_t uid = 0;
     };
 
-    Fixture makeFixture(const QString &name, const QString &version = QStringLiteral("0.1.4"),
+    Fixture makeFixture(const QString &name, const QString &version = QStringLiteral("0.1.5"),
                         bool valid = true);
     QString makeTool(const QString &root, const QString &format, const QString &name,
                      const QString &version, const QString &arch);
@@ -256,7 +256,7 @@ void UpdateServiceTest::stageAndStatus()
     QVERIFY(service.status(fixture.uid, result.value(QStringLiteral("jobId")).toString(), &status,
                            &error));
     QCOMPARE(status.value(QStringLiteral("phase")).toString(), QStringLiteral("staged"));
-    QCOMPARE(status.value(QStringLiteral("version")).toString(), QStringLiteral("0.1.4"));
+    QCOMPARE(status.value(QStringLiteral("version")).toString(), QStringLiteral("0.1.5"));
 }
 
 void UpdateServiceTest::stageRejectsSignatureAndHash()
@@ -281,7 +281,7 @@ void UpdateServiceTest::stageRejectsSignatureAndHash()
 
 void UpdateServiceTest::stageRejectsVersionAndIdentity()
 {
-    Fixture same = makeFixture(QStringLiteral("same-version"), QStringLiteral("0.1.3"));
+    Fixture same = makeFixture(QStringLiteral("same-version"), QString::fromLatin1(PODSTACK_VERSION));
     UpdateService sameService(same.options);
     QVariantMap result;
     PodStack::Error error;

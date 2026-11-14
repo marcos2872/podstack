@@ -348,7 +348,7 @@ Logs do update e do app: `podstack system logs --component update` e
 
 - O Flatpak é um cliente: o daemon e o helper precisam estar instalados no host.
 - A validação de instalação limpa (T7-07/T7-14) ainda está em andamento; trate o checklist acima
-  como a verificação mínima da versão 0.1.3.
+  como a verificação mínima da versão 0.1.4.
 - Esta documentação não fixa uma URL de repositório; use o arquivo RPM/DEB gerado localmente ou o
   repositório que você configurou.
 

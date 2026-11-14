@@ -149,7 +149,7 @@ private:
         PodStack::UpdateRunnerOptions options;
     };
 
-    std::unique_ptr<Fixture> makeFixture(const QString &version = QStringLiteral("0.1.4"));
+    std::unique_ptr<Fixture> makeFixture(const QString &version = QStringLiteral("0.1.5"));
 };
 
 std::unique_ptr<UpdateRunnerTest::Fixture> UpdateRunnerTest::makeFixture(const QString &version)
@@ -207,7 +207,7 @@ void UpdateRunnerTest::prepareDownloadsAndVerifies()
     PodStack::Error error;
     QVERIFY2(runner.prepare(&error),
              qPrintable(error.message + QStringLiteral(" ") + error.detail));
-    QCOMPARE(runner.version(), QStringLiteral("0.1.4"));
+    QCOMPARE(runner.version(), QStringLiteral("0.1.5"));
     QCOMPARE(runner.channel(), QStringLiteral("stable"));
     QVERIFY(QFileInfo::exists(runner.artifactPath()));
     QCOMPARE(fixture->server.requestCount(QStringLiteral("/podstack-update.json")), 1);
@@ -229,7 +229,7 @@ void UpdateRunnerTest::prepareRejectsSignature()
 
 void UpdateRunnerTest::prepareRejectsEqualVersion()
 {
-    auto fixture = makeFixture(QStringLiteral("0.1.3"));
+    auto fixture = makeFixture(QString::fromLatin1(PODSTACK_VERSION));
     QVERIFY(fixture != nullptr);
     FakeUpdateHelper helper;
     PodStack::UpdateRunner runner(&helper, fixture->options);
@@ -466,7 +466,7 @@ void UpdateRunnerTest::resumeInstallingJob()
     QFile state(fixture->options.stateDir + QStringLiteral("/state.json"));
     QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
     state.write(QByteArrayLiteral(
-        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.4","channel":"stable"})"));
+        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.5","channel":"stable"})"));
     state.close();
 
     FakeUpdateHelper helper;
@@ -587,7 +587,7 @@ void UpdateRunnerTest::prepareFromManifestCache()
 
     PodStack::UpdateRunner cached(&helper, fixture->options);
     QVERIFY2(cached.prepareFromManifest(manifestPath, &error), qPrintable(error.message));
-    QCOMPARE(cached.version(), QStringLiteral("0.1.4"));
+    QCOMPARE(cached.version(), QStringLiteral("0.1.5"));
 }
 
 QTEST_GUILESS_MAIN(UpdateRunnerTest)
