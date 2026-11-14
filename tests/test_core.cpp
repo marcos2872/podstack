@@ -22,6 +22,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -49,6 +50,7 @@ private slots:
     void configDefaults();
     void configSaveLoad();
     void configMergePreservesDefaults();
+    void configMigratesProxyPorts();
     void configSetupDefaults();
     void configInvalidFallsBack();
     void configSchemaCoversDocumentedKeys();
@@ -127,7 +129,7 @@ void CoreTest::configNestedSet()
 void CoreTest::configDefaults()
 {
     PodStack::Config config;
-    QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 1);
+    QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 2);
     QCOMPARE(config.get(QStringLiteral("engine.mode")).toString(), QStringLiteral("rootless"));
     QCOMPARE(config.get(QStringLiteral("telemetry.enabled")).toBool(), false);
     QCOMPARE(config.get(QStringLiteral("app.keepRunningInTray")).toBool(), true);
@@ -175,6 +177,64 @@ void CoreTest::configMergePreservesDefaults()
     QDir(PodStack::Paths::configDir()).removeRecursively();
 }
 
+void CoreTest::configMigratesProxyPorts()
+{
+    QDir(PodStack::Paths::configDir()).removeRecursively();
+    QDir().mkpath(PodStack::Paths::configDir());
+    const QString path = PodStack::Paths::configDir() + QStringLiteral("/config.json");
+
+    const auto writeConfig = [&](const QByteArray &content) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return false;
+        }
+        const bool ok = file.write(content) == content.size();
+        file.close();
+        return ok;
+    };
+
+    QVERIFY(writeConfig(R"({"schemaVersion":1,"app":{"theme":"dark"},)"
+                        R"("network":{"httpPort":8080,"httpsPort":8443}})"));
+    PodStack::Config loaded = PodStack::Config::load();
+    QCOMPARE(loaded.get(QStringLiteral("schemaVersion")).toInt(), 2);
+    QCOMPARE(loaded.get(QStringLiteral("network.httpPort")).toInt(), 18080);
+    QCOMPARE(loaded.get(QStringLiteral("network.httpsPort")).toInt(), 18443);
+    QCOMPARE(loaded.get(QStringLiteral("app.theme")).toString(), QStringLiteral("dark"));
+
+    const QStringList backups = QDir(PodStack::Paths::configDir())
+                                    .entryList({QStringLiteral("config.json.bak-*")}, QDir::Files);
+    QCOMPARE(backups.size(), 1);
+    QFile backup(PodStack::Paths::configDir() + QLatin1Char('/') + backups.first());
+    QVERIFY(backup.open(QIODevice::ReadOnly));
+    const QJsonObject oldConfig = QJsonDocument::fromJson(backup.readAll()).object();
+    const QJsonObject oldNetwork = oldConfig.value(QStringLiteral("network")).toObject();
+    QCOMPARE(oldNetwork.value(QStringLiteral("httpPort")).toInt(), 8080);
+    QCOMPARE(oldNetwork.value(QStringLiteral("httpsPort")).toInt(), 8443);
+
+    // A migração é persistida para não depender de um schema futuro.
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QJsonObject persisted = QJsonDocument::fromJson(file.readAll()).object();
+    const QJsonObject persistedNetwork = persisted.value(QStringLiteral("network")).toObject();
+    QCOMPARE(persisted.value(QStringLiteral("schemaVersion")).toInt(), 2);
+    QCOMPARE(persistedNetwork.value(QStringLiteral("httpPort")).toInt(), 18080);
+    QCOMPARE(persistedNetwork.value(QStringLiteral("httpsPort")).toInt(), 18443);
+
+    // Valores customizados são preservados.
+    QVERIFY(writeConfig(R"({"schemaVersion":1,"network":{"httpPort":9090,"httpsPort":9443}})"));
+    loaded = PodStack::Config::load();
+    QCOMPARE(loaded.get(QStringLiteral("network.httpPort")).toInt(), 9090);
+    QCOMPARE(loaded.get(QStringLiteral("network.httpsPort")).toInt(), 9443);
+
+    // Um schema já migrado não é alterado, mesmo que o usuário use os valores antigos.
+    QVERIFY(writeConfig(R"({"schemaVersion":2,"network":{"httpPort":8080,"httpsPort":8443}})"));
+    loaded = PodStack::Config::load();
+    QCOMPARE(loaded.get(QStringLiteral("network.httpPort")).toInt(), 8080);
+    QCOMPARE(loaded.get(QStringLiteral("network.httpsPort")).toInt(), 8443);
+
+    QDir(PodStack::Paths::configDir()).removeRecursively();
+}
+
 void CoreTest::configSetupDefaults()
 {
     PodStack::Config config;
@@ -209,7 +269,7 @@ void CoreTest::configInvalidFallsBack()
     file.close();
 
     const PodStack::Config loaded = PodStack::Config::load();
-    QCOMPARE(loaded.get(QStringLiteral("schemaVersion")).toInt(), 1);
+    QCOMPARE(loaded.get(QStringLiteral("schemaVersion")).toInt(), 2);
     QCOMPARE(loaded.get(QStringLiteral("engine.mode")).toString(), QStringLiteral("rootless"));
 }
 
@@ -258,7 +318,7 @@ void CoreTest::configSchemaCoversDocumentedKeys()
         QVERIFY2(config.get(definition.key) == definition.defaultValue,
                  qPrintable(QStringLiteral("default divergente em %1").arg(definition.key)));
     }
-    QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 1);
+    QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 2);
 
     const QJsonObject schema = PodStack::Config::schema();
     QCOMPARE(schema.value(QStringLiteral("schema")).toArray().size(), 88);
@@ -361,7 +421,7 @@ void CoreTest::configResetPreservesSetup()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_VALIDATION"));
 
     config.resetAll();
-    QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 1);
+    QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 2);
     QCOMPARE(config.get(QStringLiteral("app.theme")).toString(), QStringLiteral("system"));
     QCOMPARE(config.get(QStringLiteral("engine.mode")).toString(), QStringLiteral("rootless"));
     QCOMPARE(config.get(QStringLiteral("network.proxy")).toString(), QStringLiteral("auto"));

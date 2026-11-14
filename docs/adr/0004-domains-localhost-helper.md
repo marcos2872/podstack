@@ -60,3 +60,9 @@ O OrbStack entrega `container.orb.local` sem configuração usando mDNS + proxy 
 - `ProxyManager` no daemon; Caddy como filho.
 - Helper com métodos `BindPorts`, `InstallDnsZone`, `TrustCa`.
 - Testes de idempotência e remoção limpa.
+
+## Atualização (2026-11-13)
+
+Os defaults de porta do proxy passaram a `18080`/`18443`, fora da faixa efêmera do kernel. A
+decisão de usar portas altas e sem privilégio permanece; configs antigas com `8080`/`8443` são
+migradas automaticamente. Ver [`settings.md`](../engineering/settings.md).

@@ -3,6 +3,7 @@
 #include "core/Paths.h"
 #include "core/Settings.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -34,6 +35,42 @@ QJsonValue mergeValue(const QJsonValue &base, const QJsonValue &stored)
     return merged;
 }
 
+constexpr int kSchemaVersion = 2;
+constexpr int kLegacyHttpPort = 8080;
+constexpr int kLegacyHttpsPort = 8443;
+
+/// Migra os defaults antigos do proxy para as portas atuais. Só age quando a
+/// config persistida ainda está no schema anterior; valores customizados são
+/// preservados.
+bool migrateProxyPorts(QJsonObject *stored)
+{
+    if (stored->value(QStringLiteral("schemaVersion")).toInt(1) >= kSchemaVersion) {
+        return false;
+    }
+
+    QJsonObject network = stored->value(QStringLiteral("network")).toObject();
+    bool changed = false;
+    const auto migrate = [&](const QString &key, int legacy, const QString &settingKey) {
+        if (network.value(key).toInt() != legacy) {
+            return;
+        }
+        const SettingDef *definition = Settings::find(settingKey);
+        if (!definition) {
+            return;
+        }
+        network.insert(key, definition->defaultValue);
+        changed = true;
+    };
+    migrate(QStringLiteral("httpPort"), kLegacyHttpPort, QStringLiteral("network.httpPort"));
+    migrate(QStringLiteral("httpsPort"), kLegacyHttpsPort, QStringLiteral("network.httpsPort"));
+
+    if (changed) {
+        stored->insert(QStringLiteral("network"), network);
+    }
+    stored->insert(QStringLiteral("schemaVersion"), kSchemaVersion);
+    return changed;
+}
+
 } // namespace
 
 Config::Config()
@@ -44,7 +81,7 @@ Config::Config()
 QJsonObject Config::defaults()
 {
     QJsonObject root = Settings::defaults();
-    root.insert(QStringLiteral("schemaVersion"), 1);
+    root.insert(QStringLiteral("schemaVersion"), kSchemaVersion);
     return root;
 }
 
@@ -76,9 +113,26 @@ Config Config::load()
         return config;
     }
 
-    const QJsonObject stored = document.object();
+    QJsonObject stored = document.object();
+    const bool migrated = migrateProxyPorts(&stored);
     for (auto it = stored.constBegin(); it != stored.constEnd(); ++it) {
         config.m_values.insert(it.key(), mergeValue(config.m_values.value(it.key()), it.value()));
+    }
+    if (migrated) {
+        const QString backupPath =
+            path + QStringLiteral(".bak-") +
+            QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMddTHHmmssZ"));
+        if (QFile::copy(path, backupPath)) {
+            QFile::setPermissions(backupPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        } else {
+            qWarning("podstack: não foi possível criar o backup %s", qUtf8Printable(backupPath));
+        }
+
+        QString saveError;
+        if (!config.save(&saveError)) {
+            qWarning("podstack: não foi possível persistir a migração de portas: %s",
+                     qUtf8Printable(saveError));
+        }
     }
     return config;
 }

@@ -98,7 +98,7 @@ flowchart TB
 | `SetSysctl` | `{key,value}` | Apenas allowlist (`ip_unprivileged_port_start`) |
 | `InstallPackages` | `{packages:[...], reason}` | Instala pacotes **allowlisted** (podman, qemu-kvm, virtiofsd, …) |
 | `RemovePackages` | `{packages:[...], reason}` | Remove pacotes **allowlisted** (ex.: docker-ce) |
-| `OpenPorts` | `{ports:[8080,8443], protocol:"tcp"\|"udp"}` | Abre portas no firewall em modo **runtime** (firewalld/ufw), reversível |
+| `OpenPorts` | `{ports:[18080,18443], protocol:"tcp"\|"udp"}` | Abre portas no firewall em modo **runtime** (firewalld/ufw), reversível |
 | `ClosePorts` | `{ports:[...], protocol}` | Remove as regras runtime abertas por `OpenPorts` |
 | `StageUpdate` | `{manifest, signature, artifactPath, channel}` | Valida assinatura/chave de release, SHA-256 e identidade do pacote; copia para staging root-owned |
 | `InstallUpdate` | `{jobId}` | Recusa unidade ativa e inicia a unidade transiente com `systemd-run`/`flock` |

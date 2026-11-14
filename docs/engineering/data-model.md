@@ -376,7 +376,7 @@ CREATE INDEX idx_domains_hostname ON domains(hostname);
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "app": {
     "startAtLogin": false,
     "waitForContainerStop": true,

@@ -279,8 +279,8 @@ qemu-system-x86_64 \
 ### 9.1 v1 sem privilégio
 
 - `*.localhost` (RFC 6761) → 127.0.0.1/::1.
-- Proxy do daemon em `127.0.0.1:8080` (HTTP) e `8443` (HTTPS), mapeando `Host` → container/porta.
-- Página de índice em `http://localhost:8080` listando serviços.
+- Proxy do daemon em `127.0.0.1:18080` (HTTP) e `18443` (HTTPS), mapeando `Host` → container/porta.
+- Página de índice em `http://localhost:18080` listando serviços.
 - Sem alterar `/etc/hosts`, sem root.
 
 ### 9.2 v1.1 com helper

@@ -26,6 +26,13 @@ versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - `KillMode=process` e `ProtectHome=read-only` no helper mantêm machines/artefatos acessíveis sem
   criar uma segunda fronteira root.
 
+### Alterado
+
+- **Portas padrão do proxy:** `network.httpPort`/`network.httpsPort` passam de `8080`/`8443` para
+  `18080`/`18443`, fora da faixa efêmera do kernel, evitando colisões com serviços comuns de
+  desenvolvimento. Configs do schema 1 com os valores antigos são migradas automaticamente para os
+  novos defaults (`schemaVersion` 2); valores customizados são preservados.
+
 ## [0.1.3] - 2026-11-12
 
 Release de correção do setup no Ubuntu.

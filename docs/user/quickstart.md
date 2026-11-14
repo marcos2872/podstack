@@ -57,17 +57,17 @@ reconcilia o estado com o Podman.
 Com o container `web` publicando `8080:80`, o proxy de domínios encaminha o nome do container para a
 primeira porta TCP publicada:
 
-- Índice de containers: `http://localhost:8080/`
-- Container pelo nome: `http://web.localhost:8080/`
+- Índice de containers: `http://localhost:18080/`
+- Container pelo nome: `http://web.localhost:18080/`
 
 Teste:
 
 ```bash
-curl -I http://web.localhost:8080/
+curl -I http://web.localhost:18080/
 ```
 
 O nome usado no domínio é o nome do container. A porta na URL é a porta do proxy
-(`network.httpPort`, 8080 por padrão), não a porta interna do container. Se o container não publicar
+(`network.httpPort`, 18080 por padrão), não a porta interna do container. Se o container não publicar
 nenhuma porta TCP, o proxy responde 404 com a lista de serviços; publique a porta na criação.
 
 O mesmo mapeamento usa a primeira porta publicada quando há várias. Para forçar uma porta específica,
@@ -186,11 +186,11 @@ automática por projeto ainda não existe (T5-08 parcial).
 ### HTTP sem root
 
 `*.localhost` resolve para loopback pelo próprio sistema; o PodStack escuta o proxy em
-`127.0.0.1:8080` e encaminha pelo `Host` para o container. Não é preciso editar `/etc/hosts`.
+`127.0.0.1:18080` e encaminha pelo `Host` para o container. Não é preciso editar `/etc/hosts`.
 
 ```text
-http://web.localhost:8080/     → container web, primeira porta TCP publicada
-http://localhost:8080/         → índice de containers que publicam porta
+http://web.localhost:18080/     → container web, primeira porta TCP publicada
+http://localhost:18080/         → índice de containers que publicam porta
 ```
 
 ### HTTPS com CA local
@@ -205,7 +205,7 @@ systemctl --user restart podstack.service
 Depois:
 
 ```text
-https://web.localhost:8443/
+https://web.localhost:18443/
 ```
 
 O certificado é emitido sob demanda para `*.localhost` e `*.podstack.local` e assinado pela CA local
@@ -214,7 +214,7 @@ certificado. Para testar por `curl` sem alterar o trust store:
 
 ```bash
 curl --cacert ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
-  https://web.localhost:8443/
+  https://web.localhost:18443/
 ```
 
 O arquivo `root.crt` é a raiz da CA. A importação no navegador/sistema é manual nesta versão; veja

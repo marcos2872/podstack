@@ -226,7 +226,7 @@ plataforma continua no Libpod e não usa o override.
 | `test_gui` | `backendMachineStats` | `startMachineStats` popula `machineStats` e os quatro históricos via fake SSH do daemon; `stopMachineStats` encerra o stream e limpa o erro; erro de stream de machine não vaza para `lastError` (inspector de containers) |
 | `test_gui` | `backendMachineFiles` | `refreshMachineFiles` sem machine/id inexistente, download/upload inexistente → `machineFilesError` (sem tocar `lastError`); machine semeada + SSH falso popula `machineFiles`/`machineFilesPath`, download grava em `~/Downloads` isolado pelo `user-dirs.dirs` do teste, upload envia e atualiza a listagem, nome com `..` é rejeitado antes do RPC |
 
-| `test_core` | `configSchemaCoversDocumentedKeys`, `configValidation`, `configResetPreservesSetup`, `redactionHidesSecrets` | schema com 88 chaves únicas (defaults iguais a `Config::get`, `network.proxy` secret, `engine.mode` restart), validação de tipo/enum/faixa/CIDR/proxy/lista/timestamp e reset por chave + reset total preservando `schemaVersion`/`setup.*`; redaction de Authorization/token/senha/credenciais em URL |
+| `test_core` | `configSchemaCoversDocumentedKeys`, `configValidation`, `configMigratesProxyPorts`, `configResetPreservesSetup`, `redactionHidesSecrets` | schema com 88 chaves únicas (defaults iguais a `Config::get`, `network.proxy` secret, `engine.mode` restart), validação de tipo/enum/faixa/CIDR/proxy/lista/timestamp, migração de schema 1→2 das portas antigas do proxy (com backup, persistência e preservação de valores customizados) e reset por chave + reset total preservando `schemaVersion`/`setup.*`; redaction de Authorization/token/senha/credenciais em URL |
 | `test_rpc` | `settingsFlow`, `systemReportRedactsSettings` | `settings.schema` (88), `settings.get` (todas/uma), `settings.set` bool/string/lista, rejeição de chave/tipo/enum/faixa (`PODSTACK_VALIDATION`) e params ausentes (`PODSTACK_INVALID_PARAMS`), `restartRequired` em `engine.mode`, reset por chave e all preservando `setup.completed`; `system.report` grava arquivo 0600 com `path/bytes/sha256` e segredos redigidos |
 | `test_cli` | `configCommands`, `reportCommand` | `config show/get/set/add/remove/reset/schema`, `--json`, listas com vírgula, erro de faixa/enum, `--yes` obrigatório sem TTY e reset total; `report` humano/`--json`/`--include-logs` e opção inválida |
 | `test_gui` | `backendTheme`, `backendSettings`, `backendProxy`, `backendTray` | `refreshSettings` popula schema/valores, `setSetting`/`resetSetting` via RPC, erro de validação em `settingsError`, tema/proxy/tray assíncronos, `app.fontScale` válido/ inválido e autostart aplicado após o RPC |
@@ -303,7 +303,7 @@ gera `Notify` com “Container falhou”.
 | 404 | host desconhecido |
 | Labels (T6-08) | `test_http_proxy`: `http-port` força a porta (container/host), `https-port` usa TLS, `domains` roteia Hosts customizados e aparece no índice, label inválido cai na detecção; `test_rpc/containerMountsLocalCaUnlessOptedOut` valida o mount `ro` da CA e o opt-out `dev.podstack.ca=false` |
 | Socket activation :80/:443 (T6-05) | `test_setup`: unidades `podstack-http.socket`/`podstack-https.socket` com `ListenStream` e `systemd-socket-proxyd` para alvo loopback; allowlist de portas/alvos; `BindPorts`/`UnbindPorts` idempotentes com runner fake |
-| LAN toggle (T6-09) | `test_http_proxy/exposesLanWhenConfigured` (bind em `0.0.0.0`) e `test_caddy` (Caddyfile com `bind 0.0.0.0`); firewall das portas 8080/8443 é responsabilidade do usuário/setup |
+| LAN toggle (T6-09) | `test_http_proxy/exposesLanWhenConfigured` (bind em `0.0.0.0`) e `test_caddy` (Caddyfile com `bind 0.0.0.0`); firewall das portas 18080/18443 é responsabilidade do usuário/setup |
 | HTTPS (T6-06) | `test_caddy`: Caddyfile com `tls internal`/`on_demand` e proxy loopback; TLS real com `QSslSocket` validando a CA (skip sem caddy); chave sem leitura de grupo/outros; binário ausente → `PODSTACK_NOT_FOUND`. E2E: daemon com `network.https=true`, `curl --cacert https://web.localhost:18443/` chega ao proxy |
 | CA confiável (T6-07) | `test_setup`: `CaTrust` grava/remove o anchor idempotentemente com CA autoassinada, rejeita fingerprint errado/formato e anchor de terceiros; `TrustCa`/`UntrustCa` validam path/fingerprint antes do polkit e rodam o update. Mount em containers via label fica na T6-08 |
 | DNS `podstack.local` (T6-04) | `test_dns`: A/AAAA para nome/ápice, case-insensitive, NXDOMAIN fora da zona, NOERROR sem resposta para tipo não suportado, consultas malformadas, UDP, TCP e porta ocupada. `test_setup`: drop-in instalado/removido de forma idempotente com backup, allowlist de zona/upstream e aviso de Avahi via hook |
@@ -537,7 +537,7 @@ gcovr -r . --filter 'src/' --txt-metric line --print-summary --fail-under-line 8
 
 1. `podstack compose up -d` em projeto de exemplo.
 2. GUI mostra grupo, serviços e portas.
-3. `curl http://web.localhost:8080` responde.
+3. `curl http://web.localhost:18080` responde.
 4. Logs por serviço; terminal; stop/down.
 
 Automação: `PODSTACK_E2E=1 scripts/e2e-smoke.sh` cobre o J1 (nginx:alpine em porta loopback, HTTP, logs e down) quando daemon/Podman estão disponíveis; J2/J3 seguem manuais.

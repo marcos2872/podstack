@@ -305,12 +305,10 @@ const QVector<SettingDef> &definitions()
                               QStringLiteral("podstack-local")},
                              QStringLiteral("Rede"),
                              QStringLiteral("Mecanismo de domínios locais."), true));
-        list.append(makeInt(QStringLiteral("network.httpsPort"), 8443, 1, 65535,
-                            QStringLiteral("Rede"),
-                            QStringLiteral("Porta HTTPS do proxy."), true));
-        list.append(makeInt(QStringLiteral("network.httpPort"), 8080, 1, 65535,
-                            QStringLiteral("Rede"),
-                            QStringLiteral("Porta HTTP do proxy."), true));
+        list.append(makeInt(QStringLiteral("network.httpsPort"), 18443, 1, 65535,
+                            QStringLiteral("Rede"), QStringLiteral("Porta HTTPS do proxy."), true));
+        list.append(makeInt(QStringLiteral("network.httpPort"), 18080, 1, 65535,
+                            QStringLiteral("Rede"), QStringLiteral("Porta HTTP do proxy."), true));
 
         // Máquinas
         list.append(makeString(QStringLiteral("machines.default"), QJsonValue::Null,

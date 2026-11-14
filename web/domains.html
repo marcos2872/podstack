@@ -382,21 +382,21 @@
 <p class="lede">Acesse containers por nome em <code>*.localhost</code>, descubra a porta certa automaticamente e habilite HTTPS com a CA interna do PodStack.</p>
 <div class="page-meta"><span class="badge badge-accent">PodStack 0.1.4</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
 <p>O PodStack tem um proxy HTTP em <strong>loopback</strong> na <code>network.httpPort</code>
-(8080 por padrão). Ele resolve o <code>Host</code> para um container e encaminha para uma porta TCP
-publicada. Para o navegador, <code>http://web.localhost:8080/</code> chega ao container
+(18080 por padrão). Ele resolve o <code>Host</code> para um container e encaminha para uma porta TCP
+publicada. Para o navegador, <code>http://web.localhost:18080/</code> chega ao container
 <code>web</code> sem editar <code>/etc/hosts</code> e sem root.</p>
 <p>O HTTPS é opcional e usa Caddy com uma CA interna na <code>network.httpsPort</code>
-(8443 por padrão). O certificado é emitido sob demanda para <code>*.localhost</code> e
+(18443 por padrão). O certificado é emitido sob demanda para <code>*.localhost</code> e
 <code>*.podstack.local</code>.</p>
 <h2 id="localhost">Domínios *.localhost na prática</h2><ol class="steps">
 <li>Publique uma porta TCP na criação do container, por exemplo <code>8080:80</code>.</li>
-<li>Abra <code>http://localhost:8080/</code> para ver o índice de containers que publicam porta.</li>
-<li>Abra <code>http://&lt;nome&gt;.localhost:8080/</code> para acessar o container pelo nome.</li>
+<li>Abra <code>http://localhost:18080/</code> para ver o índice de containers que publicam porta.</li>
+<li>Abra <code>http://&lt;nome&gt;.localhost:18080/</code> para acessar o container pelo nome.</li>
 <li>Se houver várias portas publicadas, o proxy detecta a que responde HTTP; se nenhuma responder, usa a primeira publicada.</li>
 <li>Para forçar uma porta, adicione a label <code>dev.podstack.http-port</code> ao container.</li>
 </ol><pre data-lang="bash" tabindex="0"><code># exemplo de criação pela GUI: web com 8080:80
-curl -I http://web.localhost:8080/
-curl -I http://localhost:8080/
+curl -I http://web.localhost:18080/
+curl -I http://localhost:18080/
 
 getent hosts web.localhost
 podstack config get network.httpPort</code></pre>
@@ -445,14 +445,14 @@ O DNS só sobe com <code>network.bridge=true</code>. Para a maioria dos casos, p
 <li>Instale o Caddy, se ainda não estiver presente: <code>podstack setup --apply components --caddy</code>.</li>
 <li>Habilite o HTTPS: <code>podstack config set network.https true</code>.</li>
 <li>Reinicie o daemon: <code>systemctl --user restart podstack.service</code>.</li>
-<li>Acesse <code>https://&lt;nome&gt;.localhost:8443/</code>.</li>
+<li>Acesse <code>https://&lt;nome&gt;.localhost:18443/</code>.</li>
 <li>Teste sem alterar o trust store com <code>curl --cacert &lt;root.crt&gt;</code>.</li>
 </ol><pre data-lang="bash" tabindex="0"><code>podstack setup --apply components --caddy
 podstack config set network.https true
 systemctl --user restart podstack.service
 
 curl --cacert ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
-  https://web.localhost:8443/</code></pre>
+  https://web.localhost:18443/</code></pre>
 <p>A CA local fica em
 <code>~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt</code>. O navegador não
 confia nela por padrão. A importação é manual nesta versão; no Fedora, copie o arquivo para
@@ -504,12 +504,12 @@ automaticamente.</p>
 systemctl --user restart podstack.service
 
 # firewalld (regra runtime; um reload/restart a remove)
-sudo firewall-cmd --add-port=8080/tcp
-sudo firewall-cmd --add-port=8443/tcp
+sudo firewall-cmd --add-port=18080/tcp
+sudo firewall-cmd --add-port=18443/tcp
 
 # ufw
-sudo ufw allow 8080/tcp
-sudo ufw allow 8443/tcp</code></pre><h2 id="na-cli">Na CLI</h2>
+sudo ufw allow 18080/tcp
+sudo ufw allow 18443/tcp</code></pre><h2 id="na-cli">Na CLI</h2>
 <p>O proxy e o HTTPS são configurados pelas chaves <code>network.*</code>. O CLI não cria o
 container por você, mas permite conferir portas publicadas, alterar as portas do proxy e testar o
 resultado com <code>curl</code>.</p>
@@ -546,7 +546,7 @@ resultado com <code>curl</code>.</p>
 </tbody></table></div><pre data-lang="bash" tabindex="0"><code>podstack config get network.httpPort
 podstack config get network.httpsPort
 podstack ps
-curl -I http://web.localhost:8080/
+curl -I http://web.localhost:18080/
 
 podstack config set network.https true
 podstack config set network.exposeLan true
@@ -559,13 +559,13 @@ systemctl --user restart podstack.service</code></pre><h2 id="referencia-rapida"
 </tr></thead><tbody>
 <tr>
 <td><code>*.localhost</code></td>
-<td>Criar o container com uma porta publicada e abrir <code>http://&lt;nome&gt;.localhost:8080/</code></td>
+<td>Criar o container com uma porta publicada e abrir <code>http://&lt;nome&gt;.localhost:18080/</code></td>
 <td><code>podstack ps</code> + <code>curl -I</code></td>
 </tr>
 <tr>
 <td>Índice</td>
-<td>Abrir <code>http://localhost:8080/</code></td>
-<td><code>curl -I http://localhost:8080/</code></td>
+<td>Abrir <code>http://localhost:18080/</code></td>
+<td><code>curl -I http://localhost:18080/</code></td>
 </tr>
 <tr>
 <td>Detecção de porta</td>
@@ -595,7 +595,7 @@ systemctl --user restart podstack.service</code></pre><h2 id="referencia-rapida"
 </tbody></table></div><h2 id="limitacoes">Limitações</h2>
 <ul>
   <li><strong>Portas não publicadas não podem ser encaminhadas no rootless</strong> (T6-10). Publique a porta na criação do container ou no Compose.</li>
-  <li><strong>As portas 80/443 não são ativadas automaticamente</strong> pela GUI/CLI em 0.1.3; use 8080/8443. O helper tem <code>BindPorts</code>, mas a fiação do app ainda não a chama.</li>
+  <li><strong>As portas 80/443 não são ativadas automaticamente</strong> pela GUI/CLI em 0.1.3; use 18080/18443. O helper tem <code>BindPorts</code>, mas a fiação do app ainda não a chama.</li>
   <li><strong>CA e <code>*.podstack.local</code> são manuais</strong>: a confiança na CA e o drop-in do resolved não têm fluxo pronto na GUI/CLI.</li>
   <li><strong>Domínios customizados via Compose</strong> (T6-08) estão pendentes; a montagem da CA em containers de Compose também.</li>
   <li><strong>Não há <code>k8s.podstack.local</code></strong> em 0.1.3.</li>
