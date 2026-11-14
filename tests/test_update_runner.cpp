@@ -119,11 +119,16 @@ private slots:
     void prepareRejectsEqualVersion();
     void prepareRejectsDowngrade();
     void prepareRejectsMissingFeed();
+    void prepareUsesCache();
+    void prepareRejectsMissingKey();
+    void installStageFails();
+    void installSystemctlFails();
     void prepareFromManifestMissing();
     void installWithoutPrepare();
     void exitCodeMapping();
     void installOrchestratesHelper();
     void installRestartsServices();
+    void installRelaunchesGui();
     void installReportsFailure();
     void prepareFromManifestCache();
 
@@ -252,6 +257,70 @@ void UpdateRunnerTest::prepareRejectsMissingFeed()
     QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_DOWNLOAD_FAILED"));
 }
 
+void UpdateRunnerTest::prepareUsesCache()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    const int manifestRequests = fixture->server.requestCount(QStringLiteral("/podstack-update.json"));
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QCOMPARE(fixture->server.requestCount(QStringLiteral("/podstack-update.json")),
+             manifestRequests);
+}
+
+void UpdateRunnerTest::prepareRejectsMissingKey()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    fixture->options.publicKey.clear();
+    const QByteArray previousConfig = qgetenv("XDG_CONFIG_HOME");
+    qputenv("XDG_CONFIG_HOME", (fixture->dir->filePath(QStringLiteral("config"))).toUtf8());
+    const auto restore = qScopeGuard([previousConfig] {
+        if (previousConfig.isEmpty()) {
+            qunsetenv("XDG_CONFIG_HOME");
+        } else {
+            qputenv("XDG_CONFIG_HOME", previousConfig);
+        }
+    });
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY(!runner.prepare(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_UNSUPPORTED"));
+}
+
+void UpdateRunnerTest::installStageFails()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    FakeUpdateHelper helper;
+    helper.stateDir = fixture->dir->filePath(QStringLiteral("helper-stage-fail"));
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    helper.failStage = true;
+    QVERIFY(!runner.install(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_SIGNATURE_INVALID"));
+    QCOMPARE(runner.phase(), QStringLiteral("failed"));
+}
+
+void UpdateRunnerTest::installSystemctlFails()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    fixture->options.restartServices = true;
+    fixture->options.systemctlBinary = QStringLiteral("/bin/false");
+    FakeUpdateHelper helper;
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY(!runner.install(&error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
+}
+
 void UpdateRunnerTest::prepareFromManifestMissing()
 {
     QTemporaryDir dir;
@@ -346,6 +415,41 @@ void UpdateRunnerTest::installRestartsServices()
     QVERIFY(calls.contains(QStringLiteral("stop")));
     QVERIFY(calls.contains(QStringLiteral("start")));
     QVERIFY(calls.contains(QStringLiteral("podstack.socket")));
+}
+
+void UpdateRunnerTest::installRelaunchesGui()
+{
+    auto fixture = makeFixture();
+    QVERIFY(fixture != nullptr);
+    const QString guiLog = fixture->dir->filePath(QStringLiteral("gui.log"));
+    const QString gui = fixture->dir->filePath(QStringLiteral("podstack-gui"));
+    QFile script(gui);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"");
+    script.write(guiLog.toUtf8());
+    script.write("\"\nexit 0\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                  | QFileDevice::ExeOwner));
+
+    const QString marker = fixture->dir->filePath(QStringLiteral("gui-was-open"));
+    QFile markerFile(marker);
+    QVERIFY(markerFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    markerFile.close();
+    fixture->options.guiMarkerPath = marker;
+    fixture->options.guiBinary = gui;
+
+    FakeUpdateHelper helper;
+    helper.stateDir = fixture->dir->filePath(QStringLiteral("helper-state-gui"));
+    PodStack::UpdateRunner runner(&helper, fixture->options);
+    PodStack::Error error;
+    QVERIFY2(runner.prepare(&error), qPrintable(error.message));
+    QVERIFY2(runner.install(&error), qPrintable(error.message));
+    QVERIFY(!QFileInfo::exists(marker));
+    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(guiLog), 3000);
+    QFile log(guiLog);
+    QVERIFY(log.open(QIODevice::ReadOnly));
+    QVERIFY(QString::fromUtf8(log.readAll()).contains(QStringLiteral("--relaunch")));
 }
 
 void UpdateRunnerTest::installReportsFailure()

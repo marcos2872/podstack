@@ -1,7 +1,8 @@
 # Plano de implementação — 002 Atualização segura e logs de debug
 
 > **Status:** aprovado para execução (2026-11-13) — **Fases 0–5 concluídas** (promoção SDD,
-> T-UPD-00…03, T-LOG-01/02); T-LOG-03, T-UPD-04 e E2E real pendentes.
+> T-UPD-00…03, T-LOG-01/02); **Fase 6 parcial** (CLI `system logs` completo, GUI de logs e
+> update parcial); E2E real pendente.
 > **Escopo:** spec inteira (`T-UPD-00…04`, `T-LOG-01…03`, `T-E2E-01`, `T-DOC-01`).
 > **Base:** [`spec.md`](spec.md), [`plan.md`](plan.md) e [`tasks.md`](tasks.md).
 

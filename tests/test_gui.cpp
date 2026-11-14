@@ -73,6 +73,8 @@ private slots:
     void uiStateInvalidFallsBack();
     void uiStateRejectsInvalidValues();
     void unixTerminationSignal();
+    void systemLogs();
+    void loadUpdateState();
     void guiStartsAndQuits();
 
 private:
@@ -125,6 +127,7 @@ void GuiTest::initTestCase()
     QDir().mkpath(m_testDataDir);
     QDir().mkpath(m_testDataDir + QStringLiteral("/config"));
     qputenv("XDG_CONFIG_HOME", (m_testDataDir + QStringLiteral("/config")).toUtf8());
+    qputenv("XDG_STATE_HOME", (m_testDataDir + QStringLiteral("/state")).toUtf8());
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -1643,6 +1646,50 @@ void GuiTest::uiStateRejectsInvalidValues()
     QVERIFY(!PodStack::UiState::isValidSection(QStringLiteral("bogus")));
     QVERIFY(!PodStack::UiState::isValidContainerTab(-1));
     QVERIFY(!PodStack::UiState::isValidMachineTab(QStringLiteral("bogus")));
+}
+
+void GuiTest::systemLogs()
+{
+    const QString logDir = m_testDataDir + QStringLiteral("/state/podstack/logs");
+    QVERIFY(QDir().mkpath(logDir));
+    QFile file(logDir + QStringLiteral("/podstackd.jsonl"));
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(QByteArrayLiteral(
+                  R"({"ts":"2026-11-13T00:00:00Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})")
+              + '\n');
+    file.close();
+
+    PodStack::Backend backend;
+    backend.loadSystemLogs(QString(), QStringLiteral("setup"), 7);
+    QVERIFY2(backend.systemLogsError().isEmpty(), qPrintable(backend.systemLogsError()));
+    QCOMPARE(backend.systemLogs().size(), 1);
+    QVERIFY(!backend.systemLogs().first().toMap().value(QStringLiteral("message"))
+                 .toString()
+                 .contains(QStringLiteral("segredo")));
+
+    const QString exportPath = m_testDataDir + QStringLiteral("/logs-export.jsonl");
+    QVERIFY(backend.exportSystemLogs(exportPath));
+    QFile exported(exportPath);
+    QVERIFY(exported.open(QIODevice::ReadOnly));
+    QVERIFY(!exported.readAll().contains("segredo"));
+
+    backend.clearSystemLogs();
+    QVERIFY(!QFileInfo::exists(logDir + QStringLiteral("/podstackd.jsonl")));
+}
+
+void GuiTest::loadUpdateState()
+{
+    const QString updatesDir = m_testDataDir + QStringLiteral("/state/podstack/updates");
+    QVERIFY(QDir().mkpath(updatesDir));
+    QFile state(updatesDir + QStringLiteral("/state.json"));
+    QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    state.write(QByteArrayLiteral(R"({"phase":"done","message":"ok"})"));
+    state.close();
+
+    PodStack::Backend backend;
+    QTRY_COMPARE_WITH_TIMEOUT(
+        backend.updateStatus().value(QStringLiteral("status")).toString(),
+        QStringLiteral("installed"), 3000);
 }
 
 void GuiTest::unixTerminationSignal()

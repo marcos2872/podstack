@@ -312,6 +312,7 @@ contexto automática por projeto também não existe (T5-08 parcial).
 | `podstack system df` | `--detailed`, `--json` |
 | `podstack system disk` | `--json` |
 | `podstack system emulation` | `--json` |
+| `podstack system logs` | `--follow`, `--since 7d\|ISO`, `--level`, `--component`, `--json`, `--export`, `--clear` |
 
 ```bash
 podstack system df --detailed

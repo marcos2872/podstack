@@ -3,7 +3,9 @@
 #include "core/Config.h"
 #include "core/LogRotation.h"
 #include "core/LogWriter.h"
+#include "core/LogReader.h"
 #include "core/Logging.h"
+#include "core/Paths.h"
 #include "core/Paths.h"
 #include "core/Settings.h"
 
@@ -79,6 +81,8 @@ private slots:
     void rotateAtStart();
     void queueDrop();
     void clearLogs();
+    void logReaderFilters();
+    void logReaderEdges();
     void settingsSchema();
 
 private:
@@ -371,6 +375,98 @@ void LoggingTest::clearLogs()
     const QStringList lines = readLines(m_lastFile);
     QVERIFY(!lines.join(QString()).contains(QStringLiteral("antes do clear")));
     QVERIFY(lines.join(QString()).contains(QStringLiteral("depois do clear")));
+}
+
+void LoggingTest::logReaderFilters()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QFile daemon(dir.filePath(QStringLiteral("podstackd.jsonl")));
+    QVERIFY(daemon.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    daemon.write(QByteArrayLiteral(
+                     R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.core","process":"podstackd","message":"info"})")
+                 + '\n');
+    daemon.write(QByteArrayLiteral(
+                     R"({"ts":"2026-11-13T00:00:01Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})")
+                 + '\n');
+    daemon.close();
+
+    PodStack::LogReadOptions options;
+    options.directory = dir.path();
+    options.since = QDate(2026, 11, 1);
+    options.level = QStringLiteral("warn");
+    options.component = QStringLiteral("setup");
+    PodStack::LogReadResult result;
+    PodStack::Error error;
+    QVERIFY2(PodStack::readUserLogs(options, &result, &error), qPrintable(error.message));
+    QCOMPARE(result.lines.size(), 1);
+    QVERIFY(!result.lines.first().raw.contains(QStringLiteral("segredo")));
+    QVERIFY(result.lines.first().raw.contains(QStringLiteral("[redacted]")));
+
+    const QString exportPath = dir.filePath(QStringLiteral("export.jsonl"));
+    QVERIFY(PodStack::exportLogs(result.lines, exportPath, &error));
+    QFile exported(exportPath);
+    QVERIFY(exported.open(QIODevice::ReadOnly));
+    QVERIFY(!exported.readAll().contains("segredo"));
+    QVERIFY(exported.permissions().testFlag(QFileDevice::ReadOwner));
+    QVERIFY(!exported.permissions().testFlag(QFileDevice::WriteOther));
+}
+
+void LoggingTest::logReaderEdges()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QFile daemon(dir.filePath(QStringLiteral("podstackd.jsonl")));
+    QVERIFY(daemon.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    daemon.write(QByteArrayLiteral(
+                     R"({"ts":"2026-11-13T00:00:00Z","level":"debug","category":"podstack.core","process":"podstackd","message":"debug"})")
+                 + '\n');
+    daemon.write(QByteArrayLiteral("not-json\n"));
+    daemon.close();
+    QFile gui(dir.filePath(QStringLiteral("podstack-gui-1.jsonl")));
+    QVERIFY(gui.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    gui.write(QByteArrayLiteral(
+                  R"({"ts":"2026-11-13T00:00:01Z","level":"error","category":"qml","process":"podstack-gui-1","message":"erro qml"})")
+              + '\n');
+    gui.close();
+
+    PodStack::LogReadOptions options;
+    options.directory = dir.path();
+    options.since = QDate::currentDate().addDays(1);
+    PodStack::LogReadResult result;
+    PodStack::Error error;
+    QVERIFY(PodStack::readUserLogs(options, &result, &error));
+    QCOMPARE(result.lines.size(), 0);
+
+    options.since = QDate::currentDate().addDays(-6);
+    options.level = QStringLiteral("trace");
+    options.maxLines = 1;
+    QVERIFY(PodStack::readUserLogs(options, &result, &error));
+    QCOMPARE(result.lines.size(), 1);
+    QVERIFY(result.truncated);
+
+    options.maxLines = 100;
+    options.component = QStringLiteral("qml");
+    QVERIFY(PodStack::readUserLogs(options, &result, &error));
+    QCOMPARE(result.lines.size(), 1);
+    QCOMPARE(result.lines.first().component, QStringLiteral("qml"));
+
+    const QString target = dir.filePath(QStringLiteral("target.jsonl"));
+    QVERIFY(PodStack::exportLogs({}, target, &error));
+    const QString link = dir.filePath(QStringLiteral("link.jsonl"));
+    QVERIFY(QFile::link(target, link));
+    error = {};
+    QVERIFY(!PodStack::exportLogs({}, link, &error));
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
+
+    const QString stateLogs = PodStack::Paths::stateDir() + QStringLiteral("/logs");
+    QVERIFY(QDir().mkpath(stateLogs));
+    QFile stateFile(stateLogs + QStringLiteral("/podstackd.jsonl"));
+    QVERIFY(stateFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    stateFile.write("{}\n");
+    stateFile.close();
+    QVERIFY(PodStack::clearUserLogs(&error));
+    QVERIFY(!QFileInfo::exists(stateFile.fileName()));
 }
 
 void LoggingTest::settingsSchema()

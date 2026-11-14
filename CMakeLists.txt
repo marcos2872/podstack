@@ -55,6 +55,7 @@ add_library(podstack_core STATIC
     src/core/Settings.cpp
     src/core/DiskSpace.cpp
     src/core/Logging.cpp
+    src/core/LogReader.cpp
     src/core/LogRotation.cpp
     src/core/LogWriter.cpp
     src/core/Redaction.cpp
@@ -189,6 +190,7 @@ target_link_libraries(podstack PRIVATE podstack_core Qt6::Network Qt6::DBus)
 # GUI
 # ---------------------------------------------------------------------------
 add_library(podstack_gui_lib STATIC
+    src/daemon/HelperClient.cpp
     src/gui/Autostart.cpp
     src/gui/Backend.cpp
     src/gui/ContainerDetailDialog.cpp
@@ -263,6 +265,7 @@ qt_add_qml_module(podstack_qml
         src/gui/qml/FormCheck.qml
         src/gui/qml/SettingsRow.qml
         src/gui/qml/LogsView.qml
+        src/gui/qml/SystemLogsDialog.qml
         src/gui/qml/StatsView.qml
         src/gui/qml/Inspector.qml
         src/gui/qml/ContainerDetail.qml

@@ -82,6 +82,9 @@ UpdateRunner::UpdateRunner(UpdateHelper *helper, UpdateRunnerOptions options)
     if (m_options.stateDir.isEmpty()) {
         m_options.stateDir = Paths::stateDir() + QStringLiteral("/updates");
     }
+    if (m_options.guiMarkerPath.isEmpty()) {
+        m_options.guiMarkerPath = m_options.stateDir + QStringLiteral("/gui-was-open");
+    }
 }
 
 QString UpdateRunner::hostArch() const
@@ -684,6 +687,7 @@ bool UpdateRunner::install(Error *error)
             }
         }
         (void) writeState(QStringLiteral("done"), QStringLiteral("Update instalado."), nullptr);
+        relaunchGui();
         return true;
     }
 
@@ -694,7 +698,20 @@ bool UpdateRunner::install(Error *error)
                              QStringLiteral("podstack.socket")},
                             nullptr);
     }
+    relaunchGui();
     return false;
+}
+
+void UpdateRunner::relaunchGui()
+{
+    if (!QFileInfo::exists(m_options.guiMarkerPath)) {
+        return;
+    }
+    const QString gui = QStandardPaths::findExecutable(m_options.guiBinary);
+    if (!gui.isEmpty()) {
+        QProcess::startDetached(gui, {QStringLiteral("--relaunch")});
+    }
+    QFile::remove(m_options.guiMarkerPath);
 }
 
 int UpdateRunner::exitCodeFor(const Error &error)

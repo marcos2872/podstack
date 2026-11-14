@@ -28,6 +28,8 @@ struct UpdateRunnerOptions {
     QString feedUrl;
     QString publicKey;
     QString systemctlBinary = QStringLiteral("systemctl");
+    QString guiMarkerPath;
+    QString guiBinary = QStringLiteral("podstack-gui");
     bool restartServices = true;
     int downloadTimeoutMs = 15 * 60 * 1000;
     int pollIntervalMs = 1000;
@@ -62,6 +64,7 @@ private:
     bool writeState(const QString &phase, const QString &message, Error *error);
     bool runSystemctl(const QStringList &arguments, Error *error);
     bool pollStatus(Error *error);
+    void relaunchGui();
     bool checkCustomKey(Error *error);
     QString hostArch() const;
     QString hostFormat() const;

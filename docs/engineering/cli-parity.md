@@ -103,6 +103,7 @@
 | — | `system df` | `--detailed`, `--json` | ✅ T2-18 — resumo por seção; `--detailed` lista imagens/containers/volumes e o total recuperável estimado |
 | — | `system disk` | `--json` | ✅ T7-05 — espaço de `/`, do estado do PodStack e do storage do Podman; `low` conforme `notifications.diskThresholdPercent` |
 | — | `system emulation` | `--json` | ✅ T8-09 — arquitetura do host e handlers binfmt/FEX habilitados |
+| — | `system logs` | `--follow`, `--since 7d\|ISO`, `--level`, `--component`, `--json`, `--export`, `--clear` | ◐ T-LOG-03 — logs do usuário + `GetLogs`; `--json` `{api:1,lines,truncated,files}`; `--export` 0600; `--clear` backend; GUI de logs parcial |
 | `completion` | `completion` | `--shell` | bash/zsh/fish |
 
 ### 2.3 Docker/Compose/Builds

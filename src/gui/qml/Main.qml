@@ -358,6 +358,13 @@ Rectangle {
                     label: "Settings"
                     onClicked: settingsDialog.open()
                 }
+
+                NavItem {
+                    Layout.fillWidth: true
+                    iconName: "file"
+                    label: "Logs"
+                    onClicked: systemLogsDialog.open()
+                }
             }
         }
 
@@ -828,6 +835,10 @@ Rectangle {
         }
     }
 
+    SystemLogsDialog {
+        id: systemLogsDialog
+    }
+
     AppDialog {
         id: settingsDialog
         objectName: "settingsDialog"
@@ -872,6 +883,12 @@ Rectangle {
             }
             if (status.status === "no-feed") {
                 return qsTr("Feed de atualizações indisponível.")
+            }
+            if (status.status === "installed") {
+                return qsTr("Atualização instalada; reabra o app se necessário.")
+            }
+            if (status.status === "failed") {
+                return qsTr("Atualização falhou: %1").arg(status.reason || "")
             }
             if (status.reason) {
                 return status.reason
@@ -1050,6 +1067,15 @@ Rectangle {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
+
+                                ActionButton {
+                                    objectName: "updateInstallButton"
+                                    text: qsTr("Instalar atualização")
+                                    size: "sm"
+                                    visible: (backend.updateStatus.updateAvailable || false)
+                                             === true
+                                    onClicked: backend.installUpdate()
+                                }
 
                                 ActionButton {
                                     objectName: "updateCheckNowButton"

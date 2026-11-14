@@ -380,6 +380,22 @@ void UpdateServiceTest::logsReadRootFiles()
 {
     const Fixture fixture = makeFixture(QStringLiteral("logs"));
     UpdateService service(fixture.options);
+    QVERIFY(QDir().mkpath(fixture.options.logRoot));
+    const QString fakeJournal = fixture.options.logRoot + QStringLiteral("/journalctl");
+    QByteArray journalBody = QByteArrayLiteral("echo \"JOB_ID=update-test UID=")
+                             + QByteArray::number(fixture.uid)
+                             + QByteArrayLiteral(" Authorization: Bearer journal\"\n")
+                             + QByteArrayLiteral("echo \"JOB_ID=other UID=")
+                             + QByteArray::number(fixture.uid)
+                             + QByteArrayLiteral(" ruido\"\n");
+    QVERIFY(writeExecutable(fakeJournal, journalBody));
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", fixture.options.logRoot.toUtf8() + ':' + previousPath);
+    const auto restorePath = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+    UpdateService::Options withJournal = fixture.options;
+    withJournal.includeJournal = true;
+    UpdateService journalService(withJournal);
+
     const QString uidDir = fixture.options.logRoot + QLatin1Char('/')
                            + QString::number(fixture.uid);
     QVERIFY(QDir().mkpath(uidDir));
@@ -402,6 +418,13 @@ void UpdateServiceTest::logsReadRootFiles()
     QVariantList all;
     QVERIFY(service.logs(fixture.uid, QString(), &all, &truncated, &error));
     QCOMPARE(all.size(), 1);
+
+    QVariantList journalLines;
+    error = {};
+    QVERIFY(journalService.logs(fixture.uid, QStringLiteral("update-test"), &journalLines,
+                                &truncated, &error));
+    QVERIFY(journalLines.size() >= 1);
+    QVERIFY(!journalLines.last().toString().contains(QStringLiteral("segredo")));
 
     error = {};
     QVERIFY(!service.logs(fixture.uid, QStringLiteral("update-missing"), &all, &truncated, &error));

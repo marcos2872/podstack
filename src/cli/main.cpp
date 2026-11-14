@@ -1,11 +1,14 @@
 #include "core/Error.h"
+#include "core/LogReader.h"
 #include "core/Logging.h"
+#include "core/Redaction.h"
 #include "core/RpcClient.h"
 #include "core/RpcStream.h"
 #include "core/UpdateRunner.h"
 #include "daemon/HelperClient.h"
 
 #include <QCoreApplication>
+#include <QDate>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -16,6 +19,7 @@
 #include <QJsonObject>
 #include <QStringList>
 #include <QTextStream>
+#include <QThread>
 #include <QVector>
 
 #include <cmath>
@@ -127,6 +131,7 @@ void printUsage()
           << "                          Uso de disco e prévia de prune\n"
           << "  system disk [--json]    Espaço livre e aviso de disco baixo\n"
           << "  system emulation [--json]\n"
+          << "  system logs [--follow|--since 7d|--level|--component|--json|--export|--clear]\n"
           << "                          Arquitetura do host e handlers binfmt/FEX\n"
           << "  setup [--check|--status|--validate]\n"
           << "        [--apply podman|qemu|components|socket]\n"
@@ -4092,6 +4097,235 @@ QString imageLabel(const QJsonObject &item)
     return tag.isEmpty() ? repository : repository + QLatin1Char(':') + tag;
 }
 
+int levelRank(const QString &level)
+{
+    if (level == QStringLiteral("error")) {
+        return 0;
+    }
+    if (level == QStringLiteral("warn")) {
+        return 1;
+    }
+    if (level == QStringLiteral("debug")) {
+        return 3;
+    }
+    if (level == QStringLiteral("trace")) {
+        return 4;
+    }
+    return 2;
+}
+
+bool validLogLevel(const QString &level)
+{
+    return level == QStringLiteral("error") || level == QStringLiteral("warn")
+           || level == QStringLiteral("info") || level == QStringLiteral("debug")
+           || level == QStringLiteral("trace");
+}
+
+bool validLogComponent(const QString &component)
+{
+    static const QStringList components{
+        QStringLiteral("daemon"), QStringLiteral("gui"),    QStringLiteral("cli"),
+        QStringLiteral("qml"),    QStringLiteral("setup"),  QStringLiteral("update"),
+        QStringLiteral("helper"), QStringLiteral("package")};
+    return components.contains(component);
+}
+
+QDate parseSince(const QString &text)
+{
+    const QString value = text.trimmed().toLower();
+    if (value.endsWith(QLatin1Char('d'))) {
+        bool ok = false;
+        const int days = value.chopped(1).toInt(&ok);
+        if (ok && days > 0 && days <= 30) {
+            return QDate::currentDate().addDays(-(days - 1));
+        }
+        return {};
+    }
+    return QDate::fromString(value.left(10), Qt::ISODate);
+}
+
+int commandSystemLogs(const QStringList &args)
+{
+    bool json = false;
+    bool follow = false;
+    bool clear = false;
+    QString exportPath;
+    QString sinceText;
+    QString level;
+    QString component;
+
+    for (int index = 1; index < args.size(); ++index) {
+        const QString &arg = args.at(index);
+        if (arg == QStringLiteral("--json")) {
+            json = true;
+        } else if (arg == QStringLiteral("--follow")) {
+            follow = true;
+        } else if (arg == QStringLiteral("--clear")) {
+            clear = true;
+        } else if (arg == QStringLiteral("--export") || arg == QStringLiteral("--since")
+                   || arg == QStringLiteral("--level") || arg == QStringLiteral("--component")) {
+            if (index + 1 >= args.size() || args.at(index + 1).startsWith(QStringLiteral("--"))) {
+                err() << "opção sem valor: " << arg << '\n';
+                err().flush();
+                return kExitUsage;
+            }
+            const QString value = args.at(++index);
+            if (arg == QStringLiteral("--export")) {
+                exportPath = value;
+            } else if (arg == QStringLiteral("--since")) {
+                sinceText = value;
+            } else if (arg == QStringLiteral("--level")) {
+                level = value;
+            } else {
+                component = value;
+            }
+        } else {
+            err() << "opção desconhecida para system logs: " << arg << '\n';
+            err().flush();
+            return kExitUsage;
+        }
+    }
+
+    if (!level.isEmpty() && !validLogLevel(level)) {
+        err() << "nível inválido: " << level << '\n';
+        err().flush();
+        return kExitUsage;
+    }
+    if (!component.isEmpty() && !validLogComponent(component)) {
+        err() << "componente inválido: " << component << '\n';
+        err().flush();
+        return kExitUsage;
+    }
+    if (follow && json) {
+        err() << "--follow não combina com --json.\n";
+        err().flush();
+        return kExitUsage;
+    }
+
+    if (clear) {
+        PodStack::Error error;
+        if (!PodStack::clearUserLogs(&error)) {
+            return fail(error);
+        }
+        out() << QStringLiteral("Logs do usuário removidos.\n");
+        out().flush();
+        return kExitOk;
+    }
+
+    PodStack::LogReadOptions options;
+    options.level = level;
+    options.component = component;
+    options.since = parseSince(sinceText);
+    if (!sinceText.isEmpty() && !options.since.isValid()) {
+        err() << "data inválida para --since: " << sinceText << '\n';
+        err().flush();
+        return kExitUsage;
+    }
+
+    PodStack::LogReadResult result;
+    PodStack::Error error;
+    if (!PodStack::readUserLogs(options, &result, &error)) {
+        return fail(error);
+    }
+
+    if (component.isEmpty() || component == QStringLiteral("helper")
+        || component == QStringLiteral("package")) {
+        PodStack::HelperClient helper;
+        QVariantMap reply;
+        QString helperError;
+        if (helper.callMap(QStringLiteral("GetLogs"), {}, &reply, &helperError, 60000)) {
+            const int requestedLevel = level.isEmpty() ? 4 : levelRank(level);
+            for (const QVariant &rawValue : reply.value(QStringLiteral("lines")).toList()) {
+                const QString raw = rawValue.toString();
+                const QJsonObject object = QJsonDocument::fromJson(raw.toUtf8()).object();
+                const QString helperComponent =
+                    object.value(QStringLiteral("jobId")).toString().isEmpty()
+                        ? QStringLiteral("helper")
+                        : QStringLiteral("package");
+                if (!component.isEmpty() && component != helperComponent) {
+                    continue;
+                }
+                const QString lineLevel =
+                    object.value(QStringLiteral("level")).toString(QStringLiteral("info"));
+                if (levelRank(lineLevel) > requestedLevel) {
+                    continue;
+                }
+                if (result.lines.size() >= options.maxLines) {
+                    result.truncated = true;
+                    break;
+                }
+                PodStack::LogLine line;
+                line.ts = object.value(QStringLiteral("ts")).toString();
+                line.level = lineLevel;
+                line.component = helperComponent;
+                line.message = PodStack::Redaction::text(
+                    object.value(QStringLiteral("message")).toString());
+                line.raw = PodStack::Redaction::text(raw);
+                line.levelValue = levelRank(lineLevel);
+                result.lines.append(line);
+            }
+            if (reply.value(QStringLiteral("truncated")).toBool()) {
+                result.truncated = true;
+            }
+        }
+    }
+
+    if (!exportPath.isEmpty()) {
+        if (!PodStack::exportLogs(result.lines, exportPath, &error)) {
+            return fail(error);
+        }
+    }
+
+    if (json) {
+        QJsonArray lines;
+        for (const PodStack::LogLine &line : result.lines) {
+            QJsonObject object;
+            object.insert(QStringLiteral("ts"), line.ts);
+            object.insert(QStringLiteral("level"), line.level);
+            object.insert(QStringLiteral("component"), line.component);
+            object.insert(QStringLiteral("message"), line.message);
+            lines.append(object);
+        }
+        QJsonObject document;
+        document.insert(QStringLiteral("api"), 1);
+        document.insert(QStringLiteral("lines"), lines);
+        document.insert(QStringLiteral("truncated"), result.truncated);
+        document.insert(QStringLiteral("files"), QJsonArray::fromStringList(result.files));
+        out() << QJsonDocument(document).toJson(QJsonDocument::Indented);
+        out().flush();
+    } else if (!follow) {
+        for (const PodStack::LogLine &line : result.lines) {
+            out() << line.ts << QLatin1Char(' ') << QLatin1Char('[') << line.component
+                  << QStringLiteral("] ") << line.level << QStringLiteral(": ") << line.message
+                  << '\n';
+        }
+        out().flush();
+    }
+
+    if (!follow) {
+        return kExitOk;
+    }
+    int lastCount = result.lines.size();
+    for (;;) {
+        QThread::msleep(500);
+        PodStack::LogReadResult next;
+        if (!PodStack::readUserLogs(options, &next, &error)) {
+            return fail(error);
+        }
+        if (next.lines.size() < lastCount) {
+            lastCount = 0;
+        }
+        for (int index = lastCount; index < next.lines.size(); ++index) {
+            const PodStack::LogLine &line = next.lines.at(index);
+            out() << line.ts << QLatin1Char(' ') << QLatin1Char('[') << line.component
+                  << QStringLiteral("] ") << line.level << QStringLiteral(": ") << line.message
+                  << '\n';
+        }
+        out().flush();
+        lastCount = next.lines.size();
+    }
+}
+
 int commandSystem(const QStringList &args)
 {
     if (args.isEmpty()) {
@@ -4106,6 +4340,9 @@ int commandSystem(const QStringList &args)
               << "     podstack system disk [--json]\n";
         out().flush();
         return kExitOk;
+    }
+    if (sub == QStringLiteral("logs")) {
+        return commandSystemLogs(args);
     }
     if (sub == QStringLiteral("emulation")) {
         const bool json = args.contains(QStringLiteral("--json"));

@@ -343,7 +343,7 @@ inline. Nada é gravado direto no arquivo: `Backend::refreshSettings/setSetting/
 
 | Categoria | Conteúdo |
 |---|---|
-| **Geral** | iniciar no login, tema, idioma, tray, manter rodando, confirmações, onboarding e o bloco **Atualizações do PodStack** (checkbox “Verificar atualizações ao iniciar” + botão **Verificar atualizações**) |
+| **Geral** | iniciar no login, tema, idioma, tray, manter rodando, confirmações, onboarding e o bloco **Atualizações do PodStack** (checkbox “Verificar atualizações ao iniciar”, **Verificar atualizações** e **Instalar atualização** quando disponível) |
 | **Engine** | rootless/rootful, socket, auto-start, restart em mudança de config |
 | **Docker** | expor portas na LAN, containerd image store, containers.conf, rede default |
 | **Rede** | HTTPS, proxy + exclusões, subnet, bridge, IPv6, LAN, domínio, portas |
@@ -354,9 +354,20 @@ inline. Nada é gravado direto no arquivo: `Backend::refreshSettings/setSetting/
 | **Setup** | estado do onboarding, política do Docker, componentes, última validação |
 
 A aba **Geral** começa com o bloco **Atualizações do PodStack**: o checkbox “Verificar
-atualizações ao iniciar” grava `updates.mode` (`check`/`off`) e o botão **Verificar atualizações**
-chama `updates.check` com `force=true`, exibindo o resultado ao lado. Não existe aba **Updates**:
-canal, feed e chave pública são internos do app (schema/CLI), conforme `docs/engineering/settings.md` §2.9.
+atualizações ao iniciar” grava `updates.mode` (`check`/`off`), **Verificar atualizações** chama
+`updates.check` com `force=true` e **Instalar atualização** aparece quando há versão nova. O
+install grava `gui-was-open`, inicia `podstack update --install --runner` e fecha a GUI; o runner
+relança `podstack-gui --relaunch` ao final e a GUI lê `state.json` para mostrar o resultado. Não
+existe aba **Updates**: canal, feed e chave pública são internos do app (schema/CLI), conforme
+`docs/engineering/settings.md` §2.9.
+
+### 7.1 Logs do app
+
+`SystemLogsDialog.qml` (atalho na sidebar **Logs**) lê os 7 dias via `Backend::loadSystemLogs` com
+filtro de nível/componente, **Atualizar**, **Exportar** (`0600`), **Abrir pasta** e **Limpar** com
+confirmação; mostra erro/truncamento. O CLI equivalente é `podstack system logs`. Leitura em
+worker/modelo virtualizado e “Exportar diagnóstico”/“Ver log” contextual permanecem pendentes
+(T-LOG-03).
 
 O rodapé mantém **Executar configuração** (reabre o setup) e **Fechar**. Reset por chave usa o
 botão da linha; o reset total fica na CLI (`podstack config reset --all --yes`) e preserva
