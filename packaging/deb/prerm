@@ -1,8 +1,56 @@
 #!/bin/sh
-set -e
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Roda antes da remoção. No upgrade o novo `preinst` é quem encerra o app;
+# aqui só tratamos a remoção para não deixar GUI/daemon/helper rodando depois
+# que os arquivos forem apagados.
+set -u
 
-if [ "$1" = "remove" ] && command -v systemctl >/dev/null 2>&1; then
-    systemctl disable --now podstack-helper.service >/dev/null 2>&1 || true
-fi
+SOCKET_UNIT=podstack.socket
+SERVICE_UNIT=podstack.service
+HELPER_UNIT=podstack-helper.service
+
+log() {
+    echo "PodStack: $*" >&2
+}
+
+logged_uids() {
+    if command -v loginctl >/dev/null 2>&1; then
+        loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u
+    fi
+}
+
+has_procps() {
+    command -v pkill >/dev/null 2>&1 && command -v pgrep >/dev/null 2>&1
+}
+
+case "${1:-}" in
+    remove|purge)
+        if command -v systemctl >/dev/null 2>&1; then
+            for uid in $(logged_uids); do
+                systemctl --machine "user@${uid}.service" --user stop \
+                    "$SOCKET_UNIT" "$SERVICE_UNIT" >/dev/null 2>&1 || true
+                if has_procps; then
+                    pkill -TERM -u "$uid" -x podstack-gui >/dev/null 2>&1 || true
+                    pkill -TERM -u "$uid" -x podstackd >/dev/null 2>&1 || true
+                fi
+            done
+            sleep 3
+            for uid in $(logged_uids); do
+                if has_procps; then
+                    pkill -KILL -u "$uid" -x podstack-gui >/dev/null 2>&1 || true
+                    pkill -KILL -u "$uid" -x podstackd >/dev/null 2>&1 || true
+                fi
+            done
+            systemctl disable --now "$HELPER_UNIT" >/dev/null 2>&1 || true
+        elif has_procps; then
+            pkill -TERM -x podstack-gui >/dev/null 2>&1 || true
+            pkill -TERM -x podstackd >/dev/null 2>&1 || true
+            sleep 3
+            pkill -KILL -x podstack-gui >/dev/null 2>&1 || true
+            pkill -KILL -x podstackd >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
 
 exit 0

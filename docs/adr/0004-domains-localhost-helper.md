@@ -65,4 +65,4 @@ O OrbStack entrega `container.orb.local` sem configuração usando mDNS + proxy 
 
 Os defaults de porta do proxy passaram a `18080`/`18443`, fora da faixa efêmera do kernel. A
 decisão de usar portas altas e sem privilégio permanece; configs antigas com `8080`/`8443` são
-migradas automaticamente. Ver [`settings.md`](../settings.md).
+migradas automaticamente. Ver [`settings.md`](../engineering/settings.md).

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(PodStack VERSION 0.1.3 LANGUAGES CXX)
+project(PodStack VERSION 0.1.4 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -55,18 +55,23 @@ add_library(podstack_core STATIC
     src/core/Settings.cpp
     src/core/DiskSpace.cpp
     src/core/Logging.cpp
+    src/core/LogReader.cpp
+    src/core/LogRotation.cpp
+    src/core/LogWriter.cpp
     src/core/Redaction.cpp
     src/core/Proxy.cpp
     src/core/UpdateManifest.cpp
     src/core/Emulation.cpp
     src/core/RpcClient.cpp
     src/core/RpcStream.cpp
+    src/core/UpdateRunner.cpp
 )
 target_include_directories(podstack_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(podstack_core PUBLIC Qt6::Core Qt6::Network OpenSSL::Crypto)
 target_compile_definitions(podstack_core PUBLIC
     PODSTACK_VERSION="${PROJECT_VERSION}"
     PODSTACK_UPDATE_PUBLIC_KEY="${PODSTACK_UPDATE_PUBLIC_KEY}"
+    QT_MESSAGELOGCONTEXT
 )
 
 # ---------------------------------------------------------------------------
@@ -91,6 +96,7 @@ add_library(podstack_machines STATIC
     src/machines/MachineStore.cpp
     src/machines/QemuCommand.cpp
     src/machines/QmpClient.cpp
+    src/machines/ProcessScope.cpp
     src/machines/QemuRuntime.cpp
     src/machines/VirtiofsdProcess.cpp
     src/machines/MachineManager.cpp
@@ -161,23 +167,31 @@ add_executable(podstack-helper
     src/helper/PortBinding.cpp
     src/helper/Firewall.cpp
     src/helper/Polkit.cpp
+    src/helper/UpdateService.cpp
 )
 target_include_directories(podstack-helper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(podstack-helper PRIVATE PODSTACK_VERSION="${PROJECT_VERSION}")
 target_link_libraries(podstack-helper PRIVATE podstack_core Qt6::DBus)
+
+add_executable(podstack-update-exec
+    src/helper/UpdateExec.cpp
+)
+target_link_libraries(podstack-update-exec PRIVATE podstack_core)
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 add_executable(podstack
     src/cli/main.cpp
+    src/daemon/HelperClient.cpp
 )
-target_link_libraries(podstack PRIVATE podstack_core Qt6::Network)
+target_link_libraries(podstack PRIVATE podstack_core Qt6::Network Qt6::DBus)
 
 # ---------------------------------------------------------------------------
 # GUI
 # ---------------------------------------------------------------------------
 add_library(podstack_gui_lib STATIC
+    src/daemon/HelperClient.cpp
     src/gui/Autostart.cpp
     src/gui/Backend.cpp
     src/gui/ContainerDetailDialog.cpp
@@ -193,6 +207,7 @@ add_library(podstack_gui_lib STATIC
     src/gui/Translation.cpp
     src/gui/Tray.cpp
     src/gui/UiState.cpp
+    src/gui/UnixSignals.cpp
 )
 target_include_directories(podstack_gui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 qt_add_resources(podstack_gui_lib "translations"
@@ -251,6 +266,7 @@ qt_add_qml_module(podstack_qml
         src/gui/qml/FormCheck.qml
         src/gui/qml/SettingsRow.qml
         src/gui/qml/LogsView.qml
+        src/gui/qml/SystemLogsDialog.qml
         src/gui/qml/StatsView.qml
         src/gui/qml/Inspector.qml
         src/gui/qml/ContainerDetail.qml
@@ -323,6 +339,9 @@ install(FILES packaging/systemd-system/podstack-helper.service
 )
 
 install(TARGETS podstack-helper RUNTIME DESTINATION libexec/podstack)
+install(TARGETS podstack-update-exec RUNTIME DESTINATION libexec/podstack)
+install(FILES packaging/tmpfiles.d/podstack.conf DESTINATION lib/tmpfiles.d)
+install(FILES packaging/logrotate/podstack DESTINATION /etc/logrotate.d)
 
 install(FILES packaging/polkit/dev.podstack.helper.policy
     DESTINATION share/polkit-1/actions

@@ -1,4 +1,4 @@
-# Troubleshooting — PodStack 0.1.1
+# Troubleshooting — PodStack 0.1.4
 
 Comece pelos diagnósticos que não alteram nada:
 
@@ -90,7 +90,7 @@ podstack status
 ```
 
 Se o Podman estiver instalado mas desatualizado, atualize-o pelo gerenciador de pacotes. O PodStack
-0.1.1 espera Podman 5.8 ou mais novo.
+0.1.4 espera Podman 5.8 ou mais novo.
 
 No modo rootful (`engine.mode=rootful`), o socket é `/run/podman/podman.sock` e o seu usuário precisa
 ter acesso ao grupo correspondente. Rootful é opt-in explícito; a GUI mostra o badge e o aviso. Se o
@@ -115,7 +115,7 @@ pkaction --action-id dev.podstack.helper.install-packages --verbose
 Instale o subpacote e habilite o serviço:
 
 ```bash
-sudo dnf install ./podstack-helper-0.1.1-1.fc44.x86_64.rpm
+sudo dnf install ./podstack-helper-0.1.4-1.fc44.x86_64.rpm
 sudo systemctl enable --now podstack-helper.service
 ```
 
@@ -160,7 +160,7 @@ Se o virtiofsd estiver em um caminho fora do padrão, defina `PODSTACK_VIRTIOFSD
 no path esperado (`/usr/libexec/virtiofsd` é o fallback). O setup verifica QEMU, OVMF e virtiofsd;
 se um deles estiver ausente e for obrigatório, a tela principal fica bloqueada até a instalação.
 
-No Ubuntu, o pacote `ovmf` instala `/usr/share/OVMF/OVMF_CODE_4M.fd` e `OVMF_VARS_4M.fd`; a 0.1.3
+No Ubuntu, o pacote `ovmf` instala `/usr/share/OVMF/OVMF_CODE_4M.fd` e `OVMF_VARS_4M.fd`; a 0.1.4
 reconhece esses caminhos. Na 0.1.2, instale `ovmf` e crie os links esperados pelo app:
 
 ```bash
@@ -252,7 +252,7 @@ podman ps -a
 
 Se o container foi criado fora do PodStack, ele deve aparecer na reconciliação. Se a imagem não
 existir localmente, o create falha: faça o pull antes (**Images → Pull** ou
-`podstack images pull <imagem>`). O CLI 0.1.1 não cria containers; use a GUI.
+`podstack images pull <imagem>`). O CLI 0.1.4 não cria containers; use a GUI.
 
 ### Compose não sobe
 
@@ -323,7 +323,7 @@ sudo ufw allow 18080/tcp
 sudo ufw allow 18443/tcp
 ```
 
-As portas 80/443 não são ativadas automaticamente pela GUI/CLI em 0.1.1. O helper tem a API de
+As portas 80/443 não são ativadas automaticamente pela GUI/CLI em 0.1.4. O helper tem a API de
 `BindPorts`, mas a fiação do app ainda não a chama; use 18080/18443. Se `network.bridge=false`, o proxy
 HTTP e o DNS ficam desligados.
 
@@ -408,7 +408,7 @@ curl -I http://web.localhost:18080/
 ```
 
 `*.podstack.local` usa o DNS userspace do PodStack em `127.0.0.1:5353` e um drop-in do
-`systemd-resolved`. Em 0.1.1 a instalação desse drop-in ainda não está ligada à GUI/CLI; sem ele, o
+`systemd-resolved`. Em 0.1.4 a instalação desse drop-in ainda não está ligada à GUI/CLI; sem ele, o
 nome não resolve. Verifique se o DNS está escutando:
 
 ```bash
@@ -474,12 +474,44 @@ podstack update --check --json --channel beta
 ```
 
 O `update --check` não instala nada. Exit 3 significa que há uma versão nova; exit 1 significa que a
-checagem está indisponível. A atualização é feita pelo gerenciador de pacotes (`sudo dnf upgrade
-podstack`/`sudo apt upgrade podstack`) ou pelo canal que você usa.
+checagem está indisponível.
 
-Erros `PODSTACK_UPDATE_SIGNATURE`/`PODSTACK_UPDATE_MANIFEST` indicam feed ou assinatura inválidos.
-Não tente contornar a verificação; confira rede, URL do feed e chave pública. Um feed sem chave
-configurada retorna `unconfigured` e não aceita atualização.
+A partir da 0.1.4, a GUI mostra **Instalar atualização** (com versão e notas) e o CLI oferece o
+caminho assistido. A GUI grava `gui-was-open`, fecha, o runner para o daemon, valida o pacote no
+helper, instala em uma unidade transiente e reabre a GUI ao final, com notificação nativa.
+
+```bash
+podstack update --install
+podstack update --install --yes --json
+podstack update --install --resume   # retoma um job interrompido
+podstack update --install --clear-state
+```
+
+O `--install` usa exit 0/1/2/6/8/9; 6 é consentimento/polkit, 8 timeout e 9 cancelamento. Em caso de
+falha, o helper é mantido ativo, GUI/daemon da versão instalada são religados e o estado fica em
+`~/.local/state/podstack/updates/state.json` para retomar ou limpar. O caminho manual continua
+válido: `sudo dnf upgrade podstack`/`sudo apt upgrade podstack`.
+
+Erros `PODSTACK_UPDATE_SIGNATURE_INVALID`/`PODSTACK_UPDATE_MANIFEST_INVALID` indicam feed, assinatura
+ou identidade do pacote inválidos; não contorne a verificação. `PODSTACK_UPDATE_UNSUPPORTED` com
+`reason=custom_key` significa que `updates.publicKey` foi customizada e o install assistido usa a
+chave de release do helper: use o caminho manual.
+
+## Logs do app
+
+Os logs de daemon/GUI/CLI/setup/update ficam em `~/.local/state/podstack/logs/` por 7 dias
+(JSON Lines, `0600`). A GUI tem a página **Logs** na sidebar; o CLI equivalente:
+
+```bash
+podstack system logs
+podstack system logs --level error --since 7d
+podstack system logs --json --export /tmp/podstack-logs.jsonl
+podstack system logs --clear
+```
+
+`--component` aceita `daemon|gui|cli|qml|setup|update|helper|package`; `helper`/`package` usam o
+helper com polkit. O `podstack report --include-logs` gera um JSON redigido com até 7 dias e caps de
+10.000 linhas/componente e 5 MB; nada é enviado.
 
 ## Erros PODSTACK
 
@@ -498,7 +530,7 @@ configurada retorna `unconfigured` e não aceita atualização.
 | `PODSTACK_TIMEOUT` | A operação excedeu o tempo. | Verifique engine/VM/rede e tente novamente. |
 | `PODSTACK_CANCELLED` | O job foi cancelado. | Reexecute quando estiver pronto. |
 | `PODSTACK_COMPOSE_PROVIDER_MISSING` | Provider Compose não encontrado. | Instale `docker-compose` ou defina `PODSTACK_COMPOSE_PROVIDER`. |
-| `PODSTACK_UPDATE_SIGNATURE`/`PODSTACK_UPDATE_MANIFEST` | Feed de update inválido ou assinatura rejeitada. | Confira rede, URL e chave; não ignore a assinatura. |
+| `PODSTACK_UPDATE_SIGNATURE_INVALID`/`PODSTACK_UPDATE_MANIFEST_INVALID` | Feed de update inválido, assinatura rejeitada ou identidade do pacote divergente. | Confira rede, URL e chave; não ignore a assinatura. |
 | `PODSTACK_IO_ERROR` | Falha de arquivo, SSH/SCP, arquivo compactado ou rede. | Confira caminhos, permissões, espaço em disco e conectividade. |
 | `PODSTACK_DB_ERROR` | Falha no SQLite/estado do daemon. | Reinicie o daemon; se persistir, preserve o estado e gere um report. |
 | `PODSTACK_CONFIRMATION_REQUIRED` | Ação destrutiva sem confirmação explícita. | Use a GUI ou `--force`/`--yes` quando o comando oferecer. |
@@ -507,7 +539,7 @@ configurada retorna `unconfigured` e não aceita atualização.
 | `PODSTACK_EXEC_FAILED` | O comando no container falhou ao executar. | Confira se o container está rodando e se o comando existe. |
 
 A lista completa e o formato `{code, message, detail, remediation}` estão em
-[`../api-rpc.md`](../api-rpc.md).
+[`../api-rpc.md`](../engineering/api-rpc.md).
 
 ## Variáveis de ambiente úteis
 
@@ -526,7 +558,7 @@ defaults.
 
 ## Limitações relacionadas
 
-As limitações completas do 0.1.1 estão em [`README.md`](README.md#limitações-conhecidas-do-010).
+As limitações completas do 0.1.4 estão em [`README.md`](README.md#limitações-conhecidas-do-014).
 As mais relevantes para diagnóstico são: console serial sem VNC, export/clone sem snapshots
 internos, portas não publicadas não suportadas em rootless (T6-10), T5-07/T5-08 parciais, Flatpak
 como cliente de um daemon/helper no host e ausência de fiação automática para CA/`*.podstack.local`

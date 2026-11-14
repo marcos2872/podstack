@@ -31,8 +31,23 @@ bool HelperClient::available() const
 bool HelperClient::call(const QString &method, const QVariantList &arguments, QString *error,
                         int timeoutMs) const
 {
+    QVariantMap reply;
+    const bool ok = callMap(method, arguments, &reply, error, timeoutMs);
+    if (!ok && error && error->isEmpty()) {
+        const QString message = reply.value(QStringLiteral("message")).toString();
+        *error = message.isEmpty() ? QStringLiteral("O helper recusou a operação.") : message;
+    }
+    return ok;
+}
+
+bool HelperClient::callMap(const QString &method, const QVariantList &arguments, QVariantMap *reply,
+                           QString *error, int timeoutMs) const
+{
     if (error) {
         *error = {};
+    }
+    if (reply) {
+        reply->clear();
     }
 
     QDBusInterface interface(QString::fromLatin1(kHelperService),
@@ -48,20 +63,22 @@ bool HelperClient::call(const QString &method, const QVariantList &arguments, QS
     }
 
     interface.setTimeout(timeoutMs);
-    const QDBusMessage reply =
-        interface.callWithArgumentList(QDBus::Block, method, arguments);
-    if (reply.type() == QDBusMessage::ErrorMessage) {
+    const QDBusMessage message = interface.callWithArgumentList(QDBus::Block, method, arguments);
+    if (message.type() == QDBusMessage::ErrorMessage) {
         if (error) {
-            *error = reply.errorMessage();
+            *error = message.errorMessage();
         }
         return false;
     }
 
-    const QVariantMap values = DbusUtils::variantMapFromReply(reply.arguments().value(0));
+    const QVariantMap values = DbusUtils::variantMapFromReply(message.arguments().value(0));
+    if (reply) {
+        *reply = values;
+    }
     const bool ok = values.value(QStringLiteral("ok")).toBool();
-    const QString message = values.value(QStringLiteral("message")).toString();
     if (!ok && error) {
-        *error = message.isEmpty() ? QStringLiteral("O helper recusou a operação.") : message;
+        const QString text = values.value(QStringLiteral("message")).toString();
+        *error = text.isEmpty() ? QStringLiteral("O helper recusou a operação.") : text;
     }
     return ok;
 }

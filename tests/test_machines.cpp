@@ -18,6 +18,7 @@
 #include "machines/MachineMeta.h"
 #include "machines/MachineStats.h"
 #include "machines/MachineStore.h"
+#include "machines/ProcessScope.h"
 #include "machines/QemuCommand.h"
 #include "machines/QemuRuntime.h"
 #include "machines/QmpClient.h"
@@ -54,6 +55,7 @@
 #include <sqlite3.h>
 
 #include <csignal>
+#include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 
@@ -388,6 +390,83 @@ QString createVirtiofsdScript(const QString &root)
     return path;
 }
 
+QByteArray fakeQemuScript()
+{
+    return QByteArrayLiteral(R"(#!/usr/bin/env python3
+import json, os, signal, socket, sys
+
+args = sys.argv[1:]
+def value(flag):
+    try:
+        return args[args.index(flag) + 1]
+    except (ValueError, IndexError):
+        return ""
+
+pidfile = value("-pidfile")
+chardev = value("-chardev")
+qmp_path = ""
+if "path=" in chardev:
+    qmp_path = chardev.split("path=", 1)[1].split(",", 1)[0]
+
+def cleanup(*_):
+    for path in (pidfile, qmp_path):
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, cleanup)
+signal.signal(signal.SIGINT, cleanup)
+if pidfile:
+    with open(pidfile, "w") as handle:
+        handle.write(str(os.getpid()))
+if not qmp_path:
+    signal.pause()
+
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    os.unlink(qmp_path)
+except OSError:
+    pass
+server.bind(qmp_path)
+server.listen(1)
+server.settimeout(30)
+
+def send(conn, payload):
+    conn.sendall(json.dumps(payload).encode() + b"\n")
+
+while True:
+    try:
+        conn, _ = server.accept()
+    except socket.timeout:
+        cleanup()
+    send(conn, {"QMP": {"version": {"qemu": {"major": 0, "minor": 0, "micro": 0},
+                                    "package": ""}, "capabilities": []}})
+    buffer = b""
+    while True:
+        data = conn.recv(4096)
+        if not data:
+            break
+        buffer += data
+        while b"\n" in buffer:
+            line, buffer = buffer.split(b"\n", 1)
+            if not line.strip():
+                continue
+            message = json.loads(line)
+            command = message.get("execute")
+            request_id = message.get("id")
+            if command == "system_powerdown" or command == "quit":
+                send(conn, {"return": {}, "id": request_id})
+                cleanup()
+            elif command == "query-status":
+                send(conn, {"return": {"status": "running"}, "id": request_id})
+            else:
+                send(conn, {"return": {}, "id": request_id})
+)");
+}
+
 qint64 readPidFile(const QString &path)
 {
     QFile file(path);
@@ -397,6 +476,60 @@ qint64 readPidFile(const QString &path)
     bool ok = false;
     const qint64 pid = QString::fromUtf8(file.readAll()).trimmed().toLongLong(&ok);
     return ok ? pid : 0;
+}
+
+/// Encerra e colhe o processo destacado. Em containers (root/PID 1 sem reaper)
+/// o filho pode virar zumbi e manter `/proc/<pid>`; um zumbi já está encerrado.
+bool terminateAndReap(qint64 pid)
+{
+    if (pid <= 0) {
+        return true;
+    }
+    const auto terminated = [pid] {
+        QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+        if (!stat.open(QIODevice::ReadOnly)) {
+            return true;
+        }
+        const QByteArray data = stat.readAll();
+        const qsizetype close = data.lastIndexOf(')');
+        if (close < 0 || close + 2 >= data.size()) {
+            return false;
+        }
+        const char state = data.at(close + 2);
+        return state == 'Z' || state == 'X';
+    };
+    const auto reap = [pid] {
+        int status = 0;
+        (void) ::waitpid(static_cast<pid_t>(pid), &status, WNOHANG);
+    };
+
+    ::kill(static_cast<pid_t>(pid), SIGTERM);
+    for (int i = 0; i < 100; ++i) {
+        reap();
+        if (terminated()) {
+            return true;
+        }
+        QTest::qWait(10);
+    }
+
+    ::kill(static_cast<pid_t>(pid), SIGKILL);
+    for (int i = 0; i < 100; ++i) {
+        reap();
+        if (terminated()) {
+            return true;
+        }
+        QTest::qWait(10);
+    }
+    return terminated();
+}
+
+QByteArray processCgroup(qint64 pid)
+{
+    QFile file(QStringLiteral("/proc/%1/cgroup").arg(pid));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    return file.readAll();
 }
 
 bool processAlive(qint64 pid)
@@ -967,6 +1100,12 @@ private slots:
     void qemuRuntimePidFile();
     void qemuRuntimeStartErrors();
     void qemuRuntimeFakeQemu();
+    void processScopeArguments();
+    void processScopeFallback();
+    void processScopeFakeRunner();
+    void qemuRuntimeScopeCgroup();
+    void qemuRuntimeScopeDaemonize();
+    void virtiofsdScopeCgroup();
     void machineManagerReconcile();
     void machineManagerStartFallback();
     void machineManagerRemoveOrphan();
@@ -8723,79 +8862,7 @@ void MachinesTest::qemuRuntimeFakeQemu()
 
     QTemporaryDir bin;
     QVERIFY(bin.isValid());
-    const QByteArray script = QByteArrayLiteral(R"(#!/usr/bin/env python3
-import json, os, signal, socket, sys
-
-args = sys.argv[1:]
-def value(flag):
-    try:
-        return args[args.index(flag) + 1]
-    except (ValueError, IndexError):
-        return ""
-
-pidfile = value("-pidfile")
-chardev = value("-chardev")
-qmp_path = ""
-if "path=" in chardev:
-    qmp_path = chardev.split("path=", 1)[1].split(",", 1)[0]
-
-def cleanup(*_):
-    for path in (pidfile, qmp_path):
-        if path:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-    sys.exit(0)
-
-signal.signal(signal.SIGTERM, cleanup)
-signal.signal(signal.SIGINT, cleanup)
-if pidfile:
-    with open(pidfile, "w") as handle:
-        handle.write(str(os.getpid()))
-if not qmp_path:
-    signal.pause()
-
-server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-try:
-    os.unlink(qmp_path)
-except OSError:
-    pass
-server.bind(qmp_path)
-server.listen(1)
-server.settimeout(30)
-
-def send(conn, payload):
-    conn.sendall(json.dumps(payload).encode() + b"\n")
-
-while True:
-    try:
-        conn, _ = server.accept()
-    except socket.timeout:
-        cleanup()
-    send(conn, {"QMP": {"version": {"qemu": {"major": 0, "minor": 0, "micro": 0},
-                                    "package": ""}, "capabilities": []}})
-    buffer = b""
-    while True:
-        data = conn.recv(4096)
-        if not data:
-            break
-        buffer += data
-        while b"\n" in buffer:
-            line, buffer = buffer.split(b"\n", 1)
-            if not line.strip():
-                continue
-            message = json.loads(line)
-            command = message.get("execute")
-            request_id = message.get("id")
-            if command == "system_powerdown" or command == "quit":
-                send(conn, {"return": {}, "id": request_id})
-                cleanup()
-            elif command == "query-status":
-                send(conn, {"return": {"status": "running"}, "id": request_id})
-            else:
-                send(conn, {"return": {}, "id": request_id})
-)");
+    const QByteArray script = fakeQemuScript();
     QVERIFY(
         writeTestFile(bin.filePath(QStringLiteral("qemu-system-x86_64")), script,
                       QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
@@ -8838,6 +8905,292 @@ while True:
     QVERIFY(orphanPid > 0);
     QVERIFY2(runtime.terminate(id, orphanPid, &error), qPrintable(error.message));
     QVERIFY(waitForMachineGone(&runtime, id));
+}
+
+void MachinesTest::processScopeArguments()
+{
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000001120");
+    const QString unit = PodStack::ProcessScope::unitName(QStringLiteral("podstack-machine"), id);
+    QCOMPARE(unit, QStringLiteral("podstack-machine-%1.scope").arg(id));
+
+    const QStringList argv =
+        PodStack::ProcessScope::arguments(unit, QStringLiteral("/usr/bin/qemu-system-x86_64"),
+                                          {QStringLiteral("-m"), QStringLiteral("1024")});
+    QCOMPARE(argv, (QStringList{QStringLiteral("--user"), QStringLiteral("--scope"),
+                                QStringLiteral("--collect"), QStringLiteral("--quiet"),
+                                QStringLiteral("--unit=") + unit, QStringLiteral("--"),
+                                QStringLiteral("/usr/bin/qemu-system-x86_64"), QStringLiteral("-m"),
+                                QStringLiteral("1024")}));
+
+    QCOMPARE(PodStack::ProcessScope::unitName(QStringLiteral("podstack-virtiofsd"),
+                                              QStringLiteral("a/b c")),
+             QStringLiteral("podstack-virtiofsd-a-b-c.scope"));
+    QCOMPARE(PodStack::ProcessScope::unitName(QStringLiteral("podstack-machine"), QString()),
+             QStringLiteral("podstack-machine-default.scope"));
+
+    const QStringList automatic =
+        PodStack::ProcessScope::arguments({}, QStringLiteral("/bin/true"), {});
+    QCOMPARE(automatic, (QStringList{QStringLiteral("--user"), QStringLiteral("--scope"),
+                                     QStringLiteral("--collect"), QStringLiteral("--quiet"),
+                                     QStringLiteral("--"), QStringLiteral("/bin/true")}));
+}
+
+void MachinesTest::processScopeFallback()
+{
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    const QString pidFile = root.filePath(QStringLiteral("child.pid"));
+
+    const QByteArray previousDisable = qgetenv("PODSTACK_DISABLE_SCOPE");
+    qputenv("PODSTACK_DISABLE_SCOPE", "1");
+    const auto restore = qScopeGuard([previousDisable] {
+        if (previousDisable.isEmpty()) {
+            qunsetenv("PODSTACK_DISABLE_SCOPE");
+        } else {
+            qputenv("PODSTACK_DISABLE_SCOPE", previousDisable);
+        }
+    });
+
+    qint64 pid = 0;
+    QString failure;
+    bool scoped = true;
+    QVERIFY2(
+        PodStack::ProcessScope::startDetached(
+            QStringLiteral("podstack-machine-test.scope"), QStringLiteral("/bin/sh"),
+            {QStringLiteral("-c"), QStringLiteral("echo $$ > '%1'; exec sleep 30").arg(pidFile)},
+            &pid, &failure, &scoped),
+        qPrintable(failure));
+    QVERIFY(pid > 0);
+    QVERIFY(!scoped);
+    QTRY_COMPARE_WITH_TIMEOUT(readPidFile(pidFile), pid, 3000);
+    QVERIFY(QFileInfo::exists(QStringLiteral("/proc/%1").arg(pid)));
+
+    QVERIFY(terminateAndReap(pid));
+}
+
+void MachinesTest::processScopeFakeRunner()
+{
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    const QString runner = root.filePath(QStringLiteral("systemd-run-fake.sh"));
+    const QString logFile = root.filePath(QStringLiteral("scope.log"));
+    const QString pidFile = root.filePath(QStringLiteral("child.pid"));
+    const QByteArray runnerScript = QByteArrayLiteral(R"(#!/bin/sh
+log="${PODSTACK_SCOPE_LOG:-}"
+if [ -n "$log" ]; then
+  for arg in "$@"; do printf '%s\n' "$arg" >> "$log"; done
+fi
+while [ $# -gt 0 ] && [ "$1" != "--" ]; do shift; done
+[ "$1" = "--" ] || exit 2
+shift
+exec "$@"
+)");
+    QVERIFY2(
+        writeTestFile(runner, runnerScript,
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner),
+        "não foi possível criar o systemd-run falso");
+
+    const QByteArray previousRunner = qgetenv("PODSTACK_SYSTEMD_RUN_BINARY");
+    const QByteArray previousLog = qgetenv("PODSTACK_SCOPE_LOG");
+    const QByteArray previousDisable = qgetenv("PODSTACK_DISABLE_SCOPE");
+    qputenv("PODSTACK_SYSTEMD_RUN_BINARY", runner.toUtf8());
+    qputenv("PODSTACK_SCOPE_LOG", logFile.toUtf8());
+    qunsetenv("PODSTACK_DISABLE_SCOPE");
+    const auto restore = qScopeGuard([previousRunner, previousLog, previousDisable] {
+        if (previousRunner.isEmpty()) {
+            qunsetenv("PODSTACK_SYSTEMD_RUN_BINARY");
+        } else {
+            qputenv("PODSTACK_SYSTEMD_RUN_BINARY", previousRunner);
+        }
+        if (previousLog.isEmpty()) {
+            qunsetenv("PODSTACK_SCOPE_LOG");
+        } else {
+            qputenv("PODSTACK_SCOPE_LOG", previousLog);
+        }
+        if (previousDisable.isEmpty()) {
+            qunsetenv("PODSTACK_DISABLE_SCOPE");
+        } else {
+            qputenv("PODSTACK_DISABLE_SCOPE", previousDisable);
+        }
+    });
+
+    const QString unit = QStringLiteral("podstack-machine-fake.scope");
+    qint64 pid = 0;
+    QString failure;
+    bool scoped = false;
+    QVERIFY2(
+        PodStack::ProcessScope::startDetached(
+            unit, QStringLiteral("/bin/sh"),
+            {QStringLiteral("-c"), QStringLiteral("echo $$ > '%1'; exec sleep 30").arg(pidFile)},
+            &pid, &failure, &scoped),
+        qPrintable(failure));
+    QVERIFY(pid > 0);
+    QVERIFY(scoped);
+    QTRY_COMPARE_WITH_TIMEOUT(readPidFile(pidFile), pid, 3000);
+
+    QFile log(logFile);
+    QVERIFY(log.open(QIODevice::ReadOnly));
+    const QStringList recorded =
+        QString::fromUtf8(log.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QVERIFY(recorded.contains(QStringLiteral("--user")));
+    QVERIFY(recorded.contains(QStringLiteral("--scope")));
+    QVERIFY(recorded.contains(QStringLiteral("--collect")));
+    QVERIFY(recorded.contains(QStringLiteral("--quiet")));
+    QVERIFY(recorded.contains(QStringLiteral("--unit=") + unit));
+    QVERIFY(recorded.contains(QStringLiteral("--")));
+    QVERIFY(recorded.contains(QStringLiteral("/bin/sh")));
+
+    QVERIFY(terminateAndReap(pid));
+}
+
+void MachinesTest::qemuRuntimeScopeCgroup()
+{
+    if (!PodStack::ProcessScope::available()) {
+        QSKIP("systemd de usuário indisponível para validar o scope do QEMU");
+    }
+
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000001121");
+    const QString root = m_root + QStringLiteral("/runtime-scope-qemu");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    QVERIFY(
+        writeTestFile(bin.filePath(QStringLiteral("qemu-system-x86_64")), fakeQemuScript(),
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", bin.path().toUtf8() + ':' + previousPath);
+    const auto restorePath = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
+    QemuSpec spec = qemuSpec(root);
+    spec.machineId = id;
+    spec.pidFile = root + QStringLiteral("/qemu.pid");
+    spec.qmpSocketPath = root + QStringLiteral("/qmp.sock");
+    spec.diskPath = root + QStringLiteral("/disk.qcow2");
+    spec.seedPath = root + QStringLiteral("/seed.iso");
+    QVERIFY(writeTestFile(spec.diskPath, QByteArrayLiteral("disk")));
+    QVERIFY(writeTestFile(spec.seedPath, QByteArrayLiteral("seed")));
+
+    QemuProcessRuntime runtime;
+    PodStack::Error error;
+    QVERIFY2(runtime.start(spec, &error),
+             qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    const auto stopGuard = qScopeGuard([&runtime, &spec] {
+        PodStack::Error ignored;
+        runtime.stop(spec, true, &ignored);
+    });
+
+    const qint64 pid = runtime.pid(spec).toLongLong();
+    QVERIFY(pid > 0);
+    const QByteArray cgroup = processCgroup(pid);
+    QVERIFY2(!cgroup.isEmpty(), "não foi possível ler /proc/<pid>/cgroup");
+    const QString unit =
+        PodStack::ProcessScope::unitName(QStringLiteral("podstack-machine"), spec.machineId);
+    QVERIFY2(cgroup.contains(unit.toUtf8()),
+             qPrintable(
+                 QStringLiteral("QEMU fora do scope %1: %2").arg(unit, QString::fromUtf8(cgroup))));
+}
+
+void MachinesTest::qemuRuntimeScopeDaemonize()
+{
+    if (!PodStack::ProcessScope::available()) {
+        QSKIP("systemd de usuário indisponível para validar o scope do QEMU");
+    }
+
+    const QString id = QStringLiteral("0190f0f0-0000-7000-8000-000000001122");
+    const QString root = m_root + QStringLiteral("/runtime-scope-daemonize");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root));
+
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    QVERIFY(
+        writeTestFile(bin.filePath(QStringLiteral("qemu-system-x86_64-real")), fakeQemuScript(),
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    const QByteArray wrapper = QByteArrayLiteral(R"(#!/bin/sh
+real="$(dirname "$0")/qemu-system-x86_64-real"
+for arg in "$@"; do
+  if [ "$arg" = "-daemonize" ]; then
+    "$real" "$@" &
+    exit 0
+  fi
+done
+exec "$real" "$@"
+)");
+    QVERIFY(
+        writeTestFile(bin.filePath(QStringLiteral("qemu-system-x86_64")), wrapper,
+                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", bin.path().toUtf8() + ':' + previousPath);
+    const auto restorePath = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
+    QemuSpec spec = qemuSpec(root);
+    spec.machineId = id;
+    spec.pidFile = root + QStringLiteral("/qemu.pid");
+    spec.qmpSocketPath = root + QStringLiteral("/qmp.sock");
+    spec.diskPath = root + QStringLiteral("/disk.qcow2");
+    spec.seedPath = root + QStringLiteral("/seed.iso");
+    QVERIFY(writeTestFile(spec.diskPath, QByteArrayLiteral("disk")));
+    QVERIFY(writeTestFile(spec.seedPath, QByteArrayLiteral("seed")));
+
+    QemuProcessRuntime runtime;
+    PodStack::Error error;
+    QVERIFY2(runtime.start(spec, &error),
+             qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    const auto stopGuard = qScopeGuard([&runtime, &spec] {
+        PodStack::Error ignored;
+        runtime.stop(spec, true, &ignored);
+    });
+
+    // O processo que escreveu o pidfile é o filho daemonizado; o pai já saiu.
+    const qint64 pid = runtime.pid(spec).toLongLong();
+    QVERIFY(pid > 0);
+    QVERIFY(QFileInfo::exists(QStringLiteral("/proc/%1").arg(pid)));
+    const QByteArray cgroup = processCgroup(pid);
+    const QString unit =
+        PodStack::ProcessScope::unitName(QStringLiteral("podstack-machine"), spec.machineId);
+    QVERIFY2(cgroup.contains(unit.toUtf8()),
+             qPrintable(QStringLiteral("QEMU daemonizado fora do scope %1: %2")
+                            .arg(unit, QString::fromUtf8(cgroup))));
+
+    QVERIFY2(runtime.stop(spec, true, &error), qPrintable(error.message));
+    QVERIFY(!runtime.isRunning(spec, &error));
+}
+
+void MachinesTest::virtiofsdScopeCgroup()
+{
+    if (!PodStack::ProcessScope::available()) {
+        QSKIP("systemd de usuário indisponível para validar o scope do virtiofsd");
+    }
+
+    const QString root = m_root + QStringLiteral("/virtiofsd-scope");
+    QDir(root).removeRecursively();
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/share")));
+    QVERIFY(QDir().mkpath(root + QStringLiteral("/qemu")));
+
+    const QString binary = createVirtiofsdScript(root);
+    QVERIFY(!binary.isEmpty());
+    const QString socketPath = root + QStringLiteral("/qemu/scope.sock");
+
+    VirtiofsdProcess process;
+    PodStack::Error error;
+    QVERIFY2(process.start(binary, root + QStringLiteral("/share"), socketPath,
+                           QStringLiteral("scope"), false, &error),
+             qPrintable(error.message + QStringLiteral(" ") + error.detail));
+    const auto stopGuard = qScopeGuard([&process] {
+        PodStack::Error ignored;
+        process.stop(&ignored);
+    });
+
+    QVERIFY(process.pid() > 0);
+    const QByteArray cgroup = processCgroup(process.pid());
+    QVERIFY2(!cgroup.isEmpty(), "não foi possível ler /proc/<pid>/cgroup");
+    QVERIFY2(
+        cgroup.contains("podstack-virtiofsd-"),
+        qPrintable(QStringLiteral("virtiofsd fora do scope: %1").arg(QString::fromUtf8(cgroup))));
 }
 
 void MachinesTest::machineManagerReconcile()

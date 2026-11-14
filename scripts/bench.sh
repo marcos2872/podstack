@@ -9,7 +9,7 @@
 #   3. RSS do `podstackd` após alguns segundos ocioso (/proc/<pid>/status VmRSS);
 #   4. primeiro paint da GUI em modo offscreen (Qt painting log).
 #
-# As metas vêm de docs/PRD.md §8.1 e docs/testing.md §8:
+# As metas vêm de docs/sdd/PRD.md §8.1 e docs/sdd/testing.md §8:
 #   - startup da GUI (cold): <= 1,0 s
 #   - listagem de containers: <= 700 ms (usada como referência para o `ps`)
 #   - memória em repouso: <= 180 MB RSS (a meta cobre GUI + daemon; aqui só o daemon)
@@ -46,7 +46,7 @@ Benchmark reproduzível do PodStack (TX-09).
 Opções:
   --runs N            Execuções cronometradas por métrica (default: 5).
   --idle-seconds S    Espera antes de amostrar o RSS do daemon (default: 10;
-                      docs/testing.md §8 usa 60 s).
+                      docs/sdd/testing.md §8 usa 60 s).
   --json              Também grava build/bench-results.json.
   -h, --help          Mostra esta ajuda.
 
@@ -574,12 +574,12 @@ echo
 
 cat <<EOF
 == Limitações ==
-  - Hardware do host não é o de referência (docs/testing.md §10); os números
+  - Hardware do host não é o de referência (docs/sdd/testing.md §10); os números
     servem como linha de base local, não como fechamento isolado da TX-09.
   - GUI medida no modo offscreen (software) até o primeiro paint; não
     representa Wayland/GPU nem a meta de startup "cold" em hardware de referência.
   - RSS mede apenas o podstackd; o NFR-PERF-003 cobre GUI + daemon.
-  - RSS amostrado após ${IDLE_SECONDS}s; docs/testing.md §8 especifica 60 s
+  - RSS amostrado após ${IDLE_SECONDS}s; docs/sdd/testing.md §8 especifica 60 s
     (use --idle-seconds 60 para reproduzir o método do documento).
   - RSS usa ${RUNS} amostras de 1 s após a espera; o daemon não é reiniciado
     entre elas. version/ps/GUI têm 1 aquecimento não contabilizado.
@@ -678,10 +678,10 @@ if ((EMIT_JSON)); then
     "error": $(json_str "$daemon_reason")
   },
   "limitations": [
-    "Hardware do host não é o de referência (docs/testing.md §10).",
+    "Hardware do host não é o de referência (docs/sdd/testing.md §10).",
     "GUI medida em offscreen (software) até o primeiro paint; não representa Wayland/GPU.",
     "RSS mede apenas o podstackd; o NFR-PERF-003 cobre GUI + daemon.",
-    "RSS amostrado após ${IDLE_SECONDS}s; docs/testing.md §8 especifica 60 s.",
+    "RSS amostrado após ${IDLE_SECONDS}s; docs/sdd/testing.md §8 especifica 60 s.",
     "RSS usa ${RUNS} amostras de 1 s após a espera; o daemon não é reiniciado entre elas.",
     "version/ps/GUI têm 1 aquecimento não contabilizado.",
     "A meta de ${META_PS_MS} ms é do NFR-PERF-002 (listagem de containers), usada como referência para o ps.",

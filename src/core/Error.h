@@ -5,7 +5,7 @@
 
 namespace PodStack {
 
-/// Erro de domínio com código estável (ver docs/api-rpc.md).
+/// Erro de domínio com código estável (ver docs/engineering/api-rpc.md).
 struct Error {
     QString code;
     QString message;

@@ -5,7 +5,26 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
-## [Não lançado]
+## [0.1.4] - 2026-11-13
+
+### Adicionado
+
+- **Update assistido:** `podstack update --install` com manifesto assinado, cache, staging
+  root-owned, helper allowlisted, unidade transiente e estado retomável (`--resume`/`--clear-state`);
+  scripts Debian/RPM que encerram GUI/daemon/helper antigos antes do unpack e reiniciam o helper.
+- **Logs de debug:** logs JSON Lines por processo em `~/.local/state/podstack/logs/` com rotação
+  diária/por tamanho, retenção de 7 dias, `advanced.logLevel` em runtime e redaction incondicional.
+- **Logs root e diagnóstico:** `/var/log/podstack/jobs/<uid>/<jobId>.jsonl`, `GetLogs` escopado ao
+  uid, `podstack system logs` e página **Logs** na GUI; `system.report --include-logs` com caps de
+  10.000 linhas/componente e 5 MB.
+- **Machines fora do cgroup:** QEMU/virtiofsd em scopes `systemd-run --user --scope`.
+
+### Corrigido
+
+- Upgrade com o app aberto não deixa GUI/daemon/helper antigos ativos; o socket não reativa o
+  daemon antigo durante o unpack.
+- `KillMode=process` e `ProtectHome=read-only` no helper mantêm machines/artefatos acessíveis sem
+  criar uma segunda fronteira root.
 
 ### Alterado
 

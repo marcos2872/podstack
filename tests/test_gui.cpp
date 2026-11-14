@@ -6,6 +6,7 @@
 #include "gui/ContainerListModel.h"
 #include "gui/StreamClient.h"
 #include "gui/UiState.h"
+#include "gui/UnixSignals.h"
 #include "k8s/K8sStore.h"
 #include "machines/MachineStore.h"
 
@@ -28,6 +29,8 @@
 #include <QTest>
 #include <QVariantList>
 #include <QVariantMap>
+
+#include <csignal>
 
 namespace {
 
@@ -69,6 +72,13 @@ private slots:
     void uiStateRoundTrip();
     void uiStateInvalidFallsBack();
     void uiStateRejectsInvalidValues();
+    void unixTerminationSignal();
+    void systemLogs();
+    void loadUpdateState();
+    void diagnosticReport();
+    void clearUpdateState();
+    void installUpdateFlatpakGuard();
+    void installUpdateSystemdGuard();
     void guiStartsAndQuits();
 
 private:
@@ -121,6 +131,7 @@ void GuiTest::initTestCase()
     QDir().mkpath(m_testDataDir);
     QDir().mkpath(m_testDataDir + QStringLiteral("/config"));
     qputenv("XDG_CONFIG_HOME", (m_testDataDir + QStringLiteral("/config")).toUtf8());
+    qputenv("XDG_STATE_HOME", (m_testDataDir + QStringLiteral("/state")).toUtf8());
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -1480,7 +1491,7 @@ void GuiTest::backendSettings()
     QSignalSpy restartSpy(&backend, &PodStack::Backend::pendingRestartKeysChanged);
 
     backend.refreshSettings();
-    QTRY_COMPARE(backend.settingsSchema().size(), 86);
+    QTRY_COMPARE(backend.settingsSchema().size(), 88);
     QVERIFY(schemaSpy.count() > 0);
     QVERIFY(backend.settingsValues().contains(QStringLiteral("engine.mode")));
     QVERIFY(valuesSpy.count() > 0);
@@ -1639,6 +1650,113 @@ void GuiTest::uiStateRejectsInvalidValues()
     QVERIFY(!PodStack::UiState::isValidSection(QStringLiteral("bogus")));
     QVERIFY(!PodStack::UiState::isValidContainerTab(-1));
     QVERIFY(!PodStack::UiState::isValidMachineTab(QStringLiteral("bogus")));
+}
+
+void GuiTest::systemLogs()
+{
+    const QString logDir = m_testDataDir + QStringLiteral("/state/podstack/logs");
+    QVERIFY(QDir().mkpath(logDir));
+    QFile file(logDir + QStringLiteral("/podstackd.jsonl"));
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:00Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})") +
+        '\n');
+    file.close();
+
+    PodStack::Backend backend;
+    backend.loadSystemLogs(QString(), QStringLiteral("setup"), 7);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.systemLogsBusy(), 3000);
+    QVERIFY2(backend.systemLogsError().isEmpty(), qPrintable(backend.systemLogsError()));
+    QCOMPARE(backend.systemLogs().size(), 1);
+    QVERIFY(!backend.systemLogs()
+                 .first()
+                 .toMap()
+                 .value(QStringLiteral("message"))
+                 .toString()
+                 .contains(QStringLiteral("segredo")));
+
+    const QString exportPath = m_testDataDir + QStringLiteral("/logs-export.jsonl");
+    QVERIFY(backend.exportSystemLogs(exportPath));
+    QFile exported(exportPath);
+    QVERIFY(exported.open(QIODevice::ReadOnly));
+    QVERIFY(!exported.readAll().contains("segredo"));
+
+    backend.clearSystemLogs();
+    QVERIFY(!QFileInfo::exists(logDir + QStringLiteral("/podstackd.jsonl")));
+}
+
+void GuiTest::loadUpdateState()
+{
+    const QString updatesDir = m_testDataDir + QStringLiteral("/state/podstack/updates");
+    QVERIFY(QDir().mkpath(updatesDir));
+    QFile state(updatesDir + QStringLiteral("/state.json"));
+    QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    state.write(QByteArrayLiteral(R"({"phase":"done","message":"ok"})"));
+    state.close();
+
+    PodStack::Backend backend;
+    QTRY_COMPARE_WITH_TIMEOUT(backend.updateStatus().value(QStringLiteral("status")).toString(),
+                              QStringLiteral("installed"), 3000);
+}
+
+void GuiTest::diagnosticReport()
+{
+    PodStack::Backend backend;
+    backend.generateDiagnosticReport();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.diagnosticReportPath().isEmpty(), 5000);
+    QVERIFY(QFileInfo::exists(backend.diagnosticReportPath()));
+}
+
+void GuiTest::clearUpdateState()
+{
+    const QString stateDir = m_testDataDir + QStringLiteral("/state/podstack/updates");
+    QVERIFY(QDir().mkpath(stateDir));
+    const QString path = stateDir + QStringLiteral("/state.json");
+    QFile state(path);
+    QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    state.write(QByteArrayLiteral(R"({"phase":"failed","message":"erro"})"));
+    state.close();
+
+    PodStack::Backend backend;
+    backend.clearUpdateState();
+    QVERIFY(!QFileInfo::exists(path));
+}
+
+void GuiTest::installUpdateFlatpakGuard()
+{
+    PodStack::Backend backend;
+    QSignalSpy failed(&backend, &PodStack::Backend::updateCheckFailed);
+    qputenv("FLATPAK_ID", "dev.podstack.PodStack");
+    const auto restore = qScopeGuard([] { qunsetenv("FLATPAK_ID"); });
+    backend.installUpdate();
+    QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 3000);
+}
+
+void GuiTest::installUpdateSystemdGuard()
+{
+    PodStack::Backend backend;
+    QSignalSpy failed(&backend, &PodStack::Backend::updateCheckFailed);
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", QByteArrayLiteral("/nonexistent-podstack"));
+    const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+    backend.installUpdate();
+    QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 3000);
+}
+
+void GuiTest::unixTerminationSignal()
+{
+    int received = 0;
+    QString error;
+    QVERIFY2(PodStack::installTerminationHandler(
+                 this, [&received]() { ++received; }, &error),
+             qPrintable(error));
+
+    ::raise(SIGTERM);
+    QTRY_COMPARE_WITH_TIMEOUT(received, 1, 3000);
+
+    ::raise(SIGINT);
+    QTRY_COMPARE_WITH_TIMEOUT(received, 2, 3000);
 }
 
 void GuiTest::guiStartsAndQuits()

@@ -202,7 +202,7 @@ Item {
 ### 4.5 Machines/Devices (M4)
 
 - Não há views no app; criar `MachinesView.qml`, `DevicesView.qml`, `MachineDetailPanel.qml`, `MachineListModel`/`DeviceListModel` (ou QVariantList no Backend).
-- Backend: novas propriedades `machines`, `devices` + refresh/ações; daemon: `machines.*`, `devices.*` (ver [`docs/api-rpc.md`](../../docs/api-rpc.md) e [`docs/adr/0003-machines-qemu-kvm.md`](../../docs/adr/0003-machines-qemu-kvm.md)).
+- Backend: novas propriedades `machines`, `devices` + refresh/ações; daemon: `machines.*`, `devices.*` (ver [`docs/engineering/api-rpc.md`](../../docs/engineering/api-rpc.md) e [`docs/adr/0003-machines-qemu-kvm.md`](../../docs/adr/0003-machines-qemu-kvm.md)).
 - Machines: `MachineManager` no daemon (QEMU/QMP/cloud-init/SSH); Devices: QEMU `usb-host`/serial; o POC define a UI.
 - Habilitar as seções na sidebar apenas quando o backend existir; até lá, manter desabilitadas (estado atual).
 
@@ -356,7 +356,7 @@ Ver [ONBOARDING.md](ONBOARDING.md) §15:
 
 ### 8.3 RPC
 
-- Não alterar contratos existentes sem versionar; atualizar [`docs/api-rpc.md`](../../docs/api-rpc.md).
+- Não alterar contratos existentes sem versionar; atualizar [`docs/engineering/api-rpc.md`](../../docs/engineering/api-rpc.md).
 - Machines/Devices: seguir o contrato planejado (M4).
 - Setup: propor `setup.*` + `jobs`/subscriptions; nenhum comando arbitrário.
 
@@ -383,7 +383,7 @@ Ver [ONBOARDING.md](ONBOARDING.md) §15:
 
 - `Accessible.name`, `Accessible.description`, `Accessible.role` em botões, linhas, tabs, inputs.
 - Foco visível (3 px accentSoft + borda accent); ordem de tab lógica.
-- Atalhos: `/` busca, `Esc` fecha, `Ctrl+N` novo, `Ctrl+R` atualizar; documentar em [`docs/ui-map.md`](../../docs/ui-map.md).
+- Atalhos: `/` busca, `Esc` fecha, `Ctrl+N` novo, `Ctrl+R` atualizar; documentar em [`docs/engineering/ui-map.md`](../../docs/engineering/ui-map.md).
 - Strings em `qsTr()`; PT-BR base e en-US; evitar concatenar frases.
 - Contraste: não usar `textTertiary` para informação essencial; testar ambos os temas.
 - `prefers-reduced-motion` → reduzir animações (verificar `Settings`/`QStyleHints`).
@@ -443,7 +443,7 @@ Ver [ONBOARDING.md](ONBOARDING.md) §15:
 - [ ] Onboarding separado, 7 etapas, matriz Podman (Docker pode coexistir), validação.
 - [ ] Tema claro/escuro; contraste; foco; atalhos; `qsTr()`.
 - [ ] `ctest --preset dev` 7/7; cobertura ≥80%; `qmllint`; GUI offscreen.
-- [ ] Docs atualizados (`docs/ui-map.md`, `docs/settings.md`, `docs/api-rpc.md` se RPC mudar).
+- [ ] Docs atualizados (`docs/engineering/ui-map.md`, `docs/engineering/settings.md`, `docs/engineering/api-rpc.md` se RPC mudar).
 
 ---
 
@@ -466,13 +466,13 @@ Ver [ONBOARDING.md](ONBOARDING.md) §15:
 
 ## 15. Referências
 
-- [`docs/ui-map.md`](../../docs/ui-map.md) — mapa de telas e navegação.
-- [`docs/PRD.md`](../../docs/PRD.md) — requisitos e critérios.
-- [`docs/spec.md`](../../docs/spec.md) — fluxos detalhados.
-- [`docs/api-rpc.md`](../../docs/api-rpc.md) — contrato do daemon.
-- [`docs/settings.md`](../../docs/settings.md) — settings e defaults.
-- [`docs/security.md`](../../docs/security.md) — helper, socket, segredos.
-- [`docs/testing.md`](../../docs/testing.md) — testes e cobertura.
+- [`docs/engineering/ui-map.md`](../../docs/engineering/ui-map.md) — mapa de telas e navegação.
+- [`docs/sdd/PRD.md`](../../docs/sdd/PRD.md) — requisitos e critérios.
+- [`docs/sdd/spec.md`](../../docs/sdd/spec.md) — fluxos detalhados.
+- [`docs/engineering/api-rpc.md`](../../docs/engineering/api-rpc.md) — contrato do daemon.
+- [`docs/engineering/settings.md`](../../docs/engineering/settings.md) — settings e defaults.
+- [`docs/engineering/security.md`](../../docs/engineering/security.md) — helper, socket, segredos.
+- [`docs/sdd/testing.md`](../../docs/sdd/testing.md) — testes e cobertura.
 - [`docs/adr/0003-machines-qemu-kvm.md`](../../docs/adr/0003-machines-qemu-kvm.md) — machines.
 - [`poc/ui/`](.) — POC e demais docs.
 

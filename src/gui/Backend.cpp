@@ -2,18 +2,25 @@
 
 #include "core/DiskUsage.h"
 #include "core/Error.h"
+#include "core/LogReader.h"
+#include "core/Logging.h"
+#include "core/Paths.h"
 #include "core/Proxy.h"
+#include "core/Redaction.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
 #include "core/SetupPolicy.h"
+#include "daemon/HelperClient.h"
 #include "gui/Autostart.h"
 #include "gui/TerminalWindow.h"
 
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDate>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -21,11 +28,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaMethod>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStringList>
-#include <QUrl>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantMap>
 #include <QtConcurrent>
 
@@ -194,6 +202,18 @@ Backend::Backend(QObject *parent)
             &Backend::onSetupFinished);
     connect(&m_updateWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onUpdateFinished);
+    connect(&m_systemLogsWatcher, &QFutureWatcher<SystemLogsTask>::finished, this,
+            &Backend::onSystemLogsFinished);
+    connect(&m_reportWatcher, &QFutureWatcher<QJsonObject>::finished, this, [this]() {
+        const QJsonObject result = m_reportWatcher.result();
+        if (result.contains(QStringLiteral("__error"))) {
+            m_systemLogsError = result.value(QStringLiteral("__error")).toString();
+            emit systemLogsChanged();
+            return;
+        }
+        m_diagnosticReportPath = result.value(QStringLiteral("path")).toString();
+        emit diagnosticReportChanged();
+    });
     connect(&m_diskWatcher, &QFutureWatcher<QJsonObject>::finished, this, &Backend::onDiskFinished);
     m_updateTimer.setInterval(6 * 60 * 60 * 1000);
     connect(&m_updateTimer, &QTimer::timeout, this, [this] { checkForUpdates(false); });
@@ -201,6 +221,7 @@ Backend::Backend(QObject *parent)
     // Verifica logo após o app abrir; o modo `off` é respeitado em
     // checkForUpdates() e pode ser alterado em Configurações → Geral.
     QTimer::singleShot(5000, this, [this] { checkForUpdates(false); });
+    QTimer::singleShot(1000, this, &Backend::loadUpdateState);
     m_diskTimer.setInterval(5 * 60 * 1000);
     connect(&m_diskTimer, &QTimer::timeout, this, &Backend::checkDiskHealth);
     m_diskTimer.start();
@@ -2549,6 +2570,216 @@ void Backend::onUpdateFinished()
                              : tr("Nenhuma atualização disponível.");
         emit eventsChanged();
     }
+}
+
+void Backend::loadUpdateState()
+{
+    QFile file(Paths::stateDir() + QStringLiteral("/updates/state.json"));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+    const QJsonObject object = QJsonDocument::fromJson(file.readAll()).object();
+    const QString phase = object.value(QStringLiteral("phase")).toString();
+    if (phase != QStringLiteral("done") && phase != QStringLiteral("failed")) {
+        return;
+    }
+    QVariantMap state = object.toVariantMap();
+    if (phase == QStringLiteral("done")) {
+        state.insert(QStringLiteral("status"), QStringLiteral("installed"));
+        state.insert(QStringLiteral("reason"), tr("Atualização instalada."));
+    } else {
+        state.insert(QStringLiteral("status"), QStringLiteral("failed"));
+        state.insert(QStringLiteral("reason"), object.value(QStringLiteral("message")).toString());
+    }
+    m_updateStatus = state;
+    emit updateStatusChanged();
+}
+
+void Backend::installUpdate()
+{
+    startUpdateRunner(false);
+}
+
+void Backend::resumeUpdate()
+{
+    startUpdateRunner(true);
+}
+
+void Backend::startUpdateRunner(bool resume)
+{
+    if (qEnvironmentVariableIsSet("FLATPAK_ID") ||
+        QFileInfo::exists(QStringLiteral("/.flatpak-info"))) {
+        emit updateCheckFailed(
+            tr("O update assistido não está disponível no Flatpak; use o pacote do host."));
+        return;
+    }
+    if (QStandardPaths::findExecutable(QStringLiteral("systemctl")).isEmpty()) {
+        emit updateCheckFailed(
+            tr("O update assistido exige systemd de usuário; use o caminho manual."));
+        return;
+    }
+    const QString stateDir = Paths::stateDir() + QStringLiteral("/updates");
+    if (!QDir().mkpath(stateDir)) {
+        emit updateCheckFailed(tr("Não foi possível preparar o estado do update."));
+        return;
+    }
+    QFile::setPermissions(stateDir,
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    QFile marker(stateDir + QStringLiteral("/gui-was-open"));
+    if (!marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        emit updateCheckFailed(tr("Não foi possível gravar o marcador do update."));
+        return;
+    }
+    marker.close();
+    QFile::setPermissions(marker.fileName(), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+
+    const QString sibling = QCoreApplication::applicationDirPath() + QStringLiteral("/podstack");
+    QString program = QFileInfo(sibling).isExecutable()
+                          ? sibling
+                          : QStandardPaths::findExecutable(QStringLiteral("podstack"));
+    QStringList arguments{QStringLiteral("update"), QStringLiteral("--install"),
+                          QStringLiteral("--runner"), QStringLiteral("--yes"),
+                          QStringLiteral("--json")};
+    if (resume) {
+        arguments.append(QStringLiteral("--resume"));
+    }
+    if (!QProcess::startDetached(program, arguments)) {
+        QFile::remove(marker.fileName());
+        emit updateCheckFailed(tr("Não foi possível iniciar o runner do update."));
+        return;
+    }
+    QCoreApplication::quit();
+}
+
+void Backend::loadSystemLogs(const QString &level, const QString &component, int sinceDays)
+{
+    if (m_systemLogsWatcher.isRunning()) {
+        return;
+    }
+    m_systemLogsBusy = true;
+    m_systemLogsError.clear();
+    emit systemLogsChanged();
+
+    LogReadOptions options;
+    options.since = QDate::currentDate().addDays(-(qMax(1, sinceDays) - 1));
+    options.level = level;
+    options.component = component;
+    m_pendingLogOptions = options;
+    m_pendingLogComponent = component;
+    m_systemLogsWatcher.setFuture(QtConcurrent::run([options]() {
+        SystemLogsTask task;
+        readUserLogs(options, &task.result, &task.error);
+        return task;
+    }));
+}
+
+void Backend::onSystemLogsFinished()
+{
+    m_systemLogsBusy = false;
+    const SystemLogsTask task = m_systemLogsWatcher.result();
+    if (!task.error.isEmpty()) {
+        m_systemLogsError = task.error.message;
+        emit systemLogsChanged();
+        return;
+    }
+
+    m_lastLogs = task.result.lines;
+    m_systemLogsTruncated = task.result.truncated;
+
+    if (m_pendingLogComponent.isEmpty() || m_pendingLogComponent == QStringLiteral("helper") ||
+        m_pendingLogComponent == QStringLiteral("package")) {
+        HelperClient helper;
+        QVariantMap reply;
+        QString helperError;
+        if (helper.callMap(QStringLiteral("GetLogs"), {}, &reply, &helperError, 60000)) {
+            for (const QVariant &rawValue : reply.value(QStringLiteral("lines")).toList()) {
+                const QString raw = rawValue.toString();
+                const QJsonObject object = QJsonDocument::fromJson(raw.toUtf8()).object();
+                const QString helperComponent =
+                    object.value(QStringLiteral("jobId")).toString().isEmpty()
+                        ? QStringLiteral("helper")
+                        : QStringLiteral("package");
+                if (!m_pendingLogComponent.isEmpty() && m_pendingLogComponent != helperComponent) {
+                    continue;
+                }
+                const QString lineLevel =
+                    object.value(QStringLiteral("level")).toString(QStringLiteral("info"));
+                LogLine line;
+                line.ts = object.value(QStringLiteral("ts")).toString();
+                line.level = lineLevel;
+                line.component = helperComponent;
+                line.message = Redaction::text(object.value(QStringLiteral("message")).toString());
+                line.raw = Redaction::text(raw);
+                m_lastLogs.append(line);
+            }
+            if (reply.value(QStringLiteral("truncated")).toBool()) {
+                m_systemLogsTruncated = true;
+            }
+        }
+    }
+
+    m_systemLogs.clear();
+    for (const LogLine &line : m_lastLogs) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("ts"), line.ts);
+        entry.insert(QStringLiteral("level"), line.level);
+        entry.insert(QStringLiteral("component"), line.component);
+        entry.insert(QStringLiteral("message"), line.message);
+        m_systemLogs.append(entry);
+    }
+    emit systemLogsChanged();
+}
+
+bool Backend::exportSystemLogs(const QString &path)
+{
+    Error error;
+    if (!exportLogs(m_lastLogs, path, &error)) {
+        m_systemLogsError = error.message;
+        emit systemLogsChanged();
+        return false;
+    }
+    return true;
+}
+
+void Backend::clearSystemLogs()
+{
+    Error error;
+    if (!clearUserLogs(&error)) {
+        m_systemLogsError = error.message;
+        emit systemLogsChanged();
+        return;
+    }
+    loadSystemLogs();
+}
+
+void Backend::generateDiagnosticReport()
+{
+    if (m_reportWatcher.isRunning()) {
+        return;
+    }
+    m_reportWatcher.setFuture(QtConcurrent::run([]() {
+        RpcClient client;
+        Error error;
+        QJsonObject result =
+            client.call(QStringLiteral("system.report"),
+                        QJsonObject{{QStringLiteral("includeLogs"), true}}, &error, 120000);
+        if (!error.isEmpty()) {
+            result.insert(QStringLiteral("__error"), error.message);
+        }
+        return result;
+    }));
+}
+
+void Backend::clearUpdateState()
+{
+    QFile::remove(Paths::stateDir() + QStringLiteral("/updates/state.json"));
+    m_updateStatus.clear();
+    emit updateStatusChanged();
+}
+
+void Backend::openLogsFolder()
+{
+    QDesktopServices::openUrl(QUrl::fromLocalFile(Paths::stateDir() + QStringLiteral("/logs")));
 }
 
 void Backend::setupLoadDockerImpact()

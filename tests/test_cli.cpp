@@ -68,6 +68,7 @@ private slots:
     void composeAndBuild();
     void setupCommand();
     void updateCommand();
+    void systemLogs();
     void goldenExitCodes();
     void configCommands();
     void reportCommand();
@@ -1885,6 +1886,64 @@ void CliTest::setupCommand()
     QCOMPARE(impactDocument.object().value(QStringLiteral("available")).toBool(), true);
 }
 
+void CliTest::systemLogs()
+{
+    const QProcessEnvironment env = environment(m_controlSocket);
+    const QString logDir = m_testDataDir + QStringLiteral("/state/podstack/logs");
+    QVERIFY(QDir().mkpath(logDir));
+    QFile log(logDir + QStringLiteral("/podstackd.jsonl"));
+    QVERIFY(log.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    log.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.core","process":"podstackd","message":"info do daemon"})") +
+        '\n');
+    log.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:01Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})") +
+        '\n');
+    log.close();
+
+    CliResult result =
+        run({QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--json")}, env);
+    QCOMPARE(result.code, 0);
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QCOMPARE(document.object().value(QStringLiteral("api")).toInt(), 1);
+    const QJsonArray lines = document.object().value(QStringLiteral("lines")).toArray();
+    QVERIFY(lines.size() >= 2);
+    QVERIFY(!result.out.contains(QStringLiteral("segredo")));
+
+    result = run({QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--level"),
+                  QStringLiteral("error")},
+                 env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(result.out.contains(QStringLiteral("setup")));
+    QVERIFY(!result.out.contains(QStringLiteral("info do daemon")));
+    QVERIFY(!result.out.contains(QStringLiteral("segredo")));
+
+    result = run({QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--level"),
+                  QStringLiteral("bogus")},
+                 env);
+    QCOMPARE(result.code, 2);
+
+    const QString exportPath = m_testDataDir + QStringLiteral("/logs-export.jsonl");
+    result = run(
+        {QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--export"), exportPath},
+        env);
+    QCOMPARE(result.code, 0);
+    QFile exported(exportPath);
+    QVERIFY(exported.open(QIODevice::ReadOnly));
+    QVERIFY(!exported.readAll().contains("segredo"));
+    QVERIFY(exported.permissions().testFlag(QFileDevice::ReadOwner));
+    QVERIFY(!exported.permissions().testFlag(QFileDevice::WriteOther));
+
+    result =
+        run({QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--clear")}, env);
+    QCOMPARE(result.code, 0);
+    QVERIFY(!QFileInfo::exists(logDir + QStringLiteral("/podstackd.jsonl")));
+}
+
 void CliTest::updateCommand()
 {
     const QProcessEnvironment env = environment(m_controlSocket);
@@ -1947,6 +2006,36 @@ void CliTest::updateCommand()
 
     const CliResult usage = run({QStringLiteral("update")}, env);
     QCOMPARE(usage.code, 2);
+
+    const CliResult installWithoutYes =
+        run({QStringLiteral("update"), QStringLiteral("--install")}, env);
+    QCOMPARE(installWithoutYes.code, 2);
+    QVERIFY(installWithoutYes.err.contains(QStringLiteral("--yes")));
+
+    const CliResult installBadOption = run(
+        {QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--bogus")}, env);
+    QCOMPARE(installBadOption.code, 2);
+
+    const CliResult both = run(
+        {QStringLiteral("update"), QStringLiteral("--check"), QStringLiteral("--install")}, env);
+    QCOMPARE(both.code, 2);
+
+    const CliResult missingManifest =
+        run({QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--yes"),
+             QStringLiteral("--manifest"), QStringLiteral("/tmp/nao-existe-podstack.json")},
+            env);
+    QCOMPARE(missingManifest.code, 1);
+    QVERIFY(missingManifest.err.contains(QStringLiteral("preparar")));
+
+    const CliResult resumeMissing = run(
+        {QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--resume")}, env);
+    QCOMPARE(resumeMissing.code, 1);
+    QVERIFY(resumeMissing.err.contains(QStringLiteral("estado")));
+
+    const CliResult clearState = run(
+        {QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--clear-state")},
+        env);
+    QCOMPARE(clearState.code, 0);
 }
 
 void CliTest::goldenExitCodes()
@@ -2075,7 +2164,7 @@ void CliTest::configCommands()
     QJsonParseError parseError{};
     QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().size(), 86);
+    QCOMPARE(document.object().size(), 88);
     QCOMPARE(document.object().value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
 
@@ -2179,7 +2268,7 @@ void CliTest::configCommands()
     QCOMPARE(result.code, 0);
     document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
     QCOMPARE(parseError.error, QJsonParseError::NoError);
-    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 86);
+    QCOMPARE(document.object().value(QStringLiteral("schema")).toArray().size(), 88);
 
     result =
         run({QStringLiteral("config"), QStringLiteral("reset"), QStringLiteral("app.theme")}, env);

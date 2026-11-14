@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "core/Config.h"
+#include "core/Logging.h"
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
@@ -8,6 +9,7 @@
 #include "gui/SingleInstance.h"
 #include "gui/Translation.h"
 #include "gui/Tray.h"
+#include "gui/UnixSignals.h"
 
 #include <QApplication>
 #include <QCommandLineOption>
@@ -27,6 +29,7 @@ int main(int argc, char *argv[])
     QGuiApplication::setOrganizationName(QStringLiteral("PodStack"));
     QGuiApplication::setApplicationVersion(QStringLiteral(PODSTACK_VERSION));
     QGuiApplication::setDesktopFileName(QStringLiteral("dev.podstack.PodStack"));
+    PodStack::Logging::init(false);
 
     const QString language =
         PodStack::Config::load().get(QStringLiteral("app.language")).toString();
@@ -41,6 +44,8 @@ int main(int argc, char *argv[])
         QCommandLineOption(QStringLiteral("hidden"), QStringLiteral("Inicia apenas na bandeja.")));
     parser.addOption(QCommandLineOption(QStringLiteral("quit"),
                                         QStringLiteral("Encerra a instância em execução.")));
+    parser.addOption(
+        QCommandLineOption(QStringLiteral("relaunch"), QStringLiteral("Reabre após um update.")));
     parser.process(app);
 
     PodStack::SingleInstance singleInstance;
@@ -68,6 +73,8 @@ int main(int argc, char *argv[])
     PodStack::Autostart::syncFromConfig();
 
     PodStack::Backend backend;
+    QObject::connect(&backend, &PodStack::Backend::settingsChanged, &app,
+                     []() { PodStack::Logging::reload(); });
     PodStack::TrayController tray;
     PodStack::NotificationService notifications;
     notifications.setTrayIcon(tray.trayIcon());
@@ -161,6 +168,19 @@ int main(int argc, char *argv[])
                      &QCoreApplication::quit);
     QObject::connect(&singleInstance, &PodStack::SingleInstance::quitRequested, &app,
                      &QCoreApplication::quit);
+
+    // O systemd encerra a GUI com SIGTERM no update; salva o UiState antes de
+    // sair para a janela reabrir na mesma seção/aba.
+    QString signalError;
+    if (!PodStack::installTerminationHandler(
+            &app,
+            [&window, &app]() {
+                window.prepareForExit();
+                app.quit();
+            },
+            &signalError)) {
+        qWarning("podstack-gui: %s", qUtf8Printable(signalError));
+    }
 
     return app.exec();
 }

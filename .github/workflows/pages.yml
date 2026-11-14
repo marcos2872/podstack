@@ -1,7 +1,7 @@
 name: Pages
 
 # Publica o site estático de web/ em https://marcos2872.github.io/podstack/
-# Ver docs/web.md para o contrato completo (estrutura, gatilhos e rollback).
+# Ver docs/engineering/web.md para o contrato completo (estrutura, gatilhos e rollback).
 on:
   push:
     # Deploy automático quando o site muda em main.

@@ -10,6 +10,12 @@ Restart=on-failure
 RestartSec=2
 TimeoutStopSec=20
 
+# QEMU/virtiofsd rodam em scopes próprios (`systemd-run --user --scope`) para
+# sobreviver ao restart do daemon. KillMode=process é apenas defesa em
+# profundidade: não move processos de cgroup, mas evita que um filho que ainda
+# esteja no cgroup do serviço seja morto junto com o podstackd.
+KillMode=process
+
 # Hardening básico. O daemon lança `podman` (Compose/builds) como filho:
 # NoNewPrivileges impediria a transição SELinux para container_runtime_t e
 # SystemCallFilter bloquearia fsopen/outras syscalls usadas pelo Podman.

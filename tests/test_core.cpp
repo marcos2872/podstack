@@ -276,7 +276,7 @@ void CoreTest::configInvalidFallsBack()
 void CoreTest::configSchemaCoversDocumentedKeys()
 {
     const QVector<PodStack::SettingDef> &definitions = PodStack::Settings::definitions();
-    QCOMPARE(definitions.size(), 86);
+    QCOMPARE(definitions.size(), 88);
 
     QSet<QString> keys;
     for (const PodStack::SettingDef &definition : definitions) {
@@ -321,7 +321,7 @@ void CoreTest::configSchemaCoversDocumentedKeys()
     QCOMPARE(config.get(QStringLiteral("schemaVersion")).toInt(), 2);
 
     const QJsonObject schema = PodStack::Config::schema();
-    QCOMPARE(schema.value(QStringLiteral("schema")).toArray().size(), 86);
+    QCOMPARE(schema.value(QStringLiteral("schema")).toArray().size(), 88);
     const PodStack::SettingDef *proxy = PodStack::Settings::find(QStringLiteral("network.proxy"));
     QVERIFY(proxy != nullptr);
     QVERIFY(proxy->secret);
@@ -1207,8 +1207,21 @@ void CoreTest::rpcClientUnavailable()
 
 void CoreTest::loggingInit()
 {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QByteArray previous = qgetenv("PODSTACK_LOG_DIR");
+    qputenv("PODSTACK_LOG_DIR", dir.path().toUtf8());
+    const auto restore = qScopeGuard([previous] {
+        if (previous.isEmpty()) {
+            qunsetenv("PODSTACK_LOG_DIR");
+        } else {
+            qputenv("PODSTACK_LOG_DIR", previous);
+        }
+    });
+
     PodStack::Logging::init(true);
     PodStack::Logging::init(false);
+    PodStack::Logging::shutdown();
 }
 
 } // namespace

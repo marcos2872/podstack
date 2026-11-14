@@ -1,6 +1,6 @@
 # Branding e assets — PodStack
 
-> Identidade visual própria, alinhada ao princípio 7 da [constituição](constitution.md): sem copiar a linguagem visual do OrbStack (esferas/órbitas), a baleia do Docker ou o roxo/lilás do Podman.
+> Identidade visual própria, alinhada ao princípio 7 da [constituição](../sdd/constitution.md): sem copiar a linguagem visual do OrbStack (esferas/órbitas), a baleia do Docker ou o roxo/lilás do Podman.
 >
 > **Status (2026-11-08):** direção **aprovada** — **Cápsula** como símbolo principal e **Camadas** como símbolo secundário. O **Monograma P** não foi aprovado e não deve ser usado.
 >
@@ -12,19 +12,19 @@
 
 | Arquivo | Conteúdo | Status |
 |---|---|---|
-| [`../assets/podstack-capsule.svg`](../assets/podstack-capsule.svg) | Símbolo principal (cápsula com blocos internos) | **aprovado** |
-| [`../assets/podstack-layers.svg`](../assets/podstack-layers.svg) | Símbolo secundário (três camadas empilhadas) | **aprovado** |
-| [`../assets/podstack-capsule-small.svg`](../assets/podstack-capsule-small.svg) | Cápsula simplificada para 16–24 px | **aprovado** |
-| [`../assets/podstack-icon.svg`](../assets/podstack-icon.svg) | Ícone do app (256×256, fundo escuro) | **aprovado** |
-| [`../assets/podstack-logo.svg`](../assets/podstack-logo.svg) | Lockup horizontal (cápsula + wordmark) | **aprovado** |
-| [`../assets/png/podstack-icon-{16,24,32,48,64,128,256,512}.png`](../assets/png/) | Ícones para `hicolor`/launcher | **gerado** |
-| [`../assets/png/tray/podstack-tray-{16,22,24,32,48,64}.png`](../assets/png/tray/) | Bandeja (SNI) em tamanhos pequenos/médios, a partir de `podstack-capsule-tray.svg` | **gerado** |
-| [`../assets/png/tray-validation.png`](../assets/png/tray-validation.png) | Folha de validação (escuro/claro) | **evidência** |
-| [`../assets/favicon.ico`](../assets/favicon.ico) | Favicon multi-size (16/32/48) | **gerado** |
-| [`../assets/favicon-32.png`](../assets/favicon-32.png) | Favicon PNG 32×32 | **gerado** |
-| [`../assets/og-image.svg`](../assets/og-image.svg) / [`og-image.png`](../assets/og-image.png) | Open Graph 1200×630 | **gerado** |
-| [`../assets/podstack_logo_concepts.svg`](../assets/podstack_logo_concepts.svg) | Folha histórica com os três conceitos | referência |
-| [`../assets/logo.md`](../assets/logo.md) | Racional original dos conceitos | referência |
+| [`../assets/podstack-capsule.svg`](../../assets/podstack-capsule.svg) | Símbolo principal (cápsula com blocos internos) | **aprovado** |
+| [`../assets/podstack-layers.svg`](../../assets/podstack-layers.svg) | Símbolo secundário (três camadas empilhadas) | **aprovado** |
+| [`../assets/podstack-capsule-small.svg`](../../assets/podstack-capsule-small.svg) | Cápsula simplificada para 16–24 px | **aprovado** |
+| [`../assets/podstack-icon.svg`](../../assets/podstack-icon.svg) | Ícone do app (256×256, fundo escuro) | **aprovado** |
+| [`../assets/podstack-logo.svg`](../../assets/podstack-logo.svg) | Lockup horizontal (cápsula + wordmark) | **aprovado** |
+| [`../assets/png/podstack-icon-{16,24,32,48,64,128,256,512}.png`](../../assets/png) | Ícones para `hicolor`/launcher | **gerado** |
+| [`../assets/png/tray/podstack-tray-{16,22,24,32,48,64}.png`](../../assets/png/tray) | Bandeja (SNI) em tamanhos pequenos/médios, a partir de `podstack-capsule-tray.svg` | **gerado** |
+| [`../assets/png/tray-validation.png`](../../assets/png/tray-validation.png) | Folha de validação (escuro/claro) | **evidência** |
+| [`../assets/favicon.ico`](../../assets/favicon.ico) | Favicon multi-size (16/32/48) | **gerado** |
+| [`../assets/favicon-32.png`](../../assets/favicon-32.png) | Favicon PNG 32×32 | **gerado** |
+| [`../assets/og-image.svg`](../../assets/og-image.svg) / [`og-image.png`](../../assets/og-image.png) | Open Graph 1200×630 | **gerado** |
+| [`../assets/podstack_logo_concepts.svg`](../../assets/podstack_logo_concepts.svg) | Folha histórica com os três conceitos | referência |
+| [`../assets/logo.md`](../../assets/logo.md) | Racional original dos conceitos | referência |
 
 Todos os SVGs novos são **originais**, derivados dos conceitos aprovados, sem metadata C2PA e sem elementos de marca de terceiros.
 
@@ -141,7 +141,7 @@ Tokens de UI em [`ui-map.md`](ui-map.md).
 - [x] Aprovar a direção (Cápsula principal + Camadas secundário).
 - [x] Gerar SVGs utilizáveis (cápsula, camadas, compacta, ícone, lockup).
 - [x] Gerar PNGs do ícone (16–512) para `hicolor` e da bandeja (16/22/24/32/48/64).
-- [x] Validar legibilidade de 16–64 px em fundos escuro (`#0F1115`) e claro (`#F6F8FA`) — ver [`png/tray-validation.png`](../assets/png/tray-validation.png).
+- [x] Validar legibilidade de 16–64 px em fundos escuro (`#0F1115`) e claro (`#F6F8FA`) — ver [`png/tray-validation.png`](../../assets/png/tray-validation.png).
 - [x] Criar favicon (`.ico` 16/32/48 + PNG 32) e imagem Open Graph 1200×630.
 - [ ] Validar no tray real (Noctalia/KDE) quando a GUI existir (M7).
 - [x] Definir licença dos assets junto com a licença do projeto: **GPL-3.0-or-later**.

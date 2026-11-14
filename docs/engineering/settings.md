@@ -2,7 +2,7 @@
 
 > Fonte única de configuração no daemon; GUI e CLI leem/escrevem as mesmas chaves via RPC
 > (`settings.*`). Arquivo: `~/.config/podstack/config.json` (0600), escrita atômica, schema
-> versionado. O schema central com as 86 chaves, defaults, enums e faixas vive em
+> versionado. O schema central com as 88 chaves, defaults, enums e faixas vive em
 > `src/core/Settings.cpp`; `Config::defaults()` é gerado a partir dele.
 
 ---
@@ -16,6 +16,10 @@
 
 Campos desconhecidos são preservados na escrita. Config inválida → defaults em memória + aviso no
 log (o arquivo original não é apagado; um save posterior o substitui).
+
+Para `advanced.logLevel`, `PODSTACK_LOG_LEVEL` e `--verbose` são atalhos de diagnóstico:
+`PODSTACK_LOG_LEVEL` > `--verbose` > `advanced.logLevel`. As três chaves `advanced.log*` e
+`diagnostics.includeLogs` são expostas na GUI e aplicadas em runtime (`restartRequired: false`).
 
 ---
 
@@ -168,11 +172,13 @@ o conteúdo não é mesclado.
 | `advanced.helper.enabled` | bool | `false` | sim | Permite instalar helper privilegiado |
 | `advanced.dns.install` | bool | `false` | sim | Instala drop-in do resolved (`*.podstack.local`) |
 | `advanced.ca.install` | bool | `false` | sim | Confia na CA local |
-| `advanced.logLevel` | enum `error\|warn\|info\|debug\|trace` | `info` | sim | Nível de log |
+| `advanced.logLevel` | enum `error\|warn\|info\|debug\|trace` | `info` | não | Nível de log do app (runtime) |
+| `advanced.logRetentionDays` | int 1–30 | `7` | não | Retenção dos logs do app em dias |
+| `advanced.logMaxBytes` | int64 1 MiB–1 GiB | `10485760` | não | Tamanho máximo de cada arquivo de log |
 | `advanced.jobRetentionDays` | int | `7` | não | Retenção de jobs |
 | `advanced.buildLogRetentionDays` | int | `30` | não | Retenção de logs de build |
 | `advanced.cloudImageCacheBytes` | int64 | `21474836480` | não | Cache de imagens cloud |
-| `diagnostics.includeLogs` | bool | `true` | não | Inclui logs no report |
+| `diagnostics.includeLogs` | bool | `false` | não | Inclui logs no report (opt-in) |
 | `diagnostics.redact` | bool | `true` | não | Redige segredos |
 
 ### 2.11 Setup

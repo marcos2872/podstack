@@ -13,7 +13,7 @@ Group=root
 # Sem NoNewPrivileges: o dnf precisa da transição SELinux para rpm_script_t
 # ao executar scriptlets de RPM (nnp_transition é negado com a opção ligada).
 PrivateTmp=yes
-ProtectHome=yes
+ProtectHome=read-only
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
 

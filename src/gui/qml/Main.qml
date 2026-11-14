@@ -358,6 +358,13 @@ Rectangle {
                     label: "Settings"
                     onClicked: settingsDialog.open()
                 }
+
+                NavItem {
+                    Layout.fillWidth: true
+                    iconName: "file"
+                    label: "Logs"
+                    onClicked: systemLogsDialog.open()
+                }
             }
         }
 
@@ -829,6 +836,66 @@ Rectangle {
     }
 
     AppDialog {
+        id: updateInstallDialog
+        objectName: "updateInstallDialog"
+        title: qsTr("Instalar atualização")
+        modal: true
+        width: Math.min(620, window.width - 48)
+        height: Math.min(420, window.height - 48)
+        anchors.centerIn: parent
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("PodStack %1 será baixado, verificado e instalado. A GUI será fechada e reaberta ao final.")
+                          .arg((backend.updateStatus.latestVersion || ""))
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.Wrap
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                TextArea {
+                    readOnly: true
+                    text: backend.updateStatus.notes || qsTr("Sem notas de release.")
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMeta
+                    wrapMode: Text.Wrap
+                    background: null
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                ActionButton {
+                    text: qsTr("Cancelar")
+                    onClicked: updateInstallDialog.close()
+                }
+                ActionButton {
+                    text: qsTr("Instalar")
+                    variant: "primary"
+                    onClicked: {
+                        updateInstallDialog.close()
+                        backend.installUpdate()
+                    }
+                }
+            }
+        }
+    }
+
+    SystemLogsDialog {
+        id: systemLogsDialog
+    }
+
+    AppDialog {
         id: settingsDialog
         objectName: "settingsDialog"
         title: qsTr("Configurações")
@@ -872,6 +939,12 @@ Rectangle {
             }
             if (status.status === "no-feed") {
                 return qsTr("Feed de atualizações indisponível.")
+            }
+            if (status.status === "installed") {
+                return qsTr("Atualização instalada; reabra o app se necessário.")
+            }
+            if (status.status === "failed") {
+                return qsTr("Atualização falhou: %1").arg(status.reason || "")
             }
             if (status.reason) {
                 return status.reason
@@ -1052,6 +1125,15 @@ Rectangle {
                                 spacing: 8
 
                                 ActionButton {
+                                    objectName: "updateInstallButton"
+                                    text: qsTr("Instalar atualização")
+                                    size: "sm"
+                                    visible: (backend.updateStatus.updateAvailable || false)
+                                             === true
+                                    onClicked: updateInstallDialog.open()
+                                }
+
+                                ActionButton {
                                     objectName: "updateCheckNowButton"
                                     text: qsTr("Verificar atualizações")
                                     size: "sm"
@@ -1065,6 +1147,33 @@ Rectangle {
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontMicro
                                     wrapMode: Text.WordWrap
+                                }
+
+                                ActionButton {
+                                    objectName: "updateViewLogButton"
+                                    text: qsTr("Ver log")
+                                    size: "sm"
+                                    visible: backend.updateStatus.status === "failed"
+                                    onClicked: systemLogsDialog.openFor("update", "error")
+                                }
+
+                                ActionButton {
+                                    objectName: "updateResumeButton"
+                                    text: qsTr("Retomar")
+                                    size: "sm"
+                                    visible: backend.updateStatus.phase === "installing"
+                                             || backend.updateStatus.phase === "staged"
+                                    onClicked: backend.resumeUpdate()
+                                }
+
+                                ActionButton {
+                                    objectName: "updateClearStateButton"
+                                    text: qsTr("Limpar estado")
+                                    size: "sm"
+                                    visible: backend.updateStatus.status === "failed"
+                                             || backend.updateStatus.phase === "installing"
+                                             || backend.updateStatus.phase === "staged"
+                                    onClicked: backend.clearUpdateState()
                                 }
                             }
                         }
@@ -1121,6 +1230,13 @@ Rectangle {
                 font.pixelSize: Theme.fontMicro
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
+            }
+
+            ActionButton {
+                visible: backend.settingsError.length > 0
+                text: qsTr("Ver log")
+                size: "sm"
+                onClicked: systemLogsDialog.openFor("setup", "")
             }
         }
 

@@ -354,7 +354,7 @@ Dialog 440 px:
 - **Modo do engine**: rootless (padrão) / rootful; aviso de restart do `podstackd`.
 - Erros inline (`text-danger` 10 px); ações Cancelar/Salvar.
 
-No app, adicionar as seções previstas em [`docs/settings.md`](../../docs/settings.md) (geral, recursos, rede, updates, privacidade).
+No app, adicionar as seções previstas em [`docs/engineering/settings.md`](../../docs/engineering/settings.md) (geral, recursos, rede, updates, privacidade).
 
 ---
 

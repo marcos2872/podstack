@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Containers · PodStack 0.1.3</title>
+  <title>Containers · PodStack 0.1.4</title>
   <meta name="description" content="Listar, filtrar, criar e operar containers: ciclo de vida, logs, terminal, stats, arquivos, inspect, health, rootful e CRIU.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
@@ -71,7 +71,7 @@
         <span class="dx-brand-name">PodStack</span>
         <span class="dx-brand-tag">Docs</span>
       </a>
-      <span class="dx-version">0.1.3</span>
+      <span class="dx-version">0.1.4</span>
     </div>
 
     <div class="search dx-search" role="search">
@@ -367,7 +367,7 @@
     </div>
   </nav>
   <div class="dx-sidebar-foot">
-    <p>Versão 0.1.3 · GPL-3.0-or-later</p>
+    <p>Versão 0.1.4 · GPL-3.0-or-later</p>
     <p><a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">Repositório no GitHub</a></p>
   </div>
 </aside>
@@ -380,7 +380,7 @@
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg> PodStack Docs</div>
       <h1>Containers</h1>
 <p class="lede">Crie, opere e inspecione containers Podman sem sair da GUI — com logs, terminal, arquivos, estatísticas, health e inspect no mesmo detalhe.</p>
-<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.3</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
+<div class="page-meta"><span class="badge badge-accent">PodStack 0.1.4</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
 <p>A seção <strong>Containers</strong> é a tela principal do PodStack. Ela combina uma lista com
 filtros, um inspetor lateral e um detalhe expansível com nove abas. Os containers criados fora do
 PodStack também aparecem, desde que o daemon consiga reconciliar o estado com o Podman.</p>
@@ -442,7 +442,7 @@ caixa “remover volumes” nesta versão. Binds do host não são afetados.</p>
 </ul>
 <p>O botão de lixeira remove o container após confirmação. A GUI usa remoção forçada e
 <strong>preserva os volumes</strong>; não há caixa “remover volumes” nesta versão.</p>
-<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Remoção é permanente</p><p>O container é removido permanentemente. Se precisar dos dados de um volume nomeado, eles continuam no volume; binds do host não são afetados. A API RPC <code>containers.remove</code> aceita <code>volumes</code>, mas a GUI/CLI 0.1.3 não expõe esse controle.</p></div></div><h2 id="detalhe">Detalhe e abas</h2>
+<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Remoção é permanente</p><p>O container é removido permanentemente. Se precisar dos dados de um volume nomeado, eles continuam no volume; binds do host não são afetados. A API RPC <code>containers.remove</code> aceita <code>volumes</code>, mas a GUI/CLI 0.1.4 não expõe esse controle.</p></div></div><h2 id="detalhe">Detalhe e abas</h2>
 <p>O detalhe expandido (<code>ContainerDetail</code>) abre com <strong>Visão geral</strong> e
 oferece:</p>
 <div class="table-wrap">
@@ -509,7 +509,7 @@ usuário precisa de acesso ao socket correspondente (normalmente <code>/run/podm
 <p>Rootful é opt-in explícito. A GUI mostra o modo no rodapé e os erros de permissão explicam a
 limitação. O PodStack não usa setuid nem <code>sudo</code> para containers.</p>
 <h2 id="na-cli">Na CLI</h2>
-<p>O CLI 0.1.3 lista e opera containers existentes, mas <strong>não cria, inicia, para nem remove</strong>
+<p>O CLI 0.1.4 lista e opera containers existentes, mas <strong>não cria, inicia, para nem remove</strong>
 containers. Para essas ações, use a GUI. As operações disponíveis são:</p>
 <div class="table-wrap">
 <table>
@@ -646,17 +646,17 @@ podstack restore web</code></pre><div class="callout limit" role="note"><svg cla
 </tbody></table></div><h2 id="limitacoes">Limitações</h2>
 <ul>
   <li>O CLI não cria, inicia, para nem remove containers; o ciclo de vida completo está na GUI.</li>
-  <li>A remoção pela GUI usa <code>force</code> e preserva volumes. A API aceita <code>volumes</code>, mas não há controle na GUI/CLI 0.1.3.</li>
+  <li>A remoção pela GUI usa <code>force</code> e preserva volumes. A API aceita <code>volumes</code>, mas não há controle na GUI/CLI 0.1.4.</li>
   <li>O diálogo de criação não expõe CPU/memória nem restart policy; esses campos podem existir no contrato RPC, mas não na interface.</li>
   <li>Checkpoint/restore CRIU é dependente do host e costuma falhar em rootless.</li>
   <li>Portas não publicadas não podem ser adicionadas depois do create no modo rootless. Publique na criação ou use Compose.</li>
-  <li>Logs e terminal não têm comando equivalente no CLI 0.1.3; use a GUI ou o Podman diretamente.</li>
+  <li>Logs e terminal não têm comando equivalente no CLI 0.1.4; use a GUI ou o Podman diretamente.</li>
 </ul>
 
       <nav class="pager" aria-label="Navegação entre páginas"><a class="prev" href="onboarding.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Onboarding</span></a><a class="next" href="images.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Imagens</span></a></nav>
 
       <footer class="site-footer">
-        <p>PodStack 0.1.3 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
+        <p>PodStack 0.1.4 · Licença GPL-3.0-or-later · <span id="footer-year">2026</span></p>
         <div class="footer-links">
           <a href="https://github.com/marcos2872/podstack" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="https://github.com/marcos2872/podstack/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licença</a>

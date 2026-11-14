@@ -76,13 +76,13 @@ flowchart TB
 
 ### 4.2 Helper
 
-- systemd system unit com `PrivateTmp=yes`, `ProtectHome=yes`, `ProtectKernelTunables=yes` e
+- systemd system unit com `PrivateTmp=yes`, `ProtectHome=read-only`, `ProtectKernelTunables=yes` e
   `ProtectControlGroups=yes`. **Não** usa `NoNewPrivileges=yes`: o `dnf` precisa da transição
   SELinux para `rpm_script_t` ao rodar scriptlets de RPM (`nnp_transition`). A allowlist fechada
   de pacotes + polkit + auditoria é a fronteira de segurança.
 - D-Bus system bus, serviço `dev.podstack.Helper1`.
 - Polkit: cada método tem ação `dev.podstack.helper.<method>` com `auth_admin`/`auth_self`.
-- Rate limit: 10 req/min por uid por método.
+- Rate limit: 10 req/min por uid para stage/install; 120/min para `GetUpdateStatus` (polling).
 - Auditoria: journal com uid, método, parâmetros (sem segredos) e resultado.
 
 **Métodos permitidos (API fechada):**
@@ -100,8 +100,21 @@ flowchart TB
 | `RemovePackages` | `{packages:[...], reason}` | Remove pacotes **allowlisted** (ex.: docker-ce) |
 | `OpenPorts` | `{ports:[18080,18443], protocol:"tcp"\|"udp"}` | Abre portas no firewall em modo **runtime** (firewalld/ufw), reversível |
 | `ClosePorts` | `{ports:[...], protocol}` | Remove as regras runtime abertas por `OpenPorts` |
+| `StageUpdate` | `{manifest, signature, artifactPath, channel}` | Valida assinatura/chave de release, SHA-256 e identidade do pacote; copia para staging root-owned |
+| `InstallUpdate` | `{jobId}` | Recusa unidade ativa e inicia a unidade transiente com `systemd-run`/`flock` |
+| `GetUpdateStatus` | `{jobId}` | Lê `state.json` do job, escopado ao uid do chamador |
+| `GetLogs` | `{jobId?}` | Lê `/var/log/podstack/jobs/<uid>/` com cap de 1 MiB e redaction; nunca expõe outro uid |
 
 **Proibido:** `Exec`, `Shell`, caminho arbitrário, escrita fora de paths allowlisted; instalação/remoção de pacotes só via `InstallPackages`/`RemovePackages`, com allowlist e consentimento.
+
+**Update assistido:** a chave de verificação do install é a de release embutida no helper ou
+`/etc/podstack/update.pub` root-owned — nunca `updates.publicKey`, que serve apenas para
+check/notificação. O artefato é lido com `O_NOFOLLOW`, `fstat` de dono/tamanho e copiado para
+`/run/podstack/update/<jobId>/` root-owned; o helper não confia em SHA/caminho do chamador. O
+gerenciador roda na unidade transiente, fora do cgroup do helper/sessão, com lock global
+`/run/podstack/update.lock`; falha não executa o gerenciador. Logs root em
+`/var/log/podstack/jobs/<uid>/<jobId>.jsonl` (`0750`/`0640`) são lidos só via `GetLogs`, com
+`auth_admin`, cap de 1 MiB, rate limit e auditoria.
 
 **Firewall runtime (LAN):** `OpenPorts`/`ClosePorts` só aceitam listas de portas
 (`1..65535`, até 32 por chamada, sem duplicatas) e `protocol` `tcp`/`udp`. O helper executa
@@ -326,7 +339,7 @@ encerra a janela da instância já em execução.
 - [x] Socket `0600`, dir `0700`, `SO_PEERCRED` testado. Evidência: `test_rpc`/`test_single_instance`; o smoke de instalação limpa confere o modo `600` do socket.
 - [x] Helper sem `Exec`/shell e métodos allowlisted. Evidência: `test_setup` cobre `InstallPackages`/`RemovePackages` e ações inválidas; o binário não expõe execução arbitrária.
 - [ ] Polkit real do helper validado em máquina limpa. Pendente: o smoke em container não roda systemd como PID 1; falta exercitar autorização e negação reais.
-- [x] Redaction validada com fixtures contendo tokens. Evidência: `test_core/redactionHidesSecrets` e `test_rpc/systemReportRedactsSettings`.
+- [x] Redaction validada com fixtures contendo tokens. Evidência: `test_core/redactionHidesSecrets`, `test_logging/redaction` (sink de arquivo com `diagnostics.redact=false`) e `test_rpc/systemReportRedactsSettings`.
 - [x] Path traversal testado (files, import/export). Evidência: `test_machines/machineFiles`, rejeição de hosts/paths no `test_http_proxy` e testes de `MachineArchive`.
 - [x] CA/DNS install/remove idempotentes e reversíveis. Evidência: `test_setup/CaTrust`, `DnsZone` e `test_dns`.
 - [x] Update com assinatura inválida rejeitado. Evidência: `test_core/updateSignature*` e `test_rpc/updatesCheck`.

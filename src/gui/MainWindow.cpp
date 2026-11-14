@@ -324,6 +324,12 @@ void MainWindow::saveUiState()
     (void) m_uiState.save();
 }
 
+void MainWindow::prepareForExit()
+{
+    m_uiStateSaveTimer.stop();
+    saveUiState();
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     saveUiState();

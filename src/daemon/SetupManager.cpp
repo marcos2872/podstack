@@ -3,6 +3,7 @@
 #include "daemon/SetupManager.h"
 
 #include "core/Config.h"
+#include "core/Logging.h"
 #include "core/Paths.h"
 #include "core/SetupPolicy.h"
 #include "daemon/DockerInventory.h"
@@ -485,6 +486,7 @@ void SetupManager::appendLog(const std::shared_ptr<Job> &job, const QString &lin
             job->log = job->log.mid(500);
         }
     }
+    qCInfo(lcSetup) << "setup job=" << job->id << "action=" << job->action << line;
     publish(job, QStringLiteral("setup.delta"));
 }
 

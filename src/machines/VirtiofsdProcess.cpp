@@ -3,12 +3,13 @@
 #include "machines/VirtiofsdProcess.h"
 
 #include "core/Logging.h"
+#include "machines/ProcessScope.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
-#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 
@@ -315,14 +316,23 @@ bool VirtiofsdProcess::start(const QString &binary, const QString &source,
         arguments << QStringLiteral("--readonly");
     }
 
+    const QByteArray socketHash =
+        QCryptographicHash::hash(socketPath.toUtf8(), QCryptographicHash::Sha1).toHex().left(12);
+    const QString scopeUnit = ProcessScope::unitName(QStringLiteral("podstack-virtiofsd"),
+                                                     QString::fromLatin1(socketHash));
+
     qint64 pid = 0;
-    if (!QProcess::startDetached(executable, arguments, QString(), &pid) || pid <= 0) {
+    QString launchFailure;
+    if (!ProcessScope::startDetached(scopeUnit, executable, arguments, &pid, &launchFailure) ||
+        pid <= 0) {
         if (error) {
             *error = Error::make(
                 QStringLiteral("PODSTACK_UNSUPPORTED"),
                 QStringLiteral("Não foi possível iniciar o virtiofsd."), executable,
-                QStringLiteral("Verifique a instalação do virtiofsd e o diretório "
-                               "compartilhado."));
+                launchFailure.isEmpty()
+                    ? QStringLiteral("Verifique a instalação do virtiofsd e o diretório "
+                                     "compartilhado.")
+                    : launchFailure);
         }
         QFile::remove(socketPath);
         return false;

@@ -26,6 +26,9 @@
 /usr/bin/pds -> podstack
 /usr/libexec/podstack/podstackd
 /usr/libexec/podstack/podstack-helper
+/usr/libexec/podstack/podstack-update-exec
+/usr/lib/tmpfiles.d/podstack.conf
+/etc/logrotate.d/podstack
 /usr/lib/systemd/user/podstack.socket
 /usr/lib/systemd/user/podstack.service
 /usr/lib/systemd/system/podstack-helper.service
@@ -93,6 +96,7 @@ ExecStart=/usr/libexec/podstack/podstackd
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=20
+KillMode=process
 Environment=QT_LOGGING_RULES=podstack.*=false
 
 # hardening
@@ -108,6 +112,12 @@ MemoryDenyWriteExecute=yes
 ```
 
 > Ajustar `ProtectHome`/`ReadWritePaths` para permitir mounts de projetos (ou relaxar para `read-only` + portal).
+
+QEMU e virtiofsd não pertencem ao cgroup do serviço: são iniciados em scopes
+transientes (`systemd-run --user --scope`, units `podstack-machine-<id>.scope`
+e `podstack-virtiofsd-<hash>.scope`). `KillMode=process` é defesa em
+profundidade para eventuais filhos que permaneçam no cgroup; não move
+processos de cgroup nem substitui o scope.
 
 ### 3.3 Habilitação
 
@@ -133,7 +143,7 @@ BusName=dev.podstack.Helper1
 ExecStart=/usr/libexec/podstack/podstack-helper
 User=root
 PrivateTmp=yes
-ProtectHome=yes
+ProtectHome=read-only
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
 ```
@@ -147,6 +157,16 @@ ProtectControlGroups=yes
   para `rpm_script_t` ao executar scriptlets de RPM; com NNP o kernel nega `nnp_transition` e a
   instalação falha. A allowlist de pacotes continua sendo a fronteira de segurança.
 - O helper nunca recebe `Exec`/shell; cada método monta `dnf`/`apt-get`/`pacman` com argumentos fixos.
+- **Update assistido:** `StageUpdate` valida assinatura/chave de release, SHA-256 e identidade do
+  pacote e copia para `/run/podstack/update/<jobId>/` (`0700`/`0600`); `InstallUpdate` inicia a
+  unidade transiente `podstack-update-<uuid>.service` com
+  `flock /run/podstack/update.lock /usr/libexec/podstack/podstack-update-exec`; o wrapper grava
+  `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` (`0640`) e `state.json` (`0640`). O helper roda com
+  `ProtectHome=read-only` para ler o artefato do usuário sem escrever no home.
+- **Logs root:** `/var/log/podstack` e `/var/log/podstack/jobs` são criados por
+  `tmpfiles.d/podstack.conf` (`0750` root); `logrotate.d/podstack` mantém 7 dias com
+  `copytruncate`/`su root root`. O app nunca lê esses arquivos diretamente: `GetLogs` filtra pelo
+  uid do chamador e retorna até 1 MiB redigido.
 
 ### 4.1 Helper em desenvolvimento
 
@@ -188,6 +208,33 @@ helper: o setup usa `enable-socket` (`systemctl --user enable --now podman.socke
       <allow_active>auth_admin_keep</allow_active>
     </defaults>
   </action>
+  <action id="dev.podstack.helper.stage-update">
+    <description>Stage a PodStack update</description>
+    <message>Allow PodStack to validate and stage the signed update package?</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+  <action id="dev.podstack.helper.install-update">
+    <description>Install a PodStack update</description>
+    <message>Allow PodStack to install the validated update and restart the app?</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+  <action id="dev.podstack.helper.get-update-status">
+    <description>Read PodStack update progress</description>
+    <message>Allow PodStack to read the progress of the running update?</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
   <action id="dev.podstack.helper.dns-zone">
     <description>Install local DNS zone for PodStack</description>
     <message>Allow PodStack to configure *.podstack.local domains?</message>
@@ -215,7 +262,7 @@ Ações separadas por método; nunca uma ação "root genérica".
 
 ## 6. SELinux
 
-O módulo mínimo está em [`packaging/selinux/`](../packaging/selinux/):
+O módulo mínimo está em [`packaging/selinux/`](../../packaging/selinux):
 `podstack.te`, `podstack.fc` e `podstack.if` (`policy_module(podstack, 0.1.3)`,
 refpolicy/Fedora).
 
@@ -289,6 +336,9 @@ binário; ambos tolerantes a host sem SELinux (`|| :`). O `%preun` remove com
 
 ```bash
 ls -Z /usr/libexec/podstack/podstack-helper
+/usr/libexec/podstack/podstack-update-exec
+/usr/lib/tmpfiles.d/podstack.conf
+/etc/logrotate.d/podstack
 ls -Zd /run/podstack
 semodule -l | grep podstack
 ausearch -m avc -ts recent        # negações do domínio podstack_helper_t
@@ -306,8 +356,8 @@ Se aparecer AVC, ajuste `podstack.te` e recarregue com `semodule -i`. Use
 
 ## 7. RPM spec (esqueleto)
 
-O spec real está em [`packaging/rpm/podstack.spec`](../packaging/rpm/podstack.spec) e o build local em
-[`scripts/build-rpm.sh`](../scripts/build-rpm.sh):
+O spec real está em [`packaging/rpm/podstack.spec`](../../packaging/rpm/podstack.spec) e o build local em
+[`scripts/build-rpm.sh`](../../scripts/build-rpm.sh):
 
 ```bash
 ./scripts/build-rpm.sh
@@ -414,6 +464,9 @@ fi
 
 %files helper
 /usr/libexec/podstack/podstack-helper
+/usr/libexec/podstack/podstack-update-exec
+/usr/lib/tmpfiles.d/podstack.conf
+/etc/logrotate.d/podstack
 /usr/lib/systemd/system/podstack-helper.service
 /usr/share/dbus-1/system.d/dev.podstack.Helper1.conf
 /usr/share/polkit-1/actions/dev.podstack.helper.policy
@@ -434,7 +487,7 @@ rpmbuild -ba podstack.spec
 
 ## 8. DEB (Ubuntu 24.04–26.04)
 
-- Metadados em [`packaging/deb/control`](../packaging/deb/control); build local em Ubuntu 24.04:
+- Metadados em [`packaging/deb/control`](../../packaging/deb/control); build local em Ubuntu 24.04:
   ```bash
   cmake -S . -B build/ubuntu -G Ninja \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -447,7 +500,7 @@ rpmbuild -ba podstack.spec
 - O `.deb` é construído no **Ubuntu 24.04** (Qt 6.4.2) e roda em 24.04, 25.10 e 26.04; o RPM
   continua em Fedora 44 (Qt 6.10). O script usa `cmake --install` em uma árvore staging com
   `DESTDIR`, `--strip` e `dpkg-deb --root-owner-group`; requer `dpkg-dev`.
-- O qtermwidget **2.0.0** é vendorizado em [`third_party/qtermwidget`](../third_party/qtermwidget)
+- O qtermwidget **2.0.0** é vendorizado em [`third_party/qtermwidget`](../../third_party/qtermwidget)
   e linkado estaticamente no `podstack-gui`; não há `libqtermwidget6.so` em runtime. Os color
   schemes/keytabs vão para `/usr/share/podstack/qtermwidget6`, sem colidir com o
   `libqtermwidget6-2` do Ubuntu 26.04.
@@ -455,19 +508,22 @@ rpmbuild -ba podstack.spec
   alternativas `t64` para o 24.04 e sem `t64` para o 26.04; `libqt6sql6-sqlite`, `qt6-qpa-plugins`,
   `qt6-wayland`, módulos QML (`qml6-module-qtquick*`, `qml6-module-qtqml*`,
   `qml6-module-qt5compat-graphicaleffects`), `libcurl4t64` + `libcurl3t64-gnutls`,
-  `libarchive13t64`, `libssl3t64` e `libcrypt1`. Recomenda QEMU/KVM, virtiofsd, Caddy e o
-  provider Compose.
+  `libarchive13t64`, `libssl3t64`, `libcrypt1` e `procps` (pkill/pgrep do `preinst`). Recomenda
+  QEMU/KVM, virtiofsd, Caddy e o provider Compose.
 - Instalação: `sudo apt install ./podstack_<versão>_amd64.deb`. O binário exige glibc 2.39
   (Ubuntu 24.04+); Debian 12 não é suportado por este pacote.
-- O `postinst` habilita `podstack.socket` por usuário (`systemctl --global enable`) e o
-  `podstack-helper.service`.
+- O `postinst` recarrega as units, habilita `podstack.socket` por usuário
+  (`systemctl --global enable`), remove a máscara runtime do socket e **reinicia** o
+  `podstack-helper.service` (não apenas `enable --now`). O `preinst` encerra GUI/daemon/helper
+  antigos antes do unpack; o `postrm` restaura helper/socket nos casos `abort-upgrade`/`abort-install`.
+  O runner `podstack update --install --runner` nunca é encerrado.
 - Para publicar em repositório APT, gerar `Packages`/`Release` assinados no CI (não incluído).
 
 ---
 
 ## 9. Flatpak
 
-- Manifest em [`packaging/flatpak/dev.podstack.PodStack.yml`](../packaging/flatpak/dev.podstack.PodStack.yml);
+- Manifest em [`packaging/flatpak/dev.podstack.PodStack.yml`](../../packaging/flatpak/dev.podstack.PodStack.yml);
   build:
   ```bash
   ./scripts/build-flatpak.sh
@@ -498,13 +554,25 @@ rpmbuild -ba podstack.spec
 - Canal beta: COPR separado (`podstack-beta`).
 - Verificação de versão: `podstack update --check` (exit 3 se desatualizado).
 - Nunca auto-update silencioso em headless/CI.
+- **Upgrade com o app aberto:** o `preinst` (Debian) e o `%pre` (RPM) percorrem os usuários
+  logados, aplicam `mask --runtime podstack.socket`, param socket/service, encerram a GUI com
+  SIGTERM (SIGKILL após 3 s) e o daemon (systemd ou `pkill -x podstackd`), conferem o helper e
+  abortam com trap de limpeza se algo não parar. O `postinst`/`%post` reinicia o helper e remove a
+  máscara; `postrm`/`%posttrans` restauram nos abortos. O `preinst` não toca em Podman, containers,
+  machines nem no runner `podstack`.
+- **SIGTERM na GUI:** a GUI instala um handler de SIGTERM/SIGINT via self-pipe +
+  `QSocketNotifier`; ao receber o sinal, salva o `UiState` (geometria/seção/abas) e encerra, para a
+  janela reabrir no mesmo lugar.
+- **Health check:** o `%posttrans` valida `systemctl is-active podstack-helper.service` e
+  `podstack-helper --version`, além do `unmask --runtime` por usuário; falha só retorna não-zero
+  quando não consegue restaurar.
 - Feed oficial: `podstack-update.json` anexado à release do GitHub + `podstack-update.json.minisig`
   (Ed25519/minisign). O manifesto assinado contém os canais `stable`/`beta` com versão, notas,
   `releaseUrl` e artefatos (`arch`, `format`, `url`, `sha256`).
 
 ### 11.1 Pipeline de release (`release.yml`)
 
-O workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) roda em
+O workflow [`.github/workflows/release.yml`](../../.github/workflows/release.yml) roda em
 push de tag `v*` e em `workflow_dispatch`, em três jobs:
 
 1. `rpm` (Fedora 44): valida o AppStream, configura/compila o preset `release`, roda
@@ -516,7 +584,7 @@ push de tag `v*` e em `workflow_dispatch`, em três jobs:
    (`scripts/build-deb.sh`);
 3. `publish`: baixa os artefatos dos dois jobs, gera `SHA256SUMS` dos `.rpm`/`.deb`, assina
    com GPG (opcional), extrai as notas da seção da versão no
-   [`CHANGELOG.md`](../CHANGELOG.md) e gera `podstack-update.json`
+   [`CHANGELOG.md`](../../CHANGELOG.md) e gera `podstack-update.json`
    (`scripts/generate-update-manifest.sh`) com a URL base das releases do GitHub e o canal
    de `PODSTACK_UPDATE_CHANNEL` (variável do repositório), assina o manifesto com minisign
    (opcional) e publica os artefatos (`gh release create` ou `gh release upload --clobber`).
@@ -548,11 +616,11 @@ obrigatória). Para habilitar updates, importe a chave privada minisign, publiqu
 
 ## 12. Instalação limpa (checklist)
 
-**Automatizado:** [`scripts/clean-install-check.sh`](../scripts/clean-install-check.sh) roda
+**Automatizado:** [`scripts/clean-install-check.sh`](../../scripts/clean-install-check.sh) roda
 em container Fedora 44 descartável (via Podman) e cobre instalação do RPM principal e do
 `podstack-helper`; presença de binários, units systemd de usuário, unit/polkit do helper e
 módulo SELinux; metainfo + `appstreamcli validate`; daemon com socket `0600`; `podstack
-status` e `podstack doctor`. O [`packaging.yml`](../.github/workflows/packaging.yml) executa o build do RPM em container
+status` e `podstack doctor`. O [`packaging.yml`](../../.github/workflows/packaging.yml) executa o build do RPM em container
 Fedora 44 e o build do DEB em container Ubuntu 24.04 em PRs que alteram `packaging/**`,
 `scripts/build-*`, `scripts/clean-install-check.sh`, `CMakeLists.txt`, `third_party/**` ou
 `release.yml`.

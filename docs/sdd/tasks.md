@@ -174,7 +174,7 @@
 | T6-07 | P1 | Confiar na CA (host/containers) opt-in | T6-06 | ✅/parcial — `TrustCa`/`UntrustCa` no helper exigem CA autoassinada e fingerprint SHA-256 correspondente, validam que o arquivo pertence ao chamador, gravam `podstack-local-ca.crt` em `/etc/pki/ca-trust/source/anchors` (ou `/usr/local/share/ca-certificates`) e rodam `update-ca-trust`/`update-ca-certificates`; remoção idempotente e policy `dev.podstack.helper.trust-ca`. Evidência: `test_setup` (35 casos, 3 novos), `ctest` 17/17. O mount da CA nos containers via label opt-out fica na T6-08 (labels), junto do opt-out. |
 | T6-08 | P1 | Labels `dev.podstack.domains/http-port/https-port` | T6-03 | ✅ — `dev.podstack.http-port`/`https-port` forçam a porta publicada (por porta do container ou do host; HTTPS usa `QSslSocket` sem verificação de peer); `dev.podstack.domains` roteia Hosts customizados e aparece no índice; labels inválidos caem na detecção normal. `dev.podstack.ca=false` opta por não montar a CA local no container (`containers.create`/`duplicate`; compose fica pendente). Evidência: `test_http_proxy` (32 casos, 5 novos) e `test_rpc/containerMountsLocalCaUnlessOptedOut`; `ctest` 17/17. Roteamento de domínios customizados via compose/Caddy e o mount em containers de compose ficam como pendência documentada. |
 | T6-09 | P1 | Exposição LAN de domínios/portas | T6-01 | ✅ — `network.exposeLan=true` (restart) faz o `HttpProxy` escutar em `0.0.0.0`/`::` e o Caddyfile usar `bind 0.0.0.0`, com warning no log; a liberação do firewall das portas 18080/18443 fica explícita para o usuário/setup (o helper `OpenPorts` já existe). Evidência: `test_http_proxy/exposesLanWhenConfigured` e `test_caddy` (bind 0.0.0.0), `ctest` 17/17. |
-| T6-10 | P2 | Port forwarding de portas não publicadas | T6-04 | ⏸ adiada — no modelo **rootless** o Podman não publica portas depois do create; as alternativas são publicar no `run`/Compose ou um container roteador, e o PodStack não altera a rede do usuário. Limitação documentada em `docs/spec.md` §11.7; fica para um marco futuro com helper/router dedicado. |
+| T6-10 | P2 | Port forwarding de portas não publicadas | T6-04 | ⏸ adiada — no modelo **rootless** o Podman não publica portas depois do create; as alternativas são publicar no `run`/Compose ou um container roteador, e o PodStack não altera a rede do usuário. Limitação documentada em `docs/sdd/spec.md` §11.7; fica para um marco futuro com helper/router dedicado. |
 
 **Status (2026-11-10): M6 com T6-01..T6-05 implementadas.** O proxy HTTP de
 entrada vive no daemon (`HttpProxy`), escuta apenas em loopback e mapeia
@@ -195,7 +195,7 @@ rootless; o M6 está concluído no código.
 
 ## M7 — Desktop, settings, updates
 
-> **Status (2026-11-11):** M7 concluído no código. Settings (86 chaves), tema/escala,
+> **Status (2026-11-11):** M7 concluído no código. Settings (88 chaves), tema/escala,
 > tray (SNI, submenus de Machines/Kubernetes, Activity Monitor, “Verificar atualizações”),
 > notificações (falha/OOM/unhealthy/update/disco), updates assinados, diagnóstico/report,
 > setup/onboarding, coexistência e remoção opt-in do Docker, restauração de UI e atalhos.
@@ -204,7 +204,7 @@ rootless; o M6 está concluído no código.
 
 | ID | P | Tarefa | Dep | Conclusão |
 |---|---|---|---|---|
-| T7-01 | P0 | Settings GUI + CLI (schema, validação, sync) | T0-09 | Chaves equivalentes — ✅ implementado: schema central de 86 chaves (`src/core/Settings.cpp`), `settings.get/set/reset/schema` no daemon, CLI `podstack config` e GUI modal por categoria com validação; `test_core`/`test_rpc`/`test_cli`/`test_gui` verdes |
+| T7-01 | P0 | Settings GUI + CLI (schema, validação, sync) | T0-09 | Chaves equivalentes — ✅ implementado: schema central de 88 chaves (`src/core/Settings.cpp`), `settings.get/set/reset/schema` no daemon, CLI `podstack config` e GUI modal por categoria com validação; `test_core`/`test_rpc`/`test_cli`/`test_gui` verdes |
 | T7-02 | P0 | Tema claro/escuro + escala de fonte | T0-11 | ✅ — `app.theme` (`system`/`dark`/`light`) é reaplicado em runtime e reage ao `colorScheme` do sistema; `app.fontScale` (80–150, default 100) multiplica os tokens de tipografia do `Theme.qml`. Schema passou a 83 chaves. Evidência: `test_core/configSchemaCoversDocumentedKeys` (83), `test_gui/backendTheme` (120 aplicado, 200 rejeitado) e `test_terminal/mainWindowQml` (UI carrega). |
 | T7-03 | P1 | Bandeja SNI + menu de contexto | T0-11 | ✅ — Abrir, Containers por projeto, **Machines** (iniciar/parar/reiniciar/detalhe/SSH), **Kubernetes** (estado + abrir), Activity Monitor, Settings e Sair; fechar esconde, instância única e `openViewRequested` ligado à navegação da janela. Evidência: `test_tray/machinesSubmenu` e `kubernetesSubmenu`, `test_terminal/mainWindowQml`; `ctest` 17/17. |
 | T7-04 | P1 | Activity Monitor (gráficos + `podstack top`) | T1-07 | Dados corretos — implementado (`system.stats.subscribe` + `ActivityMonitorWindow` + `podstack top [--once|--interval|--json|--plain]`); `test_cli::topCommand` |
@@ -271,6 +271,34 @@ autostart, stats, notifications, machines, setup); `qmllint -I build/dev` em `Ma
 
 ---
 
+## TX-15 — Atualização segura
+
+> **Status (2026-11-14): T-UPD-00…03 concluídas; T-UPD-04 parcial e E2E real pendente.** Spec promovida em [`../specs/002-update-seguro-logs-debug/`](../specs/002-update-seguro-logs-debug/);
+> requisitos `FR-UPD-006…016`/`NFR-UPD-001…004`, decisão ADR-0012.
+
+| ID | P | Tarefa | Dep | Conclusão |
+|---|---|---|---|---|
+| T-UPD-00 | P0 | Colocar QEMU/virtiofsd em scope próprio (`systemd-run --user --scope`); `KillMode=process` só como defesa; cobrir reconciliação de órfãos. | — | ✅ — `ProcessScope` (`src/machines/ProcessScope.{h,cpp}`) aplicado a `QemuRuntime`/`VirtiofsdProcess`, com fallback direto sem systemd; `KillMode=process` em `packaging/systemd/podstack.service`. Testes: `processScopeArguments/Fallback/FakeRunner`, `qemuRuntimeScopeCgroup` e `virtiofsdScopeCgroup` (cgroup real) verdes; `ctest -R machines` 11,96 s. |
+| T-UPD-01 | P0 | `preinst` (Debian) e `%pre` (RPM): parar socket/service de todos os logados, máscara runtime, SIGTERM + 3 s + SIGKILL, fallback `pkill -x podstackd`, trap de limpeza, checagem do helper; `prerm`/`%preun` de remoção idem; declarar `procps`/`procps-ng`. | — | ✅ — `packaging/deb/{preinst,prerm}` e `%pre`/`%preun` do RPM com fallback sem systemd, trap de limpeza e `procps`/`procps-ng` declarados. `tests/packaging/test-scriptlets.sh` cobre sucesso, aborto e remoção com `systemctl`/`loginctl`/`pkill` falsos; CTest `package_scriptlets` verde. |
+| T-UPD-02 | P0 | Corrigir `postinst`/`%post`/`%posttrans` e criar `postrm` (Debian): `daemon-reload`, socket global, `unmask --runtime` com retry/remediação, `restart podstack-helper.service`; abortos restauram helper/socket; handler SIGTERM/SIGINT na GUI salva `UiState`. | T-UPD-01 | ✅ — `postinst`/`%post` reiniciam o helper, `postrm`/`%posttrans` restauram e validam `is-active` + `podstack-helper --version`; `tests/packaging/test-scriptlets.sh` cobre falha do helper; `test_gui/unixTerminationSignal` e `test_terminal/mainWindowPrepareForExit` provam SIGTERM/SIGINT e UiState. Upgrade real 0.1.3→0.1.4/OVMF fica em T-E2E-01. |
+| T-UPD-03 | P0 | Runner assistido: `update --install [--yes] [--json]` + `--runner`/`--manifest`; cache `0600`/TTL 6 h; lock na unidade transiente e `state.json`; helper `StageUpdate`/`InstallUpdate`/`GetUpdateStatus` com staging root-owned, chave de release, `O_NOFOLLOW`, admissão por `flock` e varredura no start; wrapper `podstack-update-exec`. | T-UPD-00, T-UPD-02, T7-06 | ✅ — `UpdateRunner` (download/assinatura/SHA/cache/estado/polling), `UpdateService` (staging root-owned, identidade `dpkg-deb`/`rpm`, lock e `systemd-run`), wrapper `podstack-update-exec` (JSONL redigido/estado) e ações polkit. Testes: suites `update_service`, `update_runner`, `update_exec` e `test_cli/updateCommand` verdes; exit codes/JSON. E2E real, dois usuários e GUI `gui-was-open` ficam em T-UPD-04/T-E2E-01. |
+| T-UPD-04 | P0 | Bootstrap e UI: 0.1.3→0.1.4 manual; GUI/CLI com notas, consentimento, progresso pós-saída, “Ver log”, `gui-was-open`/`--relaunch`, recusa de downgrade e retomada/limpeza; detectar Flatpak/sem systemd. | T-UPD-03 | ◐ — botão “Instalar atualização”, marcador `gui-was-open`, `UpdateRunner::relaunchGui` e leitura do `state.json` na GUI; `test_update_runner/installRelaunchesGui`. Notificação nativa, retomada (`--resume`), limpeza (`--clear-state`), consentimento e guarda Flatpak/sem systemd implementados; resta E2E. |
+
+## TX-16 — Logs de debug e retenção
+
+> **Status (2026-11-14): T-LOG-01/02 concluídas; T-LOG-03 com CLI completo e GUI parcial.** Requisitos
+> `FR-LOG-001…009`/`NFR-LOG-001…003`; decisão ADR-0012; `FR-SYS-009` detalhado.
+
+| ID | P | Tarefa | Dep | Conclusão |
+|---|---|---|---|---|
+| T-LOG-01 | P0 | Núcleo: `qInstallMessageHandler` assíncrono com writer thread/fila limitada, JSON Lines, arquivo por processo, `LogWriter`/`LogRotation`, `0600`/`0700`, rotação diária/por tamanho, timer da meia-noite, retenção 7 dias, `advanced.logMaxBytes`, teto 200 MB, `advanced.logLevel` em runtime, `PODSTACK_LOG_LEVEL`, redaction incondicional; aplicar em daemon/GUI/CLI/QML. | — | ✅ — `Logging`/`LogWriter`/`LogRotation` (`src/core/`), `advanced.logLevel` exposto e runtime, `logRetentionDays`/`logMaxBytes` no schema/GUI, `PODSTACK_LOG_LEVEL` e `--verbose`; `test_logging` cobre JSON, níveis, redaction, reload, rotação diária/por tamanho, retenção/teto, `rotateAtStart` e fila cheia/drop-oldest; `test_core/loggingInit`; `system.report` lê `podstackd.jsonl` com redaction e `diagnostics.includeLogs=false`. `ctest`: 19/19; cobertura 80,7%. |
+| T-LOG-02 | P0 | Persistir setup jobs no log do daemon; logs root por operação em `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` via wrapper com redaction; scriptlets com `JOB_ID`/`UID`; `tmpfiles.d`/logrotate/SELinux; `GetLogs {jobId?}` escopado ao uid; report com caps e `diagnostics.includeLogs=false`; backend do `--clear`; migrar/remover `podstackd.log`. | T-LOG-01 | ✅ — setup em `podstack.setup` no log do daemon; `UpdateService::logs` lê arquivos root + journal (`JOB_ID`/`UID`), cap 1 MiB/10k e redaction; `HelperService::GetLogs` com polkit/rate limit; report lê os 7 dias do usuário + `GetLogs`, caps 10k/componente e 5 MB; `Logging::clear` backend do `--clear`; `tmpfiles.d`/logrotate e logger nos scriptlets. Testes `test_update_service/logsReadRootFiles`, `test_rpc/systemReportRedactsSettings` e `test_logging/clearLogs`. Validação SELinux/AppArmor real fica em T-E2E-01/T-DOC-01. |
+| T-LOG-03 | P0 | CLI `system logs [--follow\|--since\|--level\|--component\|--json\|--export\|--clear]`; página/diálogo de logs na GUI (filtro, follow, abrir pasta, exportar, limpar, “Exportar diagnóstico”); “Ver log” no erro de setup/update; worker/modelo virtualizado; i18n/`Accessible.name`. | T-LOG-01/02 | ◐ — **CLI completo** (`system logs`, filtros, JSON, export `0600`, `--clear` e `LogReader`); **GUI** com `SystemLogsDialog` (nível/componente, atualizar, exportar, abrir pasta, limpar com confirmação) e `Backend`/`test_gui/systemLogs`. Follow, “Exportar diagnóstico”, “Ver log” contextual e leitura em worker implementados; restam `qmllint`/i18n final. |
+| T-E2E-01 | P0 | Matriz de atualização/logs: Ubuntu 24.04/26.04 e Fedora; 0.1.3→0.1.4 manual com machine rodando; 0.1.4→0.1.5 assistido; falhas de download/assinatura/unpack/`postinst`/após `%pre`; restart do helper; dois usuários + lock; timeouts; 7 dias/rotação; uid A/B; containers/machines intactos; SSH/Tuxee/Flatpak documentados. | T-UPD-00…04, T-LOG-01…03 | Evidência por VM; PIDs antigos ausentes; OVMF; machines/containers intactos; logs e exit codes (install sem 3); cobertura ≥ 80%. |
+| T-DOC-01 | P0 | Atualizar `engineering/{packaging,settings,architecture,security,cli-parity,ui-map}.md`, `api-rpc.md` (`system.report`), `sdd/testing.md`, `docs/user/*`, `web/*`, `translations/`, `CHANGELOG`, ADR-0012 e bump 0.1.3→0.1.4. | T-UPD-04, T-LOG-03, T-E2E-01 | ◐ — docs de engenharia/usuário, `api-rpc`, `testing`, `CHANGELOG`, ADR-0012 e `web/*` atualizados; bump 0.1.3→0.1.4 em CMake/RPM/site; `scripts/web_build.py --check` ok. Pendentes: `translations/` (lupdate/lrelease indisponíveis) e E2E. |
+
+---
+
 ## Grafo de dependências
 
 ```mermaid
@@ -282,6 +310,19 @@ flowchart LR
   M4 --> M7
   M6 --> M7
   M7 --> M8
+  M7 --> T0[T-UPD-00]
+  T0 --> T3[T-UPD-03]
+  T1[T-UPD-01] --> T2[T-UPD-02]
+  T2 --> T3
+  T3 --> T4[T-UPD-04]
+  T4 --> E[T-E2E-01]
+  L1[T-LOG-01] --> L2[T-LOG-02]
+  L2 --> L3[T-LOG-03]
+  L1 --> E
+  L2 --> E
+  L3 --> E
+  T4 --> D[T-DOC-01]
+  L3 --> D
 ```
 
 ## Definição de pronto (por tarefa)

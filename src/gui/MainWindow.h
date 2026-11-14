@@ -51,6 +51,10 @@ public:
     Q_INVOKABLE void rememberSection(const QString &section);
     Q_INVOKABLE void rememberDetailTab(const QString &kind, const QVariant &tab);
 
+    /// Salva o `UiState` imediatamente antes de um encerramento externo
+    /// (SIGTERM/SIGINT do update). Não fecha a janela nem toca na bandeja.
+    void prepareForExit();
+
     QString startupSection() const;
     int startupContainerTab() const;
     QString startupMachineTab() const;

@@ -1,6 +1,6 @@
 # Arquitetura — PodStack
 
-> Visão técnica detalhada. Complementa [`plan.md`](plan.md) e os ADRs.
+> Visão técnica detalhada. Complementa [`plan.md`](../sdd/plan.md) e os ADRs.
 
 ---
 
@@ -239,8 +239,10 @@ caminhos absolutos e o pareamento OVMF code/vars sem tocar no filesystem.
 #### Runtime e ciclo de vida
 
 O `QemuProcessRuntime` (`src/machines/QemuRuntime.{h,cpp}`) inicia o binário
-resolvido por `QStandardPaths::findExecutable` com `QProcess::startDetached` e
-`-daemonize`, sem shell. A execução é considerada viva quando há um pidfile
+resolvido por `QStandardPaths::findExecutable` através do `ProcessScope`
+(`systemd-run --user --scope`), com `QProcess::startDetached` como fallback
+quando o systemd de usuário não está disponível, sem shell. A execução é
+considerada viva quando há um pidfile
 (limite de 64 bytes) cujo PID existe em `/proc/<pid>/cmdline` com o marcador
 `podstack:<machineId>`; isso evita aceitar um PID reciclado. Se o pidfile sumir
 ou ficar inválido, o runtime varre `/proc` e usa o processo do mesmo uid cujo
@@ -259,6 +261,13 @@ processo e encerra processos com `podstack:<id>` sem machine no store, desde
 que pertençam ao `machinesRoot` desta instalação (SIGTERM, espera curta,
 SIGKILL). O filtro por uid e diretório impede que um daemon de teste ou outra
 instalação do usuário mate QEMUs alheios.
+
+QEMU e virtiofsd rodam em **scopes transientes** (`podstack-machine-<id>.scope`
+e `podstack-virtiofsd-<hash>.scope`) criados por `systemd-run --user --scope`,
+fora do cgroup do `podstack.service`. Parar ou reiniciar o daemon não os mata;
+o `MachineManager::reconcile` os readota pelo cmdline. `KillMode=process` na
+unit é apenas defesa em profundidade para um filho que ainda esteja no cgroup
+do serviço — não move processos de cgroup.
 
 O `MachineManager` (`src/machines/MachineManager.{h,cpp}`) orquestra o
 provisionamento: valida nome RFC 1123 (1..63, `[a-z0-9-]`), CPUs (1..256),
@@ -405,9 +414,14 @@ Detalhes em [`data-model.md`](data-model.md).
 
 ## 7. Observabilidade
 
-- Logs JSON em `~/.local/state/podstack/logs/podstackd.log` (rotação 10 MB × 5).
-- Níveis: `error`, `warn`, `info`, `debug`, `trace` (runtime via settings).
-- Redaction: env, tokens, `Authorization`, chaves SSH, senhas.
+- Logs JSON Lines em `~/.local/state/podstack/logs/` (`podstackd.jsonl`,
+  `podstack-gui-<pid>.jsonl`, `podstack-cli-<pid>.jsonl`; arquivos `0600`, dir `0700`) com writer
+  assíncrono, fila limitada, rotação diária e por tamanho (`-YYYYMMDD[-N].jsonl`), retenção de
+  **7 dias** (`advanced.logRetentionDays`), limite por arquivo (`advanced.logMaxBytes`, 10 MB) e
+  teto total de 200 MB.
+- Níveis: `error`, `warn`, `info`, `debug`, `trace` (runtime via `advanced.logLevel` ou
+  `PODSTACK_LOG_LEVEL`; `--verbose` é atalho).
+- Redaction incondicional: env, tokens, `Authorization`, chaves SSH, senhas e URLs com credenciais.
 - `podstack doctor` checks:
   1. socket do daemon
   2. socket do Podman + versão
@@ -417,7 +431,8 @@ Detalhes em [`data-model.md`](data-model.md).
   6. portas 80/443/18080/18443
   7. kubeconfig/contexto
   8. espaço em disco
-- `podstack report`: tar.gz com logs, config redigida, `podman info`, versões; prévia e consentimento.
+- `podstack report`: JSON `0600` (não tar.gz) com logs, config redigida, `podman info`, versões;
+  prévia e consentimento; `diagnostics.includeLogs` é opt-in.
 
 ---
 
@@ -468,4 +483,4 @@ Detalhes em [`security.md`](security.md).
 | SQLite | arquivos JSON | consultas, histórico, migração |
 | RPM primeiro | Flatpak (não no v1) | integração systemd/helper/SELinux |
 
-ADRs: [`adr/`](adr/).
+ADRs: [`adr/`](../adr).

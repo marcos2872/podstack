@@ -115,6 +115,14 @@ interface Subscription { subscriptionId: string }
 | `system.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
 | `system.shutdown` | `{stopContainers?:bool}` | `{}` |
 
+#### `system.report`
+
+`params`: `{includeLogs?: bool}`. O report é JSON `0600` (não tar.gz) e devolve
+`{path, bytes, sha256}`. Com `includeLogs:true`, inclui até 7 dias de logs do usuário
+(daemon/GUI/CLI/setup/update) e os logs root do uid via `GetLogs`, com cap de 10.000 linhas por
+componente e 5 MB no total, aplicando redaction incondicional. `diagnostics.includeLogs` é
+**opt-in** (`false` por padrão); nada é enviado.
+
 #### `system.df`
 
 `params`: `{detailed?: bool}` — padrão `true` para compatibilidade. Com `detailed:false`,
@@ -211,7 +219,7 @@ Regras de normalização:
 > `containers.create` e `containers.duplicate` aplicam `network.proxy`/`network.proxyExclude`
 > ao `env` do novo container, sem sobrescrever chaves definidas explicitamente pelo usuário
 > (ou herdadas do container duplicado). A configuração é lida na criação; containers
-> existentes exigem recriação. Ver [`settings.md`](settings.md) e [`spec.md`](spec.md) §6.3.
+> existentes exigem recriação. Ver [`settings.md`](settings.md) e [`spec.md`](../sdd/spec.md) §6.3.
 
 > **Portas e LAN:** sem `exposeLan`, cada `ports[]` sem `hostIp` explícito usa
 > `hostIp=127.0.0.1`; com `exposeLan:true`, o daemon força `hostIp=0.0.0.0` e chama
@@ -222,7 +230,7 @@ Regras de normalização:
 > retornam `PODSTACK_UNSUPPORTED` com a remediação de recriar o container. No firewalld as
 > regras são runtime (sem `--permanent`) e não sobrevivem a reload/restart; no ufw são
 > persistentes até `ClosePorts`/`ufw delete allow`. Ver
-> [`spec.md`](spec.md) §6.2 e [`security.md`](security.md) §4.2.
+> [`spec.md`](../sdd/spec.md) §6.2 e [`security.md`](security.md) §4.2.
 
 ### 4.3 `images.*`
 
@@ -713,7 +721,7 @@ logado.
 
 | Método | Params | Result |
 |---|---|---|
-| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 86 chaves; com `key`, um único item |
+| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 88 chaves; com `key`, um único item |
 | `settings.set` | `{key, value}` | `{values, key, restartRequired}` — `value` é validado antes de salvar |
 | `settings.reset` | `{key?}` | `{values, restartRequired}` — sem `key`, restaura todos |
 | `settings.schema` | `{}` | `{schema:[{key,type,default,category,description,restartRequired,secret,nullable,enum?,min?,max?}]}` |

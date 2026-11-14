@@ -1,13 +1,66 @@
 #!/bin/sh
-set -e
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Roda depois do unpack. Recarrega as units, remove a máscara runtime do
+# socket e reinicia o helper: `enable --now` não reinicia um serviço que já
+# estava ativo, que foi a causa do incidente 0.1.2→0.1.3.
+set -u
+
+SOCKET_UNIT=podstack.socket
+HELPER_UNIT=podstack-helper.service
+
+helper_rc=0
+unmask_rc=0
+
+log() {
+    echo "PodStack: $*" >&2
+}
+
+log_update() {
+    if [ -n "${PODSTACK_UPDATE_JOB_ID:-}" ] && command -v logger >/dev/null 2>&1; then
+        logger -t podstack-update \
+            "JOB_ID=${PODSTACK_UPDATE_JOB_ID} UID=${PODSTACK_UPDATE_UID:-} $*"
+    fi
+}
+
+logged_uids() {
+    if command -v loginctl >/dev/null 2>&1; then
+        loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u
+    fi
+}
 
 if command -v systemctl >/dev/null 2>&1; then
-    # O socket do usuário sobe sob demanda na primeira conexão da GUI/CLI.
-    systemctl --global enable podstack.socket >/dev/null 2>&1 || true
-    # O helper é um serviço de sistema (D-Bus/polkit); sem enable --now o app
-    # não encontra o nome dev.podstack.Helper1 depois da instalação.
-    systemctl daemon-reload >/dev/null 2>&1 || true
-    systemctl enable --now podstack-helper.service >/dev/null 2>&1 || true
+    systemd-tmpfiles --create podstack.conf >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || helper_rc=1
+    systemctl --global enable "$SOCKET_UNIT" >/dev/null 2>&1 || helper_rc=1
+    systemctl enable "$HELPER_UNIT" >/dev/null 2>&1 || helper_rc=1
+    systemctl restart "$HELPER_UNIT" >/dev/null 2>&1 || helper_rc=1
+    log_update "postinst: helper reiniciado"
+
+    for uid in $(logged_uids); do
+        systemctl --machine "user@${uid}.service" --user daemon-reload \
+            >/dev/null 2>&1 || true
+        if ! systemctl --machine "user@${uid}.service" --user unmask --runtime \
+            "$SOCKET_UNIT" >/dev/null 2>&1; then
+            # Uma tentativa extra; se ainda falhar, informe a remediação do
+            # socket, não apenas a do helper.
+            if ! systemctl --machine "user@${uid}.service" --user unmask --runtime \
+                "$SOCKET_UNIT" >/dev/null 2>&1; then
+                unmask_rc=1
+                log "o socket do uid ${uid} continua mascarado; execute" \
+                    "'systemctl --user unmask --runtime ${SOCKET_UNIT}' e reabra o app."
+            fi
+        fi
+    done
+
+    if [ "$helper_rc" -ne 0 ]; then
+        systemctl start "$HELPER_UNIT" >/dev/null 2>&1 || true
+        log "falha ao religar o helper; execute 'systemctl restart ${HELPER_UNIT}'" \
+            "e reabra o app."
+    fi
 fi
 
+if [ "$helper_rc" -ne 0 ] || [ "$unmask_rc" -ne 0 ]; then
+    exit 1
+fi
 exit 0

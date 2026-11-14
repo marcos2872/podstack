@@ -1,7 +1,7 @@
 # Spec funcional — PodStack
 
 > Especificação derivada do [`PRD.md`](PRD.md). Define comportamento observável, estados, fluxos e critérios de aceite. Onde o PRD diz "o quê", esta spec diz "como se comporta".
-> Baseline de paridade: OrbStack 2.2.5 (ver [`reference/`](reference/)).
+> Baseline de paridade: OrbStack 2.2.5 (ver [`reference/`](../reference)).
 
 ---
 
@@ -81,7 +81,7 @@ Formato único:
 }
 ```
 
-- Códigos estáveis documentados em [`api-rpc.md`](api-rpc.md).
+- Códigos estáveis documentados em [`api-rpc.md`](../engineering/api-rpc.md).
 - A GUI mostra mensagem amigável + detalhe técnico expansível + ação sugerida.
 - Nunca exibir stack trace cru; log completo com correlação.
 
@@ -843,7 +843,7 @@ roteador; o PodStack não altera a rede do usuário nem usa root para isso.
 
 ### 13.3 Comandos
 
-Ver [`cli-parity.md`](cli-parity.md) para a tabela completa `orb` → `podstack`.
+Ver [`cli-parity.md`](../engineering/cli-parity.md) para a tabela completa `orb` → `podstack`.
 
 ---
 
@@ -890,7 +890,145 @@ down ──up──► starting ──ok──► running ──stop──► st
 
 ---
 
-## 15. Casos de borda
+## 15. Atualização segura e logs do app
+
+> Requisitos: `FR-UPD-006…016`, `FR-LOG-001…009`, `NFR-UPD-001…004`, `NFR-LOG-001…003`
+> ([`PRD.md`](PRD.md)). Decisão: **ADR-0012**.
+
+### 15.1 Update manual `apt`/`dnf`
+
+O pacote novo resolve o incidente 0.1.2→0.1.3 antes do unpack:
+
+1. O `preinst` (Debian) ou `%pre` (RPM) percorre os usuários logados (`loginctl`) e, para cada um,
+   aplica `mask --runtime podstack.socket`, para `podstack.socket`/`podstack.service` e encerra a
+   GUI com SIGTERM (SIGKILL após 3 s). O daemon é parado via systemd; sem systemd, ou se o user
+   manager não responder a `systemctl --machine user@<uid>.service --user`, usa
+   `pkill -TERM -x podstackd` e valida com `pgrep`.
+2. O helper é parado e conferido com `systemctl is-active`; se qualquer processo não encerrar, um
+   **trap de limpeza** desfaz a máscara runtime, religa o helper dos uids já tocados e aborta o
+   upgrade. O runner `podstack update --install --runner` nunca é encerrado.
+3. O `postinst`/`%post` faz `daemon-reload`, `systemctl --global enable podstack.socket`,
+   `unmask --runtime` por usuário (com retry e remediação) e **`restart podstack-helper.service`**.
+   A GUI/daemon de usuário não são iniciados pelo root; o usuário reabre ou o runner religa.
+4. No Debian, `postrm` trata `abort-upgrade`/`abort-install` restaurando helper e socket. No RPM, a
+   ordem é `%pre` novo → `%preun` antigo → remoção → `%post` novo → `%posttrans` novo; o
+   `%posttrans` restaura socket/helper por usuário, faz health check (`is-active` + versão) e só
+   retorna não-zero se não conseguir.
+5. O `preinst` não toca em Podman, containers, machines nem no runner. O `prerm` de remoção encerra
+   os processos do app com o mesmo cuidado.
+
+### 15.2 Update assistido (GUI/CLI)
+
+1. `updates.check` devolve versão, canal, notas e metadados do manifesto. O runner baixa o
+   manifesto assinado de `updates.feedUrl` para `~/.cache/podstack/updates/manifest.json`
+   (`0600`, TTL 6 h) e o artefato (`0700`/`0600`, `.part` + rename atômico, limite 300 MB,
+   preflight de espaço, timeout de 15 min), validando canal, arquitetura, formato e versão. Se
+   `updates.publicKey` estiver customizada, o install assistido é recusado
+   (`PODSTACK_UPDATE_UNSUPPORTED`, `reason=custom_key`).
+2. A GUI grava `~/.local/state/podstack/updates/gui-was-open`, inicia
+   `podstack update --install --runner --manifest <path>` em novo session/process group (`setsid`)
+   e sai. `--runner` e `--manifest` são flags internas.
+3. O runner grava `state.json` atomicamente (`QSaveFile`/rename) com `pid`, `boot_id` e timestamp,
+   para `podstack.socket`/`podstack.service` do usuário e chama `StageUpdate`, que:
+   autentica por polkit (`dev.podstack.helper.stage-update`, `auth_admin`), obtém o uid por
+   `GetConnectionUnixUser`, confere arquivo regular/sem symlink (`O_NOFOLLOW`)/dono e copia para
+   staging root-owned `/run/podstack/update/<uuid>/` (`0700`, timeout 5 min), valida a assinatura
+   com a chave de release embutida ou `/etc/podstack/update.pub`, compara o SHA-256 ao manifesto e
+   confere nome/versão/arch (`dpkg-deb -f`/`rpm -qp`).
+4. `InstallUpdate(jobId)` serializa a admissão com `flock /run/podstack/update.admission.lock`,
+   recusa unidade `podstack-update-*` ativa e inicia a unidade transiente de sistema
+   `systemd-run --unit=podstack-update-<uuid> --collect --property=RuntimeMaxSec=1800`, cujo
+   `ExecStart` é `flock /run/podstack/update.lock` + `podstack-update-exec`. O gerenciador roda
+   fora do cgroup do helper/sessão; o restart do helper no meio do `apt` não o mata.
+5. O wrapper executa `apt-get`/`dnf` com o pacote em staging, filtra stdout/stderr pela
+   `Redaction`, grava `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` (`0640`), espelha no journal e
+   grava `/run/podstack/update/<uuid>/state.json` (`0640`) com fase/percentual/exit/error.
+6. O runner faz polling de `GetUpdateStatus {jobId}` (ação `get-update-status`, `auth_admin_keep`)
+   com retry/backoff enquanto o helper reinicia; `UpdateProgress`/`UpdateFinished` são
+   best-effort. No start, o helper varre unidades e `state.json` e reconstrói o estado.
+7. Sucesso: `systemctl --user start podstack.socket`; se `gui-was-open` existir,
+   `podstack-gui --relaunch` e o marcador é apagado; `state.json=done`; notificação nativa.
+8. Falha: helper mantido/restaurado ativo; runner religa socket/GUI/daemon da versão instalada,
+   grava o erro em `state.json` e no log; a GUI/CLI mostra “Ver log”. Não há rollback automático;
+   a próxima execução lê `state.json` e oferece retomar ou limpar.
+
+**CLI:** `podstack update --install [--yes] [--json]`; sem `--yes` em TTY pede confirmação, sem TTY
+nunca pergunta (exit 2). `Ctrl+C` antes da instalação cancela com 9; depois que a unidade começou o
+cancelamento é recusado. Timeouts: download 15 min, stage 5 min, install 30 min (`RuntimeMaxSec`).
+Exit codes: `--install` **0/1/2/6/8/9** (sem 3); `--check` mantém 0/1/2/3/6/8/9. Códigos estáveis:
+`PODSTACK_UPDATE_MANIFEST_INVALID`, `PODSTACK_UPDATE_SIGNATURE_INVALID`,
+`PODSTACK_UPDATE_PACKAGE_INVALID`, `PODSTACK_UPDATE_DOWNLOAD_FAILED`,
+`PODSTACK_UPDATE_INSTALL_FAILED`, `PODSTACK_UPDATE_CONSENT_DENIED`,
+`PODSTACK_UPDATE_VERSION_EQUAL`, `PODSTACK_UPDATE_LOCKED`, `PODSTACK_UPDATE_UNSUPPORTED`.
+`updates.mode=auto` verifica/baixa, nunca instala sem consentimento. Flatpak/sandbox ou ausência de
+systemd de usuário desabilita o update assistido com mensagem e caminho manual.
+
+### 15.3 Processos e cgroups
+
+| Processo | Antes do unpack | Depois |
+|---|---|---|
+| `podstack-gui` | SIGTERM (SIGKILL após 3 s); handler salva `UiState` | runner/manual reabre |
+| `podstackd` | `systemctl --user stop`; `pkill -TERM` como fallback | socket activation |
+| `podstack.socket` | `mask --runtime` + stop | `unmask --runtime`; start no runner/next use |
+| `podstack-helper` | `systemctl stop` | `systemctl restart`; varre estado no start |
+| runner `podstack update` | **não matar** | termina após religar |
+| job de update | — | unidade transiente + wrapper; sobrevive ao restart do helper |
+| QEMU/virtiofsd | **não parar** | scope próprio; reconciliação de órfãos cobre restart |
+| Podman/containers | **não parar** | intactos |
+
+### 15.4 Logs do app
+
+- `Logging` instala `qInstallMessageHandler` que apenas enfileira (writer thread, fila 8192,
+  drop-oldest com `dropped`); nunca faz I/O no thread da UI. O stderr/journal continua.
+- Arquivos correntes por processo em `~/.local/state/podstack/logs/` (`0600`, dir `0700`):
+  `podstackd.jsonl`, `podstack-gui-<pid>.jsonl`, `podstack-cli-<pid>.jsonl`; JSON Lines com `ts`,
+  `level`, `category`, `process`, `pid`, `thread`, `message`, `context`.
+- `O_APPEND`, flush a cada 1 s e em warn/error+; flush final no encerramento. Redaction aplicada
+  **antes** de gravar, inclusive em logs root.
+- Rotação no start e por timer diário à meia-noite local: `<processo>-YYYYMMDD.jsonl` e
+  `<processo>-YYYYMMDD-N.jsonl` por tamanho, rename atômico sob `flock`. Retenção 7 dias (1–30),
+  `advanced.logMaxBytes` 10 MB, teto total 200 MB; remove o mais antigo primeiro.
+- `advanced.logLevel` (default info) exposto na GUI, aplicado em runtime (`restartRequired: false`)
+  e por `PODSTACK_LOG_LEVEL`; `--verbose` continua como atalho.
+- Setup jobs são persistidos no log do daemon (`setup` com `jobId`, ação, progresso e erro) e
+  sobrevivem ao restart.
+- Logs root: `/var/log/podstack/jobs/<uid>/<jobId>.jsonl` (dir `0750`, arquivo `0640`), com
+  `uid`/`jobId` por linha/índice; `/var/log/podstack` root:root `0750`, `tmpfiles.d`,
+  logrotate/timer e SELinux/AppArmor. O app nunca lê esses arquivos diretamente.
+- `GetLogs {jobId?}` (`dev.podstack.helper.get-logs`, `auth_admin`, rate limit 10/min, auditoria)
+  retorna somente operações do uid do chamador, com cap 1 MiB e `{lines, truncated}` redigido.
+- O legado `podstackd.log` é migrado para JSONL no primeiro start ou removido; a unit não
+  redireciona stdout para ele.
+
+### 15.5 Acesso: CLI, GUI e report
+
+- `podstack system logs [--follow|--since|--level|--component|--json|--export|--clear]` lê os
+  arquivos do usuário, filtra e exporta. `--since` aceita `7d`/ISO 8601; `--level` usa o enum;
+  `--component` aceita `daemon|gui|cli|qml|setup|update|helper|package` (`helper`/`package` via
+  `GetLogs`, com polkit). `--export` canonicaliza o destino, recusa symlink/path fora do destino e
+  grava `0600`. `--json` emite `{api:1, lines:[{ts,level,component,message}], truncated, files}`;
+  erro emite `{api:1, error:{code,message,detail}}`; filtro inválido retorna 2. `--clear` apaga só
+  logs do usuário. O subcomando `logs` de containers continua separado.
+- GUI: página/diálogo **Logs** com filtro por nível/componente, follow, abrir pasta, exportar,
+  “Exportar diagnóstico” e limpar com confirmação; leitura em worker/modelo virtualizado, sem I/O
+  no thread da UI; “Ver log” no erro de setup/update abre o painel filtrado; i18n/`Accessible.name`.
+- `system.report --include-logs` inclui os 7 dias do usuário e os logs do helper/update via
+  `GetLogs`, com caps de 10.000 linhas/componente e 5 MB no total; `diagnostics.includeLogs` passa
+  a default **false**; nada é enviado.
+
+### 15.6 Critérios de aceite
+
+| ID | Dado | Quando | Então |
+|---|---|---|---|
+| AC-UPD-1 | Ubuntu 24.04, GUI+daemon+helper 0.1.3 abertos e socket ativo | `sudo apt install ./podstack_0.1.4_amd64.deb` | PIDs antigos ausentes; helper novo; socket não reativa daemon antigo; GUI nova; OVMF `ok`; containers/machines intactos. |
+| AC-UPD-2 | 0.1.4 com app aberto | GUI “Atualizar” para 0.1.5 | Download/verificação; GUI fecha; unidade transiente instala; restart do helper não mata a unidade; GUI/daemon novos; log do update. |
+| AC-UPD-3 | Mesmo cenário | Falha de download/assinatura/unpack/`postinst`/após `%pre` | Erro estável; helper/socket restaurados; GUI/daemon instalados voltam; log da causa; sem órfãos. |
+| AC-LOG-1 | App com setup/update/erro | `system logs --json`/GUI/report | Logs do próprio uid; schema `{api:1,...}`; uid A não vê B; 7 dias; `0600`/`0640`; redaction com `diagnostics.redact=false`; “Ver log”. |
+| AC-LOG-2 | 0.1.4→0.1.5 | 8º dia e limite por arquivo | Mais antigo removido; rotação `-YYYYMMDD[-N].jsonl`; timer da meia-noite local. |
+
+---
+
+## 16. Casos de borda
 
 | Caso | Comportamento |
 |---|---|
@@ -910,7 +1048,7 @@ down ──up──► starting ──ok──► running ──stop──► st
 
 ---
 
-## 16. Fora do escopo desta spec
+## 17. Fora do escopo desta spec
 
 - Implementação de runtime OCI, CNI ou hypervisor próprio.
 - Compatibilidade com plugins/extensões do OrbStack.
