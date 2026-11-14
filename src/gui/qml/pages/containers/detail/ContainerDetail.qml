@@ -6,8 +6,8 @@ import PodStack.Design
 // Conteúdo do detalhe de um container, hospedado diretamente no card do
 // ContainerDetailDialog (overlay integrado à MainWindow). As abas usam
 // `containers.inspect` para metadados e streams próprios de logs/stats,
-// separados do stream compartilhado do Backend. A aba Terminal reserva um
-// placeholder onde o C++ sobrepõe o QTermWidget da sessão embutida.
+// separados do stream compartilhado do Backend. O shell mantém o cabeçalho,
+// as ações e o estado compartilhado; cada aba vive no próprio componente.
 Rectangle {
     id: root
 
@@ -225,14 +225,15 @@ Rectangle {
     // QTermWidget sobre ele. Fora da aba (ou sem tamanho) emite visible=false
     // e a sessão continua viva, apenas oculta.
     function syncTerminalArea() {
+        const placeholder = terminalTab.placeholder
         if (root.containerId.length === 0 || root.tabIndex !== root.terminalTabIndex
-                || terminalPlaceholder.width <= 0 || terminalPlaceholder.height <= 0) {
+                || !placeholder || placeholder.width <= 0 || placeholder.height <= 0) {
             root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
             return
         }
-        const point = terminalPlaceholder.mapToItem(root, 0, 0)
-        root.terminalAreaChanged(Qt.rect(point.x, point.y, terminalPlaceholder.width,
-                                         terminalPlaceholder.height), true)
+        const point = placeholder.mapToItem(root, 0, 0)
+        root.terminalAreaChanged(Qt.rect(point.x, point.y, placeholder.width,
+                                         placeholder.height), true)
     }
 
     function openExternalTerminal() {
@@ -276,146 +277,6 @@ Rectangle {
             return "muted"
         }
         return state.length > 0 ? "muted" : "muted"
-    }
-
-    function formatBytes(value) {
-        const number = Number(value || 0)
-        if (number <= 0) {
-            return "0 B"
-        }
-        const units = ["B", "kB", "MB", "GB", "TB"]
-        let scaled = number
-        let index = 0
-        while (scaled >= 1000 && index < units.length - 1) {
-            scaled /= 1000
-            ++index
-        }
-        return scaled.toFixed(index === 0 ? 0 : 1) + " " + units[index]
-    }
-
-    function copyTextArea(area) {
-        if (!area || area.text.length === 0) {
-            return
-        }
-        area.selectAll()
-        area.copy()
-        area.deselect()
-        area.cursorPosition = area.length
-    }
-
-    component SectionTitle: Text {
-        Layout.fillWidth: true
-        Layout.topMargin: 4
-        text: ""
-        color: Theme.textTertiary
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontMicro
-        font.weight: Font.DemiBold
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: 0.8
-    }
-
-    component InfoRow: RowLayout {
-        id: infoRow
-
-        property string label: ""
-        property string value: ""
-
-        Layout.fillWidth: true
-        spacing: 12
-
-        Text {
-            Layout.preferredWidth: 128
-            text: infoRow.label
-            color: Theme.textTertiary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontMicro
-            wrapMode: Text.WordWrap
-        }
-
-        Text {
-            Layout.fillWidth: true
-            text: infoRow.value
-            color: Theme.textSecondary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontMeta
-            wrapMode: Text.WrapAnywhere
-        }
-    }
-
-    component MetricCard: Rectangle {
-        id: card
-
-        property string label: ""
-        property string value: ""
-        property string detailText: ""
-        property var values: []
-        property var secondaryValues: []
-        property color accent: Theme.cyan
-        property real maxValue: 0
-        property bool autoScale: false
-
-        Layout.fillWidth: true
-        implicitHeight: 142
-        radius: Theme.radius
-        color: Theme.bgSurface2
-        border.width: 1
-        border.color: Theme.border
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 12
-            spacing: 2
-
-            Text {
-                text: card.label
-                color: Theme.textTertiary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMicro
-                font.weight: Font.DemiBold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 0.8
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: card.value
-                color: Theme.textPrimary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontHeading - 3
-                font.weight: Font.DemiBold
-                elide: Text.ElideRight
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: card.detailText
-                color: Theme.textTertiary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMicro
-                elide: Text.ElideRight
-            }
-
-            AppSparkline {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.minimumHeight: 24
-                values: card.values
-                lineColor: card.accent
-                maxValue: card.maxValue
-                autoScale: card.autoScale
-            }
-
-            AppSparkline {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 20
-                visible: card.secondaryValues.length > 0
-                values: card.secondaryValues
-                lineColor: Theme.indigo400
-                maxValue: card.maxValue
-                autoScale: card.autoScale
-            }
-        }
     }
 
     Connections {
@@ -620,659 +481,56 @@ Rectangle {
             Layout.topMargin: 10
             currentIndex: root.tabIndex
 
-            // Visão geral
-            ScrollView {
-                id: overviewScroll
-                clip: true
-                contentWidth: availableWidth
-                ScrollBar.vertical: ScrollBar {}
-
-                ColumnLayout {
-                    x: 20
-                    y: 12
-                    width: Math.max(0, overviewScroll.availableWidth - 40)
-                    spacing: 12
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Métricas ao vivo")
-                            color: Theme.textPrimary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontTitle
-                            font.weight: Font.DemiBold
-                        }
-
-                        Text {
-                            text: backend.containerDetail.detail.loading ? qsTr("carregando inspect…")
-                                                                 : qsTr("stats ~1 s")
-                            color: Theme.textTertiary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMicro
-                        }
-                    }
-
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: root.width < 900 ? 1 : 2
-                        columnSpacing: 12
-                        rowSpacing: 12
-
-                        MetricCard {
-                            label: qsTr("CPU")
-                            value: backend.containerDetail.detail.stats.cpu_percent || "—"
-                            detailText: qsTr("histórico de 60 amostras")
-                            values: backend.containerDetail.detail.cpuHistory
-                            accent: Theme.cyan
-                            maxValue: 100
-                        }
-
-                        MetricCard {
-                            label: qsTr("RAM")
-                            value: {
-                                const stats = backend.containerDetail.detail.stats
-                                if (Number(stats.memLimitBytes || 0) > 0) {
-                                    return root.formatBytes(stats.memUsedBytes) + " / "
-                                           + root.formatBytes(stats.memLimitBytes)
-                                }
-                                return stats.mem_usage || "—"
-                            }
-                            detailText: backend.containerDetail.detail.stats.mem_percent || qsTr("aguardando amostras")
-                            values: backend.containerDetail.detail.memHistory
-                            accent: Theme.indigo400
-                            maxValue: 100
-                        }
-
-                        MetricCard {
-                            label: qsTr("REDE  ↓ / ↑")
-                            value: {
-                                const stats = backend.containerDetail.detail.stats
-                                if (stats.netRxBytes !== undefined) {
-                                    return "↓ " + root.formatBytes(stats.netRxBytes) + "   ↑ "
-                                           + root.formatBytes(stats.netTxBytes)
-                                }
-                                return stats.net_io || "—"
-                            }
-                            detailText: qsTr("RX (ciano) e TX (índigo), acumulados")
-                            values: backend.containerDetail.detail.netRxHistory
-                            secondaryValues: backend.containerDetail.detail.netTxHistory
-                            accent: Theme.cyan
-                            autoScale: true
-                        }
-
-                        MetricCard {
-                            label: qsTr("DISCO  R / W")
-                            value: {
-                                const stats = backend.containerDetail.detail.stats
-                                if (stats.diskReadBytes !== undefined) {
-                                    return "R " + root.formatBytes(stats.diskReadBytes) + "   W "
-                                           + root.formatBytes(stats.diskWriteBytes)
-                                }
-                                return stats.block_io || "—"
-                            }
-                            detailText: qsTr("leitura (ciano) e escrita (índigo), acumuladas")
-                            values: backend.containerDetail.detail.diskReadHistory
-                            secondaryValues: backend.containerDetail.detail.diskWriteHistory
-                            accent: Theme.cyan
-                            autoScale: true
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("PIDs: %1 · estado: %2 · %3")
-                                      .arg(String(backend.containerDetail.detail.stats.pids || "—"))
-                                      .arg(root.stateText.length > 0 ? root.stateText : "—")
-                                      .arg(root.statusText)
-                            color: Theme.textTertiary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMicro
-                            elide: Text.ElideRight
-                        }
-
-                        Text {
-                            visible: backend.containerDetail.detail.statsError.length > 0
-                            text: backend.containerDetail.detail.statsError
-                            color: Theme.danger
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMicro
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    Item { Layout.preferredHeight: 12 }
-                }
+            OverviewTab {
+                stateText: root.stateText
+                statusText: root.statusText
+                metricColumns: root.width < 900 ? 1 : 2
             }
 
-            // Logs
-            Item {
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 20
-                    anchors.rightMargin: 20
-                    anchors.topMargin: 4
-                    anchors.bottomMargin: 16
-                    spacing: 6
+            LogsTab {}
 
-                    Text {
-                        Layout.fillWidth: true
-                        visible: backend.containerDetail.detail.logsError.length > 0
-                        text: backend.containerDetail.detail.logsError
-                        color: Theme.danger
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontMicro
-                        wrapMode: Text.WordWrap
-                    }
-
-                    AppLogView {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        lines: backend.containerDetail.detail.logLines
-                        emptyText: qsTr("Sem logs. O stream do container será exibido aqui em tempo real.")
-                        onClearRequested: backend.containerDetail.clearLogs()
-                    }
-                }
+            InfoTab {
+                infoFields: root.infoFields
+                portLines: root.portLines
+                labelLines: root.labelLines
+                imageText: root.imageText
+                entrypointText: root.entrypointText
+                commandText: root.commandText
+                config: root.config
+                detail: root.detail
+                containerId: root.containerId
             }
 
-            // Info
-            ScrollView {
-                id: infoScroll
-                clip: true
-                contentWidth: availableWidth
-                ScrollBar.vertical: ScrollBar {}
-
-                ColumnLayout {
-                    x: 20
-                    y: 12
-                    width: Math.max(0, infoScroll.availableWidth - 40)
-                    spacing: 8
-
-                    SectionTitle { text: qsTr("Geral") }
-
-                    Repeater {
-                        model: root.infoFields
-                        delegate: InfoRow {
-                            label: modelData.label
-                            value: modelData.value
-                        }
-                    }
-
-                    SectionTitle {
-                        Layout.topMargin: 14
-                        text: qsTr("Imagem e comando")
-                    }
-
-                    InfoRow { label: qsTr("IMAGEM"); value: root.imageText.length > 0 ? root.imageText : "—" }
-                    InfoRow { label: qsTr("DIGEST"); value: String(root.detail.Image || "—") }
-                    InfoRow { label: qsTr("ENTRYPOINT"); value: root.entrypointText }
-                    InfoRow { label: qsTr("COMANDO"); value: root.commandText }
-                    InfoRow { label: qsTr("WORKDIR"); value: String(root.config.WorkingDir || "—") }
-                    InfoRow { label: qsTr("USUÁRIO"); value: String(root.config.User || "—") }
-                    InfoRow { label: qsTr("ID"); value: root.containerId }
-
-                    SectionTitle {
-                        Layout.topMargin: 14
-                        text: qsTr("Portas publicadas")
-                    }
-
-                    InfoRow {
-                        visible: root.portLines.length === 0
-                        label: ""
-                        value: qsTr("Nenhuma porta publicada.")
-                    }
-
-                    Repeater {
-                        model: root.portLines
-                        delegate: InfoRow {
-                            label: qsTr("PORTA")
-                            value: modelData
-                        }
-                    }
-
-                    SectionTitle {
-                        Layout.topMargin: 14
-                        text: qsTr("Labels")
-                    }
-
-                    InfoRow {
-                        visible: root.labelLines.length === 0
-                        label: ""
-                        value: qsTr("Nenhuma label definida.")
-                    }
-
-                    Repeater {
-                        model: root.labelLines
-                        delegate: Text {
-                            Layout.fillWidth: true
-                            text: modelData
-                            color: Theme.textSecondary
-                            font.family: Theme.monoFamily
-                            font.pixelSize: Theme.fontMicro
-                            wrapMode: Text.WrapAnywhere
-                        }
-                    }
-
-                    Item { Layout.preferredHeight: 16 }
-                }
+            EnvironmentTab {
+                envCount: root.envCount
+                envText: root.envText
+                showEnvValues: root.showEnvValues
+                onShowValuesToggled: function(value) { root.showEnvValues = value }
             }
 
-            // Ambiente
-            Item {
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 20
-                    anchors.rightMargin: 20
-                    anchors.topMargin: 4
-                    anchors.bottomMargin: 16
-                    spacing: 8
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("%1 variáveis de ambiente").arg(root.envCount)
-                            color: Theme.textSecondary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMeta
-                        }
-
-                        AppCheck {
-                            id: showEnv
-                            text: qsTr("Mostrar valores")
-                            checked: root.showEnvValues
-                            onToggled: root.showEnvValues = checked
-                        }
-
-                        AppButton {
-                            text: qsTr("Copiar")
-                            iconName: "copy"
-                            size: "sm"
-                            variant: "secondary"
-                            enabled: root.envCount > 0
-                            onClicked: root.copyTextArea(envArea)
-                            Accessible.name: qsTr("Copiar variáveis de ambiente")
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        color: Theme.terminalBg
-                        radius: Theme.radiusSm
-                        border.width: 1
-                        border.color: Theme.border
-                        clip: true
-
-                        ScrollView {
-                            id: envScroll
-                            anchors.fill: parent
-                            clip: true
-
-                            TextArea {
-                                id: envArea
-                                readOnly: true
-                                selectByMouse: true
-                                persistentSelection: true
-                                textFormat: TextEdit.PlainText
-                                text: root.envText
-                                color: Theme.textSecondary
-                                selectionColor: Theme.indigo500
-                                selectedTextColor: Theme.textPrimary
-                                font.family: Theme.monoFamily
-                                font.pixelSize: Theme.fontMeta
-                                wrapMode: TextEdit.WrapAnywhere
-                                width: envScroll.availableWidth
-                                padding: 10
-                                background: null
-                                Accessible.name: qsTr("Variáveis de ambiente do container")
-                            }
-                        }
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: qsTr("Chaves com token, password, secret, authorization ou key "
-                                   + "ficam mascaradas até marcar “Mostrar valores”.")
-                        color: Theme.textTertiary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontMicro
-                        wrapMode: Text.WordWrap
-                    }
-                }
+            NetworksTab {
+                portLines: root.portLines
+                networkEntries: root.networkEntries
             }
 
-            // Redes
-            ScrollView {
-                id: networksScroll
-                clip: true
-                contentWidth: availableWidth
-                ScrollBar.vertical: ScrollBar {}
-
-                ColumnLayout {
-                    x: 20
-                    y: 12
-                    width: Math.max(0, networksScroll.availableWidth - 40)
-                    spacing: 10
-
-                    SectionTitle { text: qsTr("Portas publicadas") }
-
-                    Repeater {
-                        model: root.portLines
-                        delegate: Text {
-                            Layout.fillWidth: true
-                            text: modelData
-                            color: Theme.textSecondary
-                            font.family: Theme.monoFamily
-                            font.pixelSize: Theme.fontMeta
-                            wrapMode: Text.WrapAnywhere
-                        }
-                    }
-
-                    Text {
-                        visible: root.portLines.length === 0
-                        Layout.fillWidth: true
-                        text: qsTr("Nenhuma porta publicada.")
-                        color: Theme.textTertiary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontMeta
-                    }
-
-                    SectionTitle {
-                        Layout.topMargin: 10
-                        text: qsTr("Interfaces")
-                    }
-
-                    Text {
-                        visible: root.networkEntries.length === 0
-                        Layout.fillWidth: true
-                        text: qsTr("Nenhuma rede conectada.")
-                        color: Theme.textTertiary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontMeta
-                    }
-
-                    Repeater {
-                        model: root.networkEntries
-                        delegate: Rectangle {
-                            id: networkCard
-
-                            Layout.fillWidth: true
-                            implicitHeight: networkColumn.implicitHeight + 24
-                            radius: Theme.radius
-                            color: Theme.bgSurface2
-                            border.width: 1
-                            border.color: Theme.border
-
-                            ColumnLayout {
-                                id: networkColumn
-                                anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 5
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 8
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: modelData.name
-                                        color: Theme.textPrimary
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.fontBody
-                                        font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
-                                    }
-
-                                    AppBadge {
-                                        text: qsTr("rede")
-                                        tone: "muted"
-                                    }
-                                }
-
-                                InfoRow { label: qsTr("IP"); value: modelData.ip }
-                                InfoRow { label: qsTr("GATEWAY"); value: modelData.gateway }
-                                InfoRow { label: qsTr("MAC"); value: modelData.mac }
-                                InfoRow { label: qsTr("ALIASES"); value: modelData.aliases }
-                                InfoRow { label: qsTr("NETWORK ID"); value: modelData.id }
-                            }
-                        }
-                    }
-
-                    Item { Layout.preferredHeight: 16 }
-                }
+            VolumesTab {
+                mountEntries: root.mountEntries
             }
 
-            // Volumes
-            ScrollView {
-                id: volumesScroll
-                clip: true
-                contentWidth: availableWidth
-                ScrollBar.vertical: ScrollBar {}
-
-                ColumnLayout {
-                    x: 20
-                    y: 12
-                    width: Math.max(0, volumesScroll.availableWidth - 40)
-                    spacing: 10
-
-                    Text {
-                        visible: root.mountEntries.length === 0
-                        Layout.fillWidth: true
-                        text: qsTr("Nenhum volume ou bind mount.")
-                        color: Theme.textTertiary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontMeta
-                    }
-
-                    Repeater {
-                        model: root.mountEntries
-                        delegate: Rectangle {
-                            id: mountCard
-
-                            Layout.fillWidth: true
-                            implicitHeight: mountColumn.implicitHeight + 24
-                            radius: Theme.radius
-                            color: Theme.bgSurface2
-                            border.width: 1
-                            border.color: Theme.border
-
-                            ColumnLayout {
-                                id: mountColumn
-                                anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 5
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 8
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: String(modelData.Type || qsTr("mount"))
-                                        color: Theme.textPrimary
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.fontBody
-                                        font.weight: Font.DemiBold
-                                    }
-
-                                    AppBadge {
-                                        text: modelData.RW === false ? qsTr("somente leitura")
-                                                                     : qsTr("leitura/escrita")
-                                        tone: modelData.RW === false ? "warning" : "success"
-                                    }
-                                }
-
-                                InfoRow {
-                                    label: qsTr("NOME")
-                                    value: String(modelData.Name || "—")
-                                }
-                                InfoRow {
-                                    label: qsTr("ORIGEM")
-                                    value: String(modelData.Source || "—")
-                                }
-                                InfoRow {
-                                    label: qsTr("DESTINO")
-                                    value: String(modelData.Destination || "—")
-                                }
-                                InfoRow {
-                                    label: qsTr("DRIVER")
-                                    value: String(modelData.Driver || "—")
-                                }
-                                InfoRow {
-                                    label: qsTr("PROPAGAÇÃO")
-                                    value: String(modelData.Propagation || "—")
-                                }
-                            }
-                        }
-                    }
-
-                    Item { Layout.preferredHeight: 16 }
-                }
+            FilesTab {
+                containerId: root.containerId
             }
 
-            // Arquivos
-            Item {
-                AppFileList {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    containerId: root.containerId
-                }
+            TerminalTab {
+                id: terminalTab
+                containerId: root.containerId
+                onExternalTerminalRequested: root.openExternalTerminal()
+                onAreaChanged: root.syncTerminalArea()
             }
 
-            // Terminal — o QTermWidget é sobreposto pelo C++ (overlay QWidget)
-            Item {
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 20
-                    anchors.rightMargin: 20
-                    anchors.topMargin: 4
-                    anchors.bottomMargin: 16
-                    spacing: 8
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Sessão embutida — podman exec -it %1 /bin/sh")
-                                      .arg(root.containerId)
-                            color: Theme.textSecondary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMeta
-                            elide: Text.ElideRight
-                        }
-
-                        AppButton {
-                            text: qsTr("Nova sessão em janela")
-                            iconName: "external"
-                            size: "sm"
-                            variant: "secondary"
-                            enabled: root.containerId.length > 0
-                            onClicked: root.openExternalTerminal()
-                            Accessible.name: qsTr("Abrir uma nova sessão em janela")
-                        }
-                    }
-
-                    Item {
-                        id: terminalPlaceholder
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        onWidthChanged: root.syncTerminalArea()
-                        onHeightChanged: root.syncTerminalArea()
-                    }
-                }
-            }
-
-            // Inspect
-            Item {
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 20
-                    anchors.rightMargin: 20
-                    anchors.topMargin: 4
-                    anchors.bottomMargin: 16
-                    spacing: 8
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("JSON completo do Libpod (containers.inspect)")
-                            color: Theme.textSecondary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMeta
-                        }
-
-                        AppButton {
-                            text: qsTr("Copiar")
-                            iconName: "copy"
-                            size: "sm"
-                            variant: "secondary"
-                            enabled: root.loaded
-                            onClicked: backend.containerDetail.copyInspect()
-                            Accessible.name: qsTr("Copiar JSON do inspect")
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        color: Theme.terminalBg
-                        radius: Theme.radiusSm
-                        border.width: 1
-                        border.color: Theme.border
-                        clip: true
-
-                        ScrollView {
-                            id: inspectScroll
-                            anchors.fill: parent
-                            clip: true
-
-                            TextArea {
-                                id: inspectArea
-                                readOnly: true
-                                selectByMouse: true
-                                persistentSelection: true
-                                textFormat: TextEdit.PlainText
-                                text: root.inspectText
-                                color: Theme.textSecondary
-                                selectionColor: Theme.indigo500
-                                selectedTextColor: Theme.textPrimary
-                                font.family: Theme.monoFamily
-                                font.pixelSize: Theme.fontMeta
-                                wrapMode: TextEdit.NoWrap
-                                width: Math.max(inspectScroll.availableWidth, implicitWidth)
-                                padding: 10
-                                background: null
-                                Accessible.name: qsTr("JSON do inspect do container")
-                            }
-                        }
-
-                        Text {
-                            anchors.centerIn: parent
-                            width: parent.width - 32
-                            visible: root.inspectText.length === 0
-                            horizontalAlignment: Text.AlignHCenter
-                            text: backend.containerDetail.detail.loading ? qsTr("Carregando inspect…")
-                                                                 : qsTr("Inspect indisponível.")
-                            color: Theme.textTertiary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMeta
-                        }
-                    }
-                }
+            InspectTab {
+                inspectText: root.inspectText
+                loaded: root.loaded
             }
         }
     }

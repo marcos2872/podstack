@@ -11,6 +11,18 @@ qt_add_qml_module(podstack_qml_pages
     QML_FILES
         containers/ContainersPage.qml
         containers/detail/ContainerDetail.qml
+        containers/detail/DetailSectionTitle.qml
+        containers/detail/DetailInfoRow.qml
+        containers/detail/DetailMetricCard.qml
+        containers/detail/OverviewTab.qml
+        containers/detail/LogsTab.qml
+        containers/detail/InfoTab.qml
+        containers/detail/EnvironmentTab.qml
+        containers/detail/NetworksTab.qml
+        containers/detail/VolumesTab.qml
+        containers/detail/FilesTab.qml
+        containers/detail/TerminalTab.qml
+        containers/detail/InspectTab.qml
         images/ImagesPage.qml
         volumes/VolumesPage.qml
         networks/NetworksPage.qml
