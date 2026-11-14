@@ -1,14 +1,14 @@
 #include "MockPodmanServer.h"
 
-#include "core/Config.h"
+#include "core/config/Config.h"
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"
 #include "gui/StreamClient.h"
 #include "gui/UiState.h"
 #include "gui/UnixSignals.h"
-#include "k8s/K8sStore.h"
-#include "machines/MachineStore.h"
+#include "k8s/store/K8sStore.h"
+#include "machines/model/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "core/Config.h"
-#include "core/Logging.h"
+#include "core/config/Config.h"
+#include "core/logging/Logging.h"
 #include "gui/Autostart.h"
 #include "gui/Backend.h"
 #include "gui/ContainerListModel.h"

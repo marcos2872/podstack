@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/LogReader.h"
+#include "core/logging/LogReader.h"
 #include "gui/StreamClient.h"
 
 #include <QFutureWatcher>

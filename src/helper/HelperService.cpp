@@ -2,13 +2,13 @@
 
 #include "helper/HelperService.h"
 
-#include "core/Error.h"
-#include "helper/CaTrust.h"
-#include "helper/DnsZone.h"
-#include "helper/Firewall.h"
-#include "helper/Polkit.h"
-#include "helper/PortBinding.h"
-#include "helper/UpdateService.h"
+#include "core/error/Error.h"
+#include "helper/ca/CaTrust.h"
+#include "helper/dns/DnsZone.h"
+#include "helper/ports/Firewall.h"
+#include "helper/polkit/Polkit.h"
+#include "helper/ports/PortBinding.h"
+#include "helper/updates/UpdateService.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>

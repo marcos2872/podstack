@@ -1,6 +1,6 @@
 #include "gui/StreamClient.h"
 
-#include "core/Paths.h"
+#include "core/config/Paths.h"
 
 #include <QJsonDocument>
 #include <QJsonParseError>

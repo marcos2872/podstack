@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "daemon/DnsServer.h"
+#include "daemon/domains/DnsServer.h"
 
 #include <QElapsedTimer>
 #include <QHostAddress>

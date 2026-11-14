@@ -2,11 +2,11 @@
 #include "MockPodmanServer.h"
 #include "UpdateTestUtils.h"
 
-#include "core/RpcClient.h"
-#include "core/RpcStream.h"
-#include "daemon/ComposeManager.h"
-#include "k8s/K8sStore.h"
-#include "machines/MachineStore.h"
+#include "core/rpc/RpcClient.h"
+#include "core/rpc/RpcStream.h"
+#include "daemon/compose/ComposeManager.h"
+#include "k8s/store/K8sStore.h"
+#include "machines/model/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>

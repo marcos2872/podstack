@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "gui/SingleInstance.h"
 
-#include "core/Paths.h"
+#include "core/config/Paths.h"
 
 #include <QDir>
 #include <QFile>

@@ -2,7 +2,7 @@
 #include "MockPodmanServer.h"
 #include "UpdateTestUtils.h"
 
-#include "machines/MachineStore.h"
+#include "machines/model/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>

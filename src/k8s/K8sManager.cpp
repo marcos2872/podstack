@@ -2,9 +2,9 @@
 
 #include "k8s/K8sManager.h"
 
-#include "core/Config.h"
-#include "core/Ids.h"
-#include "core/Paths.h"
+#include "core/config/Config.h"
+#include "core/util/Ids.h"
+#include "core/config/Paths.h"
 
 #include <QDateTime>
 #include <QDir>

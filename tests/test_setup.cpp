@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "core/Config.h"
-#include "core/Paths.h"
-#include "daemon/DbusUtils.h"
-#include "daemon/DockerInventory.h"
-#include "daemon/SetupManager.h"
-#include "helper/CaTrust.h"
-#include "helper/DnsZone.h"
-#include "helper/Firewall.h"
+#include "core/config/Config.h"
+#include "core/config/Paths.h"
+#include "core/helper/DbusUtils.h"
+#include "daemon/docker/DockerInventory.h"
+#include "daemon/setup/SetupManager.h"
+#include "helper/ca/CaTrust.h"
+#include "helper/dns/DnsZone.h"
+#include "helper/ports/Firewall.h"
 #include "helper/HelperService.h"
-#include "helper/Polkit.h"
-#include "helper/PortBinding.h"
+#include "helper/polkit/Polkit.h"
+#include "helper/ports/PortBinding.h"
 
 #include <QCoreApplication>
 #include <QDBusConnection>

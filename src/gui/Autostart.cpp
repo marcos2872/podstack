@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "gui/Autostart.h"
 
-#include "core/Config.h"
+#include "core/config/Config.h"
 
 #include <QCoreApplication>
 #include <QDir>

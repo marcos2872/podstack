@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "helper/UpdateService.h"
+#include "helper/updates/UpdateService.h"
 
 #include <QDBusContext>
 #include <QObject>

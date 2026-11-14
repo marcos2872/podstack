@@ -2,7 +2,7 @@
 
 #include "gui/UiState.h"
 
-#include "core/Paths.h"
+#include "core/config/Paths.h"
 
 #include <QDir>
 #include <QFile>

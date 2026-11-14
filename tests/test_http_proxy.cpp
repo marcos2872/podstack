@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "daemon/HttpProxy.h"
+#include "daemon/domains/HttpProxy.h"
 
 #include <QElapsedTimer>
 #include <QTcpServer>

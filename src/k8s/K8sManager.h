@@ -2,8 +2,8 @@
 
 #pragma once
 
-#include "core/Error.h"
-#include "k8s/K8sStore.h"
+#include "core/error/Error.h"
+#include "k8s/store/K8sStore.h"
 #include "machines/MachineManager.h"
 
 #include <QJsonArray>

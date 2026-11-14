@@ -1,6 +1,6 @@
 #include "podman/PodmanClient.h"
 
-#include "core/Paths.h"
+#include "core/config/Paths.h"
 
 #include <QDateTime>
 #include <QDir>

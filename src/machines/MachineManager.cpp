@@ -2,15 +2,15 @@
 
 #include "machines/MachineManager.h"
 
-#include "core/Config.h"
-#include "core/Ids.h"
-#include "core/Logging.h"
-#include "core/Paths.h"
-#include "core/Proxy.h"
-#include "machines/CloudInit.h"
-#include "machines/MachineArchive.h"
-#include "machines/SerialPorts.h"
-#include "machines/UsbDevices.h"
+#include "core/config/Config.h"
+#include "core/util/Ids.h"
+#include "core/logging/Logging.h"
+#include "core/config/Paths.h"
+#include "core/system/Proxy.h"
+#include "machines/provision/CloudInit.h"
+#include "machines/operations/MachineArchive.h"
+#include "machines/operations/SerialPorts.h"
+#include "machines/operations/UsbDevices.h"
 
 #include <QDateTime>
 #include <QDir>

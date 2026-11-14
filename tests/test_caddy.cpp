@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "daemon/CaddyProxy.h"
+#include "daemon/domains/CaddyProxy.h"
 
 #include <QCoreApplication>
 #include <QDir>

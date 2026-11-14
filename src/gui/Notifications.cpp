@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "gui/Notifications.h"
 
-#include "core/Config.h"
+#include "core/config/Config.h"
 
 #include <QDBusConnection>
 #include <QDBusInterface>

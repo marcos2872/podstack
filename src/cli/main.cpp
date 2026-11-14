@@ -1,12 +1,12 @@
-#include "core/Error.h"
-#include "core/LogReader.h"
-#include "core/Logging.h"
-#include "core/Paths.h"
-#include "core/Redaction.h"
-#include "core/RpcClient.h"
-#include "core/RpcStream.h"
-#include "core/UpdateRunner.h"
-#include "daemon/HelperClient.h"
+#include "core/error/Error.h"
+#include "core/logging/LogReader.h"
+#include "core/logging/Logging.h"
+#include "core/config/Paths.h"
+#include "core/logging/Redaction.h"
+#include "core/rpc/RpcClient.h"
+#include "core/rpc/RpcStream.h"
+#include "core/update/UpdateRunner.h"
+#include "core/helper/HelperClient.h"
 
 #include <QCoreApplication>
 #include <QDate>

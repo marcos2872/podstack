@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "core/Config.h"
+#include "core/config/Config.h"
 #include "gui/Backend.h"
 #include "gui/ContainerDetailDialog.h"
 #include "gui/ExternalTerminal.h"
