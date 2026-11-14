@@ -619,9 +619,10 @@ void RpcTest::systemReportRedactsSettings()
     QVERIFY(QDir().mkpath(logDir));
     QFile logFile(logDir + QStringLiteral("/podstackd.jsonl"));
     QVERIFY(logFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    logFile.write(QByteArrayLiteral(
-                      R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer s3cr3t"})")
-                  + '\n');
+    logFile.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer s3cr3t"})") +
+        '\n');
     logFile.close();
     QVERIFY(logFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
 

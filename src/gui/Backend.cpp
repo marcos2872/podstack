@@ -1,27 +1,26 @@
 #include "gui/Backend.h"
 
 #include "core/DiskUsage.h"
+#include "core/Error.h"
 #include "core/LogReader.h"
 #include "core/Logging.h"
 #include "core/Paths.h"
-#include "core/Redaction.h"
-#include "daemon/HelperClient.h"
-#include "core/Error.h"
 #include "core/Proxy.h"
+#include "core/Redaction.h"
 #include "core/RpcClient.h"
 #include "core/SetupActions.h"
 #include "core/SetupPolicy.h"
+#include "daemon/HelperClient.h"
 #include "gui/Autostart.h"
 #include "gui/TerminalWindow.h"
 
 #include <QClipboard>
 #include <QCoreApplication>
-#include <QDateTime>
 #include <QDate>
+#include <QDateTime>
 #include <QDesktopServices>
-#include <QFile>
-#include <QProcess>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -29,11 +28,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaMethod>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStringList>
-#include <QUrl>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantMap>
 #include <QtConcurrent>
 
@@ -2607,8 +2607,8 @@ void Backend::resumeUpdate()
 
 void Backend::startUpdateRunner(bool resume)
 {
-    if (qEnvironmentVariableIsSet("FLATPAK_ID")
-        || QFileInfo::exists(QStringLiteral("/.flatpak-info"))) {
+    if (qEnvironmentVariableIsSet("FLATPAK_ID") ||
+        QFileInfo::exists(QStringLiteral("/.flatpak-info"))) {
         emit updateCheckFailed(
             tr("O update assistido não está disponível no Flatpak; use o pacote do host."));
         return;
@@ -2624,16 +2624,14 @@ void Backend::startUpdateRunner(bool resume)
         return;
     }
     QFile::setPermissions(stateDir,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ExeOwner);
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
     QFile marker(stateDir + QStringLiteral("/gui-was-open"));
     if (!marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         emit updateCheckFailed(tr("Não foi possível gravar o marcador do update."));
         return;
     }
     marker.close();
-    QFile::setPermissions(marker.fileName(),
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    QFile::setPermissions(marker.fileName(), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 
     const QString sibling = QCoreApplication::applicationDirPath() + QStringLiteral("/podstack");
     QString program = QFileInfo(sibling).isExecutable()
@@ -2688,8 +2686,8 @@ void Backend::onSystemLogsFinished()
     m_lastLogs = task.result.lines;
     m_systemLogsTruncated = task.result.truncated;
 
-    if (m_pendingLogComponent.isEmpty() || m_pendingLogComponent == QStringLiteral("helper")
-        || m_pendingLogComponent == QStringLiteral("package")) {
+    if (m_pendingLogComponent.isEmpty() || m_pendingLogComponent == QStringLiteral("helper") ||
+        m_pendingLogComponent == QStringLiteral("package")) {
         HelperClient helper;
         QVariantMap reply;
         QString helperError;
@@ -2701,8 +2699,7 @@ void Backend::onSystemLogsFinished()
                     object.value(QStringLiteral("jobId")).toString().isEmpty()
                         ? QStringLiteral("helper")
                         : QStringLiteral("package");
-                if (!m_pendingLogComponent.isEmpty()
-                    && m_pendingLogComponent != helperComponent) {
+                if (!m_pendingLogComponent.isEmpty() && m_pendingLogComponent != helperComponent) {
                     continue;
                 }
                 const QString lineLevel =
@@ -2711,8 +2708,7 @@ void Backend::onSystemLogsFinished()
                 line.ts = object.value(QStringLiteral("ts")).toString();
                 line.level = lineLevel;
                 line.component = helperComponent;
-                line.message = Redaction::text(
-                    object.value(QStringLiteral("message")).toString());
+                line.message = Redaction::text(object.value(QStringLiteral("message")).toString());
                 line.raw = Redaction::text(raw);
                 m_lastLogs.append(line);
             }
@@ -2783,8 +2779,7 @@ void Backend::clearUpdateState()
 
 void Backend::openLogsFolder()
 {
-    QDesktopServices::openUrl(
-        QUrl::fromLocalFile(Paths::stateDir() + QStringLiteral("/logs")));
+    QDesktopServices::openUrl(QUrl::fromLocalFile(Paths::stateDir() + QStringLiteral("/logs")));
 }
 
 void Backend::setupLoadDockerImpact()

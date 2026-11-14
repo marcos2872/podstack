@@ -71,6 +71,7 @@ target_link_libraries(podstack_core PUBLIC Qt6::Core Qt6::Network OpenSSL::Crypt
 target_compile_definitions(podstack_core PUBLIC
     PODSTACK_VERSION="${PROJECT_VERSION}"
     PODSTACK_UPDATE_PUBLIC_KEY="${PODSTACK_UPDATE_PUBLIC_KEY}"
+    QT_MESSAGELOGCONTEXT
 )
 
 # ---------------------------------------------------------------------------

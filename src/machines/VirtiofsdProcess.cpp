@@ -318,14 +318,13 @@ bool VirtiofsdProcess::start(const QString &binary, const QString &source,
 
     const QByteArray socketHash =
         QCryptographicHash::hash(socketPath.toUtf8(), QCryptographicHash::Sha1).toHex().left(12);
-    const QString scopeUnit =
-        ProcessScope::unitName(QStringLiteral("podstack-virtiofsd"),
-                               QString::fromLatin1(socketHash));
+    const QString scopeUnit = ProcessScope::unitName(QStringLiteral("podstack-virtiofsd"),
+                                                     QString::fromLatin1(socketHash));
 
     qint64 pid = 0;
     QString launchFailure;
-    if (!ProcessScope::startDetached(scopeUnit, executable, arguments, &pid, &launchFailure)
-        || pid <= 0) {
+    if (!ProcessScope::startDetached(scopeUnit, executable, arguments, &pid, &launchFailure) ||
+        pid <= 0) {
         if (error) {
             *error = Error::make(
                 QStringLiteral("PODSTACK_UNSUPPORTED"),

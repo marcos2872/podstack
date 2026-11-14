@@ -24,8 +24,8 @@
 #include <QStringList>
 #include <QtGlobal>
 
-#include <mutex>
 #include <algorithm>
+#include <mutex>
 
 Q_LOGGING_CATEGORY(lcHelper, "podstack.helper")
 
@@ -779,8 +779,7 @@ QVariantMap HelperService::InstallUpdate(const QString &jobId)
                   qUtf8Printable(jobId), qUtf8Printable(updateError.code));
         return updateFailure(updateError);
     }
-    qCInfo(lcHelper, "InstallUpdate uid=%u job=%s unit=%s result=ok", uid,
-           qUtf8Printable(jobId),
+    qCInfo(lcHelper, "InstallUpdate uid=%u job=%s unit=%s result=ok", uid, qUtf8Printable(jobId),
            qUtf8Printable(reply.value(QStringLiteral("unit")).toString()));
     return reply;
 }

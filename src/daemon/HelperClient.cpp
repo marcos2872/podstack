@@ -40,8 +40,8 @@ bool HelperClient::call(const QString &method, const QVariantList &arguments, QS
     return ok;
 }
 
-bool HelperClient::callMap(const QString &method, const QVariantList &arguments,
-                           QVariantMap *reply, QString *error, int timeoutMs) const
+bool HelperClient::callMap(const QString &method, const QVariantList &arguments, QVariantMap *reply,
+                           QString *error, int timeoutMs) const
 {
     if (error) {
         *error = {};
@@ -63,8 +63,7 @@ bool HelperClient::callMap(const QString &method, const QVariantList &arguments,
     }
 
     interface.setTimeout(timeoutMs);
-    const QDBusMessage message =
-        interface.callWithArgumentList(QDBus::Block, method, arguments);
+    const QDBusMessage message = interface.callWithArgumentList(QDBus::Block, method, arguments);
     if (message.type() == QDBusMessage::ErrorMessage) {
         if (error) {
             *error = message.errorMessage();

@@ -15,8 +15,8 @@ namespace {
 bool envFlagEnabled(const char *name)
 {
     const QString value = qEnvironmentVariable(name).trimmed().toLower();
-    return value == QStringLiteral("1") || value == QStringLiteral("true")
-           || value == QStringLiteral("yes") || value == QStringLiteral("on");
+    return value == QStringLiteral("1") || value == QStringLiteral("true") ||
+           value == QStringLiteral("yes") || value == QStringLiteral("on");
 }
 
 } // namespace
@@ -90,8 +90,8 @@ QStringList ProcessScope::arguments(const QString &unit, const QString &program,
 }
 
 bool ProcessScope::startDetached(const QString &unit, const QString &program,
-                                 const QStringList &programArguments, qint64 *pid,
-                                 QString *failure, bool *scoped)
+                                 const QStringList &programArguments, qint64 *pid, QString *failure,
+                                 bool *scoped)
 {
     if (pid) {
         *pid = 0;
@@ -108,8 +108,7 @@ bool ProcessScope::startDetached(const QString &unit, const QString &program,
         const QString runner = systemdRunBinary();
         const QStringList scopeArguments = arguments(unit, program, programArguments);
         qint64 launched = 0;
-        if (QProcess::startDetached(runner, scopeArguments, QString(), &launched)
-            && launched > 0) {
+        if (QProcess::startDetached(runner, scopeArguments, QString(), &launched) && launched > 0) {
             if (pid) {
                 *pid = launched;
             }
@@ -121,19 +120,18 @@ bool ProcessScope::startDetached(const QString &unit, const QString &program,
             return true;
         }
         scopeFailure = QStringLiteral("systemd-run não iniciou o processo");
-        qCWarning(lcCore) << "Falha ao iniciar o scope" << unit
-                          << "; tentando execução direta";
+        qCWarning(lcCore) << "Falha ao iniciar o scope" << unit << "; tentando execução direta";
     }
 
     qint64 launched = 0;
-    if (!QProcess::startDetached(program, programArguments, QString(), &launched)
-        || launched <= 0) {
+    if (!QProcess::startDetached(program, programArguments, QString(), &launched) ||
+        launched <= 0) {
         if (failure) {
-            *failure = scopeFailure.isEmpty()
-                           ? QStringLiteral("não foi possível iniciar %1").arg(program)
-                           : scopeFailure
-                                 + QStringLiteral("; execução direta de %1 também falhou")
-                                       .arg(program);
+            *failure =
+                scopeFailure.isEmpty()
+                    ? QStringLiteral("não foi possível iniciar %1").arg(program)
+                    : scopeFailure +
+                          QStringLiteral("; execução direta de %1 também falhou").arg(program);
         }
         return false;
     }

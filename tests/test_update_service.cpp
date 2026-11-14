@@ -36,8 +36,8 @@ bool writeExecutable(const QString &path, const QByteArray &body)
     file.write(body);
     file.write("\n");
     file.close();
-    return file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                               | QFileDevice::ExeOwner);
+    return file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                               QFileDevice::ExeOwner);
 }
 
 QString hostFormat()
@@ -65,6 +65,15 @@ QByteArray sha256File(const QString &path)
         return {};
     }
     return QCryptographicHash::hash(file.readAll(), QCryptographicHash::Sha256).toHex();
+}
+
+/// O helper real recebe o uid do cliente via SO_PEERCRED e recusa uid 0. Nos
+/// containers do CI os testes rodam como root; nesse caso simulamos um usuário
+/// comum e transferimos o artefato para ele.
+uid_t testUid()
+{
+    const uid_t current = ::getuid();
+    return current == 0 ? static_cast<uid_t>(1000) : current;
 }
 
 } // namespace
@@ -126,10 +135,9 @@ void UpdateServiceTest::writeFakes(const QString &root)
                           "then echo \"$FAKE_ACTIVE_UNIT loaded active running\"; fi\nexit 0\n")));
 
     const QString systemdRun = root + QStringLiteral("/systemd-run");
-    QVERIFY(writeExecutable(
-        systemdRun,
-        QByteArrayLiteral("printf '%s\\n' \"$@\" > \"$FAKE_SYSTEMD_RUN_LOG\"\n"
-                          "exit \"${FAKE_SYSTEMD_RUN_EXIT:-0}\"\n")));
+    QVERIFY(writeExecutable(systemdRun,
+                            QByteArrayLiteral("printf '%s\\n' \"$@\" > \"$FAKE_SYSTEMD_RUN_LOG\"\n"
+                                              "exit \"${FAKE_SYSTEMD_RUN_EXIT:-0}\"\n")));
 }
 
 QString UpdateServiceTest::makeTool(const QString &root, const QString &format, const QString &name,
@@ -139,13 +147,13 @@ QString UpdateServiceTest::makeTool(const QString &root, const QString &format, 
     QByteArray body;
     if (format == QStringLiteral("deb")) {
         body = QByteArrayLiteral("printf 'Package: %s\\nVersion: %s-1\\nArchitecture: %s\\n' "
-                                 "\"${FAKE_PKG_NAME:-") + name.toUtf8()
-               + QByteArrayLiteral("}\" \"${FAKE_PKG_VERSION:-") + version.toUtf8()
-               + QByteArrayLiteral("}\" \"${FAKE_PKG_ARCH:-amd64}\"\n");
+                                 "\"${FAKE_PKG_NAME:-") +
+               name.toUtf8() + QByteArrayLiteral("}\" \"${FAKE_PKG_VERSION:-") + version.toUtf8() +
+               QByteArrayLiteral("}\" \"${FAKE_PKG_ARCH:-amd64}\"\n");
     } else {
-        body = QByteArrayLiteral("printf '%s\\n%s\\n%s\\n' \"${FAKE_PKG_NAME:-") + name.toUtf8()
-               + QByteArrayLiteral("}\" \"${FAKE_PKG_VERSION:-") + version.toUtf8()
-               + QByteArrayLiteral("}\" \"${FAKE_PKG_ARCH:-x86_64}\"\n");
+        body = QByteArrayLiteral("printf '%s\\n%s\\n%s\\n' \"${FAKE_PKG_NAME:-") + name.toUtf8() +
+               QByteArrayLiteral("}\" \"${FAKE_PKG_VERSION:-") + version.toUtf8() +
+               QByteArrayLiteral("}\" \"${FAKE_PKG_ARCH:-x86_64}\"\n");
     }
     if (!writeExecutable(path, body)) {
         return {};
@@ -157,7 +165,7 @@ UpdateServiceTest::Fixture UpdateServiceTest::makeFixture(const QString &name,
                                                           const QString &version, bool valid)
 {
     Fixture fixture;
-    fixture.uid = ::getuid();
+    fixture.uid = testUid();
     const QString root = m_root->filePath(name);
     if (!QDir().mkpath(root)) {
         return {};
@@ -165,8 +173,8 @@ UpdateServiceTest::Fixture UpdateServiceTest::makeFixture(const QString &name,
     writeFakes(root);
 
     const QString format = hostFormat();
-    const QString artifact = root + QStringLiteral("/podstack-%1.%2.%3")
-                                       .arg(version, hostArch(), format);
+    const QString artifact =
+        root + QStringLiteral("/podstack-%1.%2.%3").arg(version, hostArch(), format);
     QFile artifactFile(artifact);
     if (!artifactFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return {};
@@ -176,12 +184,18 @@ UpdateServiceTest::Fixture UpdateServiceTest::makeFixture(const QString &name,
     if (!artifactFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
         return {};
     }
+    if (::getuid() == 0) {
+        const QByteArray path = QFile::encodeName(artifact);
+        if (::chown(path.constData(), fixture.uid, static_cast<gid_t>(-1)) != 0) {
+            return {};
+        }
+    }
 
     const QString sha = QString::fromLatin1(sha256File(artifact));
     QJsonObject release;
     release.insert(QStringLiteral("version"), version);
-    release.insert(QStringLiteral("releaseUrl"), QStringLiteral("https://example.test/tag/v%1")
-                                                     .arg(version));
+    release.insert(QStringLiteral("releaseUrl"),
+                   QStringLiteral("https://example.test/tag/v%1").arg(version));
     release.insert(QStringLiteral("notes"), QStringLiteral("notas"));
     QJsonObject artifactObject;
     artifactObject.insert(QStringLiteral("arch"), hostArch());
@@ -207,9 +221,9 @@ UpdateServiceTest::Fixture UpdateServiceTest::makeFixture(const QString &name,
     options.embeddedKey = UpdateTestUtils::publicKeyBase64(m_key);
     options.systemdRun = root + QStringLiteral("/systemd-run");
     options.systemctl = root + QStringLiteral("/systemctl");
-    options.packageTool = makeTool(root, format, QStringLiteral("podstack"), version,
-                                   format == QStringLiteral("deb") ? QStringLiteral("amd64")
-                                                                   : hostArch());
+    options.packageTool =
+        makeTool(root, format, QStringLiteral("podstack"), version,
+                 format == QStringLiteral("deb") ? QStringLiteral("amd64") : hostArch());
     options.wrapperPath = root + QStringLiteral("/wrapper");
     options.logRoot = root + QStringLiteral("/logs");
     options.maxArtifactBytes = 1024 * 1024;
@@ -219,8 +233,8 @@ UpdateServiceTest::Fixture UpdateServiceTest::makeFixture(const QString &name,
 
     // Ajusta o nome do artefato para não coincidir com o glob de poderes.
     if (!valid) {
-        fixture.signature = UpdateTestUtils::minisignFile(fixture.manifest + QByteArrayLiteral("x"),
-                                                           m_key, false);
+        fixture.signature =
+            UpdateTestUtils::minisignFile(fixture.manifest + QByteArrayLiteral("x"), m_key, false);
     }
     return fixture;
 }
@@ -240,8 +254,8 @@ void UpdateServiceTest::stageAndStatus()
     const QString stateDir = result.value(QStringLiteral("stateDir")).toString();
     const QFileInfo stateFile(stateDir + QStringLiteral("/state.json"));
     QVERIFY(stateFile.isFile());
-    QVERIFY((stateFile.permissions() & QFileDevice::ReadGroup) != 0
-            || stateFile.permissions() == (QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    QVERIFY((stateFile.permissions() & QFileDevice::ReadGroup) != 0 ||
+            stateFile.permissions() == (QFileDevice::ReadOwner | QFileDevice::WriteOwner));
     QVERIFY(QFileInfo(stateDir).isDir());
 
     const QString artifact = stateDir + QStringLiteral("/artifact.") + hostFormat();
@@ -281,7 +295,8 @@ void UpdateServiceTest::stageRejectsSignatureAndHash()
 
 void UpdateServiceTest::stageRejectsVersionAndIdentity()
 {
-    Fixture same = makeFixture(QStringLiteral("same-version"), QString::fromLatin1(PODSTACK_VERSION));
+    Fixture same =
+        makeFixture(QStringLiteral("same-version"), QString::fromLatin1(PODSTACK_VERSION));
     UpdateService sameService(same.options);
     QVariantMap result;
     PodStack::Error error;
@@ -314,8 +329,8 @@ void UpdateServiceTest::stageRejectsArtifactVariants()
     PodStack::Error error;
 
     QVERIFY(!service.stage(fixture.uid, fixture.manifest, fixture.signature,
-                           fixture.artifact + QStringLiteral(".missing"),
-                           QStringLiteral("stable"), &result, &error));
+                           fixture.artifact + QStringLiteral(".missing"), QStringLiteral("stable"),
+                           &result, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
 
     const QString link = fixture.artifact + QStringLiteral(".link");
@@ -334,8 +349,8 @@ void UpdateServiceTest::stageRejectsArtifactVariants()
     small.maxArtifactBytes = 1;
     UpdateService smallService(small);
     error = {};
-    QVERIFY(!smallService.stage(fixture.uid, fixture.manifest, fixture.signature,
-                                fixture.artifact, QStringLiteral("stable"), &result, &error));
+    QVERIFY(!smallService.stage(fixture.uid, fixture.manifest, fixture.signature, fixture.artifact,
+                                QStringLiteral("stable"), &result, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"));
 
     Fixture wrongArch = makeFixture(QStringLiteral("wrong-arch"));
@@ -382,12 +397,11 @@ void UpdateServiceTest::logsReadRootFiles()
     UpdateService service(fixture.options);
     QVERIFY(QDir().mkpath(fixture.options.logRoot));
     const QString fakeJournal = fixture.options.logRoot + QStringLiteral("/journalctl");
-    QByteArray journalBody = QByteArrayLiteral("echo \"JOB_ID=update-test UID=")
-                             + QByteArray::number(fixture.uid)
-                             + QByteArrayLiteral(" Authorization: Bearer journal\"\n")
-                             + QByteArrayLiteral("echo \"JOB_ID=other UID=")
-                             + QByteArray::number(fixture.uid)
-                             + QByteArrayLiteral(" ruido\"\n");
+    QByteArray journalBody = QByteArrayLiteral("echo \"JOB_ID=update-test UID=") +
+                             QByteArray::number(fixture.uid) +
+                             QByteArrayLiteral(" Authorization: Bearer journal\"\n") +
+                             QByteArrayLiteral("echo \"JOB_ID=other UID=") +
+                             QByteArray::number(fixture.uid) + QByteArrayLiteral(" ruido\"\n");
     QVERIFY(writeExecutable(fakeJournal, journalBody));
     const QByteArray previousPath = qgetenv("PATH");
     qputenv("PATH", fixture.options.logRoot.toUtf8() + ':' + previousPath);
@@ -396,13 +410,13 @@ void UpdateServiceTest::logsReadRootFiles()
     withJournal.includeJournal = true;
     UpdateService journalService(withJournal);
 
-    const QString uidDir = fixture.options.logRoot + QLatin1Char('/')
-                           + QString::number(fixture.uid);
+    const QString uidDir =
+        fixture.options.logRoot + QLatin1Char('/') + QString::number(fixture.uid);
     QVERIFY(QDir().mkpath(uidDir));
     QFile file(uidDir + QStringLiteral("/update-test.jsonl"));
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    file.write(QByteArrayLiteral(R"({"jobId":"update-test","uid":1000,)")
-               + QByteArrayLiteral(R"("message":"Authorization: Bearer segredo"})") + '\n');
+    file.write(QByteArrayLiteral(R"({"jobId":"update-test","uid":1000,)") +
+               QByteArrayLiteral(R"("message":"Authorization: Bearer segredo"})") + '\n');
     file.close();
 
     QVariantList lines;
@@ -451,8 +465,9 @@ void UpdateServiceTest::installRunsSystemdRun()
     qunsetenv("FAKE_ACTIVE_UNIT");
     QVariantMap install;
     QVERIFY2(service.install(fixture.uid, jobId, &install, &error), qPrintable(error.message));
-    QVERIFY(install.value(QStringLiteral("unit")).toString().startsWith(
-        QStringLiteral("podstack-update-")));
+    QVERIFY(install.value(QStringLiteral("unit"))
+                .toString()
+                .startsWith(QStringLiteral("podstack-update-")));
 
     QFile log(fixture.options.stateRoot + QStringLiteral("/systemd-run.log"));
     QVERIFY(log.open(QIODevice::ReadOnly));
@@ -475,8 +490,8 @@ void UpdateServiceTest::installRefusesActiveUnit()
     qputenv("FAKE_ACTIVE_UNIT", "podstack-update-outra.service");
     const auto restore = qScopeGuard([] { qunsetenv("FAKE_ACTIVE_UNIT"); });
     QVariantMap install;
-    QVERIFY(!service.install(fixture.uid, stage.value(QStringLiteral("jobId")).toString(),
-                             &install, &error));
+    QVERIFY(!service.install(fixture.uid, stage.value(QStringLiteral("jobId")).toString(), &install,
+                             &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_LOCKED"));
 }
 
@@ -496,8 +511,8 @@ void UpdateServiceTest::installReportsSystemdRunFailure()
         qunsetenv("FAKE_SYSTEMD_RUN_LOG");
     });
     QVariantMap install;
-    QVERIFY(!service.install(fixture.uid, stage.value(QStringLiteral("jobId")).toString(),
-                             &install, &error));
+    QVERIFY(!service.install(fixture.uid, stage.value(QStringLiteral("jobId")).toString(), &install,
+                             &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
 }
 

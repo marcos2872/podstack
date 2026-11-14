@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "core/Config.h"
+#include "core/LogReader.h"
 #include "core/LogRotation.h"
 #include "core/LogWriter.h"
-#include "core/LogReader.h"
 #include "core/Logging.h"
-#include "core/Paths.h"
 #include "core/Paths.h"
 #include "core/Settings.h"
 
@@ -322,8 +321,8 @@ void LoggingTest::rotateAtStart()
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Append));
     file.write("ontem\n");
     QVERIFY(file.flush());
-    QVERIFY(file.setFileTime(QDateTime(yesterday, QTime(12, 0)),
-                             QFileDevice::FileModificationTime));
+    QVERIFY(
+        file.setFileTime(QDateTime(yesterday, QTime(12, 0)), QFileDevice::FileModificationTime));
     file.close();
     QCOMPARE(QFileInfo(current).lastModified().date(), yesterday);
 
@@ -383,12 +382,14 @@ void LoggingTest::logReaderFilters()
     QVERIFY(dir.isValid());
     QFile daemon(dir.filePath(QStringLiteral("podstackd.jsonl")));
     QVERIFY(daemon.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    daemon.write(QByteArrayLiteral(
-                     R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.core","process":"podstackd","message":"info"})")
-                 + '\n');
-    daemon.write(QByteArrayLiteral(
-                     R"({"ts":"2026-11-13T00:00:01Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})")
-                 + '\n');
+    daemon.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.core","process":"podstackd","message":"info"})") +
+        '\n');
+    daemon.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:01Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})") +
+        '\n');
     daemon.close();
 
     PodStack::LogReadOptions options;
@@ -418,16 +419,18 @@ void LoggingTest::logReaderEdges()
     QVERIFY(dir.isValid());
     QFile daemon(dir.filePath(QStringLiteral("podstackd.jsonl")));
     QVERIFY(daemon.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    daemon.write(QByteArrayLiteral(
-                     R"({"ts":"2026-11-13T00:00:00Z","level":"debug","category":"podstack.core","process":"podstackd","message":"debug"})")
-                 + '\n');
+    daemon.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:00Z","level":"debug","category":"podstack.core","process":"podstackd","message":"debug"})") +
+        '\n');
     daemon.write(QByteArrayLiteral("not-json\n"));
     daemon.close();
     QFile gui(dir.filePath(QStringLiteral("podstack-gui-1.jsonl")));
     QVERIFY(gui.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    gui.write(QByteArrayLiteral(
-                  R"({"ts":"2026-11-13T00:00:01Z","level":"error","category":"qml","process":"podstack-gui-1","message":"erro qml"})")
-              + '\n');
+    gui.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:01Z","level":"error","category":"qml","process":"podstack-gui-1","message":"erro qml"})") +
+        '\n');
     gui.close();
 
     PodStack::LogReadOptions options;
@@ -481,7 +484,8 @@ void LoggingTest::logReaderEdges()
 
 void LoggingTest::settingsSchema()
 {
-    const PodStack::SettingDef *level = PodStack::Settings::find(QStringLiteral("advanced.logLevel"));
+    const PodStack::SettingDef *level =
+        PodStack::Settings::find(QStringLiteral("advanced.logLevel"));
     QVERIFY(level != nullptr);
     QVERIFY(!level->hidden);
     QVERIFY(!level->restartRequired);

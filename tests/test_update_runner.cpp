@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "core/UpdateRunner.h"
 #include "core/UpdateManifest.h"
+#include "core/UpdateRunner.h"
 
 #include "MockHttpServer.h"
 #include "UpdateTestUtils.h"
@@ -46,23 +46,23 @@ public:
         }
         if (method == QStringLiteral("InstallUpdate")) {
             if (reply) {
-                *reply = QVariantMap{{QStringLiteral("ok"), true},
-                                     {QStringLiteral("unit"),
-                                      QStringLiteral("podstack-update-fake.service")}};
+                *reply = QVariantMap{
+                    {QStringLiteral("ok"), true},
+                    {QStringLiteral("unit"), QStringLiteral("podstack-update-fake.service")}};
             }
             return true;
         }
         if (method == QStringLiteral("GetUpdateStatus")) {
             if (reply) {
-                *reply = QVariantMap{{QStringLiteral("ok"), true},
-                                     {QStringLiteral("phase"), failed ? QStringLiteral("failed")
-                                                                      : QStringLiteral("done")},
-                                     {QStringLiteral("percent"), 100},
-                                     {QStringLiteral("errorCode"),
-                                      failed ? QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED")
-                                             : QString()},
-                                     {QStringLiteral("message"), failed ? QStringLiteral("falhou")
-                                                                        : QStringLiteral("ok")}};
+                *reply = QVariantMap{
+                    {QStringLiteral("ok"), true},
+                    {QStringLiteral("phase"),
+                     failed ? QStringLiteral("failed") : QStringLiteral("done")},
+                    {QStringLiteral("percent"), 100},
+                    {QStringLiteral("errorCode"),
+                     failed ? QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED") : QString()},
+                    {QStringLiteral("message"),
+                     failed ? QStringLiteral("falhou") : QStringLiteral("ok")}};
             }
             return true;
         }
@@ -172,17 +172,16 @@ std::unique_ptr<UpdateRunnerTest::Fixture> UpdateRunnerTest::makeFixture(const Q
     artifactFile.close();
     const QByteArray sha =
         QCryptographicHash::hash(fixture->artifact, QCryptographicHash::Sha256).toHex();
-    fixture->artifactUrl = fixture->server.url(QStringLiteral("/podstack-") + version
-                                               + QStringLiteral(".") + hostArch()
-                                               + QStringLiteral(".") + format);
-    fixture->manifest =
-        manifestFor(sha, version, fixture->artifactUrl, format);
+    fixture->artifactUrl =
+        fixture->server.url(QStringLiteral("/podstack-") + version + QStringLiteral(".") +
+                            hostArch() + QStringLiteral(".") + format);
+    fixture->manifest = manifestFor(sha, version, fixture->artifactUrl, format);
     fixture->signature = UpdateTestUtils::minisignFile(fixture->manifest, fixture->key, false);
     fixture->server.setResponse(QStringLiteral("/podstack-update.json"), 200, fixture->manifest);
     fixture->server.setResponse(QStringLiteral("/podstack-update.json.minisig"), 200,
                                 fixture->signature);
-    fixture->server.setResponse(QStringLiteral("/podstack-") + version + QStringLiteral(".")
-                                    + hostArch() + QStringLiteral(".") + format,
+    fixture->server.setResponse(QStringLiteral("/podstack-") + version + QStringLiteral(".") +
+                                    hostArch() + QStringLiteral(".") + format,
                                 200, fixture->artifact);
 
     fixture->options.cacheDir = fixture->dir->filePath(QStringLiteral("cache"));
@@ -271,7 +270,8 @@ void UpdateRunnerTest::prepareUsesCache()
     PodStack::UpdateRunner runner(&helper, fixture->options);
     PodStack::Error error;
     QVERIFY2(runner.prepare(&error), qPrintable(error.message));
-    const int manifestRequests = fixture->server.requestCount(QStringLiteral("/podstack-update.json"));
+    const int manifestRequests =
+        fixture->server.requestCount(QStringLiteral("/podstack-update.json"));
     QVERIFY2(runner.prepare(&error), qPrintable(error.message));
     QCOMPARE(fixture->server.requestCount(QStringLiteral("/podstack-update.json")),
              manifestRequests);
@@ -402,8 +402,8 @@ void UpdateRunnerTest::installRestartsServices()
     script.write(logPath.toUtf8());
     script.write("\"\nexit 0\n");
     script.close();
-    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                  | QFileDevice::ExeOwner));
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
 
     fixture->options.restartServices = true;
     fixture->options.systemctlBinary = systemctl;
@@ -435,8 +435,8 @@ void UpdateRunnerTest::installRelaunchesGui()
     script.write(guiLog.toUtf8());
     script.write("\"\nexit 0\n");
     script.close();
-    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                  | QFileDevice::ExeOwner));
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
 
     const QString marker = fixture->dir->filePath(QStringLiteral("gui-was-open"));
     QFile markerFile(marker);
@@ -542,8 +542,8 @@ void UpdateRunnerTest::notifyOnInstall()
     script.write(log.toUtf8());
     script.write("\"\nexit 0\n");
     script.close();
-    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                  | QFileDevice::ExeOwner));
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
     fixture->options.notifyBinary = notify;
     fixture->options.restartServices = false;
     FakeUpdateHelper helper;

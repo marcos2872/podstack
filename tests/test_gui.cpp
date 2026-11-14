@@ -1658,9 +1658,10 @@ void GuiTest::systemLogs()
     QVERIFY(QDir().mkpath(logDir));
     QFile file(logDir + QStringLiteral("/podstackd.jsonl"));
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    file.write(QByteArrayLiteral(
-                  R"({"ts":"2026-11-13T00:00:00Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})")
-              + '\n');
+    file.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:00Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})") +
+        '\n');
     file.close();
 
     PodStack::Backend backend;
@@ -1668,7 +1669,10 @@ void GuiTest::systemLogs()
     QTRY_VERIFY_WITH_TIMEOUT(!backend.systemLogsBusy(), 3000);
     QVERIFY2(backend.systemLogsError().isEmpty(), qPrintable(backend.systemLogsError()));
     QCOMPARE(backend.systemLogs().size(), 1);
-    QVERIFY(!backend.systemLogs().first().toMap().value(QStringLiteral("message"))
+    QVERIFY(!backend.systemLogs()
+                 .first()
+                 .toMap()
+                 .value(QStringLiteral("message"))
                  .toString()
                  .contains(QStringLiteral("segredo")));
 
@@ -1692,9 +1696,8 @@ void GuiTest::loadUpdateState()
     state.close();
 
     PodStack::Backend backend;
-    QTRY_COMPARE_WITH_TIMEOUT(
-        backend.updateStatus().value(QStringLiteral("status")).toString(),
-        QStringLiteral("installed"), 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(backend.updateStatus().value(QStringLiteral("status")).toString(),
+                              QStringLiteral("installed"), 3000);
 }
 
 void GuiTest::diagnosticReport()
@@ -1745,7 +1748,8 @@ void GuiTest::unixTerminationSignal()
 {
     int received = 0;
     QString error;
-    QVERIFY2(PodStack::installTerminationHandler(this, [&received]() { ++received; }, &error),
+    QVERIFY2(PodStack::installTerminationHandler(
+                 this, [&received]() { ++received; }, &error),
              qPrintable(error));
 
     ::raise(SIGTERM);

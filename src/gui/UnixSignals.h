@@ -14,7 +14,7 @@ namespace PodStack {
 /// um QSocketNotifier lê esse byte e executa o callback no loop de eventos.
 /// Isso permite salvar o `UiState` antes de o systemd encerrar a GUI durante
 /// um update. Instalação é idempotente por processo.
-bool installTerminationHandler(QObject *context, std::function<void()> callback,
+bool installTerminationHandler(QObject *context, const std::function<void()> &callback,
                                QString *error = nullptr);
 
 } // namespace PodStack

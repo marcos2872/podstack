@@ -626,8 +626,8 @@ int commandUpdate(const QStringList &args)
         if (status == QStringLiteral("unavailable")) {
             return kExitError;
         }
-        if (status == QStringLiteral("ok")
-            && result.value(QStringLiteral("updateAvailable")).toBool()) {
+        if (status == QStringLiteral("ok") &&
+            result.value(QStringLiteral("updateAvailable")).toBool()) {
             return kExitOutdated;
         }
         return kExitOk;
@@ -692,8 +692,8 @@ int commandUpdate(const QStringList &args)
         std::string answer;
         std::getline(std::cin, answer);
         const QString normalized = QString::fromStdString(answer).trimmed().toLower();
-        if (normalized != QStringLiteral("s") && normalized != QStringLiteral("sim")
-            && normalized != QStringLiteral("y") && normalized != QStringLiteral("yes")) {
+        if (normalized != QStringLiteral("s") && normalized != QStringLiteral("sim") &&
+            normalized != QStringLiteral("y") && normalized != QStringLiteral("yes")) {
             out() << QStringLiteral("cancelado\n");
             out().flush();
             return kExitCancelled;
@@ -4139,17 +4139,17 @@ int levelRank(const QString &level)
 
 bool validLogLevel(const QString &level)
 {
-    return level == QStringLiteral("error") || level == QStringLiteral("warn")
-           || level == QStringLiteral("info") || level == QStringLiteral("debug")
-           || level == QStringLiteral("trace");
+    return level == QStringLiteral("error") || level == QStringLiteral("warn") ||
+           level == QStringLiteral("info") || level == QStringLiteral("debug") ||
+           level == QStringLiteral("trace");
 }
 
 bool validLogComponent(const QString &component)
 {
-    static const QStringList components{
-        QStringLiteral("daemon"), QStringLiteral("gui"),    QStringLiteral("cli"),
-        QStringLiteral("qml"),    QStringLiteral("setup"),  QStringLiteral("update"),
-        QStringLiteral("helper"), QStringLiteral("package")};
+    static const QStringList components{QStringLiteral("daemon"), QStringLiteral("gui"),
+                                        QStringLiteral("cli"),    QStringLiteral("qml"),
+                                        QStringLiteral("setup"),  QStringLiteral("update"),
+                                        QStringLiteral("helper"), QStringLiteral("package")};
     return components.contains(component);
 }
 
@@ -4185,14 +4185,14 @@ int commandSystemLogs(const QStringList &args)
             follow = true;
         } else if (arg == QStringLiteral("--clear")) {
             clear = true;
-        } else if (arg == QStringLiteral("--export") || arg == QStringLiteral("--since")
-                   || arg == QStringLiteral("--level") || arg == QStringLiteral("--component")) {
+        } else if (arg == QStringLiteral("--export") || arg == QStringLiteral("--since") ||
+                   arg == QStringLiteral("--level") || arg == QStringLiteral("--component")) {
             if (index + 1 >= args.size() || args.at(index + 1).startsWith(QStringLiteral("--"))) {
                 err() << "opção sem valor: " << arg << '\n';
                 err().flush();
                 return kExitUsage;
             }
-            const QString value = args.at(++index);
+            const QString &value = args.at(++index);
             if (arg == QStringLiteral("--export")) {
                 exportPath = value;
             } else if (arg == QStringLiteral("--since")) {
@@ -4251,8 +4251,8 @@ int commandSystemLogs(const QStringList &args)
         return fail(error);
     }
 
-    if (component.isEmpty() || component == QStringLiteral("helper")
-        || component == QStringLiteral("package")) {
+    if (component.isEmpty() || component == QStringLiteral("helper") ||
+        component == QStringLiteral("package")) {
         PodStack::HelperClient helper;
         QVariantMap reply;
         QString helperError;
@@ -4281,8 +4281,8 @@ int commandSystemLogs(const QStringList &args)
                 line.ts = object.value(QStringLiteral("ts")).toString();
                 line.level = lineLevel;
                 line.component = helperComponent;
-                line.message = PodStack::Redaction::text(
-                    object.value(QStringLiteral("message")).toString());
+                line.message =
+                    PodStack::Redaction::text(object.value(QStringLiteral("message")).toString());
                 line.raw = PodStack::Redaction::text(raw);
                 line.levelValue = levelRank(lineLevel);
                 result.lines.append(line);

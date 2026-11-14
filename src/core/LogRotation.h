@@ -13,8 +13,8 @@ struct Options {
     QString directory;
     QString stem; // podstackd, podstack-gui-123, test_logging-456
     int retentionDays = 7;
-    qint64 maxFileBytes = 10 * 1024 * 1024;
-    qint64 maxTotalBytes = 200 * 1024 * 1024;
+    qint64 maxFileBytes = 10LL * 1024 * 1024;
+    qint64 maxTotalBytes = 200LL * 1024 * 1024;
 };
 
 /// `dir/<stem>.jsonl` (arquivo corrente, sem data).

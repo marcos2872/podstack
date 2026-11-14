@@ -60,9 +60,8 @@ QString hostArch()
 
 QString hostFormat()
 {
-    return QFileInfo::exists(QStringLiteral("/etc/debian_version"))
-               ? QStringLiteral("deb")
-               : QStringLiteral("rpm");
+    return QFileInfo::exists(QStringLiteral("/etc/debian_version")) ? QStringLiteral("deb")
+                                                                    : QStringLiteral("rpm");
 }
 
 QString artifactFormat(const QString &path)
@@ -143,13 +142,9 @@ bool readStateFile(const QString &path, QVariantMap *state, Error *error)
 
 } // namespace
 
-UpdateService::UpdateService()
-    : UpdateService(Options{})
-{
-}
+UpdateService::UpdateService() : UpdateService(Options{}) {}
 
-UpdateService::UpdateService(Options options)
-    : m_options(std::move(options))
+UpdateService::UpdateService(Options options) : m_options(std::move(options))
 {
     if (m_options.embeddedKey.isEmpty()) {
         m_options.embeddedKey = QString::fromLatin1(PODSTACK_UPDATE_PUBLIC_KEY);
@@ -166,8 +161,8 @@ bool UpdateService::readReleaseKey(QString *key, Error *error) const
     }
 
     const QFileInfo info(m_options.releaseKeyPath);
-    if (!info.isFile() || info.ownerId() != 0
-        || (info.permissions() & (QFileDevice::WriteGroup | QFileDevice::WriteOther))) {
+    if (!info.isFile() || info.ownerId() != 0 ||
+        (info.permissions() & (QFileDevice::WriteGroup | QFileDevice::WriteOther))) {
         if (error) {
             *error = updateError(
                 QStringLiteral("PODSTACK_UPDATE_UNSUPPORTED"),
@@ -190,16 +185,14 @@ bool UpdateService::validatePackage(const QString &artifactPath, const QString &
     const QString format = artifactFormat(artifactPath);
     QString tool = m_options.packageTool;
     if (tool.isEmpty()) {
-        tool = format == QStringLiteral("deb") ? QStringLiteral("dpkg-deb")
-                                                : QStringLiteral("rpm");
+        tool = format == QStringLiteral("deb") ? QStringLiteral("dpkg-deb") : QStringLiteral("rpm");
     }
     const QString executable = QStandardPaths::findExecutable(tool);
     if (executable.isEmpty()) {
         if (error) {
-            *error = updateError(QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
-                                 QStringLiteral("Ferramenta de pacote não encontrada: %1.")
-                                     .arg(tool),
-                                 artifactPath);
+            *error = updateError(
+                QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
+                QStringLiteral("Ferramenta de pacote não encontrada: %1.").arg(tool), artifactPath);
         }
         return false;
     }
@@ -262,8 +255,7 @@ bool UpdateService::validatePackage(const QString &artifactPath, const QString &
         }
         return false;
     }
-    if (version != expectedVersion
-        && !version.startsWith(expectedVersion + QLatin1Char('-'))) {
+    if (version != expectedVersion && !version.startsWith(expectedVersion + QLatin1Char('-'))) {
         if (error) {
             *error = updateError(QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
                                  QStringLiteral("Versão do pacote não corresponde ao manifesto."),
@@ -284,8 +276,8 @@ bool UpdateService::validatePackage(const QString &artifactPath, const QString &
 
 QString UpdateService::statePath(const QString &jobId) const
 {
-    if (!jobId.startsWith(QStringLiteral("update-")) || jobId.contains(QLatin1Char('/'))
-        || jobId.contains(QStringLiteral(".."))) {
+    if (!jobId.startsWith(QStringLiteral("update-")) || jobId.contains(QLatin1Char('/')) ||
+        jobId.contains(QStringLiteral(".."))) {
         return {};
     }
     return m_options.stateRoot + QLatin1Char('/') + jobId + QStringLiteral("/state.json");
@@ -304,29 +296,28 @@ bool UpdateService::writeState(const QString &stateDir, const QVariantMap &state
         return false;
     }
     QFile::setPermissions(stateDir,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ExeOwner);
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
     const QString path = stateDir + QStringLiteral("/state.json");
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly)) {
         if (error) {
-            *error = updateError(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível gravar o estado do update."),
-                                 path);
+            *error =
+                updateError(QStringLiteral("PODSTACK_IO_ERROR"),
+                            QStringLiteral("Não foi possível gravar o estado do update."), path);
         }
         return false;
     }
     file.write(QJsonDocument(QJsonObject::fromVariantMap(state)).toJson(QJsonDocument::Compact));
     if (!file.commit()) {
         if (error) {
-            *error = updateError(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível concluir o estado do update."),
-                                 path);
+            *error =
+                updateError(QStringLiteral("PODSTACK_IO_ERROR"),
+                            QStringLiteral("Não foi possível concluir o estado do update."), path);
         }
         return false;
     }
-    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                    | QFileDevice::ReadGroup);
+    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                    QFileDevice::ReadGroup);
     return true;
 }
 
@@ -349,10 +340,9 @@ bool UpdateService::activeUpdateUnit(QString *unit, Error *error) const
         return false;
     }
     QProcess process;
-    process.start(executable,
-                  {QStringLiteral("list-units"), QStringLiteral("--type=service"),
-                   QStringLiteral("--state=active"), QStringLiteral("--no-legend"),
-                   QStringLiteral("podstack-update-*")});
+    process.start(executable, {QStringLiteral("list-units"), QStringLiteral("--type=service"),
+                               QStringLiteral("--state=active"), QStringLiteral("--no-legend"),
+                               QStringLiteral("podstack-update-*")});
     if (!process.waitForFinished(10000)) {
         if (error) {
             *error = updateError(QStringLiteral("PODSTACK_UPDATE_LOCKED"),
@@ -411,12 +401,12 @@ bool UpdateService::stageArtifact(uid_t uid, const QByteArray &manifest,
     }
 
     const QFileInfo artifactInfo(artifactPath);
-    if (!artifactInfo.isAbsolute() || artifactInfo.isSymLink() || !artifactInfo.isFile()
-        || artifactInfo.ownerId() != uid) {
+    if (!artifactInfo.isAbsolute() || artifactInfo.isSymLink() || !artifactInfo.isFile() ||
+        artifactInfo.ownerId() != uid) {
         if (error) {
-            *error = updateError(QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
-                                 QStringLiteral("Artefato inválido ou de outro usuário."),
-                                 artifactPath);
+            *error =
+                updateError(QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
+                            QStringLiteral("Artefato inválido ou de outro usuário."), artifactPath);
         }
         return false;
     }
@@ -435,9 +425,9 @@ bool UpdateService::stageArtifact(uid_t uid, const QByteArray &manifest,
     QString signatureError;
     if (!verifyUpdateSignature(manifest, signature, releaseKey, &signatureError)) {
         if (error) {
-            *error = updateError(QStringLiteral("PODSTACK_UPDATE_SIGNATURE_INVALID"),
-                                 QStringLiteral("Assinatura do manifesto inválida."),
-                                 signatureError);
+            *error =
+                updateError(QStringLiteral("PODSTACK_UPDATE_SIGNATURE_INVALID"),
+                            QStringLiteral("Assinatura do manifesto inválida."), signatureError);
         }
         return false;
     }
@@ -517,8 +507,8 @@ bool UpdateService::stageArtifact(uid_t uid, const QByteArray &manifest,
         return false;
     }
 
-    const QString jobId = QStringLiteral("update-")
-                          + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString jobId =
+        QStringLiteral("update-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QString stateDir = m_options.stateRoot + QLatin1Char('/') + jobId;
     QDir dir;
     if (!dir.mkpath(stateDir)) {
@@ -530,24 +520,22 @@ bool UpdateService::stageArtifact(uid_t uid, const QByteArray &manifest,
         return false;
     }
     QFile::setPermissions(stateDir,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ExeOwner);
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
 
-    const QString stagingArtifact = stateDir + QStringLiteral("/artifact.")
-                                    + artifactInfo.suffix().toLower();
+    const QString stagingArtifact =
+        stateDir + QStringLiteral("/artifact.") + artifactInfo.suffix().toLower();
     const QByteArray source = QFile::encodeName(artifactPath);
     const int sourceFd = ::open(source.constData(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (sourceFd < 0) {
         if (error) {
-            *error = updateError(QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
-                                 QStringLiteral("Não foi possível abrir o artefato."),
-                                 artifactPath);
+            *error =
+                updateError(QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
+                            QStringLiteral("Não foi possível abrir o artefato."), artifactPath);
         }
         return false;
     }
-    struct stat status {};
-    if (::fstat(sourceFd, &status) != 0 || !S_ISREG(status.st_mode)
-        || status.st_uid != uid) {
+    struct stat status{};
+    if (::fstat(sourceFd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_uid != uid) {
         ::close(sourceFd);
         if (error) {
             *error = updateError(QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
@@ -569,7 +557,7 @@ bool UpdateService::stageArtifact(uid_t uid, const QByteArray &manifest,
     }
 
     QCryptographicHash hash(QCryptographicHash::Sha256);
-    QByteArray buffer(64 * 1024, '\0');
+    QByteArray buffer(64LL * 1024, '\0');
     bool copyOk = true;
     for (;;) {
         const ssize_t bytes = ::read(sourceFd, buffer.data(), static_cast<size_t>(buffer.size()));
@@ -583,9 +571,8 @@ bool UpdateService::stageArtifact(uid_t uid, const QByteArray &manifest,
         hash.addData(QByteArrayView(buffer.constData(), static_cast<qsizetype>(bytes)));
         ssize_t written = 0;
         while (written < bytes) {
-            const ssize_t chunk =
-                ::write(destinationFd, buffer.constData() + written,
-                        static_cast<size_t>(bytes - written));
+            const ssize_t chunk = ::write(destinationFd, buffer.constData() + written,
+                                          static_cast<size_t>(bytes - written));
             if (chunk <= 0) {
                 copyOk = false;
                 break;
@@ -598,9 +585,8 @@ bool UpdateService::stageArtifact(uid_t uid, const QByteArray &manifest,
     }
     ::close(sourceFd);
     ::close(destinationFd);
-    if (!copyOk || hash.result().toHex().compare(expectedSha256.toLatin1(),
-                                                  Qt::CaseInsensitive)
-                       != 0) {
+    if (!copyOk ||
+        hash.result().toHex().compare(expectedSha256.toLatin1(), Qt::CaseInsensitive) != 0) {
         QFile::remove(stagingArtifact);
         if (error) {
             *error = updateError(
@@ -609,8 +595,7 @@ bool UpdateService::stageArtifact(uid_t uid, const QByteArray &manifest,
         }
         return false;
     }
-    QFile::setPermissions(stagingArtifact,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    QFile::setPermissions(stagingArtifact, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 
     QVariantMap state;
     state.insert(QStringLiteral("jobId"), jobId);
@@ -682,30 +667,29 @@ bool UpdateService::install(uid_t uid, const QString &jobId, QVariantMap *result
     QString activeUnit;
     if (activeUpdateUnit(&activeUnit, error)) {
         if (error) {
-            *error = updateError(QStringLiteral("PODSTACK_UPDATE_LOCKED"),
-                                 QStringLiteral("Já existe uma unidade de update ativa."),
-                                 activeUnit);
+            *error =
+                updateError(QStringLiteral("PODSTACK_UPDATE_LOCKED"),
+                            QStringLiteral("Já existe uma unidade de update ativa."), activeUnit);
         }
         return false;
     }
 
     const QString artifact = state.value(QStringLiteral("artifact")).toString();
     const QString manager = state.value(QStringLiteral("manager")).toString();
-    const QString unit = QStringLiteral("podstack-update-")
-                         + jobId.mid(QStringLiteral("update-").size());
-    const QString logFile = m_options.logRoot + QLatin1Char('/') + QString::number(uid)
-                            + QLatin1Char('/') + jobId + QStringLiteral(".jsonl");
+    const QString unit =
+        QStringLiteral("podstack-update-") + jobId.mid(QStringLiteral("update-").size());
+    const QString logFile = m_options.logRoot + QLatin1Char('/') + QString::number(uid) +
+                            QLatin1Char('/') + jobId + QStringLiteral(".jsonl");
 
     QStringList arguments;
     arguments << QStringLiteral("--unit=") + unit << QStringLiteral("--collect")
-              << QStringLiteral("--property=RuntimeMaxSec=%1")
-                     .arg(m_options.installTimeoutSeconds)
+              << QStringLiteral("--property=RuntimeMaxSec=%1").arg(m_options.installTimeoutSeconds)
               << QStringLiteral("--description=PodStack update") << QStringLiteral("--")
               << QStringLiteral("flock") << m_options.updateLock << m_options.wrapperPath
               << QStringLiteral("--job-id") << jobId << QStringLiteral("--uid")
               << QString::number(uid) << QStringLiteral("--state-dir") << stateDir
-              << QStringLiteral("--log-file") << logFile << QStringLiteral("--artifact")
-              << artifact << QStringLiteral("--manager") << manager;
+              << QStringLiteral("--log-file") << logFile << QStringLiteral("--artifact") << artifact
+              << QStringLiteral("--manager") << manager;
 
     state.insert(QStringLiteral("phase"), QStringLiteral("installing"));
     state.insert(QStringLiteral("unit"), unit);
@@ -725,17 +709,15 @@ bool UpdateService::install(uid_t uid, const QString &jobId, QVariantMap *result
         state.insert(QStringLiteral("phase"), QStringLiteral("failed"));
         state.insert(QStringLiteral("message"),
                      QStringLiteral("Não foi possível iniciar a unidade."));
-        state.insert(QStringLiteral("errorCode"),
-                     QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
+        state.insert(QStringLiteral("errorCode"), QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"));
         (void) writeState(stateDir, state, nullptr);
         return false;
     }
     if (!process.waitForFinished(10000) || process.exitCode() != 0) {
         if (error) {
-            *error = updateError(
-                QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"),
-                QStringLiteral("systemd-run recusou a unidade de update."),
-                QString::fromUtf8(process.readAllStandardError()).trimmed());
+            *error = updateError(QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"),
+                                 QStringLiteral("systemd-run recusou a unidade de update."),
+                                 QString::fromUtf8(process.readAllStandardError()).trimmed());
         }
         state.insert(QStringLiteral("phase"), QStringLiteral("failed"));
         state.insert(QStringLiteral("message"), QStringLiteral("systemd-run recusou a unidade."));
@@ -770,8 +752,8 @@ bool UpdateService::logs(uid_t uid, const QString &jobId, QVariantList *lines, b
     const QString directory = m_options.logRoot + QLatin1Char('/') + QString::number(uid);
     QStringList files;
     if (!jobId.isEmpty()) {
-        if (!jobId.startsWith(QStringLiteral("update-")) || jobId.contains(QLatin1Char('/'))
-            || jobId.contains(QStringLiteral(".."))) {
+        if (!jobId.startsWith(QStringLiteral("update-")) || jobId.contains(QLatin1Char('/')) ||
+            jobId.contains(QStringLiteral(".."))) {
             if (error) {
                 *error = updateError(QStringLiteral("PODSTACK_INVALID_PARAMS"),
                                      QStringLiteral("jobId inválido."), jobId);
@@ -796,7 +778,7 @@ bool UpdateService::logs(uid_t uid, const QString &jobId, QVariantList *lines, b
         }
     }
 
-    constexpr qint64 kMaxBytes = 1024 * 1024;
+    constexpr qint64 kMaxBytes = 1024LL * 1024;
     constexpr int kMaxLines = 10000;
     qint64 bytes = 0;
     const auto appendLine = [&](const QString &line) {
@@ -835,10 +817,10 @@ bool UpdateService::logs(uid_t uid, const QString &jobId, QVariantList *lines, b
                                    : QString();
     if (!journalctl.isEmpty()) {
         QProcess journal;
-        journal.start(journalctl, {QStringLiteral("-t"), QStringLiteral("podstack-update"),
-                                   QStringLiteral("--since"), QStringLiteral("7 days ago"),
-                                   QStringLiteral("--no-pager"), QStringLiteral("-o"),
-                                   QStringLiteral("cat")});
+        journal.start(journalctl,
+                      {QStringLiteral("-t"), QStringLiteral("podstack-update"),
+                       QStringLiteral("--since"), QStringLiteral("7 days ago"),
+                       QStringLiteral("--no-pager"), QStringLiteral("-o"), QStringLiteral("cat")});
         if (journal.waitForFinished(10000) && journal.exitCode() == 0) {
             const QString jobNeedle =
                 jobId.isEmpty() ? QString() : QStringLiteral("JOB_ID=%1").arg(jobId);

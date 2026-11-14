@@ -4,8 +4,8 @@
 
 #include "core/Redaction.h"
 
-#include <QDateTime>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -46,10 +46,8 @@ QString contextString(const char *value)
 } // namespace
 
 LogWriter::LogWriter(QString processName, LogRotation::Options options, LogLevel level)
-    : m_processName(std::move(processName))
-    , m_pid(QCoreApplication::applicationPid())
-    , m_options(std::move(options))
-    , m_level(static_cast<int>(level))
+    : m_processName(std::move(processName)), m_pid(QCoreApplication::applicationPid()),
+      m_options(std::move(options)), m_level(static_cast<int>(level))
 {
 }
 
@@ -67,8 +65,7 @@ void LogWriter::start()
     QDir dir;
     dir.mkpath(m_options.directory);
     QFile::setPermissions(m_options.directory,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ExeOwner);
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
     (void) LogRotation::rotateAtStart(m_options, QDate::currentDate());
     (void) LogRotation::prune(m_options, QDate::currentDate());
     (void) openFile();
@@ -104,8 +101,8 @@ void LogWriter::enqueue(QtMsgType type, const QMessageLogContext &context, const
     if (entry.category.isEmpty()) {
         entry.category = QStringLiteral("default");
     }
-    entry.thread = QStringLiteral("0x")
-                   + QString::number(reinterpret_cast<quintptr>(QThread::currentThreadId()), 16);
+    entry.thread = QStringLiteral("0x") +
+                   QString::number(reinterpret_cast<quintptr>(QThread::currentThreadId()), 16);
     entry.message = message;
     entry.file = contextString(context.file);
     entry.line = context.line;
@@ -221,8 +218,8 @@ void LogWriter::run()
         {
             std::unique_lock<std::mutex> lock(m_mutex);
             m_wake.wait_for(lock, std::chrono::milliseconds(kFlushIntervalMs), [this] {
-                return m_stop.load(std::memory_order_relaxed) || m_rotationRequested.load()
-                       || m_flushRequested || !m_queue.empty();
+                return m_stop.load(std::memory_order_relaxed) || m_rotationRequested.load() ||
+                       m_flushRequested || !m_queue.empty();
             });
             stop = m_stop.load(std::memory_order_relaxed);
             rotate = m_rotationRequested.exchange(false);
@@ -311,9 +308,9 @@ void LogWriter::writeEntry(QFile *file, const Entry &entry)
         (void) file->write(line);
     }
 
-    const QByteArray human = (entry.timestamp + QLatin1Char(' ') + QLatin1Char('[')
-                              + entry.category + QStringLiteral("] ") + levelName(entry.level)
-                              + QStringLiteral(": ") + message + QLatin1Char('\n'))
+    const QByteArray human = (entry.timestamp + QLatin1Char(' ') + QLatin1Char('[') +
+                              entry.category + QStringLiteral("] ") + levelName(entry.level) +
+                              QStringLiteral(": ") + message + QLatin1Char('\n'))
                                  .toUtf8();
     (void) std::fwrite(human.constData(), 1, static_cast<size_t>(human.size()), stderr);
 }

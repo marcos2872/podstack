@@ -477,12 +477,12 @@ const QVector<SettingDef> &definitions()
         list.append(makeBool(QStringLiteral("advanced.ca.install"), false,
                              QStringLiteral("Avançado"),
                              QStringLiteral("Confia na CA local."), true));
-        list.append(makeEnum(QStringLiteral("advanced.logLevel"), QStringLiteral("info"),
-                             {QStringLiteral("error"), QStringLiteral("warn"),
-                              QStringLiteral("info"), QStringLiteral("debug"),
-                              QStringLiteral("trace")},
-                             QStringLiteral("Avançado"),
-                             QStringLiteral("Nível de log do app (aplicado em runtime).")));
+        list.append(
+            makeEnum(QStringLiteral("advanced.logLevel"), QStringLiteral("info"),
+                     {QStringLiteral("error"), QStringLiteral("warn"), QStringLiteral("info"),
+                      QStringLiteral("debug"), QStringLiteral("trace")},
+                     QStringLiteral("Avançado"),
+                     QStringLiteral("Nível de log do app (aplicado em runtime).")));
         list.append(makeInt(QStringLiteral("advanced.logRetentionDays"), 7, 1, 30,
                             QStringLiteral("Avançado"),
                             QStringLiteral("Retenção dos logs do app em dias.")));

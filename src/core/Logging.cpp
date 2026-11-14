@@ -10,8 +10,8 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QLoggingCategory>
-#include <QTimer>
 #include <QTime>
+#include <QTimer>
 
 #include <algorithm>
 #include <memory>
@@ -81,23 +81,21 @@ LogLevel configuredLevel()
         return LogLevel::Debug;
     }
     const Config config = Config::load();
-    return LogWriter::levelFromName(
-        config.get(QStringLiteral("advanced.logLevel")).toString(), LogLevel::Info);
+    return LogWriter::levelFromName(config.get(QStringLiteral("advanced.logLevel")).toString(),
+                                    LogLevel::Info);
 }
 
 int configuredRetentionDays()
 {
     const Config config = Config::load();
-    return std::clamp(
-        config.get(QStringLiteral("advanced.logRetentionDays")).toInt(7), 1, 30);
+    return std::clamp(config.get(QStringLiteral("advanced.logRetentionDays")).toInt(7), 1, 30);
 }
 
 qint64 configuredMaxBytes()
 {
     const Config config = Config::load();
-    const qint64 value = config.get(QStringLiteral("advanced.logMaxBytes"))
-                             .toVariant()
-                             .toLongLong();
+    const qint64 value =
+        config.get(QStringLiteral("advanced.logMaxBytes")).toVariant().toLongLong();
     return std::clamp(value > 0 ? value : kDefaultMaxBytes, kMinMaxBytes, kMaxMaxBytes);
 }
 

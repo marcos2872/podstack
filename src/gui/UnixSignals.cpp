@@ -55,7 +55,7 @@ void closePipe()
 
 } // namespace
 
-bool installTerminationHandler(QObject *context, std::function<void()> callback,
+bool installTerminationHandler(QObject *context, const std::function<void()> &callback,
                                QString *error)
 {
     if (error) {
@@ -78,16 +78,15 @@ bool installTerminationHandler(QObject *context, std::function<void()> callback,
         return false;
     }
 
-    struct sigaction action {};
+    struct sigaction action{};
     action.sa_handler = terminationHandler;
     sigemptyset(&action.sa_mask);
     action.sa_flags = SA_RESTART;
-    if (::sigaction(SIGTERM, &action, nullptr) != 0
-        || ::sigaction(SIGINT, &action, nullptr) != 0) {
+    if (::sigaction(SIGTERM, &action, nullptr) != 0 || ::sigaction(SIGINT, &action, nullptr) != 0) {
         if (error) {
             *error = QStringLiteral("não foi possível instalar o handler de SIGTERM/SIGINT");
         }
-        struct sigaction defaultAction {};
+        struct sigaction defaultAction{};
         defaultAction.sa_handler = SIG_DFL;
         sigemptyset(&defaultAction.sa_mask);
         ::sigaction(SIGTERM, &defaultAction, nullptr);

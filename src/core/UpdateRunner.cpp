@@ -5,8 +5,8 @@
 #include "core/Config.h"
 #include "core/Paths.h"
 
-#include <QCryptographicHash>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
@@ -73,8 +73,7 @@ QByteArray sha256(const QByteArray &payload)
 } // namespace
 
 UpdateRunner::UpdateRunner(UpdateHelper *helper, UpdateRunnerOptions options)
-    : m_helper(helper)
-    , m_options(std::move(options))
+    : m_helper(helper), m_options(std::move(options))
 {
     if (m_options.cacheDir.isEmpty()) {
         m_options.cacheDir = Paths::cacheDir() + QStringLiteral("/updates");
@@ -138,9 +137,9 @@ bool UpdateRunner::download(const QString &url, int maxBytes, QByteArray *body, 
 
     if (timedOut) {
         if (error) {
-            *error = runnerError(QStringLiteral("PODSTACK_TIMEOUT"),
-                                 QStringLiteral("O download do update excedeu o tempo limite."),
-                                 url);
+            *error =
+                runnerError(QStringLiteral("PODSTACK_TIMEOUT"),
+                            QStringLiteral("O download do update excedeu o tempo limite."), url);
         }
         return false;
     }
@@ -174,8 +173,8 @@ bool UpdateRunner::download(const QString &url, int maxBytes, QByteArray *body, 
 bool UpdateRunner::checkCustomKey(Error *error)
 {
     const QString embedded = QString::fromLatin1(PODSTACK_UPDATE_PUBLIC_KEY).trimmed();
-    if (!embedded.isEmpty() && !m_options.publicKey.isEmpty()
-        && m_options.publicKey.trimmed() != embedded) {
+    if (!embedded.isEmpty() && !m_options.publicKey.isEmpty() &&
+        m_options.publicKey.trimmed() != embedded) {
         if (error) {
             *error = runnerError(
                 QStringLiteral("PODSTACK_UPDATE_UNSUPPORTED"),
@@ -201,9 +200,9 @@ bool UpdateRunner::loadManifest(const QByteArray &manifest, const QByteArray &si
     QString signatureError;
     if (!verifyUpdateSignature(manifest, signature, m_options.publicKey, &signatureError)) {
         if (error) {
-            *error = runnerError(QStringLiteral("PODSTACK_UPDATE_SIGNATURE_INVALID"),
-                                 QStringLiteral("Assinatura do manifesto inválida."),
-                                 signatureError);
+            *error =
+                runnerError(QStringLiteral("PODSTACK_UPDATE_SIGNATURE_INVALID"),
+                            QStringLiteral("Assinatura do manifesto inválida."), signatureError);
         }
         return false;
     }
@@ -219,9 +218,9 @@ bool UpdateRunner::loadManifest(const QByteArray &manifest, const QByteArray &si
     }
     if (!parsed.channels.contains(m_channel)) {
         if (error) {
-            *error = runnerError(QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"),
-                                 QStringLiteral("O manifesto não publica o canal %1.")
-                                     .arg(m_channel));
+            *error =
+                runnerError(QStringLiteral("PODSTACK_UPDATE_MANIFEST_INVALID"),
+                            QStringLiteral("O manifesto não publica o canal %1.").arg(m_channel));
         }
         return false;
     }
@@ -281,14 +280,12 @@ bool UpdateRunner::fetchArtifact(Error *error)
     }
     QString fileName = QUrl(m_artifactUrl).fileName();
     if (fileName.isEmpty() || fileName.contains(QLatin1Char('/'))) {
-        fileName = QStringLiteral("podstack-%1-%2.%3")
-                       .arg(m_version, hostArch(), hostFormat());
+        fileName = QStringLiteral("podstack-%1-%2.%3").arg(m_version, hostArch(), hostFormat());
     }
     const QString path = cachePath(fileName);
     QDir().mkpath(m_options.cacheDir);
     QFile::setPermissions(m_options.cacheDir,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ExeOwner);
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
 
     if (QFileInfo::exists(path)) {
         QFile cached(path);
@@ -314,12 +311,12 @@ bool UpdateRunner::fetchArtifact(Error *error)
     if (!download(m_artifactUrl, static_cast<int>(m_options.maxArtifactBytes), &payload, error)) {
         return false;
     }
-    if (m_expectedSha256.isEmpty()
-        || sha256(payload).compare(m_expectedSha256.toLatin1(), Qt::CaseInsensitive) != 0) {
+    if (m_expectedSha256.isEmpty() ||
+        sha256(payload).compare(m_expectedSha256.toLatin1(), Qt::CaseInsensitive) != 0) {
         if (error) {
-            *error = runnerError(
-                QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
-                QStringLiteral("SHA-256 do artefato não corresponde ao manifesto."));
+            *error =
+                runnerError(QStringLiteral("PODSTACK_UPDATE_PACKAGE_INVALID"),
+                            QStringLiteral("SHA-256 do artefato não corresponde ao manifesto."));
         }
         return false;
     }
@@ -328,9 +325,9 @@ bool UpdateRunner::fetchArtifact(Error *error)
     QFile file(part);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         if (error) {
-            *error = runnerError(
-                QStringLiteral("PODSTACK_UPDATE_DOWNLOAD_FAILED"),
-                QStringLiteral("Não foi possível gravar o artefato no cache."), part);
+            *error =
+                runnerError(QStringLiteral("PODSTACK_UPDATE_DOWNLOAD_FAILED"),
+                            QStringLiteral("Não foi possível gravar o artefato no cache."), part);
         }
         return false;
     }
@@ -399,17 +396,15 @@ bool UpdateRunner::prepare(Error *error)
 
     QDir().mkpath(m_options.cacheDir);
     QFile::setPermissions(m_options.cacheDir,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ExeOwner);
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
 
     const QString manifestPath = cachePath(QStringLiteral("manifest.json"));
     const QString signaturePath = cachePath(QStringLiteral("manifest.json.minisig"));
     bool cacheValid = false;
-    const qint64 manifestAge =
-        QDateTime::currentMSecsSinceEpoch()
-        - QFileInfo(manifestPath).lastModified().toMSecsSinceEpoch();
-    if (QFileInfo::exists(manifestPath) && QFileInfo::exists(signaturePath)
-        && manifestAge < kManifestTtlMs) {
+    const qint64 manifestAge = QDateTime::currentMSecsSinceEpoch() -
+                               QFileInfo(manifestPath).lastModified().toMSecsSinceEpoch();
+    if (QFileInfo::exists(manifestPath) && QFileInfo::exists(signaturePath) &&
+        manifestAge < kManifestTtlMs) {
         QFile manifestFile(manifestPath);
         QFile signatureFile(signaturePath);
         if (manifestFile.open(QIODevice::ReadOnly) && signatureFile.open(QIODevice::ReadOnly)) {
@@ -420,23 +415,21 @@ bool UpdateRunner::prepare(Error *error)
     }
 
     if (!cacheValid) {
-        if (!download(feedUrl, kMaxManifestBytes, &m_manifestBytes, error)
-            || !download(feedUrl + QStringLiteral(".minisig"), kMaxManifestBytes,
-                         &m_signatureBytes, error)) {
+        if (!download(feedUrl, kMaxManifestBytes, &m_manifestBytes, error) ||
+            !download(feedUrl + QStringLiteral(".minisig"), kMaxManifestBytes, &m_signatureBytes,
+                      error)) {
             return false;
         }
         QFile manifestFile(manifestPath);
         QFile signatureFile(signaturePath);
-        if (manifestFile.open(QIODevice::WriteOnly | QIODevice::Truncate)
-            && signatureFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (manifestFile.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+            signatureFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             manifestFile.write(m_manifestBytes);
             signatureFile.write(m_signatureBytes);
             manifestFile.close();
             signatureFile.close();
-            QFile::setPermissions(manifestPath,
-                                  QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-            QFile::setPermissions(signaturePath,
-                                  QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+            QFile::setPermissions(manifestPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+            QFile::setPermissions(signaturePath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         }
     }
 
@@ -491,13 +484,13 @@ bool UpdateRunner::runSystemctl(const QStringList &arguments, Error *error)
     }
     QProcess process;
     process.start(m_options.systemctlBinary, arguments);
-    if (!process.waitForStarted(5000) || !process.waitForFinished(30000)
-        || process.exitCode() != 0) {
+    if (!process.waitForStarted(5000) || !process.waitForFinished(30000) ||
+        process.exitCode() != 0) {
         if (error) {
-            *error = runnerError(
-                QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"),
-                QStringLiteral("Não foi possível controlar o serviço do PodStack."),
-                QString::fromUtf8(process.readAllStandardError()).trimmed());
+            *error =
+                runnerError(QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"),
+                            QStringLiteral("Não foi possível controlar o serviço do PodStack."),
+                            QString::fromUtf8(process.readAllStandardError()).trimmed());
         }
         return false;
     }
@@ -508,8 +501,7 @@ bool UpdateRunner::writeState(const QString &phase, const QString &message, Erro
 {
     QDir().mkpath(m_options.stateDir);
     QFile::setPermissions(m_options.stateDir,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ExeOwner);
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
     QFile boot(QStringLiteral("/proc/sys/kernel/random/boot_id"));
     QString bootId;
     if (boot.open(QIODevice::ReadOnly)) {
@@ -546,8 +538,7 @@ bool UpdateRunner::writeState(const QString &phase, const QString &message, Erro
         }
         return false;
     }
-    QFile::setPermissions(statePathValue(),
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    QFile::setPermissions(statePathValue(), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     m_phase = phase;
     return true;
 }
@@ -559,10 +550,9 @@ bool UpdateRunner::pollStatus(Error *error)
     int delayMs = std::max(100, m_options.pollIntervalMs);
     while (timer.elapsed() < m_options.installTimeoutMs) {
         QVariantMap reply;
-        if (!m_helper->call(QStringLiteral("GetUpdateStatus"),
-                            {m_jobId}, &reply, error)) {
-            if (error && (error->code.contains(QStringLiteral("NOT_FOUND"))
-                          || error->code.contains(QStringLiteral("LOCKED")))) {
+        if (!m_helper->call(QStringLiteral("GetUpdateStatus"), {m_jobId}, &reply, error)) {
+            if (error && (error->code.contains(QStringLiteral("NOT_FOUND")) ||
+                          error->code.contains(QStringLiteral("LOCKED")))) {
                 QThread::msleep(static_cast<unsigned long>(delayMs));
                 delayMs = std::min(delayMs * 2, 5000);
                 continue;
@@ -578,13 +568,12 @@ bool UpdateRunner::pollStatus(Error *error)
         }
         if (phase == QStringLiteral("failed")) {
             if (error) {
-                *error = runnerError(
-                    reply.value(QStringLiteral("errorCode")).toString().isEmpty()
-                        ? QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED")
-                        : reply.value(QStringLiteral("errorCode")).toString(),
-                    reply.value(QStringLiteral("message")).toString(),
-                    QStringLiteral("exitCode=%1")
-                        .arg(reply.value(QStringLiteral("exitCode")).toInt()));
+                *error = runnerError(reply.value(QStringLiteral("errorCode")).toString().isEmpty()
+                                         ? QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED")
+                                         : reply.value(QStringLiteral("errorCode")).toString(),
+                                     reply.value(QStringLiteral("message")).toString(),
+                                     QStringLiteral("exitCode=%1")
+                                         .arg(reply.value(QStringLiteral("exitCode")).toInt()));
             }
             return false;
         }
@@ -656,8 +645,8 @@ bool UpdateRunner::install(Error *error)
 
     QVariantMap stageReply;
     if (!m_helper->call(QStringLiteral("StageUpdate"),
-                        {m_manifestBytes, m_signatureBytes, m_artifactPath, m_channel},
-                        &stageReply, error)) {
+                        {m_manifestBytes, m_signatureBytes, m_artifactPath, m_channel}, &stageReply,
+                        error)) {
         (void) writeState(QStringLiteral("failed"), error ? error->message : QString(), nullptr);
         if (servicesStopped) {
             (void) runSystemctl({QStringLiteral("--user"), QStringLiteral("start"),
@@ -688,8 +677,7 @@ bool UpdateRunner::install(Error *error)
         return false;
     }
     m_unit = installReply.value(QStringLiteral("unit")).toString();
-    if (!writeState(QStringLiteral("installing"),
-                    QStringLiteral("Instalação iniciada."), error)) {
+    if (!writeState(QStringLiteral("installing"), QStringLiteral("Instalação iniciada."), error)) {
         return false;
     }
 
@@ -711,9 +699,9 @@ bool UpdateRunner::install(Error *error)
     (void) writeState(QStringLiteral("failed"),
                       error ? error->message : QStringLiteral("Falha no update."), nullptr);
     if (m_options.restartServices) {
-        (void) runSystemctl({QStringLiteral("--user"), QStringLiteral("start"),
-                             QStringLiteral("podstack.socket")},
-                            nullptr);
+        (void) runSystemctl(
+            {QStringLiteral("--user"), QStringLiteral("start"), QStringLiteral("podstack.socket")},
+            nullptr);
     }
     notify(QStringLiteral("Falha na atualização do PodStack."));
     relaunchGui();
@@ -753,11 +741,10 @@ bool UpdateRunner::resume(Error *error)
     }
     if (phase == QStringLiteral("failed") || m_jobId.isEmpty()) {
         if (error) {
-            *error = runnerError(
-                QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"),
-                state.value(QStringLiteral("message")).toString().isEmpty()
-                    ? QStringLiteral("O update anterior falhou; limpe o estado.")
-                    : state.value(QStringLiteral("message")).toString());
+            *error = runnerError(QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"),
+                                 state.value(QStringLiteral("message")).toString().isEmpty()
+                                     ? QStringLiteral("O update anterior falhou; limpe o estado.")
+                                     : state.value(QStringLiteral("message")).toString());
         }
         return false;
     }
@@ -779,9 +766,9 @@ bool UpdateRunner::resume(Error *error)
     (void) writeState(QStringLiteral("failed"),
                       error ? error->message : QStringLiteral("Falha no update."), nullptr);
     if (m_options.restartServices) {
-        (void) runSystemctl({QStringLiteral("--user"), QStringLiteral("start"),
-                             QStringLiteral("podstack.socket")},
-                            nullptr);
+        (void) runSystemctl(
+            {QStringLiteral("--user"), QStringLiteral("start"), QStringLiteral("podstack.socket")},
+            nullptr);
     }
     notify(QStringLiteral("Falha na atualização do PodStack."));
     relaunchGui();
@@ -811,9 +798,9 @@ void UpdateRunner::relaunchGui()
 
 int UpdateRunner::exitCodeFor(const Error &error)
 {
-    if (error.code == QStringLiteral("PODSTACK_UPDATE_CONSENT_DENIED")
-        || error.code == QStringLiteral("PODSTACK_PERMISSION")
-        || error.code == QStringLiteral("PODSTACK_HELPER_REQUIRED")) {
+    if (error.code == QStringLiteral("PODSTACK_UPDATE_CONSENT_DENIED") ||
+        error.code == QStringLiteral("PODSTACK_PERMISSION") ||
+        error.code == QStringLiteral("PODSTACK_HELPER_REQUIRED")) {
         return 6;
     }
     if (error.code.contains(QStringLiteral("TIMEOUT"))) {

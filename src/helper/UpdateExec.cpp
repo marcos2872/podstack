@@ -24,14 +24,12 @@ QString argumentValue(const QStringList &arguments, const QString &name)
     return index >= 0 && index + 1 < arguments.size() ? arguments.at(index + 1) : QString();
 }
 
-bool writeState(const QString &stateDir, const QString &phase, const QString &message,
-                int percent, int exitCode, const QString &errorCode, const QString &jobId,
-                const QString &uid)
+bool writeState(const QString &stateDir, const QString &phase, const QString &message, int percent,
+                int exitCode, const QString &errorCode, const QString &jobId, const QString &uid)
 {
     QDir().mkpath(stateDir);
     QFile::setPermissions(stateDir,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ExeOwner);
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
     QJsonObject state;
     state.insert(QStringLiteral("jobId"), jobId);
     state.insert(QStringLiteral("uid"), static_cast<qint64>(uid.toUInt()));
@@ -51,9 +49,9 @@ bool writeState(const QString &stateDir, const QString &phase, const QString &me
     if (!file.commit()) {
         return false;
     }
-    QFile::setPermissions(stateDir + QStringLiteral("/state.json"),
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ReadGroup);
+    QFile::setPermissions(stateDir + QStringLiteral("/state.json"), QFileDevice::ReadOwner |
+                                                                        QFileDevice::WriteOwner |
+                                                                        QFileDevice::ReadGroup);
     return true;
 }
 
@@ -66,16 +64,14 @@ void appendLog(const QString &logPath, const QString &jobId, const QString &uid,
     }
     QDir().mkpath(QFileInfo(logPath).absolutePath());
     QFile::setPermissions(QFileInfo(logPath).absolutePath(),
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                              | QFileDevice::ExeOwner | QFileDevice::ReadGroup
-                              | QFileDevice::ExeGroup);
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
+                              QFileDevice::ReadGroup | QFileDevice::ExeGroup);
     QFile file(logPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) {
         return;
     }
     QJsonObject entry;
-    entry.insert(QStringLiteral("ts"),
-                 QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+    entry.insert(QStringLiteral("ts"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
     entry.insert(QStringLiteral("level"), level);
     entry.insert(QStringLiteral("category"), QStringLiteral("podstack.update"));
     entry.insert(QStringLiteral("jobId"), jobId);
@@ -83,8 +79,8 @@ void appendLog(const QString &logPath, const QString &jobId, const QString &uid,
     entry.insert(QStringLiteral("message"), QString::fromUtf8(redacted));
     file.write(QJsonDocument(entry).toJson(QJsonDocument::Compact) + '\n');
     file.close();
-    QFile::setPermissions(logPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                       | QFileDevice::ReadGroup);
+    QFile::setPermissions(logPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                       QFileDevice::ReadGroup);
 }
 
 } // namespace
@@ -100,8 +96,8 @@ int main(int argc, char *argv[])
     const QString artifact = argumentValue(arguments, QStringLiteral("--artifact"));
     const QString manager = argumentValue(arguments, QStringLiteral("--manager"));
 
-    if (jobId.isEmpty() || uid.isEmpty() || stateDir.isEmpty() || artifact.isEmpty()
-        || (manager != QStringLiteral("apt-get") && manager != QStringLiteral("dnf"))) {
+    if (jobId.isEmpty() || uid.isEmpty() || stateDir.isEmpty() || artifact.isEmpty() ||
+        (manager != QStringLiteral("apt-get") && manager != QStringLiteral("dnf"))) {
         std::fprintf(stderr, "podstack-update-exec: argumentos inválidos\n");
         return 1;
     }
@@ -121,9 +117,9 @@ int main(int argc, char *argv[])
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start(manager, {QStringLiteral("install"), QStringLiteral("-y"), artifact});
     if (!process.waitForStarted(10000)) {
-        appendLog(logPath, jobId, uid, QStringLiteral("error"),
-                  QStringLiteral("Não foi possível iniciar %1: %2")
-                      .arg(manager, process.errorString()));
+        appendLog(
+            logPath, jobId, uid, QStringLiteral("error"),
+            QStringLiteral("Não foi possível iniciar %1: %2").arg(manager, process.errorString()));
         writeState(stateDir, QStringLiteral("failed"),
                    QStringLiteral("Não foi possível iniciar o gerenciador."), 0, 1,
                    QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"), jobId, uid);
@@ -137,8 +133,7 @@ int main(int argc, char *argv[])
                 continue;
             }
             appendLog(logPath, jobId, uid, QStringLiteral("info"), text);
-            std::fprintf(stdout, "%s\n",
-                         PodStack::Redaction::text(text).toUtf8().constData());
+            std::fprintf(stdout, "%s\n", PodStack::Redaction::text(text).toUtf8().constData());
         }
     };
 

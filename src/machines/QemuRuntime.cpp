@@ -329,8 +329,8 @@ bool QemuProcessRuntime::start(const QemuSpec &spec, Error *error)
 
     qint64 launchedPid = 0;
     QString launchFailure;
-    const QString scopeUnit = ProcessScope::unitName(QStringLiteral("podstack-machine"),
-                                                     spec.machineId);
+    const QString scopeUnit =
+        ProcessScope::unitName(QStringLiteral("podstack-machine"), spec.machineId);
     if (!ProcessScope::startDetached(scopeUnit, executable, arguments, &launchedPid,
                                      &launchFailure)) {
         if (error) {

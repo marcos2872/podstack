@@ -44,8 +44,8 @@ int main(int argc, char *argv[])
         QCommandLineOption(QStringLiteral("hidden"), QStringLiteral("Inicia apenas na bandeja.")));
     parser.addOption(QCommandLineOption(QStringLiteral("quit"),
                                         QStringLiteral("Encerra a instância em execução.")));
-    parser.addOption(QCommandLineOption(QStringLiteral("relaunch"),
-                                        QStringLiteral("Reabre após um update.")));
+    parser.addOption(
+        QCommandLineOption(QStringLiteral("relaunch"), QStringLiteral("Reabre após um update.")));
     parser.process(app);
 
     PodStack::SingleInstance singleInstance;

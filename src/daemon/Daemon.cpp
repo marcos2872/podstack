@@ -2301,8 +2301,8 @@ QJsonArray collectReportLogs(const QString &directory, HelperClient *helper)
     };
 
     const auto append = [&](const QString &line, const QString &component) {
-        if (line.trimmed().isEmpty()
-            || linesPerComponent.value(component) >= kMaxLinesPerComponent) {
+        if (line.trimmed().isEmpty() ||
+            linesPerComponent.value(component) >= kMaxLinesPerComponent) {
             return;
         }
         const QString redacted = Redaction::text(line);

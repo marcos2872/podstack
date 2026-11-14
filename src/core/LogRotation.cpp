@@ -29,9 +29,9 @@ bool ensureDirectory(const QString &path)
     if (!dir.mkpath(path)) {
         return false;
     }
-    return QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                           | QFileDevice::ExeOwner)
-           || QFileInfo(path).isDir();
+    return QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                           QFileDevice::ExeOwner) ||
+           QFileInfo(path).isDir();
 }
 
 class ScopedFileLock {
@@ -63,8 +63,8 @@ private:
 
 ScopedFileLock lockFor(const Options &options)
 {
-    return ScopedFileLock(options.directory + QStringLiteral("/.") + options.stem
-                          + QStringLiteral(".lock"));
+    return ScopedFileLock(options.directory + QStringLiteral("/.") + options.stem +
+                          QStringLiteral(".lock"));
 }
 
 bool moveOrAppend(const QString &current, const QString &target)
@@ -75,8 +75,8 @@ bool moveOrAppend(const QString &current, const QString &target)
 
     QFile source(current);
     QFile destination(target);
-    if (!source.open(QIODevice::ReadOnly)
-        || !destination.open(QIODevice::WriteOnly | QIODevice::Append)) {
+    if (!source.open(QIODevice::ReadOnly) ||
+        !destination.open(QIODevice::WriteOnly | QIODevice::Append)) {
         return false;
     }
     const QByteArray payload = source.readAll();
@@ -91,8 +91,7 @@ bool moveOrAppend(const QString &current, const QString &target)
 
 QDate dateFromName(const QString &name)
 {
-    static const QRegularExpression pattern(
-        QStringLiteral("-(\\d{8})(?:-\\d+)?\\.jsonl$"));
+    static const QRegularExpression pattern(QStringLiteral("-(\\d{8})(?:-\\d+)?\\.jsonl$"));
     const QRegularExpressionMatch match = pattern.match(name);
     if (!match.hasMatch()) {
         return {};
@@ -144,11 +143,11 @@ QString rotatedPath(const Options &options, const QDate &date, int sequence)
 {
     const QString suffix = dateSuffix(date);
     if (sequence > 0) {
-        return options.directory + QLatin1Char('/') + options.stem + QLatin1Char('-') + suffix
-               + QLatin1Char('-') + QString::number(sequence) + QStringLiteral(".jsonl");
+        return options.directory + QLatin1Char('/') + options.stem + QLatin1Char('-') + suffix +
+               QLatin1Char('-') + QString::number(sequence) + QStringLiteral(".jsonl");
     }
-    return options.directory + QLatin1Char('/') + options.stem + QLatin1Char('-') + suffix
-           + QStringLiteral(".jsonl");
+    return options.directory + QLatin1Char('/') + options.stem + QLatin1Char('-') + suffix +
+           QStringLiteral(".jsonl");
 }
 
 bool rotate(const Options &options, const QDate &date, QString *error)

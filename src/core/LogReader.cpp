@@ -70,11 +70,8 @@ bool readUserLogs(const LogReadOptions &options, LogReadResult *result, Error *e
     const QString directory = options.directory.isEmpty()
                                   ? Paths::stateDir() + QStringLiteral("/logs")
                                   : options.directory;
-    const QDate since = options.since.isValid() ? options.since
-                                                : QDate::currentDate().addDays(-6);
-    const int requestedLevel = options.level.isEmpty()
-                                   ? 4
-                                   : levelValue(options.level);
+    const QDate since = options.since.isValid() ? options.since : QDate::currentDate().addDays(-6);
+    const int requestedLevel = options.level.isEmpty() ? 4 : levelValue(options.level);
     qint64 bytes = 0;
 
     const QDir dir(directory);
@@ -98,8 +95,8 @@ bool readUserLogs(const LogReadOptions &options, LogReadResult *result, Error *e
                 continue;
             }
             const QJsonObject object = QJsonDocument::fromJson(raw.toUtf8()).object();
-            const QString level = object.value(QStringLiteral("level")).toString(
-                QStringLiteral("info"));
+            const QString level =
+                object.value(QStringLiteral("level")).toString(QStringLiteral("info"));
             const QString component = componentFor(object);
             if (levelValue(level) > requestedLevel) {
                 continue;
@@ -108,8 +105,8 @@ bool readUserLogs(const LogReadOptions &options, LogReadResult *result, Error *e
                 continue;
             }
             const qint64 lineBytes = raw.toUtf8().size();
-            if ((result && result->lines.size() >= options.maxLines)
-                || (options.maxBytes > 0 && bytes + lineBytes > options.maxBytes)) {
+            if ((result && result->lines.size() >= options.maxLines) ||
+                (options.maxBytes > 0 && bytes + lineBytes > options.maxBytes)) {
                 if (result) {
                     result->truncated = true;
                 }
@@ -121,8 +118,7 @@ bool readUserLogs(const LogReadOptions &options, LogReadResult *result, Error *e
                 line.ts = object.value(QStringLiteral("ts")).toString();
                 line.level = level;
                 line.component = component;
-                line.message =
-                    Redaction::text(object.value(QStringLiteral("message")).toString());
+                line.message = Redaction::text(object.value(QStringLiteral("message")).toString());
                 line.raw = Redaction::text(raw);
                 line.levelValue = levelValue(level);
                 result->lines.append(line);
@@ -175,14 +171,13 @@ bool exportLogs(const QVector<LogLine> &lines, const QString &path, Error *error
     }
     if (!file.commit()) {
         if (error) {
-            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
-                                 QStringLiteral("Não foi possível concluir o export."),
-                                 destination);
+            *error =
+                Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                            QStringLiteral("Não foi possível concluir o export."), destination);
         }
         return false;
     }
-    QFile::setPermissions(destination,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    QFile::setPermissions(destination, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     return true;
 }
 

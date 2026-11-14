@@ -1,7 +1,7 @@
 #pragma once
 
-#include "gui/StreamClient.h"
 #include "core/LogReader.h"
+#include "gui/StreamClient.h"
 
 #include <QFutureWatcher>
 #include <QJsonObject>
@@ -142,8 +142,8 @@ class Backend : public QObject {
     Q_PROPERTY(QString systemLogsError READ systemLogsError NOTIFY systemLogsChanged)
     Q_PROPERTY(bool systemLogsTruncated READ systemLogsTruncated NOTIFY systemLogsChanged)
     Q_PROPERTY(bool systemLogsBusy READ systemLogsBusy NOTIFY systemLogsChanged)
-    Q_PROPERTY(QString diagnosticReportPath READ diagnosticReportPath
-               NOTIFY diagnosticReportChanged)
+    Q_PROPERTY(
+        QString diagnosticReportPath READ diagnosticReportPath NOTIFY diagnosticReportChanged)
     Q_PROPERTY(QVariantMap diskHealth READ diskHealth NOTIFY diskHealthChanged)
     Q_PROPERTY(QString setupDockerPolicy READ setupDockerPolicy NOTIFY setupChanged)
     Q_PROPERTY(QString setupJobId READ setupJobId NOTIFY setupJobChanged)

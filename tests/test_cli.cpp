@@ -1893,17 +1893,18 @@ void CliTest::systemLogs()
     QVERIFY(QDir().mkpath(logDir));
     QFile log(logDir + QStringLiteral("/podstackd.jsonl"));
     QVERIFY(log.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    log.write(QByteArrayLiteral(
-                  R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.core","process":"podstackd","message":"info do daemon"})")
-              + '\n');
-    log.write(QByteArrayLiteral(
-                  R"({"ts":"2026-11-13T00:00:01Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})")
-              + '\n');
+    log.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:00Z","level":"info","category":"podstack.core","process":"podstackd","message":"info do daemon"})") +
+        '\n');
+    log.write(
+        QByteArrayLiteral(
+            R"({"ts":"2026-11-13T00:00:01Z","level":"error","category":"podstack.setup","process":"podstackd","message":"Authorization: Bearer segredo"})") +
+        '\n');
     log.close();
 
-    CliResult result = run({QStringLiteral("system"), QStringLiteral("logs"),
-                            QStringLiteral("--json")},
-                           env);
+    CliResult result =
+        run({QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--json")}, env);
     QCOMPARE(result.code, 0);
     QJsonParseError parseError{};
     const QJsonDocument document = QJsonDocument::fromJson(result.out.toUtf8(), &parseError);
@@ -1927,9 +1928,9 @@ void CliTest::systemLogs()
     QCOMPARE(result.code, 2);
 
     const QString exportPath = m_testDataDir + QStringLiteral("/logs-export.jsonl");
-    result = run({QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--export"),
-                  exportPath},
-                 env);
+    result = run(
+        {QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--export"), exportPath},
+        env);
     QCOMPARE(result.code, 0);
     QFile exported(exportPath);
     QVERIFY(exported.open(QIODevice::ReadOnly));
@@ -1937,7 +1938,8 @@ void CliTest::systemLogs()
     QVERIFY(exported.permissions().testFlag(QFileDevice::ReadOwner));
     QVERIFY(!exported.permissions().testFlag(QFileDevice::WriteOther));
 
-    result = run({QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--clear")}, env);
+    result =
+        run({QStringLiteral("system"), QStringLiteral("logs"), QStringLiteral("--clear")}, env);
     QCOMPARE(result.code, 0);
     QVERIFY(!QFileInfo::exists(logDir + QStringLiteral("/podstackd.jsonl")));
 }
@@ -2010,12 +2012,12 @@ void CliTest::updateCommand()
     QCOMPARE(installWithoutYes.code, 2);
     QVERIFY(installWithoutYes.err.contains(QStringLiteral("--yes")));
 
-    const CliResult installBadOption =
-        run({QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--bogus")}, env);
+    const CliResult installBadOption = run(
+        {QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--bogus")}, env);
     QCOMPARE(installBadOption.code, 2);
 
-    const CliResult both =
-        run({QStringLiteral("update"), QStringLiteral("--check"), QStringLiteral("--install")}, env);
+    const CliResult both = run(
+        {QStringLiteral("update"), QStringLiteral("--check"), QStringLiteral("--install")}, env);
     QCOMPARE(both.code, 2);
 
     const CliResult missingManifest =
@@ -2025,14 +2027,14 @@ void CliTest::updateCommand()
     QCOMPARE(missingManifest.code, 1);
     QVERIFY(missingManifest.err.contains(QStringLiteral("preparar")));
 
-    const CliResult resumeMissing =
-        run({QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--resume")}, env);
+    const CliResult resumeMissing = run(
+        {QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--resume")}, env);
     QCOMPARE(resumeMissing.code, 1);
     QVERIFY(resumeMissing.err.contains(QStringLiteral("estado")));
 
-    const CliResult clearState =
-        run({QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--clear-state")},
-            env);
+    const CliResult clearState = run(
+        {QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--clear-state")},
+        env);
     QCOMPARE(clearState.code, 0);
 }
 
