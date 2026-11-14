@@ -117,7 +117,7 @@ void MachineDetailDialog::setupInterface(bool loadQml)
                                       QStringLiteral("MachineInspector"));
 #else
         m_quickWidget->setSource(
-            QUrl(QStringLiteral("qrc:/qt/qml/PodStack/src/gui/qml/MachineInspector.qml")));
+            QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Pages/machines/MachineInspector.qml")));
 #endif
         connectQmlSignals();
         cardLayout->addWidget(m_quickWidget);

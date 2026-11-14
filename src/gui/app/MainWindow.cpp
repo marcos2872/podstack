@@ -107,7 +107,7 @@ void MainWindow::loadMainQml()
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     m_quickWidget->loadFromModule(QStringLiteral("PodStack"), QStringLiteral("Main"));
 #else
-    m_quickWidget->setSource(QUrl(QStringLiteral("qrc:/qt/qml/PodStack/src/gui/qml/Main.qml")));
+    m_quickWidget->setSource(QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Main.qml")));
 #endif
     setCentralWidget(m_quickWidget);
 }

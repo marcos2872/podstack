@@ -107,7 +107,7 @@ void ContainerDetailDialog::setupInterface(bool loadQml)
                                       QStringLiteral("ContainerDetail"));
 #else
         m_quickWidget->setSource(
-            QUrl(QStringLiteral("qrc:/qt/qml/PodStack/src/gui/qml/ContainerDetail.qml")));
+            QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Pages/containers/detail/ContainerDetail.qml")));
 #endif
         connectQmlSignals();
         cardLayout->addWidget(m_quickWidget);

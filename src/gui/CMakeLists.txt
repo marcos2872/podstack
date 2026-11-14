@@ -60,10 +60,11 @@ qt_add_executable(podstack-gui
     main.cpp
 )
 
-qt_add_library(podstack_qml STATIC)
+add_subdirectory(qml/ds)
+add_subdirectory(qml/pages)
+add_subdirectory(qml/features)
 
-set_source_files_properties(qml/Theme.qml
-    PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+qt_add_library(podstack_qml STATIC)
 
 file(GLOB PODSTACK_UI_ICONS CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/assets/icons/*.svg")
@@ -98,43 +99,10 @@ qt_add_qml_module(podstack_qml
     RESOURCE_PREFIX "/qt/qml"
     QML_FILES
         qml/Main.qml
-        qml/ActivityMonitorWindow.qml
-        qml/Theme.qml
-        qml/AppIcon.qml
-        qml/AppSelect.qml
-        qml/AppDialog.qml
-        qml/AppFooter.qml
-        qml/AppBadge.qml
-        qml/NavItem.qml
-        qml/Sparkline.qml
-        qml/ViewHeader.qml
-        qml/ActionButton.qml
-        qml/FormField.qml
-        qml/PathField.qml
-        qml/FormCheck.qml
-        qml/SettingsRow.qml
-        qml/LogsView.qml
-        qml/SystemLogsDialog.qml
-        qml/Inspector.qml
-        qml/ContainerDetail.qml
-        qml/FilesView.qml
-        qml/CatalogList.qml
-        qml/SelectionState.qml
-        qml/ContainersPage.qml
-        qml/ImagesView.qml
-        qml/VolumesView.qml
-        qml/NetworksView.qml
-        qml/PodsView.qml
-        qml/MachinesPage.qml
-        qml/KubernetesPage.qml
-        qml/MachineInspector.qml
-        qml/MachineFilesView.qml
-        qml/ComposeView.qml
-        qml/BuildsView.qml
-        qml/Toast.qml
-        qml/SetupWindow.qml
-        qml/SetupRail.qml
-        qml/SetupCheckRow.qml
+    IMPORTS
+        PodStack.Design
+        PodStack.Pages
+        PodStack.Features
     RESOURCES
         ${PROJECT_SOURCE_DIR}/assets/fonts/Inter-Regular.ttf
         ${PROJECT_SOURCE_DIR}/assets/fonts/Inter-Medium.ttf
@@ -148,6 +116,9 @@ qt_add_qml_module(podstack_qml
 )
 
 target_link_libraries(podstack_qml PUBLIC
+    podstack_qml_design
+    podstack_qml_pages
+    podstack_qml_features
     Qt6::Qml
     Qt6::Quick
 )
@@ -156,6 +127,12 @@ target_link_libraries(podstack-gui PRIVATE
     podstack_gui_lib
     podstack_qml
     podstack_qmlplugin
+    podstack_qml_design
+    podstack_qml_designplugin
+    podstack_qml_pages
+    podstack_qml_pagesplugin
+    podstack_qml_features
+    podstack_qml_featuresplugin
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets

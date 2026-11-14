@@ -439,7 +439,7 @@ void TerminalTest::selectionState()
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     component.loadFromModule(QStringLiteral("PodStack"), QStringLiteral("SelectionState"));
 #else
-    component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/PodStack/src/gui/qml/SelectionState.qml")));
+    component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Design/patterns/SelectionState.qml")));
 #endif
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
     QScopedPointer<QObject> state(component.create());

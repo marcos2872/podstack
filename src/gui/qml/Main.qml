@@ -1,7 +1,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import PodStack
+import PodStack.Design
+import PodStack.Pages
+import PodStack.Features
 
 // Conteúdo da janela principal. O QMainWindow (MainWindow) define tamanho,
 // visibilidade e o painel de terminal; este item apenas apresenta a UI.
@@ -328,7 +330,7 @@ Rectangle {
                                 Repeater {
                                     model: modelData.items
 
-                                    NavItem {
+                                    AppNavItem {
                                         Layout.fillWidth: true
                                         iconName: modelData.icon
                                         label: modelData.label
@@ -352,14 +354,14 @@ Rectangle {
                     color: Theme.border
                 }
 
-                NavItem {
+                AppNavItem {
                     Layout.fillWidth: true
                     iconName: "settings"
                     label: "Settings"
                     onClicked: settingsDialog.open()
                 }
 
-                NavItem {
+                AppNavItem {
                     Layout.fillWidth: true
                     iconName: "file"
                     label: "Logs"
@@ -459,7 +461,7 @@ Rectangle {
                         }
                     }
 
-                    ActionButton {
+                    AppButton {
                         variant: "ghost"
                         iconName: Theme.dark ? "sun" : "moon"
                         onClicked: {
@@ -559,7 +561,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
 
-                    ImagesView {
+                    ImagesPage {
                         id: imagesPage
                         anchors.fill: parent
                     }
@@ -570,7 +572,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
 
-                    VolumesView {
+                    VolumesPage {
                         id: volumesPage
                         anchors.fill: parent
                     }
@@ -581,7 +583,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
 
-                    NetworksView {
+                    NetworksPage {
                         id: networksPage
                         anchors.fill: parent
                     }
@@ -592,7 +594,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
 
-                    ComposeView {
+                    ComposePage {
                         id: composePage
                         anchors.fill: parent
                         compact: window.compactLayout
@@ -604,7 +606,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
 
-                    BuildsView {
+                    BuildsPage {
                         id: buildsPage
                         anchors.fill: parent
                         compact: window.compactLayout
@@ -616,7 +618,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
 
-                    PodsView {
+                    PodsPage {
                         id: podsPage
                         anchors.fill: parent
                     }
@@ -761,7 +763,7 @@ Rectangle {
         }
     }
 
-    Toast {
+    AppToast {
         message: backend.eventMessage
         kind: backend.eventKind
     }
@@ -835,7 +837,7 @@ Rectangle {
         }
     }
 
-    AppDialog {
+    AppModal {
         id: updateInstallDialog
         objectName: "updateInstallDialog"
         title: qsTr("Instalar atualização")
@@ -875,11 +877,11 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                ActionButton {
+                AppButton {
                     text: qsTr("Cancelar")
                     onClicked: updateInstallDialog.close()
                 }
-                ActionButton {
+                AppButton {
                     text: qsTr("Instalar")
                     variant: "primary"
                     onClicked: {
@@ -895,7 +897,7 @@ Rectangle {
         id: systemLogsDialog
     }
 
-    AppDialog {
+    AppModal {
         id: settingsDialog
         objectName: "settingsDialog"
         title: qsTr("Configurações")
@@ -1101,7 +1103,7 @@ Rectangle {
                                 font.weight: Font.DemiBold
                             }
 
-                            FormCheck {
+                            AppCheck {
                                 id: autoCheckBox
                                 objectName: "updateAutoCheckBox"
                                 text: qsTr("Verificar atualizações ao iniciar")
@@ -1124,7 +1126,7 @@ Rectangle {
                                 Layout.fillWidth: true
                                 spacing: 8
 
-                                ActionButton {
+                                AppButton {
                                     objectName: "updateInstallButton"
                                     text: qsTr("Instalar atualização")
                                     size: "sm"
@@ -1133,7 +1135,7 @@ Rectangle {
                                     onClicked: updateInstallDialog.open()
                                 }
 
-                                ActionButton {
+                                AppButton {
                                     objectName: "updateCheckNowButton"
                                     text: qsTr("Verificar atualizações")
                                     size: "sm"
@@ -1149,7 +1151,7 @@ Rectangle {
                                     wrapMode: Text.WordWrap
                                 }
 
-                                ActionButton {
+                                AppButton {
                                     objectName: "updateViewLogButton"
                                     text: qsTr("Ver log")
                                     size: "sm"
@@ -1157,7 +1159,7 @@ Rectangle {
                                     onClicked: systemLogsDialog.openFor("update", "error")
                                 }
 
-                                ActionButton {
+                                AppButton {
                                     objectName: "updateResumeButton"
                                     text: qsTr("Retomar")
                                     size: "sm"
@@ -1166,7 +1168,7 @@ Rectangle {
                                     onClicked: backend.updates.resume()
                                 }
 
-                                ActionButton {
+                                AppButton {
                                     objectName: "updateClearStateButton"
                                     text: qsTr("Limpar estado")
                                     size: "sm"
@@ -1182,7 +1184,7 @@ Rectangle {
                     Repeater {
                         model: settingsDialog.settingsRows
 
-                        delegate: SettingsRow {
+                        delegate: AppSettingsRow {
                             width: settingsColumn.width
                             settingKey: modelData.settingKey
                             settingType: modelData.settingType
@@ -1232,7 +1234,7 @@ Rectangle {
                 Layout.fillWidth: true
             }
 
-            ActionButton {
+            AppButton {
                 visible: backend.settings.error.length > 0
                 text: qsTr("Ver log")
                 size: "sm"
@@ -1241,7 +1243,7 @@ Rectangle {
         }
 
         footer: AppFooter {
-            ActionButton {
+            AppButton {
                 text: qsTr("Executar configuração")
                 iconName: "settings"
                 onClicked: {
@@ -1250,7 +1252,7 @@ Rectangle {
                 }
             }
             Item { Layout.fillWidth: true }
-            ActionButton {
+            AppButton {
                 text: qsTr("Fechar")
                 variant: "primary"
                 onClicked: settingsDialog.close()
