@@ -472,12 +472,44 @@ podstack update --check --json --channel beta
 ```
 
 O `update --check` não instala nada. Exit 3 significa que há uma versão nova; exit 1 significa que a
-checagem está indisponível. A atualização é feita pelo gerenciador de pacotes (`sudo dnf upgrade
-podstack`/`sudo apt upgrade podstack`) ou pelo canal que você usa.
+checagem está indisponível.
 
-Erros `PODSTACK_UPDATE_SIGNATURE`/`PODSTACK_UPDATE_MANIFEST` indicam feed ou assinatura inválidos.
-Não tente contornar a verificação; confira rede, URL do feed e chave pública. Um feed sem chave
-configurada retorna `unconfigured` e não aceita atualização.
+A partir da 0.1.4, a GUI mostra **Instalar atualização** (com versão e notas) e o CLI oferece o
+caminho assistido. A GUI grava `gui-was-open`, fecha, o runner para o daemon, valida o pacote no
+helper, instala em uma unidade transiente e reabre a GUI ao final, com notificação nativa.
+
+```bash
+podstack update --install
+podstack update --install --yes --json
+podstack update --install --resume   # retoma um job interrompido
+podstack update --install --clear-state
+```
+
+O `--install` usa exit 0/1/2/6/8/9; 6 é consentimento/polkit, 8 timeout e 9 cancelamento. Em caso de
+falha, o helper é mantido ativo, GUI/daemon da versão instalada são religados e o estado fica em
+`~/.local/state/podstack/updates/state.json` para retomar ou limpar. O caminho manual continua
+válido: `sudo dnf upgrade podstack`/`sudo apt upgrade podstack`.
+
+Erros `PODSTACK_UPDATE_SIGNATURE_INVALID`/`PODSTACK_UPDATE_MANIFEST_INVALID` indicam feed, assinatura
+ou identidade do pacote inválidos; não contorne a verificação. `PODSTACK_UPDATE_UNSUPPORTED` com
+`reason=custom_key` significa que `updates.publicKey` foi customizada e o install assistido usa a
+chave de release do helper: use o caminho manual.
+
+## Logs do app
+
+Os logs de daemon/GUI/CLI/setup/update ficam em `~/.local/state/podstack/logs/` por 7 dias
+(JSON Lines, `0600`). A GUI tem a página **Logs** na sidebar; o CLI equivalente:
+
+```bash
+podstack system logs
+podstack system logs --level error --since 7d
+podstack system logs --json --export /tmp/podstack-logs.jsonl
+podstack system logs --clear
+```
+
+`--component` aceita `daemon|gui|cli|qml|setup|update|helper|package`; `helper`/`package` usam o
+helper com polkit. O `podstack report --include-logs` gera um JSON redigido com até 7 dias e caps de
+10.000 linhas/componente e 5 MB; nada é enviado.
 
 ## Erros PODSTACK
 

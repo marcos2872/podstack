@@ -571,7 +571,8 @@ journalctl -u podstack-helper.service -n 100 --no-pager</code></pre>
 <h3 id="atualizar">Atualizar</h3>
 <p>Os updates são assinados e verificados antes de aplicar. Para consultar o manifesto:</p>
 <pre data-lang="bash" tabindex="0"><code>podstack update --check</code></pre>
-<p>O comando retorna exit 3 quando há uma versão nova e exit 1 quando a checagem está indisponível. A instalação é feita pelo gerenciador de pacotes: <code>sudo dnf upgrade podstack</code> ou <code>sudo apt upgrade podstack</code>.</p>
+<p>O comando retorna exit 3 quando há uma versão nova e exit 1 quando a checagem está indisponível. A partir da 0.1.4, a GUI oferece <strong>Instalar atualização</strong> e o CLI aceita <code>podstack update --install</code> (com consentimento, assinatura e reinício); o app fecha e reabre ao final. Em caso de falha, <code>--resume</code> retoma e <code>--clear-state</code> limpa o estado. O caminho manual continua válido: <code>sudo dnf upgrade podstack</code> ou <code>sudo apt upgrade podstack</code>.</p>
+<p>Os logs do app e do update ficam em <code>~/.local/state/podstack/logs/</code> por 7 dias; use <code>podstack system logs</code> ou a página <strong>Logs</strong> na GUI, e <code>podstack report --include-logs</code> para um diagnóstico redigido.</p>
 <h3 id="desinstalar">Desinstalar</h3>
 <pre data-lang="bash" tabindex="0"><code># RPM
 sudo systemctl --global disable podstack.socket

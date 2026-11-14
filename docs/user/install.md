@@ -329,6 +329,21 @@ systemctl --user stop podstack.service
 rm -rf ~/.config/podstack ~/.local/share/podstack ~/.local/state/podstack ~/.cache/podstack
 ```
 
+## 9.1 Atualização com o app aberto
+
+O pacote novo encerra GUI/daemon/helper antigos antes do unpack e o `postinst`/`%post` reinicia o
+helper de verdade. Containers e machines continuam rodando; QEMU/virtiofsd ficam em scopes próprios.
+
+- **GUI/CLI (0.1.4+):** use **Instalar atualização** ou `podstack update --install`. O app fecha,
+  instala em uma unidade transiente e reabre ao final; falhas restauram a versão instalada e deixam
+  `~/.local/state/podstack/updates/state.json` para retomar (`--resume`) ou limpar
+  (`--clear-state`).
+- **Manual:** `sudo apt install ./podstack_<versão>_amd64.deb` ou `sudo dnf upgrade podstack`
+  executa os scripts do pacote; o runner não é encerrado.
+
+Logs do update e do app: `podstack system logs --component update` e
+`podstack system logs --component helper`; a GUI tem a página **Logs**.
+
 ## 10. Limitações de instalação
 
 - O Flatpak é um cliente: o daemon e o helper precisam estar instalados no host.
