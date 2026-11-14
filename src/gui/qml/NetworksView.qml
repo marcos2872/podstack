@@ -80,7 +80,7 @@ ColumnLayout {
         ActionButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.refreshNetworks()
+            onClicked: backend.networks.refresh()
             Accessible.name: qsTr("Atualizar")
         }
     }

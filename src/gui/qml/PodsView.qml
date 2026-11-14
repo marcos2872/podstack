@@ -98,7 +98,7 @@ ColumnLayout {
         ActionButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.refreshPods()
+            onClicked: backend.pods.refresh()
             Accessible.name: qsTr("Atualizar")
         }
     }

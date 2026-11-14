@@ -204,15 +204,15 @@ Rectangle {
         } else if (section === "images") {
             backend.images.refresh()
         } else if (section === "volumes") {
-            backend.refreshVolumes()
+            backend.volumes.refresh()
         } else if (section === "networks") {
-            backend.refreshNetworks()
+            backend.networks.refresh()
         } else if (section === "pods") {
-            backend.refreshPods()
+            backend.pods.refresh()
         } else if (section === "compose") {
-            backend.refreshCompose()
+            backend.compose.refresh()
         } else if (section === "builds") {
-            backend.refreshBuilds()
+            backend.builds.refresh()
         } else if (section === "machines") {
             backend.machines.refresh()
         } else if (section === "kubernetes") {
@@ -830,7 +830,7 @@ Rectangle {
         onActivated: {
             const item = containersPage.currentItem()
             if (item && item.id) {
-                backend.lifecycle(item.state === "running" ? "stop" : "start", item.id)
+                backend.containers.lifecycle(item.state === "running" ? "stop" : "start", item.id)
             }
         }
     }

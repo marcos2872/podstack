@@ -300,9 +300,9 @@ ColumnLayout {
         snapshotActionPending = true
         snapshotsError.text = ""
         if (pendingSnapshotAction === "restore") {
-            backend.restoreMachineSnapshot(pendingSnapshotsId, pendingSnapshotName)
+            backend.machines.restoreSnapshot(pendingSnapshotsId, pendingSnapshotName)
         } else if (pendingSnapshotAction === "remove") {
-            backend.removeMachineSnapshot(pendingSnapshotsId, pendingSnapshotName)
+            backend.machines.removeSnapshot(pendingSnapshotsId, pendingSnapshotName)
         }
     }
 
@@ -315,7 +315,7 @@ ColumnLayout {
         snapshotActionPending = true
         pendingSnapshotAction = "create"
         snapshotsError.text = ""
-        backend.createMachineSnapshot(pendingSnapshotsId, name)
+        backend.machines.createSnapshot(pendingSnapshotsId, name)
     }
 
     function stageLabel(stage) {
@@ -580,7 +580,7 @@ ColumnLayout {
                 machinesPage.pendingSnapshotName = ""
                 snapshotsName.text = ""
                 snapshotsError.text = ""
-                backend.refreshMachineSnapshots(id)
+                backend.machines.refreshSnapshots(id)
                 snapshotsDialog.open()
             }
             onResourcesRequested: function(id) {
