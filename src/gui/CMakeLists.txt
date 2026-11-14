@@ -104,7 +104,6 @@ qt_add_qml_module(podstack_qml
         qml/SettingsRow.qml
         qml/LogsView.qml
         qml/SystemLogsDialog.qml
-        qml/StatsView.qml
         qml/Inspector.qml
         qml/ContainerDetail.qml
         qml/FilesView.qml
