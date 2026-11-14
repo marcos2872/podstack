@@ -422,7 +422,7 @@ a label <code>dev.podstack.domains</code> adiciona domínios customizados ao rot
 <h2 id="podstack-local">Domínios *.podstack.local e DNS</h2>
 <p><code>*.localhost</code> resolve para loopback pelo próprio sistema. Já
 <code>*.podstack.local</code> usa o DNS userspace do PodStack em <code>127.0.0.1:5353</code> e um
-drop-in do <code>systemd-resolved</code>. Em 0.1.3, a instalação do drop-in ainda
+drop-in do <code>systemd-resolved</code>. Em 0.1.4, a instalação do drop-in ainda
 <strong>não está ligada à GUI/CLI</strong>; sem ele, o nome não resolve.</p>
 <p>Para usar <code>*.podstack.local</code>, instale o drop-in manualmente (operação de sistema;
 revise antes):</p>
@@ -463,7 +463,7 @@ importe o <code>root.crt</code> nas autoridades do próprio navegador.</p>
 <p>Containers criados ou duplicados pelo PodStack recebem a CA montada read-only quando o arquivo
 existe. A label <code>dev.podstack.ca=false</code> faz opt-out. Containers de Compose ficam
 pendentes: o provider externo monta os volumes.</p>
-<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Confiar na CA afeta o sistema</p><p>Adicionar a CA ao trust store do sistema faz todas as aplicações confiarem nela. Use apenas em desenvolvimento e remova o arquivo quando não precisar mais. O helper tem a ação <code>TrustCa</code>, mas a fiação automática não está pronta em 0.1.3.</p></div></div><h2 id="labels">Labels dev.podstack.*</h2><div class="table-wrap">
+<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Confiar na CA afeta o sistema</p><p>Adicionar a CA ao trust store do sistema faz todas as aplicações confiarem nela. Use apenas em desenvolvimento e remova o arquivo quando não precisar mais. O helper tem a ação <code>TrustCa</code>, mas a fiação automática não está pronta em 0.1.4.</p></div></div><h2 id="labels">Labels dev.podstack.*</h2><div class="table-wrap">
 <table>
 <thead><tr>
 <th scope="col">Label</th>
@@ -595,10 +595,10 @@ systemctl --user restart podstack.service</code></pre><h2 id="referencia-rapida"
 </tbody></table></div><h2 id="limitacoes">Limitações</h2>
 <ul>
   <li><strong>Portas não publicadas não podem ser encaminhadas no rootless</strong> (T6-10). Publique a porta na criação do container ou no Compose.</li>
-  <li><strong>As portas 80/443 não são ativadas automaticamente</strong> pela GUI/CLI em 0.1.3; use 18080/18443. O helper tem <code>BindPorts</code>, mas a fiação do app ainda não a chama.</li>
+  <li><strong>As portas 80/443 não são ativadas automaticamente</strong> pela GUI/CLI em 0.1.4; use 18080/18443. O helper tem <code>BindPorts</code>, mas a fiação do app ainda não a chama.</li>
   <li><strong>CA e <code>*.podstack.local</code> são manuais</strong>: a confiança na CA e o drop-in do resolved não têm fluxo pronto na GUI/CLI.</li>
   <li><strong>Domínios customizados via Compose</strong> (T6-08) estão pendentes; a montagem da CA em containers de Compose também.</li>
-  <li><strong>Não há <code>k8s.podstack.local</code></strong> em 0.1.3.</li>
+  <li><strong>Não há <code>k8s.podstack.local</code></strong> em 0.1.4.</li>
   <li><strong>O proxy usa a primeira porta publicada</strong> quando nenhuma responde HTTP; se o serviço não for HTTP, a URL pode não funcionar como esperado.</li>
 </ul>
 

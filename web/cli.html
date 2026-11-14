@@ -379,7 +379,7 @@
 
       <div class="eyebrow"><svg class="icon" aria-hidden="true"><use href="#i-terminal-2"></use></svg> PodStack Docs</div>
       <h1>CLI podstack</h1>
-<p class="lede">Referência dos comandos e flags reais da versão 0.1.3, com saída JSON, exit codes, socket do daemon e exemplos para automação.</p>
+<p class="lede">Referência dos comandos e flags reais da versão 0.1.4, com saída JSON, exit codes, socket do daemon e exemplos para automação.</p>
 <div class="page-meta"><span class="badge badge-accent">PodStack 0.1.4</span><span>Documentação de usuário</span></div><h2 id="visao-geral">Visão geral</h2>
 <p>O pacote instala <code>podstack</code> (CLI), <code>podstackd</code> (daemon) e
 <code>podstack-gui</code>. O CLI conversa com o daemon pelo socket Unix do usuário; o daemon sobe
@@ -389,7 +389,7 @@ fica em <code>build/dev/podstack</code>.</p>
 podstack version
 podstack status</code></pre>
 <p>Convenções: <code>&lt;id|nome&gt;</code> aceita o ID ou o nome do recurso. Não há flags globais
-como <code>--machine</code> ou <code>--format</code>; cada comando tem as suas. O CLI 0.1.3
+como <code>--machine</code> ou <code>--format</code>; cada comando tem as suas. O CLI 0.1.4
 <strong>não cria, inicia, para nem remove containers</strong>: use a GUI para o ciclo de vida.
 <code>--force</code>/<code>--yes</code> só existem nos comandos listados e não são globais.</p>
 <h2 id="daemon">Daemon, socket e ativação</h2>
@@ -412,7 +412,7 @@ PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock ./build/dev/podstackd --socket /t
 </tr></thead><tbody>
 <tr>
 <td><code>podstack version</code></td>
-<td>Mostra <code>PodStack 0.1.3</code>.</td>
+<td>Mostra <code>PodStack 0.1.4</code>.</td>
 </tr>
 <tr>
 <td><code>podstack status</code></td>
@@ -433,6 +433,10 @@ PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock ./build/dev/podstackd --socket /t
 <tr>
 <td><code>podstack update --check [--json] [--channel stable|beta]</code></td>
 <td>Consulta o manifesto assinado; não instala nada. Exit 3 se houver versão nova.</td>
+</tr>
+<tr>
+<td><code>podstack update --install [--yes] [--json] [--resume|--clear-state]</code></td>
+<td>Baixa/valida o pacote e instala pelo helper, com consentimento e reinício. Exit 0/1/2/6/8/9 (nunca 3).</td>
 </tr>
 </tbody></table></div><h3 id="containers">Containers</h3><div class="table-wrap">
 <table>
@@ -606,6 +610,11 @@ podstack machine export dev ~/dev-backup.tar.zst</code></pre><h3 id="sistema">Ku
 <td>Arquitetura do host e handlers binfmt/FEX.</td>
 </tr>
 <tr>
+<td><code>podstack system logs</code></td>
+<td><code>--follow</code>, <code>--since 7d|ISO</code>, <code>--level</code>, <code>--component</code>, <code>--json</code>, <code>--export</code>, <code>--clear</code></td>
+<td>Logs do app dos últimos 7 dias; filtra, exporta (0600) e limpa. <code>helper</code>/<code>package</code> usam polkit.</td>
+</tr>
+<tr>
 <td><code>podstack config show|get|set|add|remove|reset|schema</code></td>
 <td><code>--json</code>, <code>--all</code>, <code>--yes</code></td>
 <td>Lê e altera as 86 chaves de configuração.</td>
@@ -622,9 +631,9 @@ podstack machine export dev ~/dev-backup.tar.zst</code></pre><h3 id="sistema">Ku
   <li><code>checkpoint --json</code>, <code>restore --json</code></li>
   <li><code>machine ... --json</code> (list, info, logs, console com <code>--no-follow</code>, start/stop/restart/delete, rename, clone, update, default, distros, port, snapshot, serial, usb, audio, export, import)</li>
   <li><code>kube info --json</code></li>
-  <li><code>system df|disk|emulation --json</code></li>
+  <li><code>system df|disk|emulation --json</code>, <code>system logs --json</code></li>
   <li><code>config show|get|schema --json</code></li>
-  <li><code>top --json</code>, <code>update --check --json</code>, <code>report --json</code>, <code>setup --docker-impact --json</code></li>
+  <li><code>top --json</code>, <code>update --check|--install --json</code>, <code>report --json</code>, <code>setup --docker-impact --json</code></li>
 </ul>
 <p><code>images</code>, <code>volumes</code>, <code>networks</code>, <code>pods</code>,
 <code>compose</code> e <code>builds</code> não aceitam <code>--json</code> nesta versão;
@@ -641,7 +650,7 @@ podstack machine export dev ~/dev-backup.tar.zst</code></pre><h3 id="sistema">Ku
 </tr>
 <tr>
 <td><code>1</code></td>
-<td>Erro genérico; também usado por <code>doctor</code>/<code>setup --validate</code> com pendência e por <code>update --check</code> quando a checagem está indisponível.</td>
+<td>Erro genérico; também usado por <code>doctor</code>/<code>setup --validate</code> com pendência, por <code>update --check</code> quando a checagem está indisponível e por <code>update --install</code> quando a instalação falha.</td>
 </tr>
 <tr>
 <td><code>2</code></td>
@@ -649,11 +658,23 @@ podstack machine export dev ~/dev-backup.tar.zst</code></pre><h3 id="sistema">Ku
 </tr>
 <tr>
 <td><code>3</code></td>
-<td><code>update --check</code> encontrou versão nova.</td>
+<td><code>update --check</code> encontrou versão nova. <code>update --install</code> nunca retorna 3.</td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>Consentimento/polkit negado no update assistido.</td>
 </tr>
 <tr>
 <td><code>7</code></td>
 <td>Daemon ou engine indisponível (<code>PODSTACK_DAEMON_UNAVAILABLE</code>/<code>PODSTACK_ENGINE_UNAVAILABLE</code>).</td>
+</tr>
+<tr>
+<td><code>8</code></td>
+<td>Timeout no download, stage ou instalação do update.</td>
+</tr>
+<tr>
+<td><code>9</code></td>
+<td>Update cancelado antes de a unidade transiente começar.</td>
 </tr>
 </tbody></table></div>
 <p><code>podstack exec</code> devolve o exit code do comando executado no container (0–255) quando o
@@ -705,7 +726,7 @@ podstack status
 podstack doctor
 
 # build e histórico
-podstack build ./app -t local/app:ci --build-arg VERSION=0.1.3
+podstack build ./app -t local/app:ci --build-arg VERSION=0.1.4
 podstack builds
 
 # machine descartável

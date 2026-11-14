@@ -471,7 +471,7 @@ e <code>kubernetes.tlsSan</code> (SANs extras do API server). Alterações nesse
 reiniciar o PodStack.</p>
 <p><code>kubernetes.exposeServices=true</code> faz o port-forward de Service usar
 <code>0.0.0.0</code> (LAN) em vez de loopback. O firewall do host ainda precisa ser liberado
-separadamente. Não há NodePort/LoadBalancer nativos em 0.1.3.</p>
+separadamente. Não há NodePort/LoadBalancer nativos em 0.1.4.</p>
 <div class="callout limit" role="note"><svg class="icon" aria-hidden="true"><use href="#i-ban"></use></svg><div class="callout-body"><p class="callout-title">TLS SANs</p><p>Se você acessa a API por um nome ou IP diferente, adicione o SAN em <code>kubernetes.tlsSan</code> antes de habilitar/reiniciar o cluster. O kubeconfig aponta para <code>127.0.0.1</code>; use <code>podstack kube env</code> para apontar o <code>kubectl</code> ao arquivo correto.</p></div></div><h2 id="referencia-rapida">Referência rápida</h2><div class="table-wrap">
 <table>
 <thead><tr>

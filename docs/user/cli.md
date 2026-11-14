@@ -1,4 +1,4 @@
-# CLI `podstack` — referência (0.1.3)
+# CLI `podstack` — referência (0.1.4)
 
 O pacote instala o CLI `podstack`, o daemon `podstackd` e a GUI `podstack-gui`. O CLI conversa com o
 daemon pelo socket Unix do usuário; o daemon sobe sob demanda quando `podstack.socket` está ativo.
@@ -12,7 +12,7 @@ podstack version
 ## Convenções
 
 - `<id|nome>` aceita o ID ou o nome do recurso.
-- O CLI 0.1.3 **não** tem flags globais como `--machine` ou `--format`; cada comando tem as suas.
+- O CLI 0.1.4 **não** tem flags globais como `--machine` ou `--format`; cada comando tem as suas.
 - Saída humana é o padrão. Onde há `--json`, a saída é JSON; alguns comandos incluem `"api": 1` e
   outros devolvem o objeto do RPC. A lista de comandos com JSON está no fim deste documento. Os
   exemplos que usam `jq` exigem o `jq` instalado.
@@ -25,12 +25,13 @@ podstack version
 
 | Comando | O que faz |
 |---|---|
-| `podstack version` | Mostra `PodStack 0.1.3`. |
+| `podstack version` | Mostra `PodStack 0.1.4`. |
 | `podstack status` | Estado do daemon e do Podman. Exit 7 quando o daemon não responde; exit 1 quando o status contém erro (por exemplo, engine indisponível). |
 | `podstack doctor` | Diagnóstico rápido: socket do daemon e socket do Podman. Exit 1 se algum check falhar. |
 | `podstack report [--include-logs] [--json]` | Gera um relatório redigido em `~/.local/state/podstack/reports/` (0600), com caminho e SHA-256. Revise antes de compartilhar. |
 | `podstack top [--once] [--interval S] [--json] [--plain]` | Monitora CPU/memória/containers. `--once` espera duas amostras para calcular taxas; sem `--once`, segue até `Ctrl+C`. |
 | `podstack update --check [--json] [--channel stable|beta]` | Consulta o manifesto assinado. Não instala nada. Exit 3 se houver versão nova; exit 1 se a checagem estiver indisponível. |
+| `podstack update --install [--yes] [--json] [--resume\|--clear-state]` | Baixa/valida o pacote e instala pelo helper, com consentimento e reinício. Exit 0/1/2/6/8/9 (nunca 3). `--resume` retoma um job e `--clear-state` limpa o estado. |
 
 ```bash
 podstack status
@@ -38,6 +39,7 @@ podstack doctor
 podstack report --include-logs
 podstack top --once --plain
 podstack update --check --channel stable
+podstack update --install --yes --json
 ```
 
 ## Containers
@@ -148,7 +150,7 @@ para o socket do Podman. `PODSTACK_COMPOSE_PROVIDER` força um binário.
 | Comando | Flags | Notas |
 |---|---|---|
 | `podstack compose ls` / `list` | — | Projetos agrupados por labels. |
-| `podstack compose up <diretório> [serviço]` | — | Sempre destaca (`detach`); não há `-d` nem `--file` no CLI 0.1.3. |
+| `podstack compose up <diretório> [serviço]` | — | Sempre destaca (`detach`); não há `-d` nem `--file` no CLI 0.1.4. |
 | `podstack compose down <diretório> [serviço]` | `--volumes` | Sem `--volumes`, os volumes são preservados. |
 | `podstack compose restart <diretório> [serviço]` | — | |
 | `podstack compose stop <diretório> [serviço]` | — | |
@@ -171,7 +173,7 @@ podstack compose down --volumes ~/projetos/app
 | `podstack builds rm <id>` | — |
 
 ```bash
-podstack build ./app -t local/app:dev --build-arg VERSION=0.1.3
+podstack build ./app -t local/app:dev --build-arg VERSION=0.1.4
 podstack builds
 podstack builds rm 01a1c24e-44d9-76df-8db5-3185e34087b7
 ```
@@ -200,7 +202,7 @@ do Podman. Arquiteturas estrangeiras exigem `binfmt_misc` no host.
 | `podstack machine default [<id\|nome>]` | `--json` |
 | `podstack machine distros` | `--json` |
 
-- Distros disponíveis em 0.1.3: `ubuntu:24.04`, `debian:12` e `fedora:44` (amd64).
+- Distros disponíveis em 0.1.4: `ubuntu:24.04`, `debian:12` e `fedora:44` (amd64).
 - Defaults: 2 CPUs, 4 GiB de memória, 20 GiB de disco, usuário `podstack`.
 - `machine create` não tem flags de mount no CLI (T4-07); mounts são configurados na GUI/RPC.
 - `machine update` exige ao menos um recurso ou o agent. CPUs/memória valem no próximo boot; o disco
@@ -302,7 +304,7 @@ podstack kube context
 podstack kube context use podstack-default
 ```
 
-Não há NodePort/LoadBalancer nativos nem `k8s.podstack.local` em 0.1.3 (T5-07 parcial). A troca de
+Não há NodePort/LoadBalancer nativos nem `k8s.podstack.local` em 0.1.4 (T5-07 parcial). A troca de
 contexto automática por projeto também não existe (T5-08 parcial).
 
 ## Sistema
@@ -393,6 +395,7 @@ Comandos com saída JSON:
 - `config show|get|schema --json`
 - `top --json`
 - `update --check --json`
+- `update --install --json`
 - `report --json`
 - `setup --docker-impact --json`
 
@@ -404,10 +407,13 @@ Exit codes:
 | Código | Significado |
 |---|---|
 | `0` | Sucesso. |
-| `1` | Erro genérico; também usado por `doctor`/`setup --validate` com pendência e por `update --check` quando a checagem está indisponível. |
+| `1` | Erro genérico; também usado por `doctor`/`setup --validate` com pendência, por `update --check` quando a checagem está indisponível e por `update --install` quando a instalação falha. |
 | `2` | Uso inválido, flag desconhecida ou confirmação ausente em modo não interativo. |
-| `3` | `update --check` encontrou versão nova. |
+| `3` | `update --check` encontrou versão nova. `update --install` nunca retorna 3. |
+| `6` | Consentimento/polkit negado no update assistido. |
 | `7` | Daemon ou engine indisponível (`PODSTACK_DAEMON_UNAVAILABLE`/`PODSTACK_ENGINE_UNAVAILABLE`). |
+| `8` | Timeout no download, stage ou instalação do update. |
+| `9` | Update cancelado antes de a unidade transiente começar. |
 
 `podstack exec` devolve o exit code do comando executado no container (0–255) quando o comando
 chega a rodar; erros do próprio CLI seguem a tabela acima.

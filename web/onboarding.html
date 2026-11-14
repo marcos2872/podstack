@@ -425,7 +425,7 @@
   <figcaption>Etapa 4 de 7 — QEMU/KVM. Sem /dev/kvm, as machines usam TCG.</figcaption>
 </figure>
 <p><strong>O que a tela mostra.</strong> Os checks de QEMU, OVMF, virtiofsd e <code>/dev/kvm</code>, com o botão <strong>Instalar virtualização</strong> quando falta algum componente.</p>
-<p><strong>O que acontece.</strong> O setup instala QEMU, OVMF, virtiofsd e libvirt opcional via helper. No Ubuntu 24.04 usa <code>ovmf</code>, <code>qemu-system-x86</code>, <code>qemu-utils</code> e <code>virtiofsd</code>; a 0.1.3 reconhece <code>OVMF_CODE_4M.fd</code> e <code>OVMF_VARS_4M.fd</code>. Se a instalação falhar, a mensagem do helper (por exemplo, pacote não encontrado) aparece no painel de log e no rodapé. Sem <code>/dev/kvm</code>, ele avisa e permite seguir com TCG, que é muito mais lento.</p>
+<p><strong>O que acontece.</strong> O setup instala QEMU, OVMF, virtiofsd e libvirt opcional via helper. No Ubuntu 24.04 usa <code>ovmf</code>, <code>qemu-system-x86</code>, <code>qemu-utils</code> e <code>virtiofsd</code>; a 0.1.4 reconhece <code>OVMF_CODE_4M.fd</code> e <code>OVMF_VARS_4M.fd</code>. Se a instalação falhar, a mensagem do helper (por exemplo, pacote não encontrado) aparece no painel de log e no rodapé. Sem <code>/dev/kvm</code>, ele avisa e permite seguir com TCG, que é muito mais lento.</p>
 <p><strong>Obrigatório?</strong> Sim para concluir a validação e usar machines. <strong>Se pular:</strong> as machines ficam indisponíveis ou usam TCG.</p>
 
 <h2 id="componentes">5. Componentes</h2>

@@ -419,7 +419,7 @@ podstack setup --apply socket
 podstack status</code></pre>
 <p>O PodStack usa o Podman rootless por padrão e espera o socket em
 <code>$XDG_RUNTIME_DIR/podman/podman.sock</code>. Se você usa outro caminho, ajuste
-<code>PODSTACK_PODMAN_SOCKET</code> ou <code>engine.socketPath</code>. No Fedora, o PodStack 0.1.3
+<code>PODSTACK_PODMAN_SOCKET</code> ou <code>engine.socketPath</code>. No Fedora, o PodStack 0.1.4
 espera Podman 5.8+; no Ubuntu 24.04+, Podman 4.9+ (5.8 recomendado).</p>
 <p>No modo rootful (<code>engine.mode=rootful</code>), o socket é
 <code>/run/podman/podman.sock</code> e seu usuário precisa de acesso ao grupo correspondente.
@@ -465,7 +465,7 @@ journalctl --user -u podstack.service -n 200 --no-pager</code></pre>
 <p>Na 0.1.2, o check só reconhecia os caminhos do Fedora
 (<code>/usr/share/edk2/ovmf/OVMF_CODE.fd</code>). O pacote <code>ovmf</code> do Ubuntu instala
 <code>/usr/share/OVMF/OVMF_CODE_4M.fd</code> e <code>OVMF_VARS_4M.fd</code>, então a instalação
-manual não destravava a etapa. A 0.1.3 reconhece esses arquivos e o setup instala
+manual não destravava a etapa. A 0.1.4 reconhece esses arquivos e o setup instala
 <code>ovmf</code>, <code>qemu-system-x86</code>, <code>qemu-utils</code> e <code>virtiofsd</code>
 via apt.</p>
 <p>Se você ainda está na 0.1.2, instale o pacote e crie os links esperados pelo app:</p>
@@ -496,7 +496,7 @@ O PodStack gera a chave ed25519 e grava o bloco gerenciado em <code>~/.ssh/confi
 <p>O agent forwarding é desligado por padrão. Com <code>--forward-ssh-agent</code>/<code>ForwardAgent yes</code>,
 processos no guest podem usar as chaves do seu agent; ative só em machines confiáveis. A porta SSH
 administrativa é publicada em <code>127.0.0.1</code>; a chave <code>ssh.exposePort</code> existe no
-schema, mas está oculta e sem efeito no app 0.1.3.</p>
+schema, mas está oculta e sem efeito no app 0.1.4.</p>
 <h2 id="x11">X11</h2>
 <p>Use <code>podstack ssh dev --x11</code> (adiciona <code>-X</code>) ou
 <code>--x11-trusted</code> (adiciona <code>-Y</code>). O host precisa de <code>DISPLAY</code> e
@@ -531,7 +531,7 @@ sudo firewall-cmd --add-port=18443/tcp
 
 # ufw
 sudo ufw allow 18080/tcp
-sudo ufw allow 18443/tcp</code></pre><div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Portas 80/443</p><p>O helper tem a API de <code>BindPorts</code>, mas a GUI/CLI 0.1.3 não a aciona. Use 18080/18443. Se <code>network.bridge=false</code>, o proxy HTTP e o DNS ficam desligados.</p></div></div><h2 id="https-ca">HTTPS e CA</h2>
+sudo ufw allow 18443/tcp</code></pre><div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Portas 80/443</p><p>O helper tem a API de <code>BindPorts</code>, mas a GUI/CLI 0.1.4 não a aciona. Use 18080/18443. Se <code>network.bridge=false</code>, o proxy HTTP e o DNS ficam desligados.</p></div></div><h2 id="https-ca">HTTPS e CA</h2>
 <p>Sintomas: <code>https://nome.localhost:18443/</code> não abre, o navegador mostra certificado
 inválido ou o daemon registra que o HTTPS está indisponível.</p>
 <pre data-lang="bash" tabindex="0"><code>caddy version
@@ -564,7 +564,7 @@ responde. Se o certificado não corresponder ao nome, use um domínio coberto po
 <h2 id="dns">DNS e *.podstack.local</h2>
 <p><code>*.localhost</code> não precisa de configuração. Teste com
 <code>getent hosts web.localhost</code>. <code>*.podstack.local</code> usa o DNS userspace em
-<code>127.0.0.1:5353</code> e um drop-in do <code>systemd-resolved</code>. Em 0.1.3, a instalação
+<code>127.0.0.1:5353</code> e um drop-in do <code>systemd-resolved</code>. Em 0.1.4, a instalação
 desse drop-in ainda não está ligada à GUI/CLI; sem ele, o nome não resolve.</p>
 <pre data-lang="bash" tabindex="0"><code>getent hosts web.localhost
 curl -I http://web.localhost:18080/
@@ -632,11 +632,25 @@ podstack build ./app -t local/app:dev -f Dockerfile
 podstack build ./app -t local/app:multi --platform linux/amd64,linux/arm64</code></pre><h2 id="updates">Updates</h2><pre data-lang="bash" tabindex="0"><code>podstack update --check
 podstack update --check --json --channel beta</code></pre>
 <p><code>update --check</code> não instala nada. Exit 3 significa que há versão nova; exit 1 indica que
-a checagem está indisponível. A atualização é feita pelo gerenciador de pacotes
-(<code>sudo dnf upgrade podstack</code>/<code>sudo apt upgrade podstack</code>) ou pelo canal que você
-usa. Erros <code>PODSTACK_UPDATE_SIGNATURE</code>/<code>PODSTACK_UPDATE_MANIFEST</code> indicam feed
-ou assinatura inválidos; não contorne a verificação. Um feed sem chave retorna
-<code>unconfigured</code>.</p>
+a checagem está indisponível.</p>
+<p>A partir da 0.1.4, a GUI mostra <strong>Instalar atualização</strong> (com versão e notas) e o CLI
+oferece o caminho assistido. A GUI grava <code>gui-was-open</code>, fecha, o runner para o daemon,
+valida o pacote no helper, instala em uma unidade transiente e reabre a GUI ao final, com
+notificação nativa.</p>
+<pre data-lang="bash" tabindex="0"><code>podstack update --install
+podstack update --install --yes --json
+podstack update --install --resume   # retoma um job interrompido
+podstack update --install --clear-state</code></pre>
+<p>O <code>--install</code> usa exit 0/1/2/6/8/9; 6 é consentimento/polkit, 8 timeout e 9
+cancelamento. Em caso de falha, o helper é mantido ativo, GUI/daemon da versão instalada são
+religados e o estado fica em <code>~/.local/state/podstack/updates/state.json</code> para retomar ou
+limpar. O caminho manual continua válido:
+<code>sudo dnf upgrade podstack</code>/<code>sudo apt upgrade podstack</code>.</p>
+<p>Erros <code>PODSTACK_UPDATE_SIGNATURE_INVALID</code>/<code>PODSTACK_UPDATE_MANIFEST_INVALID</code>
+indicam feed, assinatura ou identidade do pacote inválidos; não contorne a verificação.
+<code>PODSTACK_UPDATE_UNSUPPORTED</code> com <code>reason=custom_key</code> significa que
+<code>updates.publicKey</code> foi customizada e o install assistido usa a chave de release do
+helper: use o caminho manual.</p>
 <h2 id="erros">Códigos de erro PODSTACK</h2><div class="table-wrap">
 <table>
 <thead><tr>
@@ -710,8 +724,8 @@ ou assinatura inválidos; não contorne a verificação. Um feed sem chave retor
 <td>Instale <code>docker-compose</code> ou defina <code>PODSTACK_COMPOSE_PROVIDER</code>.</td>
 </tr>
 <tr>
-<td><code>PODSTACK_UPDATE_SIGNATURE</code>/<code>PODSTACK_UPDATE_MANIFEST</code></td>
-<td>Feed inválido ou assinatura rejeitada.</td>
+<td><code>PODSTACK_UPDATE_SIGNATURE_INVALID</code>/<code>PODSTACK_UPDATE_MANIFEST_INVALID</code></td>
+<td>Feed de update inválido, assinatura rejeitada ou identidade do pacote divergente.</td>
 <td>Confira rede, URL e chave; não ignore a assinatura.</td>
 </tr>
 <tr>
@@ -745,10 +759,17 @@ ou assinatura inválidos; não contorne a verificação. Um feed sem chave retor
 <td>Confira se o container está rodando e se o comando existe.</td>
 </tr>
 </tbody></table></div><h2 id="logs">Logs e diagnóstico avançado</h2>
-<p>Use o journal do daemon, o <code>podstack doctor</code> e o <code>podstack top</code> para
-monitoramento. Para o estado do engine, <code>podman info</code>. Para inspecionar um container,
-<code>podstack inspect</code>. Para um relatório redigido, <code>podstack report --include-logs</code>.</p>
-<pre data-lang="bash" tabindex="0"><code>journalctl --user -u podstack.service -n 200 --no-pager
+<p>Os logs do app (daemon/GUI/CLI/setup/update/helper) ficam em
+<code>~/.local/state/podstack/logs/</code> por 7 dias, em JSON Lines e <code>0600</code>. Use
+<code>podstack system logs</code> ou a página <strong>Logs</strong> na GUI para filtrar, seguir,
+exportar, limpar e gerar o diagnóstico; o journal continua útil para o serviço.</p>
+<pre data-lang="bash" tabindex="0"><code>podstack system logs
+podstack system logs --level error --since 7d
+podstack system logs --component update
+podstack system logs --json --export /tmp/podstack-logs.jsonl
+podstack system logs --clear
+
+journalctl --user -u podstack.service -n 200 --no-pager
 journalctl --user -u podstack.service -f
 
 podstack doctor
@@ -756,6 +777,12 @@ podstack top --once --plain
 podstack system df --detailed
 podstack system disk
 podstack report --include-logs</code></pre>
+<p><code>--component</code> aceita <code>daemon|gui|cli|qml|setup|update|helper|package</code>;
+<code>helper</code>/<code>package</code> usam o helper com polkit. Na GUI, o diálogo
+<strong>Logs</strong> tem filtro por nível/componente, <strong>Seguir</strong>, exportar, abrir pasta,
+limpar e <strong>Exportar diagnóstico</strong>; “Ver log” abre o painel filtrado no erro de
+setup/update. O <code>podstack report --include-logs</code> inclui até 7 dias com caps de 10.000
+linhas/componente e 5 MB, redigido e sem envio.</p>
 <p>Se o daemon não responder, o CLI retorna exit 7; se um check do <code>doctor</code> falhar, exit 1.
 Erros de engine <code>PODSTACK_ENGINE_UNAVAILABLE</code> também usam exit 7. O formato de erro do RPC
 é <code>{code, message, detail, remediation}</code>; a CLI mostra a mensagem, o detalhe e a ação

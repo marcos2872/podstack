@@ -442,7 +442,7 @@ caixa “remover volumes” nesta versão. Binds do host não são afetados.</p>
 </ul>
 <p>O botão de lixeira remove o container após confirmação. A GUI usa remoção forçada e
 <strong>preserva os volumes</strong>; não há caixa “remover volumes” nesta versão.</p>
-<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Remoção é permanente</p><p>O container é removido permanentemente. Se precisar dos dados de um volume nomeado, eles continuam no volume; binds do host não são afetados. A API RPC <code>containers.remove</code> aceita <code>volumes</code>, mas a GUI/CLI 0.1.3 não expõe esse controle.</p></div></div><h2 id="detalhe">Detalhe e abas</h2>
+<div class="callout warning" role="note"><svg class="icon" aria-hidden="true"><use href="#i-warning"></use></svg><div class="callout-body"><p class="callout-title">Remoção é permanente</p><p>O container é removido permanentemente. Se precisar dos dados de um volume nomeado, eles continuam no volume; binds do host não são afetados. A API RPC <code>containers.remove</code> aceita <code>volumes</code>, mas a GUI/CLI 0.1.4 não expõe esse controle.</p></div></div><h2 id="detalhe">Detalhe e abas</h2>
 <p>O detalhe expandido (<code>ContainerDetail</code>) abre com <strong>Visão geral</strong> e
 oferece:</p>
 <div class="table-wrap">
@@ -509,7 +509,7 @@ usuário precisa de acesso ao socket correspondente (normalmente <code>/run/podm
 <p>Rootful é opt-in explícito. A GUI mostra o modo no rodapé e os erros de permissão explicam a
 limitação. O PodStack não usa setuid nem <code>sudo</code> para containers.</p>
 <h2 id="na-cli">Na CLI</h2>
-<p>O CLI 0.1.3 lista e opera containers existentes, mas <strong>não cria, inicia, para nem remove</strong>
+<p>O CLI 0.1.4 lista e opera containers existentes, mas <strong>não cria, inicia, para nem remove</strong>
 containers. Para essas ações, use a GUI. As operações disponíveis são:</p>
 <div class="table-wrap">
 <table>
@@ -646,11 +646,11 @@ podstack restore web</code></pre><div class="callout limit" role="note"><svg cla
 </tbody></table></div><h2 id="limitacoes">Limitações</h2>
 <ul>
   <li>O CLI não cria, inicia, para nem remove containers; o ciclo de vida completo está na GUI.</li>
-  <li>A remoção pela GUI usa <code>force</code> e preserva volumes. A API aceita <code>volumes</code>, mas não há controle na GUI/CLI 0.1.3.</li>
+  <li>A remoção pela GUI usa <code>force</code> e preserva volumes. A API aceita <code>volumes</code>, mas não há controle na GUI/CLI 0.1.4.</li>
   <li>O diálogo de criação não expõe CPU/memória nem restart policy; esses campos podem existir no contrato RPC, mas não na interface.</li>
   <li>Checkpoint/restore CRIU é dependente do host e costuma falhar em rootless.</li>
   <li>Portas não publicadas não podem ser adicionadas depois do create no modo rootless. Publique na criação ou use Compose.</li>
-  <li>Logs e terminal não têm comando equivalente no CLI 0.1.3; use a GUI ou o Podman diretamente.</li>
+  <li>Logs e terminal não têm comando equivalente no CLI 0.1.4; use a GUI ou o Podman diretamente.</li>
 </ul>
 
       <nav class="pager" aria-label="Navegação entre páginas"><a class="prev" href="onboarding.html"><span class="pager-label"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Anterior</span><span class="pager-title">Onboarding</span></a><a class="next" href="images.html"><span class="pager-label">Próxima <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span><span class="pager-title">Imagens</span></a></nav>

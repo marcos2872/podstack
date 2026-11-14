@@ -1,4 +1,4 @@
-# Troubleshooting — PodStack 0.1.3
+# Troubleshooting — PodStack 0.1.4
 
 Comece pelos diagnósticos que não alteram nada:
 
@@ -90,7 +90,7 @@ podstack status
 ```
 
 Se o Podman estiver instalado mas desatualizado, atualize-o pelo gerenciador de pacotes. O PodStack
-0.1.3 espera Podman 5.8 ou mais novo.
+0.1.4 espera Podman 5.8 ou mais novo.
 
 No modo rootful (`engine.mode=rootful`), o socket é `/run/podman/podman.sock` e o seu usuário precisa
 ter acesso ao grupo correspondente. Rootful é opt-in explícito; a GUI mostra o badge e o aviso. Se o
@@ -115,7 +115,7 @@ pkaction --action-id dev.podstack.helper.install-packages --verbose
 Instale o subpacote e habilite o serviço:
 
 ```bash
-sudo dnf install ./podstack-helper-0.1.3-1.fc44.x86_64.rpm
+sudo dnf install ./podstack-helper-0.1.4-1.fc44.x86_64.rpm
 sudo systemctl enable --now podstack-helper.service
 ```
 
@@ -160,7 +160,7 @@ Se o virtiofsd estiver em um caminho fora do padrão, defina `PODSTACK_VIRTIOFSD
 no path esperado (`/usr/libexec/virtiofsd` é o fallback). O setup verifica QEMU, OVMF e virtiofsd;
 se um deles estiver ausente e for obrigatório, a tela principal fica bloqueada até a instalação.
 
-No Ubuntu, o pacote `ovmf` instala `/usr/share/OVMF/OVMF_CODE_4M.fd` e `OVMF_VARS_4M.fd`; a 0.1.3
+No Ubuntu, o pacote `ovmf` instala `/usr/share/OVMF/OVMF_CODE_4M.fd` e `OVMF_VARS_4M.fd`; a 0.1.4
 reconhece esses caminhos. Na 0.1.2, instale `ovmf` e crie os links esperados pelo app:
 
 ```bash
@@ -252,7 +252,7 @@ podman ps -a
 
 Se o container foi criado fora do PodStack, ele deve aparecer na reconciliação. Se a imagem não
 existir localmente, o create falha: faça o pull antes (**Images → Pull** ou
-`podstack images pull <imagem>`). O CLI 0.1.3 não cria containers; use a GUI.
+`podstack images pull <imagem>`). O CLI 0.1.4 não cria containers; use a GUI.
 
 ### Compose não sobe
 
@@ -408,7 +408,7 @@ curl -I http://web.localhost:18080/
 ```
 
 `*.podstack.local` usa o DNS userspace do PodStack em `127.0.0.1:5353` e um drop-in do
-`systemd-resolved`. Em 0.1.3 a instalação desse drop-in ainda não está ligada à GUI/CLI; sem ele, o
+`systemd-resolved`. Em 0.1.4 a instalação desse drop-in ainda não está ligada à GUI/CLI; sem ele, o
 nome não resolve. Verifique se o DNS está escutando:
 
 ```bash
@@ -530,7 +530,7 @@ helper com polkit. O `podstack report --include-logs` gera um JSON redigido com 
 | `PODSTACK_TIMEOUT` | A operação excedeu o tempo. | Verifique engine/VM/rede e tente novamente. |
 | `PODSTACK_CANCELLED` | O job foi cancelado. | Reexecute quando estiver pronto. |
 | `PODSTACK_COMPOSE_PROVIDER_MISSING` | Provider Compose não encontrado. | Instale `docker-compose` ou defina `PODSTACK_COMPOSE_PROVIDER`. |
-| `PODSTACK_UPDATE_SIGNATURE`/`PODSTACK_UPDATE_MANIFEST` | Feed de update inválido ou assinatura rejeitada. | Confira rede, URL e chave; não ignore a assinatura. |
+| `PODSTACK_UPDATE_SIGNATURE_INVALID`/`PODSTACK_UPDATE_MANIFEST_INVALID` | Feed de update inválido, assinatura rejeitada ou identidade do pacote divergente. | Confira rede, URL e chave; não ignore a assinatura. |
 | `PODSTACK_IO_ERROR` | Falha de arquivo, SSH/SCP, arquivo compactado ou rede. | Confira caminhos, permissões, espaço em disco e conectividade. |
 | `PODSTACK_DB_ERROR` | Falha no SQLite/estado do daemon. | Reinicie o daemon; se persistir, preserve o estado e gere um report. |
 | `PODSTACK_CONFIRMATION_REQUIRED` | Ação destrutiva sem confirmação explícita. | Use a GUI ou `--force`/`--yes` quando o comando oferecer. |
@@ -558,7 +558,7 @@ defaults.
 
 ## Limitações relacionadas
 
-As limitações completas do 0.1.3 estão em [`README.md`](README.md#limitações-conhecidas-do-013).
+As limitações completas do 0.1.4 estão em [`README.md`](README.md#limitações-conhecidas-do-014).
 As mais relevantes para diagnóstico são: console serial sem VNC, export/clone sem snapshots
 internos, portas não publicadas não suportadas em rootless (T6-10), T5-07/T5-08 parciais, Flatpak
 como cliente de um daemon/helper no host e ausência de fiação automática para CA/`*.podstack.local`

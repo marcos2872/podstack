@@ -443,8 +443,8 @@ não para mudar o comportamento em runtime.</p>
 </tr>
 <tr>
 <td><strong>Avançado</strong></td>
-<td><code>diagnostics.includeLogs</code>, <code>diagnostics.redact</code></td>
-<td>Diagnóstico/report. Retenção e nível de log estão no schema/CLI.</td>
+<td><code>advanced.logLevel</code>, <code>advanced.logRetentionDays</code>, <code>advanced.logMaxBytes</code>, <code>diagnostics.includeLogs</code>, <code>diagnostics.redact</code></td>
+<td>Nível, retenção e tamanho dos logs; diagnóstico/report.</td>
 </tr>
 <tr>
 <td><strong>Setup</strong></td>
@@ -485,7 +485,7 @@ não para mudar o comportamento em runtime.</p>
 </tr>
 </tbody></table></div>
 <p>Como todas as chaves <code>docker.*</code> estão marcadas como <code>hidden</code>, a categoria
-<strong>Docker</strong> aparece sem linhas no diálogo. Elas não têm efeito no app 0.1.3; use
+<strong>Docker</strong> aparece sem linhas no diálogo. Elas não têm efeito no app 0.1.4; use
 <code>podstack config get docker.&lt;chave&gt;</code> ou o schema apenas para inspeção.</p>
 <h2 id="geral">Geral</h2><h3 id="updates">Atualizações</h3>
 <p>Não existe aba <strong>Updates</strong>. O bloco <strong>Atualizações do PodStack</strong> fica no
@@ -499,7 +499,7 @@ e <code>updates.lastCheck</code> são <strong>internas</strong>: não aparecem n
 disponíveis no schema e na CLI (<code>podstack config</code> e <code>podstack update --check</code>).
 A checagem automática roda alguns segundos após abrir e a cada 6 horas, respeitando
 <code>updates.mode=off</code>.</p>
-<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Atualização não instala sozinha</p><p>A verificação só consulta o manifesto assinado. A instalação é feita pelo gerenciador de pacotes (<code>sudo dnf upgrade podstack</code> ou <code>sudo apt upgrade podstack</code>) ou pelo canal que você usa. <code>podstack update --check</code> retorna exit 3 quando há versão nova e exit 1 quando a checagem está indisponível.</p></div></div><h3 id="aparencia">Tema, escala, bandeja e idioma</h3>
+<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Atualização assistida</p><p>A verificação só consulta o manifesto assinado. A partir da 0.1.4, a GUI oferece <strong>Instalar atualização</strong> e o CLI aceita <code>podstack update --install</code>, com consentimento, assinatura e reinício; em caso de falha, use <code>--resume</code> para retomar ou <code>--clear-state</code> para limpar. O caminho manual por <code>sudo dnf upgrade podstack</code> ou <code>sudo apt upgrade podstack</code> continua válido.</p></div></div><h3 id="aparencia">Tema, escala, bandeja e idioma</h3>
 <p><code>app.theme</code> aceita <code>system</code>, <code>dark</code> e <code>light</code>;
 <code>app.fontScale</code> vai de 80 a 150 (%). O tema do site segue a preferência do sistema e
 tem um botão de alternância próprio, independente do app.</p>
@@ -540,7 +540,7 @@ As chaves <code>machines.forwardPorts</code>, <code>machines.exposePortsToLan</c
 <code>ssh.*</code> estão ocultos na GUI e disponíveis no schema/CLI.</p>
 <p>A retenção de jobs e logs de build é representada por
 <code>advanced.jobRetentionDays</code> (7) e <code>advanced.buildLogRetentionDays</code> (30),
-também ocultas na GUI e sem efeito no app 0.1.3. O cache de imagens cloud usa
+também ocultas na GUI e sem efeito no app 0.1.4. O cache de imagens cloud usa
 <code>advanced.cloudImageCacheBytes</code> (20 GiB). Consulte os valores com
 <code>podstack config get</code>; não conte com eles para mudar a retenção nesta versão.</p>
 <div class="table-wrap">
@@ -573,7 +573,17 @@ também ocultas na GUI e sem efeito no app 0.1.3. O cache de imagens cloud usa
 <tr>
 <td><code>advanced.logLevel</code></td>
 <td>info</td>
-<td>Nível de log; exige reinício.</td>
+<td>Nível de log; aplicado em runtime, sem reinício.</td>
+</tr>
+<tr>
+<td><code>advanced.logRetentionDays</code></td>
+<td>7</td>
+<td>Retenção dos logs do app em dias (1–30).</td>
+</tr>
+<tr>
+<td><code>advanced.logMaxBytes</code></td>
+<td>10 MiB</td>
+<td>Tamanho máximo de cada arquivo de log (1 MiB–1 GiB).</td>
 </tr>
 </tbody></table></div><h2 id="diagnostico">Diagnóstico e report</h2>
 <p><code>diagnostics.includeLogs</code> inclui logs no report e <code>diagnostics.redact</code>
@@ -581,9 +591,12 @@ redige segredos. Ambos são visíveis na GUI. O report é gerado por
 <code>podstack report --include-logs</code>, fica em <code>~/.local/state/podstack/reports/</code>
 com permissão <code>0600</code> e o comando imprime o caminho e o SHA-256. Revise o conteúdo antes
 de compartilhar: ele é redigido, mas pode conter nomes de containers, caminhos e configuração.</p>
-<p>As chaves <code>advanced.helper.enabled</code>, <code>advanced.dns.install</code>,
-<code>advanced.ca.install</code> e <code>advanced.logLevel</code> também são internas/CLI nesta
-versão; a GUI prioriza os fluxos assistidos do setup e do helper.</p>
+<p>As chaves <code>advanced.logLevel</code>, <code>advanced.logRetentionDays</code> e
+<code>advanced.logMaxBytes</code> são expostas na GUI e aplicadas em runtime
+(<code>restartRequired: false</code>); <code>diagnostics.includeLogs</code> passou a default
+<strong>false</strong>. As chaves <code>advanced.helper.enabled</code>, <code>advanced.dns.install</code>
+e <code>advanced.ca.install</code> continuam internas/CLI nesta versão; a GUI prioriza os fluxos
+assistidos do setup e do helper.</p>
 <h2 id="na-cli">Na CLI</h2><h3 id="reset">Reset e configuração pela CLI</h3>
 <p><strong>Restaurar</strong> em uma linha devolve o valor padrão daquela chave. O reset total fica na
 CLI: <code>podstack config reset --all --yes</code> restaura as configurações e <strong>preserva</strong>
@@ -645,7 +658,7 @@ podstack config reset --all --yes</code></pre><h2 id="referencia-rapida">Referê
 <ul>
   <li>A categoria <strong>Docker</strong> aparece vazia na GUI porque todas as chaves <code>docker.*</code> estão ocultas; use a CLI/schema.</li>
   <li>Não existe aba <strong>Updates</strong>; o controle está em <strong>Geral</strong> e as chaves <code>updates.*</code> são internas/CLI.</li>
-  <li>Chaves ocultas (retenção, log level, subnet, IPv6, SSH, telemetria etc.) aparecem no schema/CLI, mas não têm efeito no app 0.1.3.</li>
+  <li>Chaves ocultas (retenção, log level, subnet, IPv6, SSH, telemetria etc.) aparecem no schema/CLI, mas não têm efeito no app 0.1.4.</li>
   <li>Chaves com <code>restartRequired</code> só valem depois de reiniciar o PodStack.</li>
   <li>O reset total não está na GUI; use a CLI e revise o que será preservado (<code>setup.*</code>).</li>
 </ul>

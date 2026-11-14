@@ -454,13 +454,13 @@ podman info</code></pre>
 
 <h2 id="instalar">Instalar o pacote</h2>
 <h3 id="fedora-rpm">Fedora (RPM)</h3>
-<pre data-lang="bash" tabindex="0"><code>sudo dnf install ./podstack-0.1.3-1.fc44.x86_64.rpm
+<pre data-lang="bash" tabindex="0"><code>sudo dnf install ./podstack-0.1.4-1.fc44.x86_64.rpm
 
 # com um repositório configurado
 sudo dnf install podstack</code></pre>
 <p>Ajuste <code>fc44</code> e <code>x86_64</code> para a release e a arquitetura do seu Fedora. O <code>%post</code> habilita <code>podstack.socket</code> globalmente; o daemon sobe sob demanda na primeira conexão.</p>
 <h3 id="ubuntu-deb">Ubuntu (DEB)</h3>
-<pre data-lang="bash" tabindex="0"><code>sudo apt install ./podstack_0.1.3_amd64.deb</code></pre>
+<pre data-lang="bash" tabindex="0"><code>sudo apt install ./podstack_0.1.4_amd64.deb</code></pre>
 <p>O <code>postinst</code> habilita <code>podstack.socket</code> por usuário e o <code>podstack-helper.service</code>. O qtermwidget 2.0.0 vai embutido no binário.</p>
 <h3 id="build-do-fonte">Build a partir do código</h3>
 <p>Para testar uma versão local, o caminho é <code>cmake --preset dev</code>, <code>cmake --build --preset dev</code> e <code>./scripts/dev.sh</code>. O guia completo, com as dependências de Fedora e Ubuntu, está em <a href="https://github.com/marcos2872/podstack/blob/main/docs/user/install.md" target="_blank" rel="noopener noreferrer">docs/user/install.md</a>.</p>
@@ -542,7 +542,7 @@ journalctl -u podstack-helper.service -n 100 --no-pager</code></pre>
 <tr>
 <td>Versão</td>
 <td><code>podstack version</code></td>
-<td><code>PodStack 0.1.3</code></td>
+<td><code>PodStack 0.1.4</code></td>
 </tr>
 <tr>
 <td>Socket de usuário</td>
