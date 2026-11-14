@@ -464,7 +464,7 @@ podstack-gui</code></pre><div class="callout note" role="note"><svg class="icon"
   <li><strong>Console de machine somente texto.</strong> Não há VNC nem console gráfico.</li>
   <li><strong>Export/import e clone de machine não preservam snapshots internos do qcow2.</strong></li>
   <li><strong>Portas não publicadas não podem ser encaminhadas no modo rootless.</strong> Publique a porta na criação do container ou no Compose.</li>
-  <li><strong>As portas 80/443 do helper não são acionadas pela GUI/CLI em 0.1.3.</strong> O proxy usa 8080/8443 por padrão.</li>
+  <li><strong>As portas 80/443 do helper não são acionadas pela GUI/CLI em 0.1.3.</strong> O proxy usa 18080/18443 por padrão.</li>
   <li><strong>CA e <code>*.podstack.local</code> ainda não têm fluxo pronto na GUI/CLI.</strong> A confiança na CA e o drop-in do resolved são manuais nesta versão.</li>
   <li><strong>Kubernetes sem NodePort/LoadBalancer nativos e sem <code>k8s.podstack.local</code>.</strong> A troca de contexto é explícita.</li>
   <li><strong>Domínios customizados via Compose ficam pendentes.</strong> Labels e montagem da CA em containers de Compose não estão disponíveis.</li>

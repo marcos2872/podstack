@@ -290,7 +290,7 @@ sequenceDiagram
   participant PX as HttpProxy (podstackd)
   participant PC as PodmanClient
   participant C as Container
-  B->>PX: GET http://app.localhost:8080/ (Host: app.localhost)
+  B->>PX: GET http://app.localhost:18080/ (Host: app.localhost)
   PX->>PC: listContainers(all=true)
   PC-->>PX: container "app" + portas publicadas
   PX->>C: GET / em 127.0.0.1:<porta publicada>
@@ -414,7 +414,7 @@ Detalhes em [`data-model.md`](data-model.md).
   3. permissões de `/dev/kvm` (se machines habilitado)
   4. `virtiofsd`, `qemu-img`, `cloud-localds`
   5. DNS (`*.localhost`/`*.podstack.local`)
-  6. portas 80/443/8080/8443
+  6. portas 80/443/18080/18443
   7. kubeconfig/contexto
   8. espaço em disco
 - `podstack report`: tar.gz com logs, config redigida, `podman info`, versões; prévia e consentimento.

@@ -66,8 +66,13 @@ log (o arquivo original não é apagado; um save posterior o substitui).
 | `network.ipv6` | bool | `false` | sim | Habilita IPv6 em containers |
 | `network.exposeLan` | bool | `false` | não | Expõe portas/domínios na LAN |
 | `network.domainsMode` | enum `localhost\|podstack-local` | `localhost` | sim | Mecanismo de domínio |
-| `network.httpsPort` | int | `8443` | sim | Porta HTTPS do proxy |
-| `network.httpPort` | int | `8080` | sim | Porta do proxy HTTP de `*.localhost` (loopback) |
+| `network.httpsPort` | int | `18443` | sim | Porta HTTPS do proxy |
+| `network.httpPort` | int | `18080` | sim | Porta do proxy HTTP de `*.localhost` (loopback) |
+
+**Migração:** instalações anteriores ao schema 2 tinham `network.httpPort=8080` e
+`network.httpsPort=8443` materializados no `config.json`. Ao carregar a configuração, esses valores
+são migrados automaticamente para `18080`/`18443` e o arquivo é regravado com `schemaVersion: 2`;
+valores diferentes dos defaults antigos são preservados.
 
 **Proxy na prática:** `auto` (default) herda do ambiente do daemon as variáveis de proxy já
 definidas (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` e minúsculas), sem inventar
@@ -267,8 +272,9 @@ o conteúdo não é mesclado.
 
 ## 5. Migração e reset
 
-- `schemaVersion` no topo; a versão atual é 1 e ainda não há migração automática. Quando houver,
-  o backup `config.json.bak-<timestamp>` será criado antes de migrar.
+- `schemaVersion` no topo; a versão atual é 2. Configs do schema 1 com `network.httpPort=8080` e
+  `network.httpsPort=8443` são migradas automaticamente no carregamento, com backup
+  `config.json.bak-<timestamp>` antes da regravação; valores customizados de porta são preservados.
 - Reset por chave: `podstack config reset <key> --yes` (sem `--yes`, pede confirmação em TTY).
 - Reset total: `podstack config reset --all --yes` — restaura as chaves de configuração e
   **preserva** `schemaVersion` e todo o bloco `setup.*` (`completed`, `completedAt`,
@@ -310,6 +316,6 @@ podstack config show --json
 podstack config schema --json
 ```
 
-O objeto persistido mantém `"schemaVersion": 1` no topo e os grupos da tabela da §2; chaves
+O objeto persistido mantém `"schemaVersion": 2` no topo e os grupos da tabela da §2; chaves
 desconhecidas presentes no arquivo são preservadas na escrita. O reset total descarta chaves
 customizadas fora de `setup.*` (o bloco de setup é preservado integralmente).

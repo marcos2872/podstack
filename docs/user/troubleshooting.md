@@ -284,27 +284,29 @@ isso, o build da plataforma adicional falha.
 
 Sintomas:
 
-- `http://nome.localhost:8080/` retorna 404.
-- A porta 8080 ou 8443 está em uso.
+- `http://nome.localhost:18080/` retorna 404.
+- A porta 18080 ou 18443 está em uso.
 - O serviço funciona no host, mas não na LAN.
 
 Verificações:
 
 ```bash
-ss -ltnp | grep -E ':8080|:8443'
-curl -v http://web.localhost:8080/
-curl -I http://localhost:8080/
+ss -ltnp | grep -E ':18080|:18443'
+curl -v http://web.localhost:18080/
+curl -I http://localhost:18080/
 podstack config get network.httpPort
 podstack config get network.httpsPort
 podstack ps
 ```
 
-O proxy HTTP escuta em loopback na `network.httpPort` (8080). O HTTPS, quando habilitado, escuta na
-`network.httpsPort` (8443). A URL usa a porta do proxy, não a porta interna do container.
+O proxy HTTP escuta em loopback na `network.httpPort` (18080). O HTTPS, quando habilitado, escuta na
+`network.httpsPort` (18443). A URL usa a porta do proxy, não a porta interna do container.
+Configs antigas com `8080`/`8443` são migradas automaticamente no primeiro carregamento; valores
+customizados são preservados.
 
 - **404**: o container não tem porta TCP publicada, ou o nome não corresponde a um container. Publique
   a porta na criação (o Podman rootless não publica portas depois do create; T6-10).
-- **Porta em uso**: escolha outra porta com `podstack config set network.httpPort 18080` e reinicie
+- **Porta em uso**: escolha outra porta com `podstack config set network.httpPort 19080` e reinicie
   `systemctl --user restart podstack.service`. A URL passa a usar a nova porta.
 - **LAN**: `podstack config set network.exposeLan true` e reinicie. O firewall do host precisa ser
   liberado separadamente; o PodStack não abre as portas do proxy automaticamente.
@@ -313,23 +315,23 @@ Exemplos de firewall (use o que existir no seu sistema):
 
 ```bash
 # firewalld (regra runtime; um reload/restart a remove)
-sudo firewall-cmd --add-port=8080/tcp
-sudo firewall-cmd --add-port=8443/tcp
+sudo firewall-cmd --add-port=18080/tcp
+sudo firewall-cmd --add-port=18443/tcp
 
 # ufw
-sudo ufw allow 8080/tcp
-sudo ufw allow 8443/tcp
+sudo ufw allow 18080/tcp
+sudo ufw allow 18443/tcp
 ```
 
 As portas 80/443 não são ativadas automaticamente pela GUI/CLI em 0.1.1. O helper tem a API de
-`BindPorts`, mas a fiação do app ainda não a chama; use 8080/8443. Se `network.bridge=false`, o proxy
+`BindPorts`, mas a fiação do app ainda não a chama; use 18080/18443. Se `network.bridge=false`, o proxy
 HTTP e o DNS ficam desligados.
 
 ## HTTPS e CA
 
 Sintomas:
 
-- `https://nome.localhost:8443/` não abre.
+- `https://nome.localhost:18443/` não abre.
 - O navegador mostra certificado inválido.
 - O daemon registra que o HTTPS está indisponível.
 
@@ -365,7 +367,7 @@ Teste sem alterar o trust store:
 
 ```bash
 curl --cacert ~/.local/share/podstack/caddy/storage/pki/authorities/local/root.crt \
-  https://web.localhost:8443/
+  https://web.localhost:18443/
 ```
 
 O navegador não confia na CA por padrão. A importação é manual nesta versão. No Fedora, para confiar
@@ -393,7 +395,7 @@ sudo update-ca-trust
 ```
 
 Se o TLS funcionar mas a resposta for 502, o problema está no backend: confirme que o container
-publica a porta e que `http://web.localhost:8080/` responde. Se o certificado não corresponder ao
+publica a porta e que `http://web.localhost:18080/` responde. Se o certificado não corresponder ao
 nome, use um domínio coberto por `*.localhost`/`*.podstack.local` ou ajuste a label de porta/domínio.
 
 ## DNS e `*.podstack.local`
@@ -402,7 +404,7 @@ nome, use um domínio coberto por `*.localhost`/`*.podstack.local` ou ajuste a l
 
 ```bash
 getent hosts web.localhost
-curl -I http://web.localhost:8080/
+curl -I http://web.localhost:18080/
 ```
 
 `*.podstack.local` usa o DNS userspace do PodStack em `127.0.0.1:5353` e um drop-in do

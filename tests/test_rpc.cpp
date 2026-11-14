@@ -3613,7 +3613,7 @@ void RpcTest::settingsFlow()
     QCOMPARE(defaults.value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
     QCOMPARE(defaults.value(QStringLiteral("app.theme")).toString(), QStringLiteral("system"));
-    QCOMPARE(defaults.value(QStringLiteral("network.httpsPort")).toInt(), 8443);
+    QCOMPARE(defaults.value(QStringLiteral("network.httpsPort")).toInt(), 18443);
 
     const QJsonObject one =
         client.call(QStringLiteral("settings.get"),
@@ -3748,7 +3748,8 @@ void RpcTest::settingsFlow()
     QCOMPARE(resetValues.value(QStringLiteral("engine.mode")).toString(),
              QStringLiteral("rootless"));
     QCOMPARE(resetValues.value(QStringLiteral("network.proxyExclude")).toArray().size(), 0);
-    QCOMPARE(resetValues.value(QStringLiteral("network.httpPort")).toInt(), 8080);
+    QCOMPARE(resetValues.value(QStringLiteral("network.httpPort")).toInt(), 18080);
+    QCOMPARE(resetValues.value(QStringLiteral("network.httpsPort")).toInt(), 18443);
     QCOMPARE(resetValues.value(QStringLiteral("app.notifications")).toBool(), true);
     QCOMPARE(result.value(QStringLiteral("restartRequired")).toBool(), true);
     QCOMPARE(resetValues.value(QStringLiteral("setup.completed")).toBool(), true);

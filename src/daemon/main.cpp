@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
     std::unique_ptr<PodStack::HttpProxy> httpProxy;
     const PodStack::Config config = PodStack::Config::load();
     const bool exposeLan = config.get(QStringLiteral("network.exposeLan")).toBool(false);
-    const int httpPort = config.get(QStringLiteral("network.httpPort")).toInt(8080);
+    const int httpPort = config.get(QStringLiteral("network.httpPort")).toInt(18080);
     if (config.get(QStringLiteral("network.bridge")).toBool(true) && httpPort >= 1 &&
         httpPort <= 65535) {
         httpProxy = std::make_unique<PodStack::HttpProxy>(
@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
     }
 
     std::unique_ptr<PodStack::CaddyProxy> caddyProxy;
-    const int httpsPort = config.get(QStringLiteral("network.httpsPort")).toInt(8443);
+    const int httpsPort = config.get(QStringLiteral("network.httpsPort")).toInt(18443);
     if (httpProxy && config.get(QStringLiteral("network.https")).toBool(false) && httpsPort >= 1 &&
         httpsPort <= 65535) {
         caddyProxy = std::make_unique<PodStack::CaddyProxy>();

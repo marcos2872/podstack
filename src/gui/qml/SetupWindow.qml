@@ -1085,26 +1085,31 @@ Item {
     AppDialog {
         id: removeDockerDialog
         title: qsTr("Remover o Docker?")
+        width: Math.min(520, setupWindow.width - 48)
         onOpened: backend.setupLoadDockerImpact()
 
-        Text {
-            Layout.fillWidth: true
-            text: qsTr("Containers, imagens, redes e volumes do Docker podem ser perdidos. "
-                       + "Não há migração automática. O Podman continuará funcionando.\n\n"
-                       + "A remoção exige sua autorização no polkit e não pode ser desfeita.")
-            color: Theme.textSecondary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
-        }
+        contentItem: ColumnLayout {
+            spacing: 12
 
-        Text {
-            Layout.fillWidth: true
-            text: setupWindow.dockerImpactText()
-            color: Theme.textPrimary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Containers, imagens, redes e volumes do Docker podem ser perdidos. "
+                           + "Não há migração automática. O Podman continuará funcionando.\n\n"
+                           + "A remoção exige sua autorização no polkit e não pode ser desfeita.")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: setupWindow.dockerImpactText()
+                color: Theme.textPrimary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
+            }
         }
 
         footer: AppFooter {

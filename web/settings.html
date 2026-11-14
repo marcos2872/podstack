@@ -515,14 +515,16 @@ reiniciar. <code>app.showOnboarding</code> controla a exibição do <a href="onb
 <code>network.proxyExclude</code> aceitam host, domínio, <code>*.domínio</code> ou CIDR e só valem no
 modo URL. A configuração é lida na criação: containers, machines e stacks Compose existentes
 precisam ser recriados.</p>
-<p><code>network.httpPort</code> (8080) e <code>network.httpsPort</code> (8443) mudam as portas do
-proxy e exigem reiniciar. <code>network.exposeLan</code> expõe portas/domínios na LAN e também exige
-reinício; o firewall é liberado separadamente. <code>network.bridge</code> desliga o proxy HTTP e o
-DNS quando <code>false</code>.</p>
+<p><code>network.httpPort</code> (18080) e <code>network.httpsPort</code> (18443) mudam as portas do
+proxy e exigem reiniciar. Configs gravadas por versões anteriores com <code>8080</code>/<code>8443</code>
+são migradas automaticamente para os novos defaults; valores customizados são preservados.
+<code>network.exposeLan</code> expõe portas/domínios na LAN e também exige reinício; o firewall é
+liberado separadamente. <code>network.bridge</code> desliga o proxy HTTP e o DNS quando
+<code>false</code>.</p>
 <p>As chaves <code>network.subnet4</code>, <code>network.ipv6</code> e
 <code>network.domainsMode</code> estão no schema/CLI, mas ocultas na GUI.</p>
 <pre data-lang="bash" tabindex="0"><code>podstack config get network.httpPort
-podstack config set network.httpPort 18080
+podstack config set network.httpPort 19080
 podstack config set network.https true
 podstack config set network.proxy socks5://127.0.0.1:1080
 podstack config add network.proxyExclude .internal
