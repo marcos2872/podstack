@@ -1091,25 +1091,25 @@ Item {
         contentItem: ColumnLayout {
             spacing: 12
 
-        Text {
-            Layout.fillWidth: true
-            text: qsTr("Containers, imagens, redes e volumes do Docker podem ser perdidos. "
-                       + "Não há migração automática. O Podman continuará funcionando.\n\n"
-                       + "A remoção exige sua autorização no polkit e não pode ser desfeita.")
-            color: Theme.textSecondary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
-        }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Containers, imagens, redes e volumes do Docker podem ser perdidos. "
+                           + "Não há migração automática. O Podman continuará funcionando.\n\n"
+                           + "A remoção exige sua autorização no polkit e não pode ser desfeita.")
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
+            }
 
-        Text {
-            Layout.fillWidth: true
-            text: setupWindow.dockerImpactText()
-            color: Theme.textPrimary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
-        }
+            Text {
+                Layout.fillWidth: true
+                text: setupWindow.dockerImpactText()
+                color: Theme.textPrimary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
+            }
         }
 
         footer: AppFooter {
