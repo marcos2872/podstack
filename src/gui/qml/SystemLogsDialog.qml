@@ -37,9 +37,9 @@ AppDialog {
             Layout.fillWidth: true
             spacing: 8
 
-            ComboBox {
+            AppSelect {
                 id: levelBox
-                Layout.preferredWidth: 150
+                Layout.preferredWidth: 170
                 model: [qsTr("Todos os níveis"), "error", "warn", "info", "debug", "trace"]
                 onCurrentIndexChanged: {
                     dialog.levelFilter = currentIndex === 0 ? "" : currentText
@@ -48,9 +48,9 @@ AppDialog {
                 Accessible.name: qsTr("Filtrar por nível")
             }
 
-            ComboBox {
+            AppSelect {
                 id: componentBox
-                Layout.preferredWidth: 170
+                Layout.preferredWidth: 220
                 model: [qsTr("Todos os componentes"), "daemon", "gui", "cli", "qml",
                         "setup", "update", "helper", "package"]
                 onCurrentIndexChanged: {
@@ -61,6 +61,18 @@ AppDialog {
             }
 
             Item { Layout.fillWidth: true }
+
+            FormCheck {
+                id: followLogs
+                text: qsTr("Seguir")
+                checked: false
+                Accessible.name: qsTr("Seguir logs em tempo real")
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 6
 
             ActionButton {
                 text: qsTr("Atualizar")
@@ -77,11 +89,10 @@ AppDialog {
                 size: "sm"
                 onClicked: exportDialog.open()
             }
-            FormCheck {
-                id: followLogs
-                text: qsTr("Seguir")
-                checked: false
-                Accessible.name: qsTr("Seguir logs em tempo real")
+            ActionButton {
+                text: qsTr("Exportar diagnóstico")
+                size: "sm"
+                onClicked: backend.generateDiagnosticReport()
             }
             ActionButton {
                 text: qsTr("Abrir pasta")
@@ -89,15 +100,11 @@ AppDialog {
                 onClicked: backend.openLogsFolder()
             }
             ActionButton {
-                text: qsTr("Exportar diagnóstico")
-                size: "sm"
-                onClicked: backend.generateDiagnosticReport()
-            }
-            ActionButton {
                 text: qsTr("Limpar")
                 size: "sm"
                 onClicked: clearDialog.open()
             }
+            Item { Layout.fillWidth: true }
         }
 
         Rectangle {
