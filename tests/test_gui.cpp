@@ -521,25 +521,26 @@ void GuiTest::backendContainerDetail()
 void GuiTest::backendKubernetes()
 {
     PodStack::Backend backend;
-    QSignalSpy spy(&backend, &PodStack::Backend::k8sChanged);
+    auto *k8s = backend.k8s();
+    QSignalSpy spy(k8s, &PodStack::K8sController::changed);
 
-    backend.refreshK8s();
+    k8s->refresh();
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sState() == QStringLiteral("disabled"), 5000);
-    QVERIFY2(!backend.k8sEnabled(),
-             qPrintable(backend.k8sState() + QStringLiteral(" | ") + backend.k8sError()));
-    QVERIFY(backend.k8sPods().isEmpty());
-    QVERIFY(backend.k8sServices().isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(k8s->state() == QStringLiteral("disabled"), 5000);
+    QVERIFY2(!k8s->enabled(),
+             qPrintable(k8s->state() + QStringLiteral(" | ") + k8s->error()));
+    QVERIFY(k8s->pods().isEmpty());
+    QVERIFY(k8s->services().isEmpty());
 
-    backend.startK8sWatch();
-    backend.stopK8sWatch();
+    k8s->startWatch();
+    k8s->stopWatch();
 
-    backend.startK8sPortForward(QStringLiteral("prod"), QStringLiteral("web"), 8080, 80);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sPortForwardError().isEmpty(), 5000);
-    QVERIFY(!backend.k8sPortForwardActive());
-    backend.stopK8sPortForward();
-    backend.deleteK8sPod(QStringLiteral("prod"), QStringLiteral("web"));
-    backend.deleteK8sService(QStringLiteral("prod"), QStringLiteral("web"));
+    k8s->startPortForward(QStringLiteral("prod"), QStringLiteral("web"), 8080, 80);
+    QTRY_VERIFY_WITH_TIMEOUT(!k8s->portForwardError().isEmpty(), 5000);
+    QVERIFY(!k8s->portForwardActive());
+    k8s->stopPortForward();
+    k8s->deletePod(QStringLiteral("prod"), QStringLiteral("web"));
+    k8s->deleteService(QStringLiteral("prod"), QStringLiteral("web"));
 }
 
 void GuiTest::backendKubernetesEnabledError()
@@ -557,14 +558,15 @@ void GuiTest::backendKubernetesEnabledError()
     QVERIFY2(store.upsert(cluster, &error), qPrintable(error.message));
 
     PodStack::Backend backend;
-    QSignalSpy spy(&backend, &PodStack::Backend::k8sChanged);
-    backend.refreshK8s();
+    auto *k8s = backend.k8s();
+    QSignalSpy spy(k8s, &PodStack::K8sController::changed);
+    k8s->refresh();
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sEnabled(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(k8s->enabled(), 5000);
 
-    backend.refreshK8s();
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sEnabled(), 5000);
-    QVERIFY(!backend.k8sError().isEmpty());
+    k8s->refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!k8s->enabled(), 5000);
+    QVERIFY(!k8s->error().isEmpty());
 
     QVERIFY(store.remove(QStringLiteral("default"), &error));
 }
@@ -572,17 +574,18 @@ void GuiTest::backendKubernetesEnabledError()
 void GuiTest::backendKubernetesDisableJob()
 {
     PodStack::Backend backend;
-    QSignalSpy jobSpy(&backend, &PodStack::Backend::k8sJobChanged);
+    auto *k8s = backend.k8s();
+    QSignalSpy jobSpy(k8s, &PodStack::K8sController::jobChanged);
 
-    backend.disableK8s(true);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sJobActive(), 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sState() == QStringLiteral("disabled"), 5000);
-    QVERIFY(backend.k8sJobError().isEmpty());
+    k8s->disable(true);
+    QTRY_VERIFY_WITH_TIMEOUT(!k8s->jobActive(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(k8s->state() == QStringLiteral("disabled"), 5000);
+    QVERIFY(k8s->jobError().isEmpty());
     QVERIFY(jobSpy.count() > 0);
 
-    backend.resetK8s();
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sJobActive(), 5000);
-    QCOMPARE(backend.k8sState(), QStringLiteral("disabled"));
+    k8s->reset();
+    QTRY_VERIFY_WITH_TIMEOUT(!k8s->jobActive(), 5000);
+    QCOMPARE(k8s->state(), QStringLiteral("disabled"));
 }
 
 void GuiTest::backendCatalog()

@@ -16,9 +16,9 @@ ColumnLayout {
 
     function selectedItem() {
         if (page.tab === 0) {
-            return podsList.currentRow >= 0 ? backend.k8sPods[podsList.currentRow] : null
+            return podsList.currentRow >= 0 ? backend.k8s.pods[podsList.currentRow] : null
         }
-        return servicesList.currentRow >= 0 ? backend.k8sServices[servicesList.currentRow] : null
+        return servicesList.currentRow >= 0 ? backend.k8s.services[servicesList.currentRow] : null
     }
 
     function openDelete() {
@@ -49,7 +49,7 @@ ColumnLayout {
         }
         forwardLocal.text = "8080"
         forwardRemote.text = String(remote)
-        backend.stopK8sPortForward()
+        backend.k8s.stopPortForward()
         forwardDialog.open()
     }
 
@@ -59,7 +59,7 @@ ColumnLayout {
     }
 
     function openLogs() {
-        const pod = backend.k8sPods[podsList.currentRow]
+        const pod = backend.k8s.pods[podsList.currentRow]
         if (!pod) {
             return
         }
@@ -68,7 +68,7 @@ ColumnLayout {
         logsContainer.model = pod.containers || []
         logsContainer.currentIndex = logsContainer.count > 0 ? 0 : -1
         logsDialog.open()
-        backend.startK8sLogs(logsNamespace, logsPod, logsContainer.currentText)
+        backend.k8s.startLogs(logsNamespace, logsPod, logsContainer.currentText)
     }
 
     spacing: 0
@@ -78,9 +78,9 @@ ColumnLayout {
 
     onVisibleChanged: {
         if (visible) {
-            backend.startK8sWatch()
+            backend.k8s.startWatch()
         } else {
-            backend.stopK8sWatch()
+            backend.k8s.stopWatch()
         }
     }
 
@@ -93,13 +93,13 @@ ColumnLayout {
         Layout.bottomMargin: 12
         Layout.alignment: Qt.AlignTop
         title: qsTr("Kubernetes")
-        subtitle: backend.k8sEnabled
-                  ? backend.k8sPods.length + qsTr(" pods · ")
-                    + backend.k8sServices.length + qsTr(" services")
+        subtitle: backend.k8s.enabled
+                  ? backend.k8s.pods.length + qsTr(" pods · ")
+                    + backend.k8s.services.length + qsTr(" services")
                   : qsTr("cluster desabilitado")
 
         Text {
-            visible: backend.k8sLoading
+            visible: backend.k8s.loading
             text: qsTr("atualizando…")
             color: Theme.textTertiary
             font.family: Theme.fontFamily
@@ -110,17 +110,17 @@ ColumnLayout {
             text: qsTr("Habilitar")
             variant: "primary"
             iconName: "play"
-            visible: !backend.k8sEnabled
-            enabled: !backend.k8sJobActive
-            onClicked: backend.enableK8s()
+            visible: !backend.k8s.enabled
+            enabled: !backend.k8s.jobActive
+            onClicked: backend.k8s.enable()
             Accessible.name: qsTr("Habilitar Kubernetes")
         }
 
         ActionButton {
             text: qsTr("Reset")
             variant: "danger"
-            visible: backend.k8sEnabled
-            enabled: !backend.k8sJobActive
+            visible: backend.k8s.enabled
+            enabled: !backend.k8s.jobActive
             onClicked: page.openClusterAction("reset")
             Accessible.name: qsTr("Resetar cluster Kubernetes")
         }
@@ -128,8 +128,8 @@ ColumnLayout {
         ActionButton {
             text: qsTr("Desabilitar")
             variant: "ghost"
-            visible: backend.k8sEnabled
-            enabled: !backend.k8sJobActive
+            visible: backend.k8s.enabled
+            enabled: !backend.k8s.jobActive
             onClicked: page.openClusterAction("disable")
             Accessible.name: qsTr("Desabilitar Kubernetes")
         }
@@ -162,7 +162,7 @@ ColumnLayout {
         ActionButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.refreshK8s()
+            onClicked: backend.k8s.refresh()
             Accessible.name: qsTr("Atualizar Kubernetes")
         }
     }
@@ -174,7 +174,7 @@ ColumnLayout {
         Layout.rightMargin: 22
         Layout.bottomMargin: 12
         Layout.alignment: Qt.AlignTop
-        visible: !backend.k8sEnabled
+        visible: !backend.k8s.enabled
         implicitHeight: disabledColumn.implicitHeight + 32
         radius: Theme.radiusLg
         color: Theme.bgSurface
@@ -209,8 +209,8 @@ ColumnLayout {
                 text: qsTr("Habilitar Kubernetes")
                 variant: "primary"
                 iconName: "play"
-                enabled: !backend.k8sJobActive
-                onClicked: backend.enableK8s()
+                enabled: !backend.k8s.jobActive
+                onClicked: backend.k8s.enable()
             }
         }
     }
@@ -220,21 +220,21 @@ ColumnLayout {
         Layout.leftMargin: 22
         Layout.rightMargin: 22
         Layout.bottomMargin: 8
-        visible: backend.k8sJobActive || backend.k8sJobError.length > 0
+        visible: backend.k8s.jobActive || backend.k8s.jobError.length > 0
         spacing: 4
 
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
             Label {
-                text: backend.k8sJobStage
+                text: backend.k8s.jobStage
                 color: Theme.textSecondary
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
             }
             Item { Layout.fillWidth: true }
             Label {
-                text: backend.k8sJobProgress + "%"
+                text: backend.k8s.jobProgress + "%"
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
@@ -245,14 +245,14 @@ ColumnLayout {
             Layout.fillWidth: true
             from: 0
             to: 100
-            value: backend.k8sJobProgress
-            visible: backend.k8sJobActive
+            value: backend.k8s.jobProgress
+            visible: backend.k8s.jobActive
         }
 
         Label {
             Layout.fillWidth: true
-            visible: backend.k8sJobError.length > 0
-            text: backend.k8sJobError
+            visible: backend.k8s.jobError.length > 0
+            text: backend.k8s.jobError
             color: Theme.danger
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
@@ -265,7 +265,7 @@ ColumnLayout {
         Layout.leftMargin: 22
         Layout.rightMargin: 22
         Layout.bottomMargin: 12
-        visible: backend.k8sEnabled
+        visible: backend.k8s.enabled
         spacing: 8
 
         ActionButton {
@@ -288,8 +288,8 @@ ColumnLayout {
         Layout.leftMargin: 22
         Layout.rightMargin: 22
         Layout.bottomMargin: 8
-        visible: backend.k8sEnabled && backend.k8sError.length > 0
-        text: backend.k8sError
+        visible: backend.k8s.enabled && backend.k8s.error.length > 0
+        text: backend.k8s.error
         color: Theme.danger
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontMicro
@@ -299,7 +299,7 @@ ColumnLayout {
     StackLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        visible: backend.k8sEnabled
+        visible: backend.k8s.enabled
         currentIndex: page.tab
 
         Item {
@@ -315,7 +315,7 @@ ColumnLayout {
                 anchors.bottomMargin: 20
                 emptyIcon: "pods"
                 emptyText: qsTr("Nenhum pod.\nHabilite o cluster ou aguarde o primeiro deploy.")
-                items: backend.k8sPods
+                items: backend.k8s.pods
                 selection: podSelection
                 idKey: "id"
                 columns: [
@@ -343,7 +343,7 @@ ColumnLayout {
                 anchors.bottomMargin: 20
                 emptyIcon: "networks"
                 emptyText: qsTr("Nenhum service.\nCrie um Service para expor um workload.")
-                items: backend.k8sServices
+                items: backend.k8s.services
                 selection: serviceSelection
                 idKey: "id"
                 columns: [
@@ -386,7 +386,7 @@ ColumnLayout {
                     Layout.preferredWidth: 220
                     onCurrentIndexChanged: {
                         if (logsDialog.opened && currentIndex >= 0) {
-                            backend.startK8sLogs(page.logsNamespace, page.logsPod, currentText)
+                            backend.k8s.startLogs(page.logsNamespace, page.logsPod, currentText)
                         }
                     }
                 }
@@ -394,7 +394,7 @@ ColumnLayout {
                 Item { Layout.fillWidth: true }
 
                 Label {
-                    visible: backend.k8sLogActive
+                    visible: backend.k8s.logActive
                     text: qsTr("streaming…")
                     color: Theme.cyan
                     font.family: Theme.fontFamily
@@ -405,15 +405,15 @@ ColumnLayout {
                     text: qsTr("Parar")
                     variant: "secondary"
                     size: "sm"
-                    enabled: backend.k8sLogActive
-                    onClicked: backend.stopK8sLogs()
+                    enabled: backend.k8s.logActive
+                    onClicked: backend.k8s.stopLogs()
                 }
             }
 
             Label {
                 Layout.fillWidth: true
-                visible: backend.k8sLogError.length > 0
-                text: backend.k8sLogError
+                visible: backend.k8s.logError.length > 0
+                text: backend.k8s.logError
                 color: Theme.danger
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
@@ -423,13 +423,13 @@ ColumnLayout {
             LogsView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                lines: backend.k8sLogLines
+                lines: backend.k8s.logLines
                 emptyText: qsTr("Sem logs. O container pode ainda não ter produzido saída.")
-                onClearRequested: backend.clearK8sLogs()
+                onClearRequested: backend.k8s.clearLogs()
             }
         }
 
-        onClosed: backend.stopK8sLogs()
+        onClosed: backend.k8s.stopLogs()
     }
 
     AppDialog {
@@ -472,9 +472,9 @@ ColumnLayout {
                     variant: "danger"
                     onClicked: {
                         if (page.clusterActionKind === "reset") {
-                            backend.resetK8s()
+                            backend.k8s.reset()
                         } else {
-                            backend.disableK8s(true)
+                            backend.k8s.disable(true)
                         }
                         clusterActionDialog.close()
                     }
@@ -518,9 +518,9 @@ ColumnLayout {
                     variant: "danger"
                     onClicked: {
                         if (page.actionKind === "pod") {
-                            backend.deleteK8sPod(page.actionNamespace, page.actionName)
+                            backend.k8s.deletePod(page.actionNamespace, page.actionName)
                         } else {
-                            backend.deleteK8sService(page.actionNamespace, page.actionName)
+                            backend.k8s.deleteService(page.actionNamespace, page.actionName)
                         }
                         deleteDialog.close()
                     }
@@ -587,7 +587,7 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                visible: backend.k8sPortForwardActive
+                visible: backend.k8s.portForwardActive
                 text: qsTr("ativo: 127.0.0.1:%1 → %2").arg(forwardLocal.text)
                           .arg(forwardRemote.text)
                 color: Theme.cyan
@@ -597,8 +597,8 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                visible: backend.k8sPortForwardError.length > 0
-                text: backend.k8sPortForwardError
+                visible: backend.k8s.portForwardError.length > 0
+                text: backend.k8s.portForwardError
                 color: Theme.danger
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
@@ -612,15 +612,15 @@ ColumnLayout {
                 ActionButton {
                     text: qsTr("Parar")
                     variant: "secondary"
-                    enabled: backend.k8sPortForwardActive
-                    onClicked: backend.stopK8sPortForward()
+                    enabled: backend.k8s.portForwardActive
+                    onClicked: backend.k8s.stopPortForward()
                 }
 
                 ActionButton {
                     text: qsTr("Iniciar")
                     variant: "primary"
-                    enabled: !backend.k8sPortForwardActive
-                    onClicked: backend.startK8sPortForward(page.actionNamespace,
+                    enabled: !backend.k8s.portForwardActive
+                    onClicked: backend.k8s.startPortForward(page.actionNamespace,
                                                            page.actionName,
                                                            parseInt(forwardLocal.text),
                                                            parseInt(forwardRemote.text),
@@ -635,12 +635,12 @@ ColumnLayout {
             }
         }
 
-        onClosed: backend.stopK8sPortForward()
+        onClosed: backend.k8s.stopPortForward()
     }
 
     Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        visible: !backend.k8sEnabled
+        visible: !backend.k8s.enabled
     }
 }

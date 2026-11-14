@@ -89,8 +89,8 @@ int main(int argc, char *argv[])
                      [&backend, &tray]() { tray.setSetupPending(backend.setupPending()); });
     QObject::connect(&backend, &PodStack::Backend::machinesChanged, &tray,
                      [&backend, &tray]() { tray.setMachines(backend.machines()); });
-    QObject::connect(&backend, &PodStack::Backend::k8sChanged, &tray,
-                     [&backend, &tray]() { tray.setKubernetes(backend.k8sEnabled()); });
+    QObject::connect(backend.k8s(), &PodStack::K8sController::changed, &tray,
+                     [&backend, &tray]() { tray.setKubernetes(backend.k8s()->enabled()); });
     QObject::connect(backend.compose(), &PodStack::ComposeController::itemsChanged, &tray,
                      [&backend, &tray]() {
                          tray.setComposeProjects(backend.compose()->items());
@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
     tray.setSetupPending(backend.setupPending());
     tray.setComposeProjects(backend.compose()->items());
     tray.setMachines(backend.machines());
-    tray.setKubernetes(backend.k8sEnabled());
+    tray.setKubernetes(backend.k8s()->enabled());
     tray.setActionActive(backend.actionActive());
 
     // A dock usa o ícone do desktop entry via app_id; em dev (sem o pacote

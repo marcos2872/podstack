@@ -19,6 +19,7 @@ add_library(podstack_gui_lib STATIC
     controllers/CatalogController.cpp
     controllers/ControllerBase.cpp
     controllers/ImageController.cpp
+    controllers/K8sController.cpp
     controllers/NetworkController.cpp
     controllers/PodController.cpp
     controllers/VolumeController.cpp

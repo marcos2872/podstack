@@ -4,6 +4,7 @@
 #include "gui/controllers/BuildController.h"
 #include "gui/controllers/ContainerController.h"
 #include "gui/controllers/ContainerDetailController.h"
+#include "gui/controllers/K8sController.h"
 #include "gui/controllers/ComposeController.h"
 #include "gui/controllers/ImageController.h"
 #include "gui/controllers/NetworkController.h"
@@ -26,6 +27,7 @@ namespace PodStack {
 
 class Backend : public QObject {
     Q_OBJECT
+    Q_PROPERTY(PodStack::K8sController *k8s READ k8s CONSTANT)
     Q_PROPERTY(PodStack::ContainerController *containers READ containers CONSTANT)
     Q_PROPERTY(PodStack::ContainerDetailController *containerDetail READ containerDetail CONSTANT)
     Q_PROPERTY(PodStack::ImageController *images READ images CONSTANT)
@@ -43,22 +45,6 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList activityMemHistory READ activityMemHistory NOTIFY activityChanged)
     Q_PROPERTY(bool activityActive READ activityActive NOTIFY activityChanged)
     Q_PROPERTY(bool actionActive READ actionActive NOTIFY actionStateChanged)
-    Q_PROPERTY(QString k8sState READ k8sState NOTIFY k8sChanged)
-    Q_PROPERTY(bool k8sEnabled READ k8sEnabled NOTIFY k8sChanged)
-    Q_PROPERTY(QVariantList k8sPods READ k8sPods NOTIFY k8sChanged)
-    Q_PROPERTY(QVariantList k8sServices READ k8sServices NOTIFY k8sChanged)
-    Q_PROPERTY(QString k8sError READ k8sError NOTIFY k8sChanged)
-    Q_PROPERTY(bool k8sLoading READ k8sLoading NOTIFY k8sChanged)
-    Q_PROPERTY(QStringList k8sLogLines READ k8sLogLines NOTIFY k8sLogsChanged)
-    Q_PROPERTY(QString k8sLogError READ k8sLogError NOTIFY k8sLogsChanged)
-    Q_PROPERTY(bool k8sLogActive READ k8sLogActive NOTIFY k8sLogsChanged)
-    Q_PROPERTY(bool k8sPortForwardActive READ k8sPortForwardActive NOTIFY k8sForwardChanged)
-    Q_PROPERTY(QString k8sPortForwardId READ k8sPortForwardId NOTIFY k8sForwardChanged)
-    Q_PROPERTY(QString k8sPortForwardError READ k8sPortForwardError NOTIFY k8sForwardChanged)
-    Q_PROPERTY(bool k8sJobActive READ k8sJobActive NOTIFY k8sJobChanged)
-    Q_PROPERTY(QString k8sJobStage READ k8sJobStage NOTIFY k8sJobChanged)
-    Q_PROPERTY(int k8sJobProgress READ k8sJobProgress NOTIFY k8sJobChanged)
-    Q_PROPERTY(QString k8sJobError READ k8sJobError NOTIFY k8sJobChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
     Q_PROPERTY(QVariantMap prunePreview READ prunePreview NOTIFY prunePreviewChanged)
     Q_PROPERTY(QVariantList machines READ machines NOTIFY machinesChanged)
@@ -135,6 +121,7 @@ class Backend : public QObject {
 public:
     explicit Backend(QObject *parent = nullptr);
 
+    K8sController *k8s() { return &m_k8s; }
     ContainerController *containers() { return &m_containers; }
     ContainerDetailController *containerDetail() { return &m_containerDetail; }
     ImageController *images() { return &m_images; }
@@ -152,22 +139,6 @@ public:
     QVariantList activityMemHistory() const { return m_activityMemHistory; }
     bool activityActive() const { return m_activityActive; }
     bool actionActive() const { return m_actionActive; }
-    QString k8sState() const { return m_k8sState; }
-    bool k8sEnabled() const { return m_k8sEnabled; }
-    QVariantList k8sPods() const { return m_k8sPods; }
-    QVariantList k8sServices() const { return m_k8sServices; }
-    QString k8sError() const { return m_k8sError; }
-    bool k8sLoading() const { return m_k8sLoading; }
-    QStringList k8sLogLines() const { return m_k8sLogLines; }
-    QString k8sLogError() const { return m_k8sLogError; }
-    bool k8sLogActive() const { return m_k8sLogActive; }
-    bool k8sPortForwardActive() const { return m_k8sPortForwardActive; }
-    QString k8sPortForwardId() const { return m_k8sPortForwardId; }
-    QString k8sPortForwardError() const { return m_k8sPortForwardError; }
-    bool k8sJobActive() const { return m_k8sJobActive; }
-    QString k8sJobStage() const { return m_k8sJobStage; }
-    int k8sJobProgress() const { return m_k8sJobProgress; }
-    QString k8sJobError() const { return m_k8sJobError; }
     QVariantMap diskUsage() const { return m_diskUsage; }
     QVariantMap prunePreview() const { return m_prunePreview; }
     QVariantList machines() const { return m_machines; }
@@ -231,23 +202,6 @@ public:
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
     Q_INVOKABLE void refreshDiskUsage();
-    Q_INVOKABLE void refreshK8s();
-    Q_INVOKABLE void refreshK8sStatus();
-    Q_INVOKABLE void startK8sWatch();
-    Q_INVOKABLE void stopK8sWatch();
-    Q_INVOKABLE void startK8sLogs(const QString &namespaceName, const QString &pod,
-                                  const QString &container = QString());
-    Q_INVOKABLE void stopK8sLogs();
-    Q_INVOKABLE void clearK8sLogs();
-    Q_INVOKABLE void deleteK8sPod(const QString &namespaceName, const QString &name);
-    Q_INVOKABLE void deleteK8sService(const QString &namespaceName, const QString &name);
-    Q_INVOKABLE void startK8sPortForward(const QString &namespaceName, const QString &name,
-                                         int localPort, int remotePort,
-                                         const QString &resource = QStringLiteral("pod"));
-    Q_INVOKABLE void stopK8sPortForward();
-    Q_INVOKABLE void enableK8s();
-    Q_INVOKABLE void disableK8s(bool force = false);
-    Q_INVOKABLE void resetK8s();
     Q_INVOKABLE void openPath(const QString &path);
     Q_INVOKABLE QString choosePath(const QString &mode, const QString &title,
                                    const QString &filter = QString(),
@@ -332,10 +286,6 @@ signals:
     void lastErrorChanged();
     void actionFinished(bool ok, const QString &error);
     void activityChanged();
-    void k8sChanged();
-    void k8sLogsChanged();
-    void k8sForwardChanged();
-    void k8sJobChanged();
     void diskUsageChanged();
     void prunePreviewChanged();
     void machinesChanged();
@@ -398,10 +348,6 @@ private:
     void onMachineLogsFinished();
     void onMachineFilesFinished();
     void onMachineSnapshotsFinished();
-    void onK8sStatusFinished();
-    void onK8sPodsFinished();
-    void onK8sServicesFinished();
-    void onK8sForwardFinished();
     void startMachineFilesRequest(const QString &operation, const QString &id,
                                   const QString &method, const QJsonObject &params,
                                   int timeoutMs);
@@ -437,10 +383,6 @@ private:
     QFutureWatcher<QJsonObject> m_machineFilesWatcher;
     QFutureWatcher<QJsonObject> m_machineSnapshotsWatcher;
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
-    QFutureWatcher<QJsonObject> m_k8sStatusWatcher;
-    QFutureWatcher<QJsonObject> m_k8sPodsWatcher;
-    QFutureWatcher<QJsonObject> m_k8sServicesWatcher;
-    QFutureWatcher<QJsonObject> m_k8sForwardWatcher;
     QFutureWatcher<QJsonObject> m_settingsWatcher;
     QFutureWatcher<QJsonObject> m_settingsActionWatcher;
     struct SettingsRequest {
@@ -461,8 +403,6 @@ private:
     StreamClient m_machineConsoleStream;
     StreamClient m_setupStream;
     StreamClient m_eventsStream;
-    StreamClient m_k8sLogsStream;
-    StreamClient m_k8sJobStream;
     QTimer m_eventTimer;
     QTimer m_refreshTimer;
     QTimer m_eventsRetryTimer;
@@ -479,6 +419,7 @@ private:
     QVariantList m_activityCpuHistory;
     QVariantList m_activityMemHistory;
     bool m_activityActive = false;
+    K8sController m_k8s;
     ContainerController m_containers;
     ContainerDetailController m_containerDetail{&m_containers};
     ImageController m_images;
@@ -487,23 +428,6 @@ private:
     VolumeController m_volumes;
     NetworkController m_networks;
     PodController m_pods;
-    QString m_k8sState;
-    bool m_k8sEnabled = false;
-    QVariantList m_k8sPods;
-    QVariantList m_k8sServices;
-    QString m_k8sError;
-    bool m_k8sLoading = false;
-    QStringList m_k8sLogLines;
-    QString m_k8sLogError;
-    bool m_k8sLogActive = false;
-    bool m_k8sPortForwardActive = false;
-    QString m_k8sPortForwardId;
-    QString m_k8sPortForwardError;
-    bool m_k8sJobActive = false;
-    QString m_k8sJobStage;
-    int m_k8sJobProgress = 0;
-    QString m_k8sJobError;
-    QTimer m_k8sTimer;
     QVariantMap m_diskUsage;
     QVariantMap m_prunePreview;
     QVariantList m_machines;

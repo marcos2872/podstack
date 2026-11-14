@@ -165,7 +165,7 @@ Rectangle {
             return backend.machines.length
         }
         if (key === "kubernetes") {
-            return backend.k8sPods.length + backend.k8sServices.length
+            return backend.k8s.pods.length + backend.k8s.services.length
         }
         return -1
     }
@@ -216,7 +216,7 @@ Rectangle {
         } else if (section === "machines") {
             backend.refreshMachines()
         } else if (section === "kubernetes") {
-            backend.refreshK8s()
+            backend.k8s.refresh()
         }
     }
 
