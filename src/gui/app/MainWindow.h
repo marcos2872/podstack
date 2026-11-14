@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include "gui/UiState.h"
+#include "gui/app/UiState.h"
 
 #include <QMainWindow>
 #include <QString>

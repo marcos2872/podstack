@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "core/config/Config.h"
 #include "core/logging/Logging.h"
-#include "gui/Autostart.h"
-#include "gui/Backend.h"
-#include "gui/ContainerListModel.h"
-#include "gui/MainWindow.h"
-#include "gui/Notifications.h"
-#include "gui/SingleInstance.h"
-#include "gui/Translation.h"
-#include "gui/Tray.h"
-#include "gui/UnixSignals.h"
+#include "gui/app/Autostart.h"
+#include "gui/controllers/Backend.h"
+#include "gui/models/ContainerListModel.h"
+#include "gui/app/MainWindow.h"
+#include "gui/app/notifications/Notifications.h"
+#include "gui/app/SingleInstance.h"
+#include "gui/app/Translation.h"
+#include "gui/app/tray/Tray.h"
+#include "gui/app/UnixSignals.h"
 
 #include <QApplication>
 #include <QCommandLineOption>

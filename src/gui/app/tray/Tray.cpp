@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "gui/Tray.h"
+#include "gui/app/tray/Tray.h"
 
 #include "core/config/Config.h"
 

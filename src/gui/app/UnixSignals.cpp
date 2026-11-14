@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/UnixSignals.h"
+#include "gui/app/UnixSignals.h"
 
 #include <QObject>
 #include <QSocketNotifier>

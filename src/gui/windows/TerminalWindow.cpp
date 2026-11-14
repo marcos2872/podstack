@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "gui/TerminalWindow.h"
+#include "gui/windows/TerminalWindow.h"
 
-#include "gui/TerminalView.h"
+#include "gui/windows/terminal/TerminalView.h"
 
 #include <QStandardPaths>
 #include <QVBoxLayout>

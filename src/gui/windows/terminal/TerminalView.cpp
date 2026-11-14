@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "gui/TerminalView.h"
+#include "gui/windows/terminal/TerminalView.h"
 
 #include "core/config/Config.h"
-#include "gui/ExternalTerminal.h"
+#include "gui/app/terminal/ExternalTerminal.h"
 
 #include <QAction>
 #include <QClipboard>

@@ -1,4 +1,4 @@
-#include "gui/ContainerListModel.h"
+#include "gui/models/ContainerListModel.h"
 
 namespace PodStack {
 

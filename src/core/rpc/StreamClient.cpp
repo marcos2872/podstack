@@ -1,4 +1,4 @@
-#include "gui/StreamClient.h"
+#include "core/rpc/StreamClient.h"
 
 #include "core/config/Paths.h"
 

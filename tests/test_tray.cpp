@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "core/config/Config.h"
 #include "core/config/Paths.h"
-#include "gui/Tray.h"
+#include "gui/app/tray/Tray.h"
 
 #include <QAction>
 #include <QDir>

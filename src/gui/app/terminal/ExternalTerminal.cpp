@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "gui/ExternalTerminal.h"
+#include "gui/app/terminal/ExternalTerminal.h"
 
 #include <QFileInfo>
 #include <QProcess>

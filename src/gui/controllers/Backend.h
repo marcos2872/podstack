@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/logging/LogReader.h"
-#include "gui/StreamClient.h"
+#include "core/rpc/StreamClient.h"
 
 #include <QFutureWatcher>
 #include <QJsonObject>

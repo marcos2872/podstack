@@ -1,12 +1,12 @@
 #include "MockPodmanServer.h"
 
 #include "core/config/Config.h"
-#include "gui/Autostart.h"
-#include "gui/Backend.h"
-#include "gui/ContainerListModel.h"
-#include "gui/StreamClient.h"
-#include "gui/UiState.h"
-#include "gui/UnixSignals.h"
+#include "gui/app/Autostart.h"
+#include "gui/controllers/Backend.h"
+#include "gui/models/ContainerListModel.h"
+#include "core/rpc/StreamClient.h"
+#include "gui/app/UiState.h"
+#include "gui/app/UnixSignals.h"
 #include "k8s/store/K8sStore.h"
 #include "machines/model/MachineStore.h"
 

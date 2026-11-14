@@ -1,4 +1,4 @@
-#include "gui/Backend.h"
+#include "gui/controllers/Backend.h"
 
 #include "core/system/DiskUsage.h"
 #include "core/error/Error.h"
@@ -11,8 +11,8 @@
 #include "core/setup/SetupActions.h"
 #include "core/setup/SetupPolicy.h"
 #include "core/helper/HelperClient.h"
-#include "gui/Autostart.h"
-#include "gui/TerminalWindow.h"
+#include "gui/app/Autostart.h"
+#include "gui/windows/TerminalWindow.h"
 
 #include <QClipboard>
 #include <QCoreApplication>

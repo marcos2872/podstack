@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "gui/Notifications.h"
+#include "gui/app/notifications/Notifications.h"
 
 #include "core/config/Config.h"
 

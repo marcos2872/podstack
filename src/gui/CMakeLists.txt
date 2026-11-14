@@ -2,22 +2,21 @@
 # GUI: shell Qt Widgets + backend + módulo QML
 # ---------------------------------------------------------------------------
 add_library(podstack_gui_lib STATIC
-    Autostart.cpp
-    Backend.cpp
-    ContainerDetailDialog.cpp
-    ContainerListModel.cpp
-    ExternalTerminal.cpp
-    MachineDetailDialog.cpp
-    MainWindow.cpp
-    Notifications.cpp
-    SingleInstance.cpp
-    StreamClient.cpp
-    TerminalView.cpp
-    TerminalWindow.cpp
-    Translation.cpp
-    Tray.cpp
-    UiState.cpp
-    UnixSignals.cpp
+    app/Autostart.cpp
+    app/MainWindow.cpp
+    app/SingleInstance.cpp
+    app/Translation.cpp
+    app/UiState.cpp
+    app/UnixSignals.cpp
+    app/notifications/Notifications.cpp
+    app/terminal/ExternalTerminal.cpp
+    app/tray/Tray.cpp
+    controllers/Backend.cpp
+    models/ContainerListModel.cpp
+    windows/ContainerDetailDialog.cpp
+    windows/MachineDetailDialog.cpp
+    windows/TerminalWindow.cpp
+    windows/terminal/TerminalView.cpp
 )
 target_include_directories(podstack_gui_lib PUBLIC ${PROJECT_SOURCE_DIR}/src)
 qt_add_resources(podstack_gui_lib "translations"

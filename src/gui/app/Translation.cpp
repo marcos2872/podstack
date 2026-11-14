@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/Translation.h"
+#include "gui/app/Translation.h"
 
 #include <QCoreApplication>
 #include <QTranslator>

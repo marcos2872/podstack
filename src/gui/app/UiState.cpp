@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/UiState.h"
+#include "gui/app/UiState.h"
 
 #include "core/config/Paths.h"
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "gui/Autostart.h"
+#include "gui/app/Autostart.h"
 
 #include "core/config/Config.h"
 

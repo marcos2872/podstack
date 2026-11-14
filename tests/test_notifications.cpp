@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "core/config/Config.h"
 #include "core/config/Paths.h"
-#include "gui/Notifications.h"
+#include "gui/app/notifications/Notifications.h"
 
 #include <QDir>
 #include <QStandardPaths>

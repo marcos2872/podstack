@@ -13,6 +13,7 @@ add_library(podstack_core STATIC
     logging/Redaction.cpp
     rpc/RpcClient.cpp
     rpc/RpcStream.cpp
+    rpc/StreamClient.cpp
     system/DiskSpace.cpp
     system/DiskUsage.cpp
     system/Emulation.cpp
