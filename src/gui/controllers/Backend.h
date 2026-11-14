@@ -7,6 +7,8 @@
 #include "gui/controllers/K8sController.h"
 #include "gui/controllers/SettingsController.h"
 #include "gui/controllers/SetupController.h"
+#include "gui/controllers/SystemController.h"
+#include "gui/controllers/UpdateController.h"
 #include "gui/controllers/ComposeController.h"
 #include "gui/controllers/ImageController.h"
 #include "gui/controllers/NetworkController.h"
@@ -32,6 +34,8 @@ class Backend : public QObject {
     Q_PROPERTY(PodStack::K8sController *k8s READ k8s CONSTANT)
     Q_PROPERTY(PodStack::SettingsController *settings READ settings CONSTANT)
     Q_PROPERTY(PodStack::SetupController *setup READ setup CONSTANT)
+    Q_PROPERTY(PodStack::SystemController *system READ system CONSTANT)
+    Q_PROPERTY(PodStack::UpdateController *updates READ updates CONSTANT)
     Q_PROPERTY(PodStack::ContainerController *containers READ containers CONSTANT)
     Q_PROPERTY(PodStack::ContainerDetailController *containerDetail READ containerDetail CONSTANT)
     Q_PROPERTY(PodStack::ImageController *images READ images CONSTANT)
@@ -44,10 +48,6 @@ class Backend : public QObject {
     Q_PROPERTY(QString error READ error NOTIFY stateChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QString version READ version CONSTANT)
-    Q_PROPERTY(QVariantMap activityStats READ activityStats NOTIFY activityChanged)
-    Q_PROPERTY(QVariantList activityCpuHistory READ activityCpuHistory NOTIFY activityChanged)
-    Q_PROPERTY(QVariantList activityMemHistory READ activityMemHistory NOTIFY activityChanged)
-    Q_PROPERTY(bool activityActive READ activityActive NOTIFY activityChanged)
     Q_PROPERTY(bool actionActive READ actionActive NOTIFY actionStateChanged)
     Q_PROPERTY(QVariantMap diskUsage READ diskUsage NOTIFY diskUsageChanged)
     Q_PROPERTY(QVariantMap prunePreview READ prunePreview NOTIFY prunePreviewChanged)
@@ -92,14 +92,6 @@ class Backend : public QObject {
                NOTIFY machineCreateStateChanged)
     Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
     Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
-    Q_PROPERTY(QVariantMap updateStatus READ updateStatus NOTIFY updateStatusChanged)
-    Q_PROPERTY(QVariantList systemLogs READ systemLogs NOTIFY systemLogsChanged)
-    Q_PROPERTY(QString systemLogsError READ systemLogsError NOTIFY systemLogsChanged)
-    Q_PROPERTY(bool systemLogsTruncated READ systemLogsTruncated NOTIFY systemLogsChanged)
-    Q_PROPERTY(bool systemLogsBusy READ systemLogsBusy NOTIFY systemLogsChanged)
-    Q_PROPERTY(
-        QString diagnosticReportPath READ diagnosticReportPath NOTIFY diagnosticReportChanged)
-    Q_PROPERTY(QVariantMap diskHealth READ diskHealth NOTIFY diskHealthChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -107,6 +99,8 @@ public:
     K8sController *k8s() { return &m_k8s; }
     SettingsController *settings() { return &m_settings; }
     SetupController *setup() { return &m_setup; }
+    SystemController *system() { return &m_system; }
+    UpdateController *updates() { return &m_updates; }
     ContainerController *containers() { return &m_containers; }
     ContainerDetailController *containerDetail() { return &m_containerDetail; }
     ImageController *images() { return &m_images; }
@@ -119,10 +113,6 @@ public:
     QString error() const { return m_error; }
     QString lastError() const { return m_lastError; }
     QString version() const;
-    QVariantMap activityStats() const { return m_activityStats; }
-    QVariantList activityCpuHistory() const { return m_activityCpuHistory; }
-    QVariantList activityMemHistory() const { return m_activityMemHistory; }
-    bool activityActive() const { return m_activityActive; }
     bool actionActive() const { return m_actionActive; }
     QVariantMap diskUsage() const { return m_diskUsage; }
     QVariantMap prunePreview() const { return m_prunePreview; }
@@ -156,13 +146,6 @@ public:
     QString machineCreateError() const { return m_machineCreateError; }
     QString eventMessage() const { return m_eventMessage; }
     QString eventKind() const { return m_eventKind; }
-    QVariantMap updateStatus() const { return m_updateStatus; }
-    QVariantList systemLogs() const { return m_systemLogs; }
-    QString systemLogsError() const { return m_systemLogsError; }
-    bool systemLogsTruncated() const { return m_systemLogsTruncated; }
-    bool systemLogsBusy() const { return m_systemLogsBusy; }
-    QString diagnosticReportPath() const { return m_diagnosticReportPath; }
-    QVariantMap diskHealth() const { return m_diskHealth; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
@@ -213,26 +196,12 @@ public:
     Q_INVOKABLE QString machineArchivePath(const QString &id) const;
     Q_INVOKABLE void batchMachines(const QStringList &ids, const QString &action,
                                    bool force = false);
-    Q_INVOKABLE void startActivityMonitor();
-    Q_INVOKABLE void stopActivityMonitor();
-    Q_INVOKABLE void checkForUpdates(bool interactive = false);
-    Q_INVOKABLE void installUpdate();
-    Q_INVOKABLE void resumeUpdate();
-    Q_INVOKABLE void loadSystemLogs(const QString &level = QString(),
-                                    const QString &component = QString(), int sinceDays = 7);
-    Q_INVOKABLE bool exportSystemLogs(const QString &path);
-    Q_INVOKABLE void clearSystemLogs();
-    Q_INVOKABLE void clearUpdateState();
-    Q_INVOKABLE void generateDiagnosticReport();
-    Q_INVOKABLE void openLogsFolder();
-    Q_INVOKABLE void checkDiskHealth();
 
 signals:
     void actionStateChanged();
     void stateChanged();
     void lastErrorChanged();
     void actionFinished(bool ok, const QString &error);
-    void activityChanged();
     void diskUsageChanged();
     void prunePreviewChanged();
     void machinesChanged();
@@ -247,13 +216,6 @@ signals:
     void machineSnapshotsChanged();
     void machineCreateStateChanged();
     void eventsChanged();
-    void updateStatusChanged();
-    void systemLogsChanged();
-    void diagnosticReportChanged();
-    void updateAvailable(const QVariantMap &release);
-    void updateCheckFailed(const QString &reason);
-    void diskHealthChanged();
-    void diskLow(const QVariantMap &sample);
     void containerEvent(const QVariantMap &event);
     void terminalRequested(const QString &title, const QString &program,
                            const QStringList &args);
@@ -301,8 +263,6 @@ private:
 
     QFutureWatcher<QJsonObject> m_actionWatcher;
     QFutureWatcher<QJsonObject> m_catalogWatcher;
-    QFutureWatcher<QJsonObject> m_updateWatcher;
-    QFutureWatcher<QJsonObject> m_diskWatcher;
     QFutureWatcher<QJsonObject> m_machinesWatcher;
     QFutureWatcher<QJsonObject> m_machineDistrosWatcher;
     QFutureWatcher<QJsonObject> m_machineInfoWatcher;
@@ -314,7 +274,6 @@ private:
     QFutureWatcher<QJsonObject> m_machineSshWatcher;
     QString m_catalogSection;
     QStringList m_catalogQueue;
-    StreamClient m_activityStream;
     StreamClient m_machineCreateStream;
     StreamClient m_machineStatsStream;
     StreamClient m_machineConsoleStream;
@@ -322,8 +281,6 @@ private:
     QTimer m_eventTimer;
     QTimer m_refreshTimer;
     QTimer m_eventsRetryTimer;
-    QTimer m_updateTimer;
-    QTimer m_diskTimer;
     int m_eventsRetryDelayMs = 1000;
     QList<PendingAction> m_actionQueue;
     bool m_actionActive = false;
@@ -331,13 +288,11 @@ private:
     QString m_error;
     QString m_lastError;
     QStringList m_logLines;
-    QVariantMap m_activityStats;
-    QVariantList m_activityCpuHistory;
-    QVariantList m_activityMemHistory;
-    bool m_activityActive = false;
     K8sController m_k8s;
     SettingsController m_settings;
     SetupController m_setup;
+    SystemController m_system;
+    UpdateController m_updates;
     ContainerController m_containers;
     ContainerDetailController m_containerDetail{&m_containers};
     ImageController m_images;
@@ -390,26 +345,6 @@ private:
     QString m_eventMessage;
     QString m_eventKind;
     QSet<QString> m_recentEvents;
-    QVariantMap m_updateStatus;
-    QVariantList m_systemLogs;
-    QString m_systemLogsError;
-    bool m_systemLogsTruncated = false;
-    bool m_systemLogsBusy = false;
-    QVector<PodStack::LogLine> m_lastLogs;
-    struct SystemLogsTask {
-        LogReadResult result;
-        Error error;
-    };
-    LogReadOptions m_pendingLogOptions;
-    QString m_pendingLogComponent;
-    QFutureWatcher<SystemLogsTask> m_systemLogsWatcher;
-    QFutureWatcher<QJsonObject> m_reportWatcher;
-    QString m_diagnosticReportPath;
-    bool m_updateCheckRunning = false;
-    bool m_updatesEnabled = true;
-    bool m_updateInteractive = false;
-    QVariantMap m_diskHealth;
-    bool m_diskCheckRunning = false;
 };
 
 } // namespace PodStack

@@ -16,7 +16,7 @@ AppDialog {
     property string levelFilter: ""
     property string componentFilter: ""
 
-    onOpened: backend.loadSystemLogs(levelFilter, componentFilter, 7)
+    onOpened: backend.system.loadLogs(levelFilter, componentFilter, 7)
 
     function openFor(forComponent, forLevel) {
         componentFilter = forComponent || ""
@@ -26,7 +26,7 @@ AppDialog {
         const levelIndex = levelBox.model.indexOf(levelFilter)
         levelBox.currentIndex = levelIndex > 0 ? levelIndex : 0
         open()
-        backend.loadSystemLogs(levelFilter, componentFilter, 7)
+        backend.system.loadLogs(levelFilter, componentFilter, 7)
     }
 
     ColumnLayout {
@@ -43,7 +43,7 @@ AppDialog {
                 model: [qsTr("Todos os níveis"), "error", "warn", "info", "debug", "trace"]
                 onCurrentIndexChanged: {
                     dialog.levelFilter = currentIndex === 0 ? "" : currentText
-                    backend.loadSystemLogs(dialog.levelFilter, dialog.componentFilter, 7)
+                    backend.system.loadLogs(dialog.levelFilter, dialog.componentFilter, 7)
                 }
                 Accessible.name: qsTr("Filtrar por nível")
             }
@@ -55,7 +55,7 @@ AppDialog {
                         "setup", "update", "helper", "package"]
                 onCurrentIndexChanged: {
                     dialog.componentFilter = currentIndex === 0 ? "" : currentText
-                    backend.loadSystemLogs(dialog.levelFilter, dialog.componentFilter, 7)
+                    backend.system.loadLogs(dialog.levelFilter, dialog.componentFilter, 7)
                 }
                 Accessible.name: qsTr("Filtrar por componente")
             }
@@ -78,7 +78,7 @@ AppDialog {
                 text: qsTr("Atualizar")
                 size: "sm"
                 onClicked: {
-                    backend.loadSystemLogs(levelBox.currentIndex === 0 ? "" : levelBox.currentText,
+                    backend.system.loadLogs(levelBox.currentIndex === 0 ? "" : levelBox.currentText,
                                            componentBox.currentIndex === 0 ? ""
                                                                           : componentBox.currentText,
                                            7)
@@ -92,12 +92,12 @@ AppDialog {
             ActionButton {
                 text: qsTr("Exportar diagnóstico")
                 size: "sm"
-                onClicked: backend.generateDiagnosticReport()
+                onClicked: backend.system.generateDiagnosticReport()
             }
             ActionButton {
                 text: qsTr("Abrir pasta")
                 size: "sm"
-                onClicked: backend.openLogsFolder()
+                onClicked: backend.system.openLogsFolder()
             }
             ActionButton {
                 text: qsTr("Limpar")
@@ -120,7 +120,7 @@ AppDialog {
                 anchors.fill: parent
                 anchors.margins: 10
                 clip: true
-                model: backend.systemLogs
+                model: backend.system.logs
                 spacing: 2
 
                 delegate: Text {
@@ -148,7 +148,7 @@ AppDialog {
 
         Text {
             Layout.fillWidth: true
-            visible: backend.systemLogsTruncated
+            visible: backend.system.logsTruncated
             text: qsTr("Resultado truncado pelos limites de 10.000 linhas/5 MB.")
             color: Theme.warning
             font.family: Theme.fontFamily
@@ -158,8 +158,8 @@ AppDialog {
 
         Text {
             Layout.fillWidth: true
-            visible: backend.systemLogsError.length > 0
-            text: backend.systemLogsError
+            visible: backend.system.logsError.length > 0
+            text: backend.system.logsError
             color: Theme.danger
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
@@ -168,8 +168,8 @@ AppDialog {
 
         Text {
             Layout.fillWidth: true
-            visible: backend.diagnosticReportPath.length > 0
-            text: qsTr("Relatório: %1").arg(backend.diagnosticReportPath)
+            visible: backend.system.diagnosticReportPath.length > 0
+            text: qsTr("Relatório: %1").arg(backend.system.diagnosticReportPath)
             color: Theme.textTertiary
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
@@ -182,7 +182,7 @@ AppDialog {
         interval: 1500
         repeat: true
         running: followLogs.checked && dialog.visible
-        onTriggered: backend.loadSystemLogs(dialog.levelFilter, dialog.componentFilter, 7)
+        onTriggered: backend.system.loadLogs(dialog.levelFilter, dialog.componentFilter, 7)
     }
 
     Connections {
@@ -198,7 +198,7 @@ AppDialog {
         id: exportDialog
         fileMode: FileDialog.SaveFile
         nameFilters: [qsTr("Logs JSON Lines (*.jsonl)")]
-        onAccepted: backend.exportSystemLogs(selectedFile)
+        onAccepted: backend.system.exportLogs(selectedFile)
     }
 
     AppDialog {
@@ -234,7 +234,7 @@ AppDialog {
                     text: qsTr("Limpar")
                     size: "sm"
                     onClicked: {
-                        backend.clearSystemLogs()
+                        backend.system.clearLogs()
                         clearDialog.close()
                     }
                 }

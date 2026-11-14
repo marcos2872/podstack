@@ -17,12 +17,12 @@ Window {
     title: qsTr("Activity Monitor — PodStack")
     color: Theme.bgBase
 
-    readonly property var host: backend.activityStats.host || ({})
-    readonly property var totals: backend.activityStats.totals || ({})
-    readonly property var containers: backend.activityStats.containers || []
+    readonly property var host: backend.system.activityStats.host || ({})
+    readonly property var totals: backend.system.activityStats.totals || ({})
+    readonly property var containers: backend.system.activityStats.containers || []
 
     function open() {
-        backend.startActivityMonitor()
+        backend.system.startActivityMonitor()
         show()
         raise()
         requestActivate()
@@ -52,7 +52,7 @@ Window {
     }
 
     onClosing: function(close) {
-        backend.stopActivityMonitor()
+        backend.system.stopActivityMonitor()
     }
 
     component MetricCard: Rectangle {
@@ -120,8 +120,8 @@ Window {
             }
 
             Text {
-                text: backend.activityActive ? qsTr("ao vivo · 2 s") : qsTr("parado")
-                color: backend.activityActive ? Theme.success : Theme.textTertiary
+                text: backend.system.activityActive ? qsTr("ao vivo · 2 s") : qsTr("parado")
+                color: backend.system.activityActive ? Theme.success : Theme.textTertiary
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMeta
             }
@@ -194,7 +194,7 @@ Window {
                     Sparkline {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        values: backend.activityCpuHistory
+                        values: backend.system.activityCpuHistory
                         maxValue: 100
                         lineColor: Theme.cyan
                     }
@@ -224,7 +224,7 @@ Window {
                     Sparkline {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        values: backend.activityMemHistory
+                        values: backend.system.activityMemHistory
                         maxValue: 100
                         lineColor: Theme.indigo400
                     }

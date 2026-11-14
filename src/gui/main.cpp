@@ -127,17 +127,17 @@ int main(int argc, char *argv[])
     QObject::connect(&backend, &PodStack::Backend::containerEvent, &notifications,
                      &PodStack::NotificationService::notifyContainerEvent);
     QObject::connect(&tray, &PodStack::TrayController::updateCheckRequested, &backend,
-                     [&backend]() { backend.checkForUpdates(true); });
-    QObject::connect(&backend, &PodStack::Backend::updateAvailable, &notifications,
+                     [&backend]() { backend.updates()->check(true); });
+    QObject::connect(backend.updates(), &PodStack::UpdateController::available, &notifications,
                      [&notifications](const QVariantMap &release) {
                          notifications.notifyUpdate(
                              release.value(QStringLiteral("latestVersion")).toString(),
                              release.value(QStringLiteral("channel")).toString(),
                              release.value(QStringLiteral("releaseUrl")).toString());
                      });
-    QObject::connect(&backend, &PodStack::Backend::updateCheckFailed, &notifications,
+    QObject::connect(backend.updates(), &PodStack::UpdateController::checkFailed, &notifications,
                      &PodStack::NotificationService::notifyUpdateError);
-    QObject::connect(&backend, &PodStack::Backend::diskLow, &notifications,
+    QObject::connect(backend.system(), &PodStack::SystemController::diskLow, &notifications,
                      &PodStack::NotificationService::notifyDiskLow);
     tray.setConnected(backend.connected());
     tray.setSetupPending(backend.setup()->pending());

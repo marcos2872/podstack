@@ -214,38 +214,19 @@ Backend::Backend(QObject *parent)
             &Backend::terminalRequested);
     connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onCatalogFinished);
-    connect(&m_updateWatcher, &QFutureWatcher<QJsonObject>::finished, this,
-            &Backend::onUpdateFinished);
-    connect(&m_systemLogsWatcher, &QFutureWatcher<SystemLogsTask>::finished, this,
-            &Backend::onSystemLogsFinished);
-    connect(&m_reportWatcher, &QFutureWatcher<QJsonObject>::finished, this, [this]() {
-        const QJsonObject result = m_reportWatcher.result();
-        if (result.contains(QStringLiteral("__error"))) {
-            m_systemLogsError = result.value(QStringLiteral("__error")).toString();
-            emit systemLogsChanged();
-            return;
-        }
-        m_diagnosticReportPath = result.value(QStringLiteral("path")).toString();
-        emit diagnosticReportChanged();
-    });
-    connect(&m_diskWatcher, &QFutureWatcher<QJsonObject>::finished, this, &Backend::onDiskFinished);
-    m_updateTimer.setInterval(6 * 60 * 60 * 1000);
-    connect(&m_updateTimer, &QTimer::timeout, this, [this] { checkForUpdates(false); });
-    m_updateTimer.start();
-    // Verifica logo após o app abrir; o modo `off` é respeitado em
-    // checkForUpdates() e pode ser alterado em Configurações → Geral.
-    QTimer::singleShot(5000, this, [this] { checkForUpdates(false); });
-    QTimer::singleShot(1000, this, &Backend::loadUpdateState);
-    m_diskTimer.setInterval(5 * 60 * 1000);
-    connect(&m_diskTimer, &QTimer::timeout, this, &Backend::checkDiskHealth);
-    m_diskTimer.start();
-    QTimer::singleShot(15000, this, &Backend::checkDiskHealth);
     connect(&m_settings, &SettingsController::valuesChanged, this, [this] {
-        m_updatesEnabled =
+        m_updates.setEnabled(
             m_settings.values().value(QStringLiteral("updates.mode"), QStringLiteral("check"))
                 .toString()
-            != QStringLiteral("off");
+            != QStringLiteral("off"));
     });
+    connect(&m_updates, &UpdateController::userMessage, this,
+            [this](const QString &kind, const QString &text) {
+                m_eventKind = kind;
+                m_eventMessage = text;
+                emit eventsChanged();
+                m_eventTimer.start();
+            });
     connect(&m_machinesWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onMachinesFinished);
     connect(&m_machineDistrosWatcher, &QFutureWatcher<QJsonObject>::finished, this,
@@ -317,27 +298,6 @@ Backend::Backend(QObject *parent)
             });
 
 
-    connect(&m_activityStream, &StreamClient::systemStats, this,
-            [this](const QJsonObject &sample) {
-                m_activityStats = sample.toVariantMap();
-                const QJsonObject host = sample.value(QStringLiteral("host")).toObject();
-                m_activityCpuHistory.append(host.value(QStringLiteral("cpuPercent")).toDouble());
-                if (m_activityCpuHistory.size() > 60) {
-                    m_activityCpuHistory.removeFirst();
-                }
-                m_activityMemHistory.append(host.value(QStringLiteral("memPercent")).toDouble());
-                if (m_activityMemHistory.size() > 60) {
-                    m_activityMemHistory.removeFirst();
-                }
-                emit activityChanged();
-            });
-    connect(&m_activityStream, &StreamClient::error, this, [this](const QString &message) {
-        m_activityActive = false;
-        m_lastError = message;
-        emit lastErrorChanged();
-        emit activityChanged();
-    });
-
     connect(&m_machineStatsStream, &StreamClient::machineStats, this,
             [this](const QJsonObject &sample) {
                 m_machineStats = sample.toVariantMap();
@@ -351,10 +311,8 @@ Backend::Backend(QObject *parent)
                        sample.value(QStringLiteral("cpuPercent")).toDouble());
                 append(m_machineMemHistory,
                        sample.value(QStringLiteral("memPercent")).toDouble());
-                append(m_machineNetRxHistory,
-                       sample.value(QStringLiteral("netRx")).toDouble());
-                append(m_machineNetTxHistory,
-                       sample.value(QStringLiteral("netTx")).toDouble());
+                append(m_machineNetRxHistory, sample.value(QStringLiteral("netRx")).toDouble());
+                append(m_machineNetTxHistory, sample.value(QStringLiteral("netTx")).toDouble());
                 m_machineStatsError.clear();
                 emit machineStatsChanged();
             });
@@ -374,9 +332,8 @@ Backend::Backend(QObject *parent)
                 }
                 constexpr int kMaxConsoleChars = 512 * 1024;
                 if (m_machineConsoleText.size() > kMaxConsoleChars) {
-                    m_machineConsoleText.remove(0,
-                                                m_machineConsoleText.size()
-                                                    - kMaxConsoleChars);
+                    m_machineConsoleText.remove(
+                        0, m_machineConsoleText.size() - kMaxConsoleChars);
                 }
                 m_machineConsoleActive = true;
                 m_machineConsoleError.clear();
@@ -391,6 +348,7 @@ Backend::Backend(QObject *parent)
 
     m_eventTimer.setSingleShot(true);
     m_eventTimer.setInterval(4000);
+
     connect(&m_eventTimer, &QTimer::timeout, this, [this] {
         m_eventMessage.clear();
         m_eventKind.clear();
@@ -690,22 +648,6 @@ void Backend::onCatalogFinished()
     startNextCatalog();
 }
 
-void Backend::startActivityMonitor()
-{
-    m_activityActive = true;
-    m_activityCpuHistory.clear();
-    m_activityMemHistory.clear();
-    m_activityStream.subscribeSystemStats(2);
-    emit activityChanged();
-}
-
-void Backend::stopActivityMonitor()
-{
-    m_activityActive = false;
-    m_activityStream.unsubscribe();
-    emit activityChanged();
-}
-
 void Backend::startMachineStats(const QString &id)
 {
     m_machineStats.clear();
@@ -770,317 +712,6 @@ void Backend::stopMachineConsole()
     m_machineConsoleText.clear();
     m_machineConsoleError.clear();
     emit machineConsoleChanged();
-}
-
-void Backend::checkForUpdates(bool interactive)
-{
-    if (m_updateCheckRunning) {
-        return;
-    }
-    if (!interactive && !m_updatesEnabled) {
-        return;
-    }
-    m_updateCheckRunning = true;
-    m_updateInteractive = interactive;
-
-    QJsonObject params;
-    params.insert(QStringLiteral("force"), interactive);
-    m_updateWatcher.setFuture(QtConcurrent::run([params] {
-        RpcClient client;
-        Error error;
-        QJsonObject result = client.call(QStringLiteral("updates.check"), params, &error);
-        if (!error.isEmpty()) {
-            result.insert(QStringLiteral("__error"), error.message);
-        }
-        return result;
-    }));
-}
-
-void Backend::onUpdateFinished()
-{
-    m_updateCheckRunning = false;
-    const QJsonObject result = m_updateWatcher.result();
-    if (result.contains(QStringLiteral("__error"))) {
-        const QString reason = result.value(QStringLiteral("__error")).toString();
-        m_updateStatus = QVariantMap{{QStringLiteral("status"), QStringLiteral("unavailable")},
-                                     {QStringLiteral("reason"), reason}};
-        emit updateStatusChanged();
-        emit updateCheckFailed(reason);
-        if (m_updateInteractive) {
-            m_eventKind = QStringLiteral("error");
-            m_eventMessage = tr("Falha ao verificar atualizações: %1").arg(reason);
-            emit eventsChanged();
-        }
-        return;
-    }
-
-    m_updateStatus = result.toVariantMap();
-    emit updateStatusChanged();
-
-    const bool available = result.value(QStringLiteral("updateAvailable")).toBool();
-    if (available) {
-        emit updateAvailable(m_updateStatus);
-    }
-    if (m_updateInteractive) {
-        m_eventKind = QStringLiteral("info");
-        m_eventMessage = available
-                             ? tr("PodStack %1 está disponível.")
-                                   .arg(result.value(QStringLiteral("latestVersion")).toString())
-                             : tr("Nenhuma atualização disponível.");
-        emit eventsChanged();
-    }
-}
-
-void Backend::loadUpdateState()
-{
-    QFile file(Paths::stateDir() + QStringLiteral("/updates/state.json"));
-    if (!file.open(QIODevice::ReadOnly)) {
-        return;
-    }
-    const QJsonObject object = QJsonDocument::fromJson(file.readAll()).object();
-    const QString phase = object.value(QStringLiteral("phase")).toString();
-    if (phase != QStringLiteral("done") && phase != QStringLiteral("failed")) {
-        return;
-    }
-    QVariantMap state = object.toVariantMap();
-    if (phase == QStringLiteral("done")) {
-        state.insert(QStringLiteral("status"), QStringLiteral("installed"));
-        state.insert(QStringLiteral("reason"), tr("Atualização instalada."));
-    } else {
-        state.insert(QStringLiteral("status"), QStringLiteral("failed"));
-        state.insert(QStringLiteral("reason"), object.value(QStringLiteral("message")).toString());
-    }
-    m_updateStatus = state;
-    emit updateStatusChanged();
-}
-
-void Backend::installUpdate()
-{
-    startUpdateRunner(false);
-}
-
-void Backend::resumeUpdate()
-{
-    startUpdateRunner(true);
-}
-
-void Backend::startUpdateRunner(bool resume)
-{
-    if (qEnvironmentVariableIsSet("FLATPAK_ID") ||
-        QFileInfo::exists(QStringLiteral("/.flatpak-info"))) {
-        emit updateCheckFailed(
-            tr("O update assistido não está disponível no Flatpak; use o pacote do host."));
-        return;
-    }
-    if (QStandardPaths::findExecutable(QStringLiteral("systemctl")).isEmpty()) {
-        emit updateCheckFailed(
-            tr("O update assistido exige systemd de usuário; use o caminho manual."));
-        return;
-    }
-    const QString stateDir = Paths::stateDir() + QStringLiteral("/updates");
-    if (!QDir().mkpath(stateDir)) {
-        emit updateCheckFailed(tr("Não foi possível preparar o estado do update."));
-        return;
-    }
-    QFile::setPermissions(stateDir,
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
-    QFile marker(stateDir + QStringLiteral("/gui-was-open"));
-    if (!marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        emit updateCheckFailed(tr("Não foi possível gravar o marcador do update."));
-        return;
-    }
-    marker.close();
-    QFile::setPermissions(marker.fileName(), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-
-    const QString sibling = QCoreApplication::applicationDirPath() + QStringLiteral("/podstack");
-    QString program = QFileInfo(sibling).isExecutable()
-                          ? sibling
-                          : QStandardPaths::findExecutable(QStringLiteral("podstack"));
-    QStringList arguments{QStringLiteral("update"), QStringLiteral("--install"),
-                          QStringLiteral("--runner"), QStringLiteral("--yes"),
-                          QStringLiteral("--json")};
-    if (resume) {
-        arguments.append(QStringLiteral("--resume"));
-    }
-    if (!QProcess::startDetached(program, arguments)) {
-        QFile::remove(marker.fileName());
-        emit updateCheckFailed(tr("Não foi possível iniciar o runner do update."));
-        return;
-    }
-    QCoreApplication::quit();
-}
-
-void Backend::loadSystemLogs(const QString &level, const QString &component, int sinceDays)
-{
-    if (m_systemLogsWatcher.isRunning()) {
-        return;
-    }
-    m_systemLogsBusy = true;
-    m_systemLogsError.clear();
-    emit systemLogsChanged();
-
-    LogReadOptions options;
-    options.since = QDate::currentDate().addDays(-(qMax(1, sinceDays) - 1));
-    options.level = level;
-    options.component = component;
-    m_pendingLogOptions = options;
-    m_pendingLogComponent = component;
-    m_systemLogsWatcher.setFuture(QtConcurrent::run([options]() {
-        SystemLogsTask task;
-        readUserLogs(options, &task.result, &task.error);
-        return task;
-    }));
-}
-
-void Backend::onSystemLogsFinished()
-{
-    m_systemLogsBusy = false;
-    const SystemLogsTask task = m_systemLogsWatcher.result();
-    if (!task.error.isEmpty()) {
-        m_systemLogsError = task.error.message;
-        emit systemLogsChanged();
-        return;
-    }
-
-    m_lastLogs = task.result.lines;
-    m_systemLogsTruncated = task.result.truncated;
-
-    if (m_pendingLogComponent.isEmpty() || m_pendingLogComponent == QStringLiteral("helper") ||
-        m_pendingLogComponent == QStringLiteral("package")) {
-        HelperClient helper;
-        QVariantMap reply;
-        QString helperError;
-        if (helper.callMap(QStringLiteral("GetLogs"), {}, &reply, &helperError, 60000)) {
-            for (const QVariant &rawValue : reply.value(QStringLiteral("lines")).toList()) {
-                const QString raw = rawValue.toString();
-                const QJsonObject object = QJsonDocument::fromJson(raw.toUtf8()).object();
-                const QString helperComponent =
-                    object.value(QStringLiteral("jobId")).toString().isEmpty()
-                        ? QStringLiteral("helper")
-                        : QStringLiteral("package");
-                if (!m_pendingLogComponent.isEmpty() && m_pendingLogComponent != helperComponent) {
-                    continue;
-                }
-                const QString lineLevel =
-                    object.value(QStringLiteral("level")).toString(QStringLiteral("info"));
-                LogLine line;
-                line.ts = object.value(QStringLiteral("ts")).toString();
-                line.level = lineLevel;
-                line.component = helperComponent;
-                line.message = Redaction::text(object.value(QStringLiteral("message")).toString());
-                line.raw = Redaction::text(raw);
-                m_lastLogs.append(line);
-            }
-            if (reply.value(QStringLiteral("truncated")).toBool()) {
-                m_systemLogsTruncated = true;
-            }
-        }
-    }
-
-    m_systemLogs.clear();
-    for (const LogLine &line : m_lastLogs) {
-        QVariantMap entry;
-        entry.insert(QStringLiteral("ts"), line.ts);
-        entry.insert(QStringLiteral("level"), line.level);
-        entry.insert(QStringLiteral("component"), line.component);
-        entry.insert(QStringLiteral("message"), line.message);
-        m_systemLogs.append(entry);
-    }
-    emit systemLogsChanged();
-}
-
-bool Backend::exportSystemLogs(const QString &path)
-{
-    Error error;
-    if (!exportLogs(m_lastLogs, path, &error)) {
-        m_systemLogsError = error.message;
-        emit systemLogsChanged();
-        return false;
-    }
-    return true;
-}
-
-void Backend::clearSystemLogs()
-{
-    Error error;
-    if (!clearUserLogs(&error)) {
-        m_systemLogsError = error.message;
-        emit systemLogsChanged();
-        return;
-    }
-    loadSystemLogs();
-}
-
-void Backend::generateDiagnosticReport()
-{
-    if (m_reportWatcher.isRunning()) {
-        return;
-    }
-    m_reportWatcher.setFuture(QtConcurrent::run([]() {
-        RpcClient client;
-        Error error;
-        QJsonObject result =
-            client.call(QStringLiteral("system.report"),
-                        QJsonObject{{QStringLiteral("includeLogs"), true}}, &error, 120000);
-        if (!error.isEmpty()) {
-            result.insert(QStringLiteral("__error"), error.message);
-        }
-        return result;
-    }));
-}
-
-void Backend::clearUpdateState()
-{
-    QFile::remove(Paths::stateDir() + QStringLiteral("/updates/state.json"));
-    m_updateStatus.clear();
-    emit updateStatusChanged();
-}
-
-void Backend::openLogsFolder()
-{
-    QDesktopServices::openUrl(QUrl::fromLocalFile(Paths::stateDir() + QStringLiteral("/logs")));
-}
-
-void Backend::checkDiskHealth()
-{
-    if (m_diskCheckRunning) {
-        return;
-    }
-    m_diskCheckRunning = true;
-    m_diskWatcher.setFuture(QtConcurrent::run([] {
-        RpcClient client;
-        Error error;
-        QJsonObject result = client.call(QStringLiteral("system.disk"), {}, &error);
-        if (!error.isEmpty()) {
-            result.insert(QStringLiteral("__error"), error.message);
-        }
-        return result;
-    }));
-}
-
-void Backend::onDiskFinished()
-{
-    m_diskCheckRunning = false;
-    const QJsonObject result = m_diskWatcher.result();
-    if (result.contains(QStringLiteral("__error"))) {
-        return;
-    }
-    m_diskHealth = result.toVariantMap();
-    emit diskHealthChanged();
-
-    if (result.value(QStringLiteral("low")).toBool()) {
-        const int threshold = result.value(QStringLiteral("thresholdPercent")).toInt();
-        const QJsonArray filesystems = result.value(QStringLiteral("filesystems")).toArray();
-        for (const QJsonValue &value : filesystems) {
-            const QJsonObject filesystem = value.toObject();
-            if (filesystem.value(QStringLiteral("usedPercent")).toDouble() >= threshold) {
-                QVariantMap sample = filesystem.toVariantMap();
-                sample.insert(QStringLiteral("thresholdPercent"), threshold);
-                emit diskLow(sample);
-                break;
-            }
-        }
-    }
 }
 
 void Backend::openMachineSsh(const QString &id)

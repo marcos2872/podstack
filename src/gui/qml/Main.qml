@@ -851,7 +851,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("PodStack %1 será baixado, verificado e instalado. A GUI será fechada e reaberta ao final.")
-                          .arg((backend.updateStatus.latestVersion || ""))
+                          .arg((backend.updates.status.latestVersion || ""))
                 color: Theme.textSecondary
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontBody
@@ -863,7 +863,7 @@ Rectangle {
                 Layout.fillHeight: true
                 TextArea {
                     readOnly: true
-                    text: backend.updateStatus.notes || qsTr("Sem notas de release.")
+                    text: backend.updates.status.notes || qsTr("Sem notas de release.")
                     color: Theme.textSecondary
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMeta
@@ -884,7 +884,7 @@ Rectangle {
                     variant: "primary"
                     onClicked: {
                         updateInstallDialog.close()
-                        backend.installUpdate()
+                        backend.updates.install()
                     }
                 }
             }
@@ -924,7 +924,7 @@ Rectangle {
         property bool autoCheckUpdates: true
 
         function updateStatusText() {
-            const status = backend.updateStatus || {}
+            const status = backend.updates.status || {}
             if (status.status === "ok") {
                 if (status.updateAvailable) {
                     return qsTr("Versão %1 disponível.").arg(status.latestVersion || "")
@@ -1128,7 +1128,7 @@ Rectangle {
                                     objectName: "updateInstallButton"
                                     text: qsTr("Instalar atualização")
                                     size: "sm"
-                                    visible: (backend.updateStatus.updateAvailable || false)
+                                    visible: (backend.updates.status.updateAvailable || false)
                                              === true
                                     onClicked: updateInstallDialog.open()
                                 }
@@ -1137,7 +1137,7 @@ Rectangle {
                                     objectName: "updateCheckNowButton"
                                     text: qsTr("Verificar atualizações")
                                     size: "sm"
-                                    onClicked: backend.checkForUpdates(true)
+                                    onClicked: backend.updates.check(true)
                                 }
 
                                 Text {
@@ -1153,7 +1153,7 @@ Rectangle {
                                     objectName: "updateViewLogButton"
                                     text: qsTr("Ver log")
                                     size: "sm"
-                                    visible: backend.updateStatus.status === "failed"
+                                    visible: backend.updates.status.status === "failed"
                                     onClicked: systemLogsDialog.openFor("update", "error")
                                 }
 
@@ -1161,19 +1161,19 @@ Rectangle {
                                     objectName: "updateResumeButton"
                                     text: qsTr("Retomar")
                                     size: "sm"
-                                    visible: backend.updateStatus.phase === "installing"
-                                             || backend.updateStatus.phase === "staged"
-                                    onClicked: backend.resumeUpdate()
+                                    visible: backend.updates.status.phase === "installing"
+                                             || backend.updates.status.phase === "staged"
+                                    onClicked: backend.updates.resume()
                                 }
 
                                 ActionButton {
                                     objectName: "updateClearStateButton"
                                     text: qsTr("Limpar estado")
                                     size: "sm"
-                                    visible: backend.updateStatus.status === "failed"
-                                             || backend.updateStatus.phase === "installing"
-                                             || backend.updateStatus.phase === "staged"
-                                    onClicked: backend.clearUpdateState()
+                                    visible: backend.updates.status.status === "failed"
+                                             || backend.updates.status.phase === "installing"
+                                             || backend.updates.status.phase === "staged"
+                                    onClicked: backend.updates.clearState()
                                 }
                             }
                         }

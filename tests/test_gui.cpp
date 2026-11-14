@@ -1399,8 +1399,8 @@ void GuiTest::backendOperations()
     backend.compose()->unsubscribeComposeLogs();
     backend.builds()->removeBuild(QStringLiteral("missing"));
 
-    backend.startActivityMonitor();
-    backend.stopActivityMonitor();
+    backend.system()->startActivityMonitor();
+    backend.system()->stopActivityMonitor();
 
     // Dá tempo para os jobs assíncronos concluírem antes de destruir o Backend.
     QTest::qWait(1500);
@@ -1654,11 +1654,11 @@ void GuiTest::systemLogs()
     file.close();
 
     PodStack::Backend backend;
-    backend.loadSystemLogs(QString(), QStringLiteral("setup"), 7);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.systemLogsBusy(), 3000);
-    QVERIFY2(backend.systemLogsError().isEmpty(), qPrintable(backend.systemLogsError()));
-    QCOMPARE(backend.systemLogs().size(), 1);
-    QVERIFY(!backend.systemLogs()
+    backend.system()->loadLogs(QString(), QStringLiteral("setup"), 7);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.system()->logsBusy(), 3000);
+    QVERIFY2(backend.system()->logsError().isEmpty(), qPrintable(backend.system()->logsError()));
+    QCOMPARE(backend.system()->logs().size(), 1);
+    QVERIFY(!backend.system()->logs()
                  .first()
                  .toMap()
                  .value(QStringLiteral("message"))
@@ -1666,12 +1666,12 @@ void GuiTest::systemLogs()
                  .contains(QStringLiteral("segredo")));
 
     const QString exportPath = m_testDataDir + QStringLiteral("/logs-export.jsonl");
-    QVERIFY(backend.exportSystemLogs(exportPath));
+    QVERIFY(backend.system()->exportLogs(exportPath));
     QFile exported(exportPath);
     QVERIFY(exported.open(QIODevice::ReadOnly));
     QVERIFY(!exported.readAll().contains("segredo"));
 
-    backend.clearSystemLogs();
+    backend.system()->clearLogs();
     QVERIFY(!QFileInfo::exists(logDir + QStringLiteral("/podstackd.jsonl")));
 }
 
@@ -1685,16 +1685,16 @@ void GuiTest::loadUpdateState()
     state.close();
 
     PodStack::Backend backend;
-    QTRY_COMPARE_WITH_TIMEOUT(backend.updateStatus().value(QStringLiteral("status")).toString(),
+    QTRY_COMPARE_WITH_TIMEOUT(backend.updates()->status().value(QStringLiteral("status")).toString(),
                               QStringLiteral("installed"), 3000);
 }
 
 void GuiTest::diagnosticReport()
 {
     PodStack::Backend backend;
-    backend.generateDiagnosticReport();
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.diagnosticReportPath().isEmpty(), 5000);
-    QVERIFY(QFileInfo::exists(backend.diagnosticReportPath()));
+    backend.system()->generateDiagnosticReport();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.system()->diagnosticReportPath().isEmpty(), 5000);
+    QVERIFY(QFileInfo::exists(backend.system()->diagnosticReportPath()));
 }
 
 void GuiTest::clearUpdateState()
@@ -1708,28 +1708,28 @@ void GuiTest::clearUpdateState()
     state.close();
 
     PodStack::Backend backend;
-    backend.clearUpdateState();
+    backend.updates()->clearState();
     QVERIFY(!QFileInfo::exists(path));
 }
 
 void GuiTest::installUpdateFlatpakGuard()
 {
     PodStack::Backend backend;
-    QSignalSpy failed(&backend, &PodStack::Backend::updateCheckFailed);
+    QSignalSpy failed(backend.updates(), &PodStack::UpdateController::checkFailed);
     qputenv("FLATPAK_ID", "dev.podstack.PodStack");
     const auto restore = qScopeGuard([] { qunsetenv("FLATPAK_ID"); });
-    backend.installUpdate();
+    backend.updates()->install();
     QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 3000);
 }
 
 void GuiTest::installUpdateSystemdGuard()
 {
     PodStack::Backend backend;
-    QSignalSpy failed(&backend, &PodStack::Backend::updateCheckFailed);
+    QSignalSpy failed(backend.updates(), &PodStack::UpdateController::checkFailed);
     const QByteArray previousPath = qgetenv("PATH");
     qputenv("PATH", QByteArrayLiteral("/nonexistent-podstack"));
     const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
-    backend.installUpdate();
+    backend.updates()->install();
     QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 3000);
 }
 
@@ -1808,25 +1808,25 @@ void GuiTest::guiStartsAndQuits()
 void GuiTest::backendActivityMonitor()
 {
     PodStack::Backend backend;
-    QSignalSpy activitySpy(&backend, &PodStack::Backend::activityChanged);
+    QSignalSpy activitySpy(backend.system(), &PodStack::SystemController::activityChanged);
 
-    backend.startActivityMonitor();
-    QVERIFY(backend.activityActive());
+    backend.system()->startActivityMonitor();
+    QVERIFY(backend.system()->activityActive());
     QTRY_VERIFY_WITH_TIMEOUT(activitySpy.count() > 1, 7000);
-    QTRY_COMPARE(backend.activityStats()
+    QTRY_COMPARE(backend.system()->activityStats()
                      .value(QStringLiteral("containers"))
                      .toList()
                      .size(),
                  2);
-    QVERIFY(backend.activityStats()
+    QVERIFY(backend.system()->activityStats()
                 .value(QStringLiteral("host"))
                 .toMap()
                 .value(QStringLiteral("memTotal"))
                 .toLongLong()
             > 0);
 
-    backend.stopActivityMonitor();
-    QVERIFY(!backend.activityActive());
+    backend.system()->stopActivityMonitor();
+    QVERIFY(!backend.system()->activityActive());
 }
 
 void GuiTest::streamClientProtocol()
