@@ -78,6 +78,7 @@ private slots:
     void diagnosticReport();
     void clearUpdateState();
     void installUpdateFlatpakGuard();
+    void installUpdateSystemdGuard();
     void guiStartsAndQuits();
 
 private:
@@ -1725,6 +1726,17 @@ void GuiTest::installUpdateFlatpakGuard()
     QSignalSpy failed(&backend, &PodStack::Backend::updateCheckFailed);
     qputenv("FLATPAK_ID", "dev.podstack.PodStack");
     const auto restore = qScopeGuard([] { qunsetenv("FLATPAK_ID"); });
+    backend.installUpdate();
+    QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 3000);
+}
+
+void GuiTest::installUpdateSystemdGuard()
+{
+    PodStack::Backend backend;
+    QSignalSpy failed(&backend, &PodStack::Backend::updateCheckFailed);
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", QByteArrayLiteral("/nonexistent-podstack"));
+    const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
     backend.installUpdate();
     QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 3000);
 }

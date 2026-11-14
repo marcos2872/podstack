@@ -1,6 +1,7 @@
 #include "core/Error.h"
 #include "core/LogReader.h"
 #include "core/Logging.h"
+#include "core/Paths.h"
 #include "core/Redaction.h"
 #include "core/RpcClient.h"
 #include "core/RpcStream.h"
@@ -522,6 +523,8 @@ int commandUpdate(const QStringList &args)
     bool yes = false;
     bool json = false;
     bool runnerMode = false;
+    bool resumeMode = false;
+    bool clearState = false;
     QString channel;
     QString manifestPath;
 
@@ -537,6 +540,10 @@ int commandUpdate(const QStringList &args)
             json = true;
         } else if (arg == QStringLiteral("--runner")) {
             runnerMode = true;
+        } else if (arg == QStringLiteral("--resume")) {
+            resumeMode = true;
+        } else if (arg == QStringLiteral("--clear-state")) {
+            clearState = true;
         } else if (arg == QStringLiteral("--channel") || arg == QStringLiteral("--manifest")) {
             if (index + 1 >= args.size() || args.at(index + 1).startsWith(QStringLiteral("--"))) {
                 err() << "Uso: podstack update --check|--install [--yes] [--json] "
@@ -559,6 +566,11 @@ int commandUpdate(const QStringList &args)
     if (check == install) {
         err() << "Uso: podstack update --check|--install [--yes] [--json] "
                  "[--channel stable|beta]\n";
+        err().flush();
+        return kExitUsage;
+    }
+    if (check && (resumeMode || clearState)) {
+        err() << "--resume/--clear-state são exclusivos de --install.\n";
         err().flush();
         return kExitUsage;
     }
@@ -626,13 +638,24 @@ int commandUpdate(const QStringList &args)
     options.channel = channel;
     PodStack::UpdateRunner runner(&helper, options);
     PodStack::Error error;
-    if (!yes && !runnerMode && !isatty(STDIN_FILENO)) {
+    if (clearState) {
+        QFile::remove(PodStack::Paths::stateDir() + QStringLiteral("/updates/state.json"));
+        out() << QStringLiteral("Estado do update removido.\n");
+        out().flush();
+        return kExitOk;
+    }
+    if (!resumeMode && !yes && !runnerMode && !isatty(STDIN_FILENO)) {
         err() << "confirmação necessária: use --yes em modo não interativo.\n";
         err().flush();
         return kExitUsage;
     }
-    const bool prepared = manifestPath.isEmpty() ? runner.prepare(&error)
-                                                 : runner.prepareFromManifest(manifestPath, &error);
+    bool prepared = false;
+    if (resumeMode) {
+        prepared = runner.resume(&error);
+    } else {
+        prepared = manifestPath.isEmpty() ? runner.prepare(&error)
+                                          : runner.prepareFromManifest(manifestPath, &error);
+    }
     if (!prepared) {
         QJsonObject document;
         document.insert(QStringLiteral("api"), 1);
@@ -681,7 +704,7 @@ int commandUpdate(const QStringList &args)
         out() << QStringLiteral("Instalando PodStack %1...\n").arg(runner.version());
         out().flush();
     }
-    const bool installed = runner.install(&error);
+    const bool installed = resumeMode ? prepared : runner.install(&error);
 
     QJsonObject document;
     document.insert(QStringLiteral("api"), 1);

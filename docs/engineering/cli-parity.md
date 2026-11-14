@@ -96,7 +96,7 @@
 | `status` | `status` | `--format` | Exit 0/1/2 |
 | `doctor` | `doctor` | `--fix`, `--quiet` | Checks Linux |
 | `reset` | `reset` | `--yes` | Dados Docker + machines |
-| `update` | `update` | `--check`, `--install`, `--yes`, `--json`, `--channel stable\|beta`; `--runner`/`--manifest` internos | Verifica o manifesto assinado; `--check` exit **3** se houver versão nova; `--install` baixa/valida e instala pelo helper; exit 0/1/2/6/8/9 (sem 3) |
+| `update` | `update` | `--check`, `--install`, `--yes`, `--json`, `--channel stable\|beta`; `--runner`/`--manifest`/`--resume`/`--clear-state` internos | Verifica o manifesto assinado; `--check` exit **3** se houver versão nova; `--install` baixa/valida e instala pelo helper; exit 0/1/2/6/8/9 (sem 3) |
 | `version` | `version` | `--format` | |
 | `report` | `report` | `--include-logs`, `--json` | ✅ T7-08 — arquivo 0600 em `state/reports` com `path/bytes/sha256`; redaction de segredos; revisão local |
 | `top` | `top` | `--once`, `--interval S`, `--json`, `--plain` | ✅ T7-04 — `top --once` espera duas amostras (taxas reais); contínuo até Ctrl+C |

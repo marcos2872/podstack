@@ -2024,6 +2024,16 @@ void CliTest::updateCommand()
             env);
     QCOMPARE(missingManifest.code, 1);
     QVERIFY(missingManifest.err.contains(QStringLiteral("preparar")));
+
+    const CliResult resumeMissing =
+        run({QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--resume")}, env);
+    QCOMPARE(resumeMissing.code, 1);
+    QVERIFY(resumeMissing.err.contains(QStringLiteral("estado")));
+
+    const CliResult clearState =
+        run({QStringLiteral("update"), QStringLiteral("--install"), QStringLiteral("--clear-state")},
+            env);
+    QCOMPARE(clearState.code, 0);
 }
 
 void CliTest::goldenExitCodes()

@@ -1158,10 +1158,21 @@ Rectangle {
                                 }
 
                                 ActionButton {
+                                    objectName: "updateResumeButton"
+                                    text: qsTr("Retomar")
+                                    size: "sm"
+                                    visible: backend.updateStatus.phase === "installing"
+                                             || backend.updateStatus.phase === "staged"
+                                    onClicked: backend.resumeUpdate()
+                                }
+
+                                ActionButton {
                                     objectName: "updateClearStateButton"
                                     text: qsTr("Limpar estado")
                                     size: "sm"
                                     visible: backend.updateStatus.status === "failed"
+                                             || backend.updateStatus.phase === "installing"
+                                             || backend.updateStatus.phase === "staged"
                                     onClicked: backend.clearUpdateState()
                                 }
                             }

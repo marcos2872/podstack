@@ -611,6 +611,22 @@ bool UpdateRunner::install(Error *error)
         return false;
     }
 
+    {
+        QFile existing(statePathValue());
+        if (existing.open(QIODevice::ReadOnly)) {
+            const QJsonObject previous = QJsonDocument::fromJson(existing.readAll()).object();
+            const QString phase = previous.value(QStringLiteral("phase")).toString();
+            if (phase == QStringLiteral("installing") || phase == QStringLiteral("staged")) {
+                if (error) {
+                    *error = runnerError(
+                        QStringLiteral("PODSTACK_UPDATE_LOCKED"),
+                        QStringLiteral("Já existe um update em andamento; use --resume."));
+                }
+                return false;
+            }
+        }
+    }
+
     if (!writeState(QStringLiteral("queued"), QStringLiteral("Update na fila."), error)) {
         return false;
     }
@@ -687,6 +703,7 @@ bool UpdateRunner::install(Error *error)
             }
         }
         (void) writeState(QStringLiteral("done"), QStringLiteral("Update instalado."), nullptr);
+        notify(QStringLiteral("Atualização instalada."));
         relaunchGui();
         return true;
     }
@@ -698,8 +715,86 @@ bool UpdateRunner::install(Error *error)
                              QStringLiteral("podstack.socket")},
                             nullptr);
     }
+    notify(QStringLiteral("Falha na atualização do PodStack."));
     relaunchGui();
     return false;
+}
+
+bool UpdateRunner::resume(Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!m_helper) {
+        if (error) {
+            *error = runnerError(QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"),
+                                 QStringLiteral("Helper do update indisponível."));
+        }
+        return false;
+    }
+    QFile file(statePathValue());
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) {
+            *error = runnerError(QStringLiteral("PODSTACK_NOT_FOUND"),
+                                 QStringLiteral("Nenhum estado de update para retomar."));
+        }
+        return false;
+    }
+    const QJsonObject state = QJsonDocument::fromJson(file.readAll()).object();
+    const QString phase = state.value(QStringLiteral("phase")).toString();
+    m_jobId = state.value(QStringLiteral("jobId")).toString();
+    m_stateDir = state.value(QStringLiteral("stateDir")).toString();
+    m_unit = state.value(QStringLiteral("unit")).toString();
+    m_version = state.value(QStringLiteral("version")).toString();
+    m_channel = state.value(QStringLiteral("channel")).toString();
+    if (phase == QStringLiteral("done")) {
+        m_phase = phase;
+        return true;
+    }
+    if (phase == QStringLiteral("failed") || m_jobId.isEmpty()) {
+        if (error) {
+            *error = runnerError(
+                QStringLiteral("PODSTACK_UPDATE_INSTALL_FAILED"),
+                state.value(QStringLiteral("message")).toString().isEmpty()
+                    ? QStringLiteral("O update anterior falhou; limpe o estado.")
+                    : state.value(QStringLiteral("message")).toString());
+        }
+        return false;
+    }
+
+    const bool done = pollStatus(error);
+    if (done) {
+        if (m_options.restartServices) {
+            if (!runSystemctl({QStringLiteral("--user"), QStringLiteral("start"),
+                               QStringLiteral("podstack.socket")},
+                              error)) {
+                return false;
+            }
+        }
+        (void) writeState(QStringLiteral("done"), QStringLiteral("Update instalado."), nullptr);
+        notify(QStringLiteral("Atualização instalada."));
+        relaunchGui();
+        return true;
+    }
+    (void) writeState(QStringLiteral("failed"),
+                      error ? error->message : QStringLiteral("Falha no update."), nullptr);
+    if (m_options.restartServices) {
+        (void) runSystemctl({QStringLiteral("--user"), QStringLiteral("start"),
+                             QStringLiteral("podstack.socket")},
+                            nullptr);
+    }
+    notify(QStringLiteral("Falha na atualização do PodStack."));
+    relaunchGui();
+    return false;
+}
+
+void UpdateRunner::notify(const QString &message)
+{
+    const QString executable = QStandardPaths::findExecutable(m_options.notifyBinary);
+    if (executable.isEmpty()) {
+        return;
+    }
+    QProcess::startDetached(executable, {QStringLiteral("PodStack"), message});
 }
 
 void UpdateRunner::relaunchGui()

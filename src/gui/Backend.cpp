@@ -2597,6 +2597,16 @@ void Backend::loadUpdateState()
 
 void Backend::installUpdate()
 {
+    startUpdateRunner(false);
+}
+
+void Backend::resumeUpdate()
+{
+    startUpdateRunner(true);
+}
+
+void Backend::startUpdateRunner(bool resume)
+{
     if (qEnvironmentVariableIsSet("FLATPAK_ID")
         || QFileInfo::exists(QStringLiteral("/.flatpak-info"))) {
         emit updateCheckFailed(
@@ -2629,9 +2639,13 @@ void Backend::installUpdate()
     QString program = QFileInfo(sibling).isExecutable()
                           ? sibling
                           : QStandardPaths::findExecutable(QStringLiteral("podstack"));
-    if (!QProcess::startDetached(program, {QStringLiteral("update"), QStringLiteral("--install"),
-                                           QStringLiteral("--runner"), QStringLiteral("--yes"),
-                                           QStringLiteral("--json")})) {
+    QStringList arguments{QStringLiteral("update"), QStringLiteral("--install"),
+                          QStringLiteral("--runner"), QStringLiteral("--yes"),
+                          QStringLiteral("--json")};
+    if (resume) {
+        arguments.append(QStringLiteral("--resume"));
+    }
+    if (!QProcess::startDetached(program, arguments)) {
         QFile::remove(marker.fileName());
         emit updateCheckFailed(tr("Não foi possível iniciar o runner do update."));
         return;

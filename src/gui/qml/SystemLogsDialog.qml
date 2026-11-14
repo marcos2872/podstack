@@ -77,6 +77,12 @@ AppDialog {
                 size: "sm"
                 onClicked: exportDialog.open()
             }
+            FormCheck {
+                id: followLogs
+                text: qsTr("Seguir")
+                checked: false
+                Accessible.name: qsTr("Seguir logs em tempo real")
+            }
             ActionButton {
                 text: qsTr("Abrir pasta")
                 size: "sm"
@@ -161,6 +167,23 @@ AppDialog {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
             elide: Text.ElideMiddle
+        }
+    }
+
+    Timer {
+        id: followTimer
+        interval: 1500
+        repeat: true
+        running: followLogs.checked && dialog.visible
+        onTriggered: backend.loadSystemLogs(dialog.levelFilter, dialog.componentFilter, 7)
+    }
+
+    Connections {
+        target: backend
+        function onSystemLogsChanged() {
+            if (followLogs.checked) {
+                logList.positionViewAtEnd()
+            }
         }
     }
 

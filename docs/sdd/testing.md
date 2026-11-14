@@ -591,14 +591,14 @@ Todo PR/tarefa anexa:
 |---|---|
 | Manifesto/artefato | parse, assinatura Ed25519/minisign, SHA-256 divergente, nome/versão/arch errados, versão igual/downgrade, canal beta/stable, manifesto em cache e expirado |
 | Download/cache | `test_update_runner`: `.part` + rename, assinatura, SHA, cache TTL, timeout e versão igual; 300 MB/disco cheio no runner |
-| Runner/estado | `test_update_runner`: `state.json` atômico, fases, `jobId`/`unit`/`stateDir`, stop/start do socket, polling de `GetUpdateStatus`, falha; `gui-was-open`/`--relaunch` em T-UPD-04 |
+| Runner/estado | `test_update_runner`: `state.json` atômico, fases, `jobId`/`unit`/`stateDir`, stop/start do socket, polling, falha, recusa de estado ativo, retomada, notificação e `gui-was-open`/`--relaunch` |
 | Helper | `test_update_service`: `StageUpdate`/`InstallUpdate`/`GetUpdateStatus`, assinatura/chave de release, SHA-256, identidade `dpkg-deb`/`rpm`, artefato de outro dono/symlink, staging `0700`/`0600`, unidade ativa, admissão por `flock`, `systemd-run`; rate limit no `HelperService` |
 | Scriptlets | `preinst`/`postinst`/`postrm`/`prerm` e `%pre`/`%preun`/`%post`/`%posttrans` com processos falsos em container via `tests/packaging/test-scriptlets.sh` (`systemctl`/`loginctl`/`pkill`/`pgrep` falsos); fallback sem systemd; falha após `%pre`; `unmask` com retry; corrida de socket activation; trap de limpeza; CTest `package_scriptlets` |
 | Machines/cgroup | `ProcessScope` monta `systemd-run --user --scope` e cai para execução direta sem systemd; QEMU em `podstack-machine-<id>.scope` e virtiofsd em `podstack-virtiofsd-<hash>.scope` (cgroup real quando o user manager existe); reconciliação de órfãos após restart |
 | Exit codes/JSON | `test_cli/updateCommand`: `update --check` 0/1/2/3/6/8/9 e `update --install` 0/1/2/6/8/9 (sem 3); `--json` com `error.code`; `--yes` obrigatório sem TTY; manifesto ausente |
 | Logs core | `test_logging`: JSON Lines, nomes correntes/rotacionados (`-YYYYMMDD[-N]`), rotação diária/por tamanho, timer da meia-noite, 8º dia removido, 1–30 dias, 10 MB/200 MB, `0600`/`0700`, `flock`, concorrência daemon+CLI, fila cheia/drop-oldest, `kill -9`, redaction com `diagnostics.redact=false` |
 | Logs root | `test_update_service/logsReadRootFiles`: `/var/log/podstack/jobs/<uid>/<jobId>.jsonl`, redaction, `GetLogs` com/sem jobId, cap 1 MiB; `test_update_exec` cobre permissões 0640 e token do gerenciador; uid A/B/negado no helper |
-| CLI/GUI | `test_cli/systemLogs`, `test_gui/systemLogs`, `test_gui/diagnosticReport`, `test_logging/logReaderFilters/logReaderEdges`; follow em tempo real e `qmllint`/i18n final pendentes |
+| CLI/GUI | `test_cli/systemLogs`, `test_gui/systemLogs`, `test_gui/diagnosticReport`, `test_logging/logReaderFilters/logReaderEdges`; follow em tempo real; `qmllint`/i18n final pendentes |
 | Report | `test_rpc/systemReportRedactsSettings`: logs do usuário incluídos com redaction e `includeLogs=true`; caps 10.000/componente e 5 MB; `diagnostics.includeLogs=false`; helper via `GetLogs` |
 
 ### 16.2 E2E (VMs Ubuntu 24.04/26.04 e Fedora)

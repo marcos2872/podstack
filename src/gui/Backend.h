@@ -442,6 +442,7 @@ public:
     Q_INVOKABLE void setupRemoveDocker();
     Q_INVOKABLE void checkForUpdates(bool interactive = false);
     Q_INVOKABLE void installUpdate();
+    Q_INVOKABLE void resumeUpdate();
     Q_INVOKABLE void loadSystemLogs(const QString &level = QString(),
                                     const QString &component = QString(), int sinceDays = 7);
     Q_INVOKABLE bool exportSystemLogs(const QString &path);
@@ -523,6 +524,7 @@ private:
     void onSetupFinished();
     void onUpdateFinished();
     void loadUpdateState();
+    void startUpdateRunner(bool resume);
     void onSystemLogsFinished();
     void onDiskFinished();
     void onSettingsFinished();
