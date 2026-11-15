@@ -190,8 +190,8 @@ ColumnLayout {
                     }
 
                     Connections {
-                        target: backend
-                        function onBuildLogChanged() {
+                        target: backend.builds
+                        function onLogLinesChanged() {
                             buildLogView.positionViewAtEnd()
                         }
                     }

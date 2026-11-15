@@ -34,9 +34,9 @@ AppModal {
     }
 
     Connections {
-        target: backend
+        target: backend.machines
 
-        function onMachineCreateStateChanged() {
+        function onCreateStateChanged() {
             if (backend.machines.createActive || backend.machines.createStage !== "done") {
                 return
             }

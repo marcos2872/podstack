@@ -237,8 +237,8 @@ ColumnLayout {
                     }
 
                     Connections {
-                        target: backend
-                        function onComposeLogsChanged() {
+                        target: backend.compose
+                        function onLogLinesChanged() {
                             composeLogs.positionViewAtEnd()
                         }
                     }

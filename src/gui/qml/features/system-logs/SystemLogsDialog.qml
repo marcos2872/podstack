@@ -186,8 +186,8 @@ AppModal {
     }
 
     Connections {
-        target: backend
-        function onSystemLogsChanged() {
+        target: backend.system
+        function onLogsChanged() {
             if (followLogs.checked) {
                 logList.positionViewAtEnd()
             }

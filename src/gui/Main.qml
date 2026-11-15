@@ -67,15 +67,25 @@ Rectangle {
     }
 
     Connections {
-        target: backend
+        target: backend.setup
 
-        function onSetupChanged() {
+        function onChanged() {
             if (backend.setup.error.length > 0 && !backend.setup.completed) {
                 appWindow.reveal()
             }
         }
+    }
 
-        function onSettingsValuesChanged() {
+    Connections {
+        target: backend.settings
+
+        function onSchemaChanged() {
+            if (settingsDialog.opened) {
+                settingsDialog.rebuildSettingsRows()
+            }
+        }
+
+        function onValuesChanged() {
             applyAppearance()
             // Salvar/restaurar atualiza os valores no daemon; sem reconstruir as
             // linhas o campo continuaria exibindo o snapshot antigo.
@@ -876,12 +886,6 @@ Rectangle {
             window.searchText = ""
             containersPage.filter = "all"
             containersPage.openContainer(id)
-        }
-        function onSettingsSchemaChanged() {
-            settingsDialog.rebuildSettingsRows()
-        }
-        function onSettingsValuesChanged() {
-            settingsDialog.rebuildSettingsRows()
         }
     }
 

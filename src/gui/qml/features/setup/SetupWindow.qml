@@ -352,8 +352,8 @@ Item {
     }
 
     Connections {
-        target: backend
-        function onSetupJobChanged() {
+        target: backend.setup
+        function onJobChanged() {
             if (backend.setup.jobActive || backend.setup.error.length > 0) {
                 setupWindow.jobPanelDismissed = false
             }

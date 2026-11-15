@@ -217,14 +217,5 @@ ColumnLayout {
 
     onLinesChanged: Qt.callLater(logsView.rebuild)
 
-    Connections {
-        target: backend
-        function onLogsChanged() {
-            if (logsView.lines === null) {
-                logsView.rebuild()
-            }
-        }
-    }
-
     Component.onCompleted: rebuild()
 }
