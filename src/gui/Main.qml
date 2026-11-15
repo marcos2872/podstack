@@ -141,13 +141,13 @@ Rectangle {
         return backend.settings.values["engine.mode"] === "rootful" ? "rootful" : "rootless"
     }
 
-    // Ação do banner de erro: só oferece ativar o serviço quando o podstackd
-    // está inacessível (não para erros de operação).
+    // Ação do banner de erro: só oferece reiniciar o serviço quando o
+    // podstackd está inacessível (não para erros de operação).
     readonly property string serviceActionText: {
         if (backend.connected) {
             return ""
         }
-        return backend.serviceActivating ? qsTr("Ativando…") : qsTr("Ativar serviço")
+        return backend.serviceActivating ? qsTr("Reiniciando…") : qsTr("Reiniciar daemon")
     }
 
     function countFor(key) {
@@ -486,7 +486,17 @@ Rectangle {
                 Layout.fillWidth: true
                 message: backend.error
                 actionText: window.serviceActionText
-                onActionClicked: backend.activateDaemonService()
+                onActionClicked: backend.restartDaemonService()
+            }
+
+            // Aviso de versão: GUI e daemon divergentes fazem a listagem
+            // voltar vazia sem erro; avisar evita a confusão.
+            AppErrorBanner {
+                Layout.fillWidth: true
+                tone: "warning"
+                message: backend.daemonMismatch
+                actionText: qsTr("Reiniciar daemon")
+                onActionClicked: backend.restartDaemonService()
             }
 
             // Páginas
@@ -860,6 +870,12 @@ Rectangle {
         target: backend
         function onContainersChanged(items) {
             containersPage.setContainers(items)
+        }
+        function onContainerCreated(id) {
+            // Spec §3.1: depois de criar, a GUI seleciona o container novo.
+            window.searchText = ""
+            containersPage.filter = "all"
+            containersPage.openContainer(id)
         }
         function onSettingsSchemaChanged() {
             settingsDialog.rebuildSettingsRows()

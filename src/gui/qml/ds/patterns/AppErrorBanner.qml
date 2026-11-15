@@ -8,13 +8,17 @@ Rectangle {
 
     property string message: ""
     property string actionText: qsTr("Tentar novamente")
+    /// `danger` para falhas, `warning` para avisos (ex.: versão divergente).
+    property string tone: "danger"
+    readonly property color toneColor: tone === "warning" ? Theme.warning : Theme.danger
+    readonly property color toneSoft: tone === "warning" ? Theme.warningSoft : Theme.dangerSoft
     signal actionClicked()
 
     implicitHeight: 40
     radius: Theme.radiusSm
-    color: Theme.dangerSoft
+    color: root.toneSoft
     border.width: 1
-    border.color: Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.35)
+    border.color: Qt.rgba(root.toneColor.r, root.toneColor.g, root.toneColor.b, 0.35)
     visible: message.length > 0
 
     RowLayout {
@@ -26,13 +30,13 @@ Rectangle {
         AppIcon {
             name: "alert"
             size: 14
-            color: Theme.danger
+            color: root.toneColor
         }
 
         Text {
             Layout.fillWidth: true
             text: root.message
-            color: Theme.danger
+            color: root.toneColor
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontBody
             elide: Text.ElideRight

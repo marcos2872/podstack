@@ -10,6 +10,7 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDeadlineTimer>
 #include <QSocketNotifier>
 #include <QThreadPool>
 
@@ -45,8 +46,7 @@ int main(int argc, char *argv[])
 
     QCommandLineOption verboseOption(QStringList{QStringLiteral("verbose")},
                                      QStringLiteral("Habilita logs de debug."));
-    QCommandLineOption socketOption(QStringLiteral("socket"),
-                                    QStringLiteral("Socket de controle."),
+    QCommandLineOption socketOption(QStringLiteral("socket"), QStringLiteral("Socket de controle."),
                                     QStringLiteral("path"), PodStack::Paths::controlSocket());
     parser.addOption(verboseOption);
     parser.addOption(socketOption);
@@ -127,9 +127,19 @@ int main(int argc, char *argv[])
     }
 
     qInfo("podstackd %s pronto", PODSTACK_VERSION);
+    // Shutdown determinístico: sem cancelar as subscriptions, um stream
+    // infinito do Podman (eventos/logs/stats) mantém o pool vivo e o daemon
+    // nunca termina — fica um socket que aceita conexões e não responde.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [&daemon, &server] {
+        server.close();
+        daemon.cancelAllSubscriptions();
+    });
     const int exitCode = app.exec();
     // Workers de RPC ainda podem estar usando o Daemon/RpcServer (ex.: um
-    // restart de machine em andamento). Espera antes de destruir os objetos.
-    QThreadPool::globalInstance()->waitForDone();
+    // restart de machine em andamento). Espera antes de destruir os objetos,
+    // mas com prazo: um worker preso não pode impedir o encerramento.
+    if (!QThreadPool::globalInstance()->waitForDone(QDeadlineTimer(3000))) {
+        qCWarning(lcRpc) << "workers ainda ativos no shutdown; encerrando mesmo assim";
+    }
     return exitCode;
 }

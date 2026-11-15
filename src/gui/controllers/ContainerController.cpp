@@ -72,15 +72,27 @@ ContainerController::ContainerController(QObject *parent) : CatalogController(pa
 
 void ContainerController::refresh()
 {
-    callRpc(listMethod(), listParams(), [this](const QJsonObject &result) {
-        if (isErrorResult(result)) {
-            setItems({});
-            emit connectionChanged(false, errorMessage(result));
-            return;
-        }
-        setItems(parseItems(result.value(QStringLiteral("items")).toArray()));
-        emit connectionChanged(true, {});
-    });
+    if (!m_loading) {
+        m_loading = true;
+        emit loadingChanged();
+    }
+    // Timeout curto: um daemon travado precisa aparecer como erro em segundos,
+    // não deixar a lista vazia por 30 s como se não houvesse containers.
+    callRpc(
+        listMethod(), listParams(),
+        [this](const QJsonObject &result) {
+            m_loading = false;
+            emit loadingChanged();
+            if (isErrorResult(result)) {
+                // Mantém o último retrato: um erro transitório não pode
+                // apagar a lista e fingir que o engine está vazio.
+                emit connectionChanged(false, errorMessage(result));
+                return;
+            }
+            setItems(parseItems(result.value(QStringLiteral("items")).toArray()));
+            emit connectionChanged(true, {});
+        },
+        8000);
 }
 
 QVariantList ContainerController::parseItems(const QJsonArray &items) const
@@ -434,6 +446,12 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
     }
     refresh();
     emit catalogDirty();
+    if (method == QStringLiteral("containers.create")) {
+        const QString id = result.value(QStringLiteral("id")).toString();
+        if (!id.isEmpty()) {
+            emit containerCreated(id);
+        }
+    }
 }
 
 } // namespace PodStack

@@ -646,15 +646,22 @@ Item {
                             }
                         }
 
-                        // Estado vazio / erro
+                        // Estado vazio / carregando / erro
                         ColumnLayout {
                             anchors.centerIn: parent
                             width: parent.width - 48
                             visible: containerList.count === 0
-                            spacing: 6
+                            spacing: 10
+
+                            // Carregando: não confundir com engine vazio.
+                            AppSpinner {
+                                Layout.alignment: Qt.AlignHCenter
+                                visible: backend.containers.loading && backend.connected
+                            }
 
                             AppIcon {
                                 Layout.alignment: Qt.AlignHCenter
+                                visible: !backend.containers.loading || !backend.connected
                                 name: backend.connected ? "containers" : "alert"
                                 size: 24
                                 color: Theme.textTertiary
@@ -663,13 +670,60 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 horizontalAlignment: Text.AlignHCenter
-                                text: backend.connected
-                                      ? qsTr("Nenhum container encontrado.\nCrie um container pela CLI: podstack run ...")
-                                      : qsTr("podstackd não está acessível.\nVerifique: systemctl --user status podstack.socket")
+                                visible: backend.containers.loading && backend.connected
+                                text: qsTr("Carregando containers…")
                                 color: Theme.textSecondary
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontBody
                                 wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
+                                visible: !backend.containers.loading && backend.connected
+                                text: qsTr("Nenhum container encontrado.\nCrie um pelo botão “Novo container”.")
+                                color: Theme.textSecondary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontBody
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
+                                visible: !backend.connected
+                                text: backend.error.length > 0
+                                      ? backend.error
+                                      : qsTr("O podstackd não está acessível.")
+                                color: Theme.textSecondary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontBody
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.alignment: Qt.AlignHCenter
+                                visible: !backend.connected
+                                spacing: 8
+
+                                AppButton {
+                                    text: qsTr("Tentar novamente")
+                                    size: "sm"
+                                    variant: "secondary"
+                                    enabled: !backend.containers.loading
+                                    onClicked: backend.refresh()
+                                }
+
+                                AppButton {
+                                    text: backend.serviceActivating
+                                          ? qsTr("Reiniciando…")
+                                          : qsTr("Reiniciar daemon")
+                                    size: "sm"
+                                    variant: "primary"
+                                    enabled: !backend.serviceActivating
+                                    onClicked: backend.restartDaemonService()
+                                }
                             }
                         }
                     }

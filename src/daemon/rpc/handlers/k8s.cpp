@@ -68,6 +68,8 @@ QJsonObject Daemon::k8sDisable(const QJsonObject &params, const Notify &notify, 
             QStringLiteral("k8s-%1-%2").arg(QDateTime::currentSecsSinceEpoch()).arg(m_nextK8sJob++);
     }
     auto subscription = std::make_shared<Subscription>();
+    // Job: continua mesmo se o cliente que acompanha o progresso cair.
+    subscription->cancelOnDisconnect = false;
     const QString subscriptionId = createSubscription(subscription);
     {
         std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
@@ -177,6 +179,8 @@ QJsonObject Daemon::k8sEnable(const QJsonObject &params, const Notify &notify, E
     }
 
     auto subscription = std::make_shared<Subscription>();
+    // Job: continua mesmo se o cliente que acompanha o progresso cair.
+    subscription->cancelOnDisconnect = false;
     const QString subscriptionId = createSubscription(subscription);
     {
         std::lock_guard<std::mutex> lock(m_k8sJobsMutex);

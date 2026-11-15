@@ -19,6 +19,10 @@ public:
 
     bool listen(const QString &socketPath, Error *error);
 
+    /// Para de aceitar conexões. Chamado no shutdown antes de aguardar as
+    /// threads de trabalho, para não abrir uma janela de socket sem resposta.
+    void close();
+
 private:
     /// fd 3 quando o systemd usa socket activation (LISTEN_FDS/LISTEN_PID).
     static bool systemdListenFd(qintptr *descriptor);
@@ -32,6 +36,8 @@ private:
     Daemon *m_daemon;
     QLocalServer m_server;
     QHash<QLocalSocket *, QByteArray> m_buffers;
+    QHash<QLocalSocket *, quint64> m_connections;
+    quint64 m_nextConnection = 1;
 };
 
 } // namespace PodStack

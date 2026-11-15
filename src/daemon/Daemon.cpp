@@ -6,10 +6,38 @@
 using namespace PodStack::DaemonInternal;
 
 namespace PodStack {
+namespace {
 
-QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
-                           const Notify &notify, Error *error)
+/// Conexão RPC dona das subscriptions criadas nesta thread. `Daemon::handle()`
+/// roda inteiro numa thread de trabalho e as subscriptions são registradas
+/// antes de qualquer `QtConcurrent::run`, então o contexto vale por toda a
+/// chamada — sem isso o `createSubscription()` não sabe a quem pertence.
+thread_local quint64 t_connectionId = 0;
+
+/// Restaura o contexto da conexão ao sair do `handle()` (que tem muitos
+/// `return` antecipados).
+class ConnectionScope {
+public:
+    explicit ConnectionScope(quint64 connectionId) : m_previous(t_connectionId)
+    {
+        t_connectionId = connectionId;
+    }
+    ~ConnectionScope() { t_connectionId = m_previous; }
+
+    ConnectionScope(const ConnectionScope &) = delete;
+    ConnectionScope &operator=(const ConnectionScope &) = delete;
+
+private:
+    quint64 m_previous;
+};
+
+} // namespace
+
+QJsonObject Daemon::handle(const QString &method, const QJsonObject &params, const Notify &notify,
+                           Error *error, quint64 connectionId)
 {
+    const ConnectionScope connectionScope(connectionId);
+
     if (error) {
         *error = {};
     }
@@ -167,8 +195,8 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("pods.create")) {
         return podCreate(params, error);
     }
-    if (method == QStringLiteral("pods.start") || method == QStringLiteral("pods.stop")
-        || method == QStringLiteral("pods.restart")) {
+    if (method == QStringLiteral("pods.start") || method == QStringLiteral("pods.stop") ||
+        method == QStringLiteral("pods.restart")) {
         return podAction(method, params, error);
     }
     if (method == QStringLiteral("pods.remove")) {
@@ -177,10 +205,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("compose.projects.list")) {
         return composeProjects(error);
     }
-    if (method == QStringLiteral("compose.up") || method == QStringLiteral("compose.down")
-        || method == QStringLiteral("compose.restart")
-        || method == QStringLiteral("compose.stop")
-        || method == QStringLiteral("compose.start")) {
+    if (method == QStringLiteral("compose.up") || method == QStringLiteral("compose.down") ||
+        method == QStringLiteral("compose.restart") || method == QStringLiteral("compose.stop") ||
+        method == QStringLiteral("compose.start")) {
         return composeAction(method, params, error);
     }
     if (method == QStringLiteral("compose.logs.subscribe")) {
@@ -273,8 +300,8 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params,
     if (method == QStringLiteral("machines.default")) {
         return machineDefault(params, error);
     }
-    if (method == QStringLiteral("machines.start") || method == QStringLiteral("machines.stop")
-        || method == QStringLiteral("machines.restart")) {
+    if (method == QStringLiteral("machines.start") || method == QStringLiteral("machines.stop") ||
+        method == QStringLiteral("machines.restart")) {
         return machineAction(method, params, error);
     }
     if (method == QStringLiteral("machines.delete")) {
@@ -412,6 +439,9 @@ QString Daemon::createSubscription(const std::shared_ptr<Subscription> &subscrip
     std::lock_guard<std::mutex> lock(m_subscriptionsMutex);
     const QString id = QStringLiteral("sub-%1").arg(m_nextSubscription++);
     m_subscriptions.insert(id, subscription);
+    if (subscription && subscription->cancelOnDisconnect && t_connectionId != 0) {
+        m_subscriptionConnections.insert(id, t_connectionId);
+    }
     return id;
 }
 
@@ -419,6 +449,57 @@ void Daemon::removeSubscription(const QString &id)
 {
     std::lock_guard<std::mutex> lock(m_subscriptionsMutex);
     m_subscriptions.remove(id);
+    m_subscriptionConnections.remove(id);
+}
+
+void Daemon::cancelSubscriptionsForConnection(quint64 connectionId)
+{
+    if (connectionId == 0) {
+        return;
+    }
+    QVector<std::shared_ptr<Subscription>> cancelled;
+    {
+        std::lock_guard<std::mutex> lock(m_subscriptionsMutex);
+        const QList<QString> ids = m_subscriptionConnections.keys(connectionId);
+        cancelled.reserve(ids.size());
+        for (const QString &id : ids) {
+            m_subscriptionConnections.remove(id);
+            if (auto subscription = m_subscriptions.take(id)) {
+                cancelled.append(subscription);
+            }
+        }
+    }
+    for (const auto &subscription : cancelled) {
+        if (subscription) {
+            subscription->cancel.store(true);
+        }
+    }
+    if (!cancelled.isEmpty()) {
+        qCInfo(lcRpc) << "subscriptions canceladas ao desconectar: conexão" << connectionId
+                      << "total" << cancelled.size();
+    }
+}
+
+void Daemon::cancelAllSubscriptions()
+{
+    QVector<std::shared_ptr<Subscription>> cancelled;
+    {
+        std::lock_guard<std::mutex> lock(m_subscriptionsMutex);
+        cancelled.reserve(m_subscriptions.size());
+        for (auto it = m_subscriptions.constBegin(); it != m_subscriptions.constEnd(); ++it) {
+            cancelled.append(it.value());
+        }
+        m_subscriptions.clear();
+        m_subscriptionConnections.clear();
+    }
+    for (const auto &subscription : cancelled) {
+        if (subscription) {
+            subscription->cancel.store(true);
+        }
+    }
+    if (!cancelled.isEmpty()) {
+        qCInfo(lcRpc) << "subscriptions canceladas no shutdown:" << cancelled.size();
+    }
 }
 
 bool Daemon::listContainersForProxy(QVector<ContainerInfo> *containers, Error *error)
@@ -485,6 +566,7 @@ QJsonObject Daemon::unsubscribe(const QJsonObject &params)
     {
         std::lock_guard<std::mutex> lock(m_subscriptionsMutex);
         subscription = m_subscriptions.take(subscriptionId);
+        m_subscriptionConnections.remove(subscriptionId);
     }
     if (subscription) {
         subscription->cancel.store(true);

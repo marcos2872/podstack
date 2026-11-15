@@ -29,8 +29,19 @@ public:
 
     Daemon();
 
+    /// `connectionId` identifica a conexão que originou a requisição. As
+    /// subscriptions criadas durante a chamada ficam associadas a ela e são
+    /// canceladas quando o cliente desconecta (evita thread presa no stream do
+    /// Podman depois que a GUI fecha). `0` = sem dono (testes).
     QJsonObject handle(const QString &method, const QJsonObject &params, const Notify &notify,
-                       Error *error);
+                       Error *error, quint64 connectionId = 0);
+
+    /// Cancela e remove as subscriptions criadas pela conexão informada.
+    void cancelSubscriptionsForConnection(quint64 connectionId);
+
+    /// Cancela todas as subscriptions; usado no shutdown do daemon para que
+    /// streams infinitos (eventos, logs, stats) não travem o processo.
+    void cancelAllSubscriptions();
 
     /// Containers usados pelo proxy de entrada `*.localhost`.
     bool listContainersForProxy(QVector<ContainerInfo> *containers, Error *error);
@@ -38,6 +49,9 @@ public:
 private:
     struct Subscription {
         std::atomic_bool cancel{false};
+        /// `false` para jobs (build, machine, k8s) que devem continuar mesmo
+        /// se o cliente que pediu o progresso desconectar.
+        bool cancelOnDisconnect = true;
     };
 
     QJsonObject systemHello() const;
@@ -88,8 +102,7 @@ private:
     QJsonObject systemDf(const QJsonObject &params, Error *error);
     QJsonObject composeProjects(Error *error);
     QJsonObject composeAction(const QString &method, const QJsonObject &params, Error *error);
-    QJsonObject subscribeComposeLogs(const QJsonObject &params, const Notify &notify,
-                                     Error *error);
+    QJsonObject subscribeComposeLogs(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject buildStart(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject buildCancel(const QJsonObject &params, Error *error);
     QJsonObject buildsList(const QJsonObject &params, Error *error);
@@ -160,8 +173,7 @@ private:
     QJsonObject settingsSchema() const;
     QJsonObject subscribeLogs(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeStats(const QJsonObject &params, const Notify &notify, Error *error);
-    QJsonObject subscribeSystemStats(const QJsonObject &params, const Notify &notify,
-                                     Error *error);
+    QJsonObject subscribeSystemStats(const QJsonObject &params, const Notify &notify, Error *error);
     QJsonObject subscribeEvents(const Notify &notify, Error *error);
     QJsonObject unsubscribe(const QJsonObject &params);
 
@@ -182,6 +194,7 @@ private:
     CloudImageCache m_cloudImages;
     std::mutex m_subscriptionsMutex;
     QHash<QString, std::shared_ptr<Subscription>> m_subscriptions;
+    QHash<QString, quint64> m_subscriptionConnections; // subscriptionId -> conexão
     std::mutex m_buildMutex;
     QHash<QString, QString> m_buildSubscriptions;
     std::mutex m_machineJobsMutex;
