@@ -18,9 +18,16 @@ versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
   uid, `podstack system logs` e página **Logs** na GUI; `system.report --include-logs` com caps de
   10.000 linhas/componente e 5 MB.
 - **Machines fora do cgroup:** QEMU/virtiofsd em scopes `systemd-run --user --scope`.
+- **Ativação automática do daemon:** a instalação habilita **e inicia** o `podstack.socket` para os
+  usuários com sessão aberta; `RpcClient`, `RpcStream` e `StreamClient` reativam o socket na
+  primeira conexão (`DaemonBootstrap`), `podstack doctor` checa o socket no cliente e a GUI oferece
+  o botão **Ativar serviço** no banner de erro.
 
 ### Corrigido
 
+- Instalação e upgrade deixam de exigir `systemctl --user daemon-reload` + `start` manual: o socket
+  volta ativo ao fim do `%post`/`%posttrans`/`postinst` (e nos abortos do DEB), e a instalação sem
+  sessão detectável não falha — o socket ativa no próximo login.
 - Upgrade com o app aberto não deixa GUI/daemon/helper antigos ativos; o socket não reativa o
   daemon antigo durante o unpack.
 - `KillMode=process` e `ProtectHome=read-only` no helper mantêm machines/artefatos acessíveis sem
