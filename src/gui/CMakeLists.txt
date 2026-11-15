@@ -3,6 +3,7 @@
 # ---------------------------------------------------------------------------
 add_library(podstack_gui_lib STATIC
     app/Autostart.cpp
+    app/Feedback.cpp
     app/MainWindow.cpp
     app/SingleInstance.cpp
     app/Translation.cpp

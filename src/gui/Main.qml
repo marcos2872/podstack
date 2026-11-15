@@ -739,8 +739,22 @@ Rectangle {
     }
 
     AppToast {
-        message: backend.eventMessage
-        kind: backend.eventKind
+        message: backend.feedback.message
+        severity: backend.feedback.severity
+    }
+
+    Connections {
+        target: backend
+        function onEventsChanged() {
+            if (backend.eventMessage.length === 0) {
+                return
+            }
+            const kind = backend.eventKind
+            const severity = (kind === "die" || kind === "stop" || kind === "remove")
+                             ? "warning"
+                             : (kind === "start" || kind === "create") ? "success" : "info"
+            backend.feedback.show(backend.eventMessage, severity, 3000)
+        }
     }
 
     Shortcut {

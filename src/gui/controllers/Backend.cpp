@@ -222,6 +222,23 @@ Backend::Backend(QObject *parent) : QObject(parent)
     connect(&m_machines, &MachineController::terminalRequested, this, &Backend::terminalRequested);
     connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onCatalogFinished);
+    // Confirmação de sucesso no toast: um único ponto para todas as áreas.
+    // Containers ficam de fora: os eventos do engine já viram toast.
+    ControllerBase *const settledControllers[] = {&m_images,   &m_volumes, &m_networks,
+                                                  &m_pods,     &m_machines, &m_compose,
+                                                  &m_builds};
+    for (ControllerBase *controller : settledControllers) {
+        connect(controller, &ControllerBase::actionSettled, this,
+                [this](const QString &method, bool ok, const QString &) {
+                    if (!ok) {
+                        return; // erro já aparece no banner da página
+                    }
+                    const QString text = successText(method);
+                    if (!text.isEmpty()) {
+                        m_feedback.show(text, QStringLiteral("success"));
+                    }
+                });
+    }
     connect(&m_settings, &SettingsController::valuesChanged, this, [this] {
         m_updates.setEnabled(m_settings.values()
                                  .value(QStringLiteral("updates.mode"), QStringLiteral("check"))
@@ -336,6 +353,45 @@ Backend::Backend(QObject *parent) : QObject(parent)
 QString Backend::version() const
 {
     return QStringLiteral(PODSTACK_VERSION);
+}
+
+QString Backend::successText(const QString &method)
+{
+    // Sem `containers.*`: os eventos do engine já viram toast (start/stop/die).
+    static const QHash<QString, QString> texts{
+        {QStringLiteral("volumes.create"), QStringLiteral("Volume criado")},
+        {QStringLiteral("volumes.remove"), QStringLiteral("Volume removido")},
+        {QStringLiteral("volumes.clone"), QStringLiteral("Volume clonado")},
+        {QStringLiteral("volumes.prune"), QStringLiteral("Volumes sem uso removidos")},
+        {QStringLiteral("volumes.importHostPath"), QStringLiteral("Volume importado")},
+        {QStringLiteral("images.tag"), QStringLiteral("Tag aplicada")},
+        {QStringLiteral("images.untag"), QStringLiteral("Tag removida")},
+        {QStringLiteral("images.load"), QStringLiteral("Imagem importada")},
+        {QStringLiteral("images.remove"), QStringLiteral("Imagem removida")},
+        {QStringLiteral("images.prune"), QStringLiteral("Imagens sem uso removidas")},
+        {QStringLiteral("networks.create"), QStringLiteral("Rede criada")},
+        {QStringLiteral("networks.remove"), QStringLiteral("Rede removida")},
+        {QStringLiteral("networks.connect"), QStringLiteral("Container conectado à rede")},
+        {QStringLiteral("networks.disconnect"), QStringLiteral("Container desconectado da rede")},
+        {QStringLiteral("pods.create"), QStringLiteral("Pod criado")},
+        {QStringLiteral("pods.start"), QStringLiteral("Pod iniciado")},
+        {QStringLiteral("pods.stop"), QStringLiteral("Pod parado")},
+        {QStringLiteral("pods.restart"), QStringLiteral("Pod reiniciado")},
+        {QStringLiteral("pods.remove"), QStringLiteral("Pod removido")},
+        {QStringLiteral("machines.start"), QStringLiteral("Machine iniciada")},
+        {QStringLiteral("machines.stop"), QStringLiteral("Machine parada")},
+        {QStringLiteral("machines.restart"), QStringLiteral("Machine reiniciada")},
+        {QStringLiteral("machines.delete"), QStringLiteral("Machine removida")},
+        {QStringLiteral("machines.rename"), QStringLiteral("Machine renomeada")},
+        {QStringLiteral("machines.update"), QStringLiteral("Machine atualizada")},
+        {QStringLiteral("machines.ports.set"), QStringLiteral("Portas atualizadas")},
+        {QStringLiteral("compose.up"), QStringLiteral("Projeto no ar")},
+        {QStringLiteral("compose.down"), QStringLiteral("Projeto derrubado")},
+        {QStringLiteral("compose.restart"), QStringLiteral("Projeto reiniciado")},
+        {QStringLiteral("compose.stop"), QStringLiteral("Projeto parado")},
+        {QStringLiteral("compose.start"), QStringLiteral("Projeto iniciado")},
+    };
+    return texts.value(method);
 }
 
 void Backend::refresh()

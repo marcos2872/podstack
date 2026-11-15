@@ -71,6 +71,7 @@ private slots:
     void backendBatchPartial();
     void backendComposeErrorDetail();
     void backendRejectDuplicateAction();
+    void feedbackQueue();
     void backendTheme();
     void backendSettings();
     void backendProxy();
@@ -1732,6 +1733,37 @@ void GuiTest::backendRejectDuplicateAction()
     QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
     QCOMPARE(m_mock.requestCount(path), before + 1);
     QVERIFY(containers->runningTargets().isEmpty());
+}
+
+void GuiTest::feedbackQueue()
+{
+    PodStack::Backend backend;
+    auto *feedback = backend.feedback();
+    QSignalSpy spy(feedback, &PodStack::Feedback::currentChanged);
+
+    feedback->show(QStringLiteral("primeiro"), QStringLiteral("success"), 1000);
+    QCOMPARE(feedback->message(), QStringLiteral("primeiro"));
+    QCOMPARE(feedback->severity(), QStringLiteral("success"));
+    QVERIFY(feedback->active());
+
+    // Rajada repete o mesmo texto: não empilha nem rouba a vez.
+    feedback->show(QStringLiteral("primeiro"), QStringLiteral("success"), 1000);
+    feedback->show(QStringLiteral("segundo"), QStringLiteral("error"), 1000);
+    QCOMPARE(feedback->message(), QStringLiteral("primeiro"));
+
+    QTRY_COMPARE_WITH_TIMEOUT(feedback->message(), QStringLiteral("segundo"), 3000);
+    QCOMPARE(feedback->severity(), QStringLiteral("error"));
+    QVERIFY(spy.count() >= 2);
+
+    feedback->dismiss();
+    QVERIFY(!feedback->active());
+    QCOMPARE(feedback->message(), QString());
+
+    // Ação concluída com sucesso vira toast (mapa central em `Backend`).
+    const QString projectDir = m_testDataDir + QStringLiteral("/toast-project");
+    QVERIFY(QDir().mkpath(projectDir));
+    backend.compose()->composeUp(projectDir);
+    QTRY_COMPARE_WITH_TIMEOUT(feedback->message(), QStringLiteral("Projeto no ar"), 8000);
 }
 
 void GuiTest::backendTheme()
