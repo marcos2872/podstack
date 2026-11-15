@@ -186,8 +186,7 @@ void BuildController::requestBuildCancel()
         return;
     }
     m_cancelRequested = false;
-    callRpc(QStringLiteral("builds.cancel"),
-            QJsonObject{{QStringLiteral("id"), m_activeBuildId}},
+    callRpc(QStringLiteral("builds.cancel"), QJsonObject{{QStringLiteral("id"), m_activeBuildId}},
             [this](const QJsonObject &result) {
                 if (isErrorResult(result)) {
                     setLastError(errorMessage(result));

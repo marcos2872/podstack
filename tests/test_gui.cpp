@@ -643,8 +643,7 @@ void GuiTest::backendContainerDetailRace()
     // O mesmo alvo em sequência não deve trocar o conteúdo exibido.
     detail->load(QStringLiteral("abc123"));
     QTRY_VERIFY_WITH_TIMEOUT(!detail->loading(), 5000);
-    QCOMPARE(detail->detail().value(QStringLiteral("Id")).toString(),
-             QStringLiteral("abc123"));
+    QCOMPARE(detail->detail().value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
 }
 
 void GuiTest::backendKubernetes()

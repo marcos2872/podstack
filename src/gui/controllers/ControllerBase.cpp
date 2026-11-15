@@ -51,8 +51,8 @@ bool ControllerBase::isRunning(const QString &target) const
 
 bool ControllerBase::hasPending(const QString &method, const QString &target) const
 {
-    if (m_actionActive && m_currentAction.method == method
-        && actionTarget(m_currentAction.params) == target) {
+    if (m_actionActive && m_currentAction.method == method &&
+        actionTarget(m_currentAction.params) == target) {
         return true;
     }
     for (const PendingAction &pending : m_actionQueue) {
@@ -102,8 +102,7 @@ QString ControllerBase::batchSummary(const QJsonObject &result)
                                .toObject()
                                .value(QStringLiteral("message"))
                                .toString();
-    QString message =
-        QStringLiteral("%1 de %2 itens falharam.").arg(failed).arg(count);
+    QString message = QStringLiteral("%1 de %2 itens falharam.").arg(failed).arg(count);
     if (!detail.isEmpty()) {
         message += QLatin1Char(' ') + detail;
     }

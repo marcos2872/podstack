@@ -30,9 +30,8 @@ QString composeErrorDetail(const QString &stderrText, const QString &stdoutText)
     QStringList kept;
     for (const QString &raw : source.split(QLatin1Char('\n'))) {
         const QString line = raw.trimmed();
-        if (line.isEmpty()
-            || line.contains(QStringLiteral("Emulate Docker CLI using podman"))
-            || line.contains(QStringLiteral("Executing external compose provider"))) {
+        if (line.isEmpty() || line.contains(QStringLiteral("Emulate Docker CLI using podman")) ||
+            line.contains(QStringLiteral("Executing external compose provider"))) {
             continue;
         }
         kept.append(line);
@@ -43,8 +42,8 @@ QString composeErrorDetail(const QString &stderrText, const QString &stdoutText)
 
     QStringList errors;
     for (const QString &line : kept) {
-        if (line.startsWith(QStringLiteral("Error"), Qt::CaseInsensitive)
-            || line.startsWith(QStringLiteral("ERRO"), Qt::CaseInsensitive)) {
+        if (line.startsWith(QStringLiteral("Error"), Qt::CaseInsensitive) ||
+            line.startsWith(QStringLiteral("ERRO"), Qt::CaseInsensitive)) {
             errors.append(line);
         }
     }

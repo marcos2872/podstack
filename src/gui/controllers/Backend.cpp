@@ -219,12 +219,11 @@ Backend::Backend(QObject *parent) : QObject(parent)
             [this](const QString &id) { emit containerCreated(id); });
     connect(&m_containers, &ContainerController::terminalRequested, this,
             &Backend::terminalRequested);
-    connect(&m_containers, &ContainerController::fileDownloaded, this,
-            [this](const QString &path) {
-                m_lastDownloadDir = QFileInfo(path).absolutePath();
-                m_feedback.show(tr("Arquivo baixado em %1").arg(m_lastDownloadDir),
-                                QStringLiteral("success"), 6000, tr("Abrir pasta"));
-            });
+    connect(&m_containers, &ContainerController::fileDownloaded, this, [this](const QString &path) {
+        m_lastDownloadDir = QFileInfo(path).absolutePath();
+        m_feedback.show(tr("Arquivo baixado em %1").arg(m_lastDownloadDir),
+                        QStringLiteral("success"), 6000, tr("Abrir pasta"));
+    });
     connect(&m_feedback, &Feedback::actionTriggered, this, [this](const QString &message) {
         // O toast de download é o único com ação; abre a pasta de destino.
         if (message.startsWith(tr("Arquivo baixado")) && !m_lastDownloadDir.isEmpty()) {
@@ -237,9 +236,9 @@ Backend::Backend(QObject *parent) : QObject(parent)
     // Confirmação de sucesso no toast: um único ponto para todas as áreas.
     // `containers.*` só tem entradas para arquivos — start/stop/remove já são
     // anunciados pelos eventos do engine.
-    ControllerBase *const settledControllers[] = {&m_images,   &m_volumes,  &m_networks,
-                                                  &m_pods,     &m_machines, &m_compose,
-                                                  &m_builds,   &m_containers};
+    ControllerBase *const settledControllers[] = {&m_images, &m_volumes,   &m_networks,
+                                                  &m_pods,   &m_machines,  &m_compose,
+                                                  &m_builds, &m_containers};
     for (ControllerBase *controller : settledControllers) {
         connect(controller, &ControllerBase::actionSettled, this,
                 [this](const QString &method, bool ok, const QString &) {
@@ -637,10 +636,8 @@ void Backend::openPath(const QString &path)
 QString Backend::choosePath(const QString &mode, const QString &title, const QString &filter,
                             const QString &initialPath)
 {
-    const QString resolvedTitle =
-        title.isEmpty() ? tr("Selecionar arquivo") : title;
-    const QString resolvedFilter =
-        filter.isEmpty() ? tr("Todos os arquivos (*)") : filter;
+    const QString resolvedTitle = title.isEmpty() ? tr("Selecionar arquivo") : title;
+    const QString resolvedFilter = filter.isEmpty() ? tr("Todos os arquivos (*)") : filter;
     if (mode == QStringLiteral("save")) {
         return QFileDialog::getSaveFileName(nullptr, resolvedTitle, initialPath, resolvedFilter);
     }

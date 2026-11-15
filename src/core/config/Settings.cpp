@@ -242,8 +242,8 @@ const QVector<SettingDef> &definitions()
                              QStringLiteral("Geral"),
                              QStringLiteral("Idioma da interface (pt-BR ou en-US)."), true));
         list.append(makeBool(QStringLiteral("app.confirmDestructive"), true,
-                             QStringLiteral("Geral"),
-                             QStringLiteral("Confirma ações destrutivas."), false, true));
+                             QStringLiteral("Geral"), QStringLiteral("Confirma ações destrutivas."),
+                             false, true));
         list.append(makeBool(QStringLiteral("app.showOnboarding"), true,
                              QStringLiteral("Geral"),
                              QStringLiteral("Exibe onboarding se incompleto.")));

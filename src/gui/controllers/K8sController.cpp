@@ -153,12 +153,10 @@ K8sController::K8sController(QObject *parent) : ControllerBase(parent)
             m_portForwardId = result.value(QStringLiteral("id")).toString();
             m_portForwardActive = !m_portForwardId.isEmpty();
             m_portForwardError.clear();
-            m_portForwardSummary =
-                m_portForwardActive
-                    ? QStringLiteral("127.0.0.1:%1 → %2")
-                          .arg(m_forwardLocalRequested)
-                          .arg(m_forwardRemoteRequested)
-                    : QString();
+            m_portForwardSummary = m_portForwardActive ? QStringLiteral("127.0.0.1:%1 → %2")
+                                                             .arg(m_forwardLocalRequested)
+                                                             .arg(m_forwardRemoteRequested)
+                                                       : QString();
         }
         emit forwardChanged();
     });
@@ -289,7 +287,8 @@ void K8sController::startPortForward(const QString &namespaceName, const QString
                                      int localPort, int remotePort, const QString &resource)
 {
     if (m_forwardWatcher.isRunning()) {
-        m_portForwardError = QStringLiteral("Aguarde a operação de port-forward anterior terminar.");
+        m_portForwardError =
+            QStringLiteral("Aguarde a operação de port-forward anterior terminar.");
         emit forwardChanged();
         return;
     }

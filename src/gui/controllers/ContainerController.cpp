@@ -197,7 +197,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         const int equals = line.indexOf(QLatin1Char('='));
         if (equals <= 0) {
             fail(QStringLiteral("Variável de ambiente inválida: “%1” (use CHAVE=valor).")
-                             .arg(line.trimmed()));
+                     .arg(line.trimmed()));
             return;
         }
         env.insert(line.left(equals).trimmed(), line.mid(equals + 1).trimmed());
@@ -211,8 +211,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
     for (const QString &line : labelLines) {
         const int equals = line.indexOf(QLatin1Char('='));
         if (equals <= 0) {
-            fail(
-                QStringLiteral("Label inválida: “%1” (use chave=valor).").arg(line.trimmed()));
+            fail(QStringLiteral("Label inválida: “%1” (use chave=valor).").arg(line.trimmed()));
             return;
         }
         labels.insert(line.left(equals).trimmed(), line.mid(equals + 1).trimmed());
@@ -273,15 +272,13 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         const QString item = raw.trimmed();
         const QStringList parts = item.split(QLatin1Char(':'));
         if (parts.size() < 2 || parts.size() > 3) {
-            fail(
-                QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
+            fail(QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
             return;
         }
         const QString source = parts.at(0).trimmed();
         const QString destination = parts.at(1).trimmed();
         if (source.isEmpty() || destination.isEmpty()) {
-            fail(
-                QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
+            fail(QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
             return;
         }
         QJsonObject mount;

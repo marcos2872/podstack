@@ -13,11 +13,11 @@
 
 #include <QApplication>
 #include <QCloseEvent>
-#include <QMessageBox>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDockWidget>
 #include <QGuiApplication>
+#include <QMessageBox>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>

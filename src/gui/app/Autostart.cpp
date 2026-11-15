@@ -67,8 +67,8 @@ bool setEnabled(bool enabled, QString *error)
 
     if (QFile::exists(filePath()) && !isOwnFile()) {
         if (error) {
-            *error = QStringLiteral("Já existe um autostart de outro aplicativo em %1.")
-                         .arg(filePath());
+            *error =
+                QStringLiteral("Já existe um autostart de outro aplicativo em %1.").arg(filePath());
         }
         return false;
     }
