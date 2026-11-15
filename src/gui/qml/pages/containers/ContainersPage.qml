@@ -238,6 +238,11 @@ Item {
         anchorIndex = -1
     }
 
+    /// Ação em andamento **neste** container (start/stop/restart/remove…).
+    function isBusy(id) {
+        return backend.containers.runningTargets[id] !== undefined
+    }
+
     function setContainers(items) {
         allItems = items
         rebuild()
@@ -663,6 +668,12 @@ Item {
                                         font.pixelSize: Theme.fontMeta
                                     }
 
+                                    AppSpinner {
+                                        visible: containersPage.isBusy(modelData.id)
+                                        size: 14
+                                        Layout.alignment: Qt.AlignVCenter
+                                    }
+
                                     RowLayout {
                                         spacing: 4
                                         opacity: containerRow.hovered || containersPage.selectedIds[modelData.id]
@@ -677,6 +688,7 @@ Item {
                                             size: "sm"
                                             variant: "ghost"
                                             iconName: modelData.state === "running" ? "stop" : "play"
+                                            enabled: !containersPage.isBusy(modelData.id)
                                             onClicked: backend.containers.lifecycle(
                                                            modelData.state === "running" ? "stop" : "start",
                                                            modelData.id)
@@ -688,6 +700,7 @@ Item {
                                             size: "sm"
                                             variant: "ghost"
                                             iconName: "rotate"
+                                            enabled: !containersPage.isBusy(modelData.id)
                                             onClicked: backend.containers.lifecycle("restart", modelData.id)
                                             Accessible.name: qsTr("Reiniciar")
                                         }

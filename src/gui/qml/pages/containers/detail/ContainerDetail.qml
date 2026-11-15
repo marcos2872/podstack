@@ -23,6 +23,9 @@ Rectangle {
     property bool reloadPending: false
 
     readonly property bool compact: width < 1180
+    /// Ação em andamento neste container (start/stop/restart/remove).
+    readonly property bool detailBusy: containerId.length > 0
+                                       && backend.containers.runningTargets[containerId] !== undefined
     readonly property var detail: backend.containerDetail.detail || ({})
     readonly property var config: root.detail.Config || ({})
     readonly property var detailState: root.detail.State || ({})
@@ -362,6 +365,12 @@ Rectangle {
                             text: root.stateText.length > 0 ? root.stateText : "—"
                             tone: root.stateTone(root.stateText)
                         }
+
+                        AppSpinner {
+                            visible: root.detailBusy
+                            size: 14
+                            Layout.alignment: Qt.AlignVCenter
+                        }
                     }
 
                     Text {
@@ -382,7 +391,7 @@ Rectangle {
                     iconName: "play"
                     variant: "primary"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.actionActive
+                    enabled: root.containerId.length > 0 && !root.detailBusy
                     onClicked: root.lifecycle("start")
                     Accessible.name: qsTr("Iniciar container")
                 }
@@ -392,7 +401,7 @@ Rectangle {
                     text: root.compact ? "" : qsTr("Parar")
                     iconName: "stop"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.actionActive
+                    enabled: root.containerId.length > 0 && !root.detailBusy
                     onClicked: root.lifecycle("stop")
                     Accessible.name: qsTr("Parar container")
                 }
@@ -401,7 +410,7 @@ Rectangle {
                     text: root.compact ? "" : qsTr("Reiniciar")
                     iconName: "rotate"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.actionActive
+                    enabled: root.containerId.length > 0 && !root.detailBusy
                     onClicked: root.lifecycle("restart")
                     Accessible.name: qsTr("Reiniciar container")
                 }
@@ -411,7 +420,7 @@ Rectangle {
                     iconName: "trash"
                     variant: "danger"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.actionActive
+                    enabled: root.containerId.length > 0 && !root.detailBusy
                     onClicked: removeDialog.open()
                     Accessible.name: qsTr("Remover container")
                 }

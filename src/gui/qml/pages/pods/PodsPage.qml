@@ -11,6 +11,13 @@ ColumnLayout {
 
     SelectionState { id: podSelection }
 
+    readonly property var currentPod: podsList.currentRow >= 0
+                                     ? backend.pods.items[podsList.currentRow] : null
+    readonly property string currentPodId: currentPod ? String(currentPod.id) : ""
+    /// Ação em andamento neste pod; desabilita só os botões dele.
+    readonly property bool currentPodBusy: currentPodId.length > 0
+                                           && backend.pods.runningTargets[currentPodId] !== undefined
+
     AppViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: 22
@@ -69,29 +76,35 @@ ColumnLayout {
         AppButton {
             visible: podSelection.count === 0
             text: qsTr("Start")
-            enabled: podsList.currentRow >= 0
-            onClicked: backend.pods.podAction("start", backend.pods.items[podsList.currentRow].id)
+            busy: podsView.currentPodBusy
+            busyText: qsTr("Iniciando…")
+            enabled: podsView.currentPodId.length > 0 && !podsView.currentPodBusy
+            onClicked: backend.pods.podAction("start", podsView.currentPodId)
         }
 
         AppButton {
             visible: podSelection.count === 0
             text: qsTr("Stop")
-            enabled: podsList.currentRow >= 0
-            onClicked: backend.pods.podAction("stop", backend.pods.items[podsList.currentRow].id)
+            busy: podsView.currentPodBusy
+            busyText: qsTr("Parando…")
+            enabled: podsView.currentPodId.length > 0 && !podsView.currentPodBusy
+            onClicked: backend.pods.podAction("stop", podsView.currentPodId)
         }
 
         AppButton {
             visible: podSelection.count === 0
             text: qsTr("Restart")
-            enabled: podsList.currentRow >= 0
-            onClicked: backend.pods.podAction("restart", backend.pods.items[podsList.currentRow].id)
+            busy: podsView.currentPodBusy
+            busyText: qsTr("Reiniciando…")
+            enabled: podsView.currentPodId.length > 0 && !podsView.currentPodBusy
+            onClicked: backend.pods.podAction("restart", podsView.currentPodId)
         }
 
         AppButton {
             visible: podSelection.count === 0
             text: qsTr("Remover")
             variant: "danger"
-            enabled: podsList.currentRow >= 0
+            enabled: podsView.currentPodId.length > 0 && !podsView.currentPodBusy
             onClicked: removeDialog.open()
         }
 
