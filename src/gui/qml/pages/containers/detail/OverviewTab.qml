@@ -50,7 +50,7 @@ ScrollView {
             }
 
             Text {
-                text: backend.containerDetail.detail.loading ? qsTr("carregando inspect…")
+                text: backend.containerDetail.loading ? qsTr("carregando inspect…")
                                                              : qsTr("stats ~1 s")
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
@@ -66,9 +66,9 @@ ScrollView {
 
             DetailMetricCard {
                 label: qsTr("CPU")
-                value: backend.containerDetail.detail.stats.cpu_percent || "—"
+                value: backend.containerDetail.stats.cpu_percent || "—"
                 detailText: qsTr("histórico de 60 amostras")
-                values: backend.containerDetail.detail.cpuHistory
+                values: backend.containerDetail.cpuHistory
                 accent: Theme.cyan
                 maxValue: 100
             }
@@ -76,15 +76,15 @@ ScrollView {
             DetailMetricCard {
                 label: qsTr("RAM")
                 value: {
-                    const stats = backend.containerDetail.detail.stats
+                    const stats = backend.containerDetail.stats
                     if (Number(stats.memLimitBytes || 0) > 0) {
                         return root.formatBytes(stats.memUsedBytes) + " / "
                                + root.formatBytes(stats.memLimitBytes)
                     }
                     return stats.mem_usage || "—"
                 }
-                detailText: backend.containerDetail.detail.stats.mem_percent || qsTr("aguardando amostras")
-                values: backend.containerDetail.detail.memHistory
+                detailText: backend.containerDetail.stats.mem_percent || qsTr("aguardando amostras")
+                values: backend.containerDetail.memHistory
                 accent: Theme.indigo400
                 maxValue: 100
             }
@@ -92,7 +92,7 @@ ScrollView {
             DetailMetricCard {
                 label: qsTr("REDE  ↓ / ↑")
                 value: {
-                    const stats = backend.containerDetail.detail.stats
+                    const stats = backend.containerDetail.stats
                     if (stats.netRxBytes !== undefined) {
                         return "↓ " + root.formatBytes(stats.netRxBytes) + "   ↑ "
                                + root.formatBytes(stats.netTxBytes)
@@ -100,8 +100,8 @@ ScrollView {
                     return stats.net_io || "—"
                 }
                 detailText: qsTr("RX (ciano) e TX (índigo), acumulados")
-                values: backend.containerDetail.detail.netRxHistory
-                secondaryValues: backend.containerDetail.detail.netTxHistory
+                values: backend.containerDetail.netRxHistory
+                secondaryValues: backend.containerDetail.netTxHistory
                 accent: Theme.cyan
                 autoScale: true
             }
@@ -109,7 +109,7 @@ ScrollView {
             DetailMetricCard {
                 label: qsTr("DISCO  R / W")
                 value: {
-                    const stats = backend.containerDetail.detail.stats
+                    const stats = backend.containerDetail.stats
                     if (stats.diskReadBytes !== undefined) {
                         return "R " + root.formatBytes(stats.diskReadBytes) + "   W "
                                + root.formatBytes(stats.diskWriteBytes)
@@ -117,8 +117,8 @@ ScrollView {
                     return stats.block_io || "—"
                 }
                 detailText: qsTr("leitura (ciano) e escrita (índigo), acumuladas")
-                values: backend.containerDetail.detail.diskReadHistory
-                secondaryValues: backend.containerDetail.detail.diskWriteHistory
+                values: backend.containerDetail.diskReadHistory
+                secondaryValues: backend.containerDetail.diskWriteHistory
                 accent: Theme.cyan
                 autoScale: true
             }
@@ -131,7 +131,7 @@ ScrollView {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("PIDs: %1 · estado: %2 · %3")
-                          .arg(String(backend.containerDetail.detail.stats.pids || "—"))
+                          .arg(String(backend.containerDetail.stats.pids || "—"))
                           .arg(root.stateText.length > 0 ? root.stateText : "—")
                           .arg(root.statusText)
                 color: Theme.textTertiary
@@ -141,8 +141,8 @@ ScrollView {
             }
 
             Text {
-                visible: backend.containerDetail.detail.statsError.length > 0
-                text: backend.containerDetail.detail.statsError
+                visible: backend.containerDetail.statsError.length > 0
+                text: backend.containerDetail.statsError
                 color: Theme.danger
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
