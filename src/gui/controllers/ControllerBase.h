@@ -32,6 +32,10 @@ public:
 signals:
     void actionStateChanged();
     void lastErrorChanged();
+    /// Emitido ao fim de toda ação (sucesso, falha ou lote parcial), sempre no
+    /// mesmo formato. É o que permite à UI fechar o diálogo e mostrar o erro
+    /// sem depender do sinal específico de cada área.
+    void actionSettled(const QString &method, bool ok, const QString &message);
 
 protected:
     using Callback = std::function<void(const QJsonObject &)>;
@@ -64,6 +68,11 @@ protected:
     static void setLogBufferLines(int lines);
     static QString errorMessage(const QJsonObject &result);
     static bool isErrorResult(const QJsonObject &result);
+    /// Resultado sintético de `runBatchCalls` (`count`/`failed`): a falha de um
+    /// item não é falha do método.
+    static bool isBatchResult(const QJsonObject &result);
+    /// "3 de 5 itens falharam. <detalhe>" ou vazio quando nada falhou.
+    static QString batchSummary(const QJsonObject &result);
 
     /// Loop síncrono de uma ação em lote (`prefix + action` por id).
     static QJsonObject runBatchCalls(const QString &prefix, const QString &idKey,

@@ -154,7 +154,6 @@ void ImageController::onActionFinished(const QString &method, const QJsonObject 
     if (isErrorResult(result)) {
         return;
     }
-    clearLastError();
     if (method == QStringLiteral("images.prune")) {
         emit pruneFinished();
     }

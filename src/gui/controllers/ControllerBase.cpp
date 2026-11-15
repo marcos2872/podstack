@@ -55,6 +55,30 @@ bool ControllerBase::isErrorResult(const QJsonObject &result)
            result.value(QStringLiteral("error")).isObject();
 }
 
+bool ControllerBase::isBatchResult(const QJsonObject &result)
+{
+    return result.contains(QStringLiteral("count")) && result.contains(QStringLiteral("failed"));
+}
+
+QString ControllerBase::batchSummary(const QJsonObject &result)
+{
+    const int count = result.value(QStringLiteral("count")).toInt();
+    const int failed = result.value(QStringLiteral("failed")).toInt();
+    if (failed <= 0) {
+        return {};
+    }
+    const QString detail = result.value(QStringLiteral("lastError"))
+                               .toObject()
+                               .value(QStringLiteral("message"))
+                               .toString();
+    QString message =
+        QStringLiteral("%1 de %2 itens falharam.").arg(failed).arg(count);
+    if (!detail.isEmpty()) {
+        message += QLatin1Char(' ') + detail;
+    }
+    return message;
+}
+
 // O QFutureWatcher é deletado com deleteLater no handler; o analyzer não
 // acompanha o ownership através do lambda.
 // NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
@@ -125,6 +149,9 @@ void ControllerBase::startAction(const PendingAction &action, Callback done)
         if (done) {
             done(result);
         }
+        const QString summary = batchSummary(result);
+        emit actionSettled(action.method, summary.isEmpty() && !isErrorResult(result),
+                           isErrorResult(result) ? errorMessage(result) : summary);
         if (!m_actionQueue.isEmpty()) {
             const PendingAction next = m_actionQueue.dequeue();
             startAction(next, {});
@@ -166,6 +193,14 @@ void ControllerBase::enqueueAction(const PendingAction &action)
 void ControllerBase::onActionFinished(const QString &, const QJsonObject &,
                                       const QJsonObject &result)
 {
+    // Falha parcial de lote não é falha do método: a lista tem que recarregar
+    // mesmo assim e o resumo vai para lastError. Antes o lote abortava sem
+    // refresh e sem mensagem — o usuário apagava, "nada acontecia", e os itens
+    // removidos só sumiam da tela no próximo refresh manual.
+    if (isBatchResult(result)) {
+        setLastError(batchSummary(result));
+        return;
+    }
     if (isErrorResult(result)) {
         setLastError(errorMessage(result));
     } else {
@@ -219,10 +254,9 @@ QJsonObject ControllerBase::runBatchCalls(const QString &prefix, const QString &
     QJsonObject result;
     result.insert(QStringLiteral("count"), ids.size());
     result.insert(QStringLiteral("failed"), failed);
+    result.insert(QStringLiteral("ok"), failed == 0);
     if (failed > 0) {
-        result.insert(QStringLiteral("error"), lastError);
-    } else {
-        result.insert(QStringLiteral("ok"), true);
+        result.insert(QStringLiteral("lastError"), lastError);
     }
     return result;
 }

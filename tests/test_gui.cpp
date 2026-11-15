@@ -68,6 +68,7 @@ private slots:
     void backendInvalidArguments();
     void backendOperations();
     void backendBatchActions();
+    void backendBatchPartial();
     void backendTheme();
     void backendSettings();
     void backendProxy();
@@ -1660,6 +1661,29 @@ void GuiTest::backendBatchActions()
     backend.compose()->batchCompose({QStringLiteral("/tmp/mock-project")}, QStringLiteral("up"));
     QTRY_VERIFY_WITH_TIMEOUT(!backend.compose()->actionActive(), 10000);
     QVERIFY2(backend.compose()->lastError().isEmpty(), qPrintable(backend.compose()->lastError()));
+}
+
+void GuiTest::backendBatchPartial()
+{
+    PodStack::Backend backend;
+    auto *volumes = backend.volumes();
+    QSignalSpy itemsSpy(volumes, &PodStack::VolumeController::itemsChanged);
+    QSignalSpy settledSpy(volumes, &PodStack::ControllerBase::actionSettled);
+
+    QTRY_VERIFY_WITH_TIMEOUT(volumes->items().size() >= 1, 5000);
+    itemsSpy.clear();
+
+    // Remover um volume inexistente falha; mesmo assim a lista precisa
+    // recarregar (antes o lote abortava o refresh e o usuário via "nada
+    // aconteceu" até clicar em Atualizar) e o resumo precisa sair.
+    volumes->batchVolumes({QStringLiteral("missing-volume")}, false);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!volumes->actionActive(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(itemsSpy.count() > 0, 5000);
+    QVERIFY2(volumes->lastError().contains(QStringLiteral("1 de 1")),
+             qPrintable(volumes->lastError()));
+    QCOMPARE(settledSpy.count(), 1);
+    QCOMPARE(settledSpy.first().at(1).toBool(), false);
 }
 
 void GuiTest::backendTheme()

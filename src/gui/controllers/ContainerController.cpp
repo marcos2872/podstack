@@ -362,10 +362,9 @@ void ContainerController::batchIds(const QStringList &ids, const QString &action
             QJsonObject result;
             result.insert(QStringLiteral("count"), ids.size());
             result.insert(QStringLiteral("failed"), failed);
+            result.insert(QStringLiteral("ok"), failed == 0);
             if (failed > 0) {
-                result.insert(QStringLiteral("error"), lastError);
-            } else {
-                result.insert(QStringLiteral("ok"), true);
+                result.insert(QStringLiteral("lastError"), lastError);
             }
             return result;
         },
@@ -508,21 +507,12 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
         emit lastErrorCodeChanged();
     };
 
-    // O lote devolve `count`/`failed` (o `error` do resultado é o último erro
-    // por item, não uma falha do método): trata antes do caminho genérico.
+    // O lote devolve `count`/`failed` (falha parcial não é falha do método):
+    // trata antes do caminho genérico para emitir o código de erro por item.
     if (method == QStringLiteral("containers.batch")) {
-        const int count = result.value(QStringLiteral("count")).toInt();
         const int failed = result.value(QStringLiteral("failed")).toInt();
+        const QString message = batchSummary(result);
         if (failed > 0) {
-            const QString detail = result.value(QStringLiteral("error"))
-                                       .toObject()
-                                       .value(QStringLiteral("message"))
-                                       .toString();
-            const QString message =
-                QStringLiteral("%1 de %2 containers falharam.%3")
-                    .arg(failed)
-                    .arg(count)
-                    .arg(detail.isEmpty() ? QString() : QLatin1Char(' ') + detail);
             setCode(QStringLiteral("PODSTACK_BATCH_PARTIAL"));
             setLastError(message);
             emit actionFailed(method, m_lastErrorCode, message);
