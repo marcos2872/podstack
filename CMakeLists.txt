@@ -42,10 +42,6 @@ endif()
 
 qt_standard_project_setup(REQUIRES 6.4)
 
-# Todos os módulos QML (PodStack, PodStack.Design, .Pages, .Features) saem em
-# build/qml/<URI>, o que permite qmllint e qmlls resolverem os imports.
-set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
-
 # Chave pública Ed25519 embutida no updater. Vazia mantém o default null em
 # Settings.cpp e permite configurar updates.publicKey em runtime.
 set(PODSTACK_UPDATE_PUBLIC_KEY "" CACHE STRING "Chave publica Ed25519 embutida no updater")

@@ -24,8 +24,10 @@ inline constexpr int kSshKeygenStartTimeoutMs = 5000;
 inline constexpr int kSshKeygenTimeoutMs = 30000;
 inline constexpr int kMaxProcessOutput = 4096;
 inline constexpr qint64 kMaxPublicKeyBytes = 64LL * 1024;
+// NOLINTBEGIN(bugprone-throwing-static-initialization)
 inline const QString kAavmfCodeArm64 = QStringLiteral("/usr/share/AAVMF/AAVMF_CODE.fd");
 inline const QString kAavmfVarsArm64 = QStringLiteral("/usr/share/AAVMF/AAVMF_VARS.fd");
+// NOLINTEND(bugprone-throwing-static-initialization)
 
 Error invalidParams(const QString &message, const QString &detail = {},
                     const QString &remediation = {});

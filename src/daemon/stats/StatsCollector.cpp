@@ -147,7 +147,7 @@ void StatsCollector::parseDiskStats(const QByteArray &data, quint64 *readBytes,
         if (fields.size() < 10) {
             continue;
         }
-        const QByteArray name = fields.at(2);
+        const QByteArray &name = fields.at(2);
         if (name.startsWith(QByteArrayLiteral("loop"))
             || name.startsWith(QByteArrayLiteral("ram"))) {
             continue;

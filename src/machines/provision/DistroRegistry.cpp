@@ -93,7 +93,7 @@ DistroImage DistroRegistry::resolve(const QString &spec, const QString &arch, Er
         return {};
     }
 
-    const QString distro = parts.first();
+    const QString &distro = parts.first();
     const QString requestedVersion = parts.size() == 2 ? parts.at(1) : QString();
     const QString requestedArch = arch.trimmed().toLower();
 

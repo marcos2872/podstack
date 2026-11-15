@@ -9,6 +9,7 @@ namespace PodStack {
 
 namespace {
 
+// NOLINTBEGIN(bugprone-throwing-static-initialization)
 const QStringList kCommonTerminals = {
     QStringLiteral("gnome-terminal"), QStringLiteral("kgx"),
     QStringLiteral("konsole"),        QStringLiteral("xfce4-terminal"),
@@ -16,6 +17,7 @@ const QStringList kCommonTerminals = {
     QStringLiteral("foot"),           QStringLiteral("wezterm"),
     QStringLiteral("xterm"),
 };
+// NOLINTEND(bugprone-throwing-static-initialization)
 
 QString resolveExecutable(const QString &candidate)
 {

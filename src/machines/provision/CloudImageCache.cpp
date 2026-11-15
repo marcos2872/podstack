@@ -20,7 +20,7 @@
 namespace PodStack {
 namespace {
 
-constexpr qint64 kHashChunkSize = 1024 * 1024;
+constexpr qint64 kHashChunkSize = 1024LL * 1024;
 constexpr int kLockTimeoutMs = 30000;
 
 QString safeComponent(const QString &value)

@@ -58,6 +58,7 @@ bool ControllerBase::isErrorResult(const QJsonObject &result)
 void ControllerBase::callRpc(const QString &method, const QJsonObject &params, Callback done,
                              int timeoutMs)
 {
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
     auto *watcher = new QFutureWatcher<QJsonObject>(this);
     connect(watcher, &QFutureWatcher<QJsonObject>::finished, this,
             [watcher, done = std::move(done)]() {
@@ -130,7 +131,8 @@ void ControllerBase::startAction(const PendingAction &action, Callback done)
     };
 
     if (action.job) {
-        auto *watcher = new QFutureWatcher<QJsonObject>(this);
+        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+    auto *watcher = new QFutureWatcher<QJsonObject>(this);
         connect(watcher, &QFutureWatcher<QJsonObject>::finished, this,
                 [watcher, finish = std::move(finish)]() {
                     const QJsonObject result = watcher->result();

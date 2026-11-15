@@ -173,9 +173,7 @@ bool RpcStream::run(const QString &method, const QJsonObject &params, const Even
             return false;
         }
 
-        if (socket.waitForReadyRead(waitMs)) {
-            buffer.append(socket.readAll());
-        } else if (socket.bytesAvailable() > 0) {
+        if (socket.waitForReadyRead(waitMs) || socket.bytesAvailable() > 0) {
             buffer.append(socket.readAll());
         }
     }

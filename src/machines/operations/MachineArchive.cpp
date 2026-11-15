@@ -26,14 +26,16 @@ namespace {
 constexpr int kChunkBytes = 256 * 1024;
 constexpr qint64 kMaxArtifactBytes = 1LL << 40; // 1 TiB por artefato
 constexpr qint64 kMaxTotalBytes = 2LL << 40;    // 2 TiB por pacote
-constexpr qint64 kMaxManifestBytes = 1024 * 1024;
+constexpr qint64 kMaxManifestBytes = 1024LL * 1024;
 constexpr int kMaxEntries = 8;
 
+// NOLINTBEGIN(bugprone-throwing-static-initialization)
 const QString kDiskName = QStringLiteral("disk.qcow2");
 const QString kSeedName = QStringLiteral("seed.iso");
 const QString kKeyName = QStringLiteral("id_ed25519");
 const QString kPublicKeyName = QStringLiteral("id_ed25519.pub");
 const QString kManifestName = QStringLiteral("manifest.json");
+// NOLINTEND(bugprone-throwing-static-initialization)
 
 bool fails(Error *error, const QString &code, const QString &message,
            const QString &detail = {})
@@ -614,8 +616,11 @@ bool MachineArchive::extract(const QString &archivePath, const QString &director
         sizes.insert(name, total);
 
         if (progress) {
-            progress(QStringLiteral("verify"),
-                     static_cast<int>(qMin(100, entryCount * 100 / expected.size())));
+            const qint64 percent =
+                expected.isEmpty()
+                    ? 0
+                    : static_cast<qint64>(entryCount) * 100 / expected.size();
+            progress(QStringLiteral("verify"), static_cast<int>(qMin<qint64>(100, percent)));
         }
     }
 
