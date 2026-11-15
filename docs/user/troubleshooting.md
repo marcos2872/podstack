@@ -48,6 +48,10 @@ Causas comuns:
 - O pacote foi instalado ou atualizado e o user manager ainda não recarregou as units:
   `systemctl --user daemon-reload`.
 - O socket está inativo: `systemctl --user start podstack.socket`.
+- O socket aceita conexões mas o processo está travado (o `podstackd` antigo não encerrou e o
+  socket fica respondendo sem daemon). Sintoma: `podstack doctor` reprova `daemon.socket` e a GUI
+  mostra **0 containers** com o engine cheio. Remédio:
+  `systemctl --user restart podstack.service` (ou `podstack doctor` para confirmar).
 - O daemon falhou ao iniciar: leia o journal. Se ele foi atualizado com a GUI/CLI ainda antiga,
   reinicie a sessão ou faça `systemctl --user restart podstack.service`.
 - Um `PODSTACK_CONTROL_SOCKET` aponta para outro caminho (útil em desenvolvimento):

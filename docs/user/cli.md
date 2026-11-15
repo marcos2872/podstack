@@ -27,7 +27,7 @@ podstack version
 |---|---|
 | `podstack version` | Mostra `PodStack 0.1.4`. |
 | `podstack status` | Estado do daemon e do Podman. Exit 7 quando o daemon não responde; exit 1 quando o status contém erro (por exemplo, engine indisponível). |
-| `podstack doctor` | Diagnóstico rápido: socket do daemon e socket do Podman. Exit 1 se algum check falhar. |
+| `podstack doctor` | Diagnóstico rápido: socket do daemon (precisa **responder**, não só aceitar conexão) e socket do Podman. Exit 1 se algum check falhar; exit 7 se o daemon/socket estiver indisponível. |
 | `podstack report [--include-logs] [--json]` | Gera um relatório redigido em `~/.local/state/podstack/reports/` (0600), com caminho e SHA-256. Revise antes de compartilhar. |
 | `podstack top [--once] [--interval S] [--json] [--plain]` | Monitora CPU/memória/containers. `--once` espera duas amostras para calcular taxas; sem `--once`, segue até `Ctrl+C`. |
 | `podstack update --check [--json] [--channel stable|beta]` | Consulta o manifesto assinado. Não instala nada. Exit 3 se houver versão nova; exit 1 se a checagem estiver indisponível. |
@@ -46,7 +46,7 @@ podstack update --install --yes --json
 
 | Comando | Flags | Notas |
 |---|---|---|
-| `podstack ps` | `--all`/`-a`, `--running`/`-r`, `--stopped`/`-s`, `--format table\|json`, `--quiet`/`-q` | Por padrão lista containers em execução; `--all` inclui parados. `--quiet` imprime só os nomes. |
+| `podstack ps` | `--all`/`-a`, `--running`/`-r`, `--stopped`/`-s`, `--format table\|json`, `--quiet`/`-q` | Por padrão lista containers em execução; `--all` inclui parados; `--stopped` mostra tudo que não está em execução (inclui `paused`/`created`), como as abas da GUI. `--quiet` imprime só os nomes. |
 | `podstack inspect <id\|nome>` | — | JSON bruto do container. |
 | `podstack exec <id\|nome> -- <cmd...>` | — | Execução one-shot; imprime stdout e devolve o exit code do comando do container. Para shell interativo, use a aba **Terminal** da GUI. |
 | `podstack pause <id\|nome>` | — | Pausa. |

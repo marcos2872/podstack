@@ -186,7 +186,7 @@ Regras de normalização:
 |---|---|---|
 | `containers.list` | `{all?, state?: "running"\|"stopped"\|"paused", filter?, limit?, offset?}` | `{items: Container[], total}` |
 | `containers.get` | `{id}` | `Container` |
-| `containers.create` | `{image, name?, command?, env?, ports?, mounts?, workDir?, user?, remove?, init?, privileged?, exposeLan?, start?}` | `{id, started, exposeLan}` |
+| `containers.create` | `{image, name?, command?, env?, ports?, mounts?, workDir?, user?, restartPolicy?, restartTries?, cpus?, memoryMb?, network?, labels?, remove?, init?, privileged?, readOnly?, exposeLan?, start?}` | `{id, started, exposeLan}` |
 | `containers.exposeLan` | `{id, expose:bool}` | `{id, expose, ports:[string]}` |
 | `containers.duplicate` | `{id, name?}` | `{id, source, started}` |
 | `containers.start` | `{id}` | `{id, ok:true}` |
@@ -199,8 +199,8 @@ Regras de normalização:
 | `containers.checkpoint` | `{id, leaveRunning?, tcpEstablished?}` | `{id, ok:true}` (CRIU) |
 | `containers.restore` | `{id, tcpEstablished?}` | `{id, ok:true}` (CRIU) |
 | `containers.inspect` | `{id}` | `{id, json: object}` |
-| `containers.top` | `{id}` | `{titles:[], processes:[][]}` |
-| `containers.changes` | `{id}` | `{changes:[{path,kind}]}` |
+| `containers.top` | `{id}` | `{id, titles:[], processes:[][]}` |
+| `containers.changes` | `{id}` | `{id, changes:[{path,kind}]}` |
 | `containers.logs.subscribe` | `{id, tail?, follow?, timestamps?, since?}` | `Subscription` |
 | `containers.logs.unsubscribe` | `{subscriptionId}` | `{}` |
 | `containers.stats.subscribe` | `{ids?, intervalSeconds?}` | `Subscription` |
@@ -213,13 +213,27 @@ Regras de normalização:
 | `containers.files.list` | `{id, path}` | `{path, entries:[{name,size,directory,mode,modified}]}` |
 | `containers.files.download` | `{id, path, destination}` | `{path, destination}` |
 | `containers.files.upload` | `{id, path, sourcePath}` | `{path, sourcePath, ok:true}` |
-| `containers.export` | `{id, path}` | `JobRef` |
-| `containers.commit` | `{id, repo, tag?, message?}` | `{imageId}` |
+| `containers.export` | `{id, path}` | `{id, path, size}` (tar síncrono, até 600 s) |
+| `containers.commit` | `{id, repo, tag?, message?}` | `{id, imageId}` |
+
+> **Validação do `containers.create`:** a imagem precisa existir localmente
+> (`PODSTACK_IMAGE_NOT_FOUND` com a referência em `detail`; o pull é uma ação
+> separada, `images.pull`). Nome fora de `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$` (até 255),
+> porta fora de 1–65535, `hostPort`+protocolo repetido e mount com origem relativa,
+> inexistente ou com `..` retornam `PODSTACK_INVALID_PARAMS`. Nome já usado retorna
+> `PODSTACK_CONFLICT` com um nome livre sugerido em `remediation`.
+> `restartPolicy` aceita `no`, `always`, `unless-stopped` e `on-failure` (`restartTries`
+> só vale para `on-failure`); `cpus` é decimal (1.5 = 1,5 CPU) e `memoryMb` é inteiro
+> em MB. `readOnly` mapeia para `read_only_filesystem` e `network` para `networks`.
 
 > `containers.create` e `containers.duplicate` aplicam `network.proxy`/`network.proxyExclude`
 > ao `env` do novo container, sem sobrescrever chaves definidas explicitamente pelo usuário
 > (ou herdadas do container duplicado). A configuração é lida na criação; containers
 > existentes exigem recriação. Ver [`settings.md`](settings.md).
+
+> `containers.list` com `state=stopped` devolve tudo que **não** está em execução
+> (inclui `paused`, `created`, `dead` e `restarting`), igual às abas da GUI;
+> `state=paused` filtra só pausados. `filter` casa com nome, imagem e ID.
 
 > **Portas e LAN:** sem `exposeLan`, cada `ports[]` sem `hostIp` explícito usa
 > `hostIp=127.0.0.1`; com `exposeLan:true`, o daemon força `hostIp=0.0.0.0` e chama
@@ -976,9 +990,10 @@ EOF
   "params": {
     "image":"docker.io/library/nginx:alpine",
     "name":"web",
-    "ports":[{"host":8080,"container":80,"protocol":"tcp"}],
+    "ports":[{"hostIp":"127.0.0.1","hostPort":8080,"containerPort":80,"protocol":"tcp"}],
     "env":{"NGINX_HOST":"localhost"},
-    "flags":{"rm":true}
+    "remove":true,
+    "restartPolicy":"unless-stopped"
   }
 }
 ```

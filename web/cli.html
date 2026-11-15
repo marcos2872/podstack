@@ -400,10 +400,12 @@ e permanece ativo até o fim da sessão.</p>
 <p>A instalação habilita <strong>e inicia</strong> o <code>podstack.socket</code> para os usuários com
 sessão aberta. Se ele estiver parado (instalação sem sessão, upgrade, <code>systemctl --user stop</code>),
 a GUI e o CLI executam <code>daemon-reload</code> + <code>start</code> na primeira conexão — inclusive
-streams de logs/stats — e a GUI oferece o botão <strong>Ativar serviço</strong> no banner de erro.
+streams de logs/stats — e a GUI oferece o botão <strong>Reiniciar daemon</strong> no banner de erro
+(um daemon travado, que aceita conexões e não responde, só sai com <code>restart</code>).
 Os comandos abaixo são o fallback manual:</p>
 <pre data-lang="bash" tabindex="0"><code>systemctl --user daemon-reload
 systemctl --user start podstack.socket
+systemctl --user restart podstack.service   # daemon travado (socket mudo)
 systemctl --user status podstack.socket
 podstack status
 podstack doctor</code></pre>
