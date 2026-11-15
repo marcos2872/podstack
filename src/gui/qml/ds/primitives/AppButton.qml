@@ -17,8 +17,26 @@ Button {
     property bool busy: false
     property string busyText: ""
 
+    /// Dica de interface para botões só de ícone. Vira também nome acessível
+    /// quando a tela não define `Accessible.name`.
+    property string tooltip: ""
+
     readonly property bool interactive: enabled && !busy
     readonly property string shownText: busy && busyText.length > 0 ? busyText : text
+    readonly property string accessibleLabel: text.length > 0
+                                              ? text
+                                              : (tooltip.length > 0 ? tooltip : iconName)
+    readonly property string tooltipText: tooltip.length > 0
+                                          ? tooltip
+                                          : (iconOnly ? accessibleLabel : "")
+
+    // Botões de ícone sem rótulo explícito ficavam sem nome acessível e sem dica.
+    Accessible.name: control.accessibleLabel
+    Accessible.role: Accessible.Button
+    Accessible.description: control.tooltip
+    ToolTip.visible: control.hovered && control.tooltipText.length > 0
+    ToolTip.text: control.tooltipText
+    ToolTip.delay: 700
 
     // Compatibilidade com chamadas antigas (accentColor). Se definido,
     // o botão vira um "soft" na cor indicada.

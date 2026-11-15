@@ -7,6 +7,8 @@ TestCase {
     name: "DesignSystem"
 
     Component { id: buttonComponent; AppButton { text: "OK" } }
+    Component { id: iconButtonComponent; AppButton { iconName: "trash" } }
+    Component { id: tooltipButtonComponent; AppButton { iconName: "trash"; tooltip: "Remover" } }
     Component { id: modalComponent; AppModal { title: "Título" } }
     Component { id: tabsComponent; AppTabs { model: ["A", "B"] } }
     Component { id: confirmComponent; AppConfirmDialog { message: "Remover?" } }
@@ -24,6 +26,21 @@ TestCase {
         compare(button.text, "OK")
         compare(button.variant, "secondary")
         compare(button.size, "md")
+    }
+
+    function test_buttonAccessibility() {
+        const plain = createTemporaryObject(buttonComponent, null)
+        compare(plain.Accessible.name, "OK")
+
+        // Ícone sem rótulo: o nome acessível cai no ícone, e a dica aparece.
+        const iconButton = createTemporaryObject(iconButtonComponent, null)
+        compare(iconButton.Accessible.name, "trash")
+        compare(iconButton.tooltipText, "trash")
+
+        // Tooltip explícito vira o nome acessível.
+        const withTooltip = createTemporaryObject(tooltipButtonComponent, null)
+        compare(withTooltip.Accessible.name, "Remover")
+        compare(withTooltip.tooltipText, "Remover")
     }
 
     function test_modalHeader() {
@@ -48,8 +65,7 @@ TestCase {
         compare(dialog.destructive, false)
     }
 
-    function test_modalAsyncAction() {
-        const modal = createTemporaryObject(modalComponent, null)
+    function test_modalAsyncAction() {        const modal = createTemporaryObject(modalComponent, null)
         verify(modal !== null)
         // Sem controller a ação é local: runAction fecha na hora.
         compare(modal.busy, false)

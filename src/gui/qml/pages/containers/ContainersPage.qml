@@ -687,13 +687,13 @@ Item {
 
                                     RowLayout {
                                         spacing: 4
-                                        opacity: containerRow.hovered || containersPage.selectedIds[modelData.id]
-                                                 ? 1 : 0
-                                        visible: opacity > 0
-
-                                        Behavior on opacity {
-                                            NumberAnimation { duration: Theme.duration }
-                                        }
+                                        // Ações da linha aparecem no hover, na
+                                        // seleção e na linha atual: antes só no
+                                        // hover, o que as tirava do foco por
+                                        // teclado.
+                                        visible: containerRow.hovered
+                                                 || containersPage.selectedIds[modelData.id]
+                                                 || index === containerList.currentIndex
 
                                         AppButton {
                                             size: "sm"
