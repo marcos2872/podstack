@@ -224,7 +224,8 @@ Regras de normalização:
 > `PODSTACK_CONFLICT` com um nome livre sugerido em `remediation`.
 > `restartPolicy` aceita `no`, `always`, `unless-stopped` e `on-failure` (`restartTries`
 > só vale para `on-failure`); `cpus` é decimal (1.5 = 1,5 CPU) e `memoryMb` é inteiro
-> em MB. `readOnly` mapeia para `read_only_filesystem` e `network` para `networks`.
+> em MB. `readOnly` mapeia para `read_only_filesystem`; `network` envia `netns.mode=bridge`
+> + `networks` (o Podman recusa `networks` sem o modo bridge explícito).
 
 > `containers.create` e `containers.duplicate` aplicam `network.proxy`/`network.proxyExclude`
 > ao `env` do novo container, sem sobrescrever chaves definidas explicitamente pelo usuário

@@ -201,6 +201,10 @@ QJsonObject ContainerCreateSpec::toJson() const
         }
     }
     if (!network.isEmpty()) {
+        // O Podman recusa `networks` sem modo bridge explícito
+        // ("networks and static ip/mac address can only be used with Bridge mode").
+        object.insert(QStringLiteral("netns"),
+                      QJsonObject{{QStringLiteral("nsmode"), QStringLiteral("bridge")}});
         object.insert(QStringLiteral("networks"), QJsonObject{{network, QJsonObject{}}});
     }
     if (cpusMilli > 0 || memoryBytes > 0) {

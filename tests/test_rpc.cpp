@@ -864,6 +864,9 @@ void RpcTest::containerCreateValidation()
     QCOMPARE(body.value(QStringLiteral("read_only_filesystem")).toBool(), true);
     QVERIFY(body.value(QStringLiteral("networks")).toObject().contains(QStringLiteral("podman")));
     QCOMPARE(
+        body.value(QStringLiteral("netns")).toObject().value(QStringLiteral("nsmode")).toString(),
+        QStringLiteral("bridge"));
+    QCOMPARE(
         body.value(QStringLiteral("labels")).toObject().value(QStringLiteral("time")).toString(),
         QStringLiteral("dev"));
     QCOMPARE(body.value(QStringLiteral("resource_limits"))
