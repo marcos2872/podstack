@@ -11,6 +11,10 @@
 #   - daemon em background, socket com modo 0600;
 #   - `podstack status` e `podstack doctor`.
 #
+# A ativação automática do `podstack.socket` (`is-active`) só é validada
+# quando existe user manager do systemd (systemd como PID 1); no container
+# descartável do smoke o socket é iniciado manualmente.
+#
 # NÃO cobre: GUI (sem display), KVM (sem /dev/kvm), polkit real (sem systemd
 # como PID 1), engine Podman de verdade (o serviço local é só para o smoke) e
 # upgrade a partir de uma versão anterior.
@@ -133,6 +137,23 @@ appstreamcli validate --no-net /usr/share/metainfo/dev.podstack.PodStack.metainf
 echo
 echo "== Versão =="
 podstack --version
+
+echo
+echo "== Ativação do socket (systemd de usuário) =="
+# Só há user manager quando o systemd é o PID 1 (host real ou container
+# privilegiado). No container do smoke ele não existe: o socket é iniciado
+# manualmente abaixo e a ativação automática fica para o próximo login.
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    if systemctl --user is-active --quiet podstack.socket; then
+        echo "[ok]    podstack.socket ativo após a instalação"
+    else
+        echo "[falha] podstack.socket inativo após a instalação (esperado active)" >&2
+        systemctl --user status podstack.socket --no-pager >&2 || true
+        fail=1
+    fi
+else
+    echo "[aviso] sem user manager do systemd; ativação fica para o próximo login"
+fi
 
 echo
 echo "== Daemon e socket =="
