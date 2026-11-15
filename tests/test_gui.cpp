@@ -62,6 +62,7 @@ private slots:
     void backendMachineFiles();
     void backendTerminal();
     void backendM3();
+    void backendBuildCancelIdle();
     void backendErrors();
     void backendInvalidArguments();
     void backendOperations();
@@ -1340,6 +1341,19 @@ void GuiTest::backendTerminal()
     QVERIFY(backend.machines()->lastError().contains(QStringLiteral("não encontrada")));
     // O caminho de erro não abre sessão; o sucesso visual do QTermWidget é manual.
     QCOMPARE(terminalSpy.count(), 0);
+}
+
+void GuiTest::backendBuildCancelIdle()
+{
+    PodStack::Backend backend;
+    auto *builds = backend.builds();
+
+    // Sem build em andamento, cancelar é no-op: não pode mentir "Cancelando"
+    // nem deixar o botão preso (regressão do botão que ficava travado).
+    QVERIFY(!builds->buildActive());
+    builds->cancelBuild();
+    QVERIFY(!builds->buildActive());
+    QVERIFY(!builds->buildStatus().contains(QStringLiteral("Cancelando")));
 }
 
 void GuiTest::backendM3()

@@ -39,8 +39,13 @@ protected:
                           const QJsonObject &result) override;
 
 private:
+    /// `builds.cancel` precisa do id, que só chega em `subscriptionReady`;
+    /// guardar o pedido evita cancelamento silenciosamente perdido.
+    void requestBuildCancel();
+
     QStringList m_logLines;
     bool m_buildActive = false;
+    bool m_cancelRequested = false;
     QString m_buildStatus;
     QString m_activeBuildId;
     StreamClient m_stream;
