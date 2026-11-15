@@ -5,7 +5,7 @@
 | Status | **Aceito** (2026-11-12) |
 | Data | 2026-11-12 |
 | Decisores | Produto, Arquitetura |
-| Relacionados | ADR-0005, `packaging.md`, `PRD.md` (NFR-COMP-001) |
+| Relacionados | ADR-0005, [`packaging.md`](../engineering/packaging.md) |
 
 ## Contexto
 

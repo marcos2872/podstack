@@ -5,7 +5,7 @@
 | Status | Aceito |
 | Data | 2026-11-08 |
 | Decisores | Arquitetura, Segurança |
-| Relacionados | `plan.md`, `security.md`, ADR-0006 |
+| Relacionados | [`security.md`](../engineering/security.md), ADR-0006 |
 
 ## Contexto
 

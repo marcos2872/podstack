@@ -5,7 +5,7 @@
 | Status | Aceito |
 | Data | 2026-11-08 |
 | Decisores | Arquitetura |
-| Relacionados | `plan.md`, `spec.md`, `security.md` |
+| Relacionados | [`architecture.md`](../engineering/architecture.md), [`security.md`](../engineering/security.md) |
 
 ## Contexto
 

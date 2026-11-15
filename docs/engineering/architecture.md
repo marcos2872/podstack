@@ -1,6 +1,6 @@
 # Arquitetura — PodStack
 
-> Visão técnica detalhada. Complementa [`plan.md`](../sdd/plan.md) e os ADRs.
+> Visão técnica detalhada. Complementa os ADRs em [`../adr/`](../adr/).
 
 ---
 

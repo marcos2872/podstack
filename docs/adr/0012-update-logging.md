@@ -5,7 +5,7 @@
 | Status | Aceito |
 | Data | 2026-11-13 |
 | Decisores | Arquitetura |
-| Relacionados | `spec.md §15`, `plan.md §15`, `PRD.md §7.17/§7.19/§8.7/§8.8`, TX-15/TX-16, [`specs/002-update-seguro-logs-debug/`](../specs/002-update-seguro-logs-debug/) |
+| Relacionados | [`packaging.md`](../engineering/packaging.md), [`settings.md`](../engineering/settings.md), [`api-rpc.md`](../engineering/api-rpc.md) |
 
 ## Contexto
 
@@ -95,4 +95,4 @@ ocupam até 200 MB; o formato JSONL e os nomes de arquivo passam a ser contrato 
 - `packaging/systemd/podstack.service`, `packaging/systemd-system/podstack-helper.service`,
   `packaging/selinux/*`, `scripts/build-{deb,rpm}.sh` e `scripts/clean-install-check.sh`.
 - Testes: `test_logging`, `test_update_runner`, `test_helper_update`, `test_cli` (golden exit
-  codes) e scriptlets em container; matriz E2E em [`testing.md`](../sdd/testing.md) §16.
+  codes) e scriptlets em container.

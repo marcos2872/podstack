@@ -1,7 +1,7 @@
 pragma Singleton
 import QtQuick
 
-// Design tokens do PodStack (ver poc/ui/DESIGN-SYSTEM.md).
+// Design tokens do PodStack.
 // Singleton: `Theme.dark` alterna o tema em toda a UI de forma reativa.
 QtObject {
     id: root

@@ -5,7 +5,7 @@
 | Status | Aceito |
 | Data | 2026-11-08 |
 | Decisores | Arquitetura |
-| Relacionados | `plan.md`, `ui-map.md §9`, T7-03/T7-04/T7-05 |
+| Relacionados | [`ui-map.md`](../engineering/ui-map.md) |
 
 ## Contexto
 

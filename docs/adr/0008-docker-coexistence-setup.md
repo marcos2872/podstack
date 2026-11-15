@@ -5,7 +5,7 @@
 | Status | Aceito |
 | Data | 2026-11-08 |
 | Decisores | Arquitetura, Produto, Segurança |
-| Relacionados | ADR-0002, ADR-0004, `PRD.md` §7.18, `spec.md` §2.6, `poc/ui/ONBOARDING.md` |
+| Relacionados | ADR-0002, ADR-0004, [`security.md`](../engineering/security.md) |
 
 ## Contexto
 
@@ -61,9 +61,5 @@ Opções consideradas:
 
 ## Referências
 
-- [`PRD.md`](../sdd/PRD.md) §2.4 e §7.18
-- [`spec.md`](../sdd/spec.md) §2.6
 - [`security.md`](../engineering/security.md) §4.2 e §4.4
 - [`settings.md`](../engineering/settings.md) §2.11
-- [`poc/ui/ONBOARDING.md`](../../poc/ui/ONBOARDING.md)
-- [`poc/ui/FLOWS.md`](../../poc/ui/FLOWS.md) §12.3

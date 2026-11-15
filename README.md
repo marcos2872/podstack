@@ -21,10 +21,10 @@
   Alternativa Linux ao OrbStack, com Qt 6/QML, daemon de usuário e CLI scriptable.
 </p>
 
-> **Status:** **M4 validado em VM real e M5 concluído no código** — machines QEMU/KVM (ciclo de vida, SSH/arquivos, virtiofs, export/import, clone/rename/default, recursos, portas, agent forwarding, modo isolado, console serial e snapshots), sobre o M3 (Compose e builds), o M2 (imagens, volumes, redes e pods) e o M1 (containers, logs, stats, files, terminal, batch, health e rootful). **Pré-M5** entregue com multi-seleção em todas as listas, testes QML reais e gates de `clang-format`/`clang-tidy`. **15 testes**, cobertura **~80%** com gate bloqueante de **80%** (ver [`docs/sdd/testing.md`](docs/sdd/testing.md)). **M5 (Kubernetes/k3s) concluído no código** (VM dedicada, kubeconfig isolado, Pods/Services, logs, port-forward, enable/disable/reset e contexto). **M6 iniciado** com a T6-01: `*.localhost` via proxy HTTP do daemon em loopback (`network.httpPort`), sem root e sem `/etc/hosts`.
-> **Ressalvas:** console serial sem VNC; export/clone não preservam snapshots internos do qcow2; a instalação limpa tem smoke automatizado em container Fedora 44 (`scripts/clean-install-check.sh`), mas a validação da GUI, do KVM e do polkit em máquina limpa segue manual (T7-07/T7-14). Histórico de versões em [`CHANGELOG.md`](CHANGELOG.md) e guias em [`docs/user/`](docs/user/README.md).
+> **Status:** **M8 concluído no código** — containers, imagens, volumes, redes, pods, Compose, builds, machines QEMU/KVM, Kubernetes (k3s), domínios `*.localhost`/`*.podstack.local` com HTTPS, bandeja, settings, updates assinados e onboarding. **15 testes**, cobertura **~80%** com gate bloqueante de **80%**.
+> **Ressalvas:** console serial sem VNC; export/clone não preservam snapshots internos do qcow2; a instalação limpa tem smoke automatizado em container Fedora 44 (`scripts/clean-install-check.sh`), mas a validação da GUI, do KVM e do polkit em máquina limpa segue manual. Histórico de versões em [`CHANGELOG.md`](CHANGELOG.md) e guias em [`docs/user/`](docs/user/README.md).
 > **Plataforma:** Linux desktop — Fedora 43+ (Podman ≥ 5.8, Qt ≥ 6.10) e Ubuntu 24.04+ (Podman ≥ 4.9, Qt ≥ 6.4; DEB), Wayland/X11.
-> **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado (ver [`docs/sdd/constitution.md`](docs/sdd/constitution.md)).
+> **Identidade:** projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado.
 
 ---
 
@@ -47,45 +47,24 @@ O PodStack reúne, em uma única experiência desktop:
 
 ## Documentação
 
-A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Development)**: constituição → PRD → spec → plan → tasks.
-
-### Núcleo SDD
-
 | Documento | O que responde |
 |---|---|
-| [`docs/README.md`](docs/README.md) | Índice geral, convenções e mapa SDD |
-| [`docs/sdd/constitution.md`](docs/sdd/constitution.md) | Princípios inegociáveis (clean-room, rootless, segurança, qualidade) |
-| [`docs/sdd/PRD.md`](docs/sdd/PRD.md) | PRD completo: problema, personas, 127 requisitos funcionais, 32 NFRs, métricas, riscos e critérios de release |
-| [`docs/sdd/spec.md`](docs/sdd/spec.md) | Comportamento detalhado, fluxos, máquinas de estado e casos de borda |
-| [`docs/sdd/plan.md`](docs/sdd/plan.md) | Plano técnico: stack, componentes, concorrência, persistência e riscos |
-| [`docs/sdd/tasks.md`](docs/sdd/tasks.md) | 133 tarefas em M0–M8, com dependências e definição de pronto |
-| [`docs/sdd/testing.md`](docs/sdd/testing.md) | Pirâmide de testes, matriz de compatibilidade, CI e performance |
-
-### Usuário
-
-| Documento | O que responde |
-|---|---|
-| [`docs/user/README.md`](docs/user/README.md) | Índice da documentação de usuário e limitações conhecidas do 0.1.3 |
+| [`docs/README.md`](docs/README.md) | Índice da documentação, convenções e estrutura de `docs/` |
+| [`docs/engineering/architecture.md`](docs/engineering/architecture.md) | Componentes, sequências (exec, logs, machines, domínios, K8s), threads e erros |
+| [`docs/engineering/api-rpc.md`](docs/engineering/api-rpc.md) | Contrato JSON-RPC completo do `podstackd` |
+| [`docs/engineering/ui-map.md`](docs/engineering/ui-map.md) | Telas, sidebar, inspector, componentes QML, design tokens e atalhos |
+| [`docs/engineering/settings.md`](docs/engineering/settings.md) | Todas as chaves, defaults, validação e migração |
+| [`docs/engineering/security.md`](docs/engineering/security.md) | Threat model, helper/polkit, socket, segredos e SELinux |
+| [`docs/engineering/packaging.md`](docs/engineering/packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
+| [`docs/engineering/cli-parity.md`](docs/engineering/cli-parity.md) | Mapa `orb` → `podstack`, flags, exit codes e exemplos |
+| [`docs/engineering/data-model.md`](docs/engineering/data-model.md) | Entidades, esquema SQLite, `config.json`, `meta.json` e migrações |
+| [`docs/engineering/branding.md`](docs/engineering/branding.md) | Logo, paleta, tipografia e regras de uso dos assets |
+| [`docs/user/README.md`](docs/user/README.md) | Índice da documentação de usuário e limitações conhecidas |
 | [`docs/user/install.md`](docs/user/install.md) | Requisitos, instalação por RPM/DEB, build do fonte, primeiro start, setup, helper/polkit e desinstalação |
 | [`docs/user/quickstart.md`](docs/user/quickstart.md) | Primeiro container, machine com SSH, Kubernetes, domínios `*.localhost`, HTTPS/CA, bandeja e atalhos |
 | [`docs/user/cli.md`](docs/user/cli.md) | Comandos e flags reais do `podstack`, saída JSON, exit codes e exemplos |
 | [`docs/user/troubleshooting.md`](docs/user/troubleshooting.md) | Diagnóstico de daemon, Podman, helper, KVM, SSH, portas, firewall, CA, DNS e erros `PODSTACK_*` |
-
-### Engenharia e produto
-
-| Documento | Conteúdo |
-|---|---|
-| [`docs/engineering/architecture.md`](docs/engineering/architecture.md) | C4, sequências (exec, logs, machines, domínios, K8s), threads e erros |
-| [`docs/engineering/data-model.md`](docs/engineering/data-model.md) | Entidades, esquema SQLite, `config.json`, `meta.json` e migrações |
-| [`docs/engineering/api-rpc.md`](docs/engineering/api-rpc.md) | Contrato JSON-RPC completo do `podstackd` |
-| [`docs/engineering/ui-map.md`](docs/engineering/ui-map.md) | Telas, sidebar, inspector, componentes QML, design tokens e atalhos |
-| [`docs/engineering/branding.md`](docs/engineering/branding.md) | Logo, paleta, tipografia e regras de uso dos assets |
-| [`docs/engineering/cli-parity.md`](docs/engineering/cli-parity.md) | Mapa `orb` → `podstack`, flags, exit codes e exemplos |
-| [`docs/engineering/settings.md`](docs/engineering/settings.md) | Todas as chaves, defaults, validação e migração |
-| [`docs/engineering/security.md`](docs/engineering/security.md) | Threat model, helper/polkit, socket, segredos e SELinux |
-| [`docs/engineering/packaging.md`](docs/engineering/packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
-| [`docs/sdd/roadmap.md`](docs/sdd/roadmap.md) | Marcos, estimativas, caminho crítico e versões |
-| [`CHANGELOG.md`](CHANGELOG.md) | Histórico de versões, mudanças e limitações conhecidas do 0.1.3 |
+| [`CHANGELOG.md`](CHANGELOG.md) | Histórico de versões, mudanças e limitações conhecidas |
 
 ### Decisões arquiteturais (ADRs)
 
@@ -98,17 +77,10 @@ A documentação é a **fonte de verdade** e segue **SDD (Spec-Driven Developmen
 | [`0005 — Terminal`](docs/adr/0005-terminal-backend.md) | QTermWidget (GPL-2.0-or-later, compatível com GPL-3.0-or-later) |
 | [`0006 — RPM primeiro`](docs/adr/0006-rpm-first.md) | RPM como formato primário |
 | [`0007 — Compose`](docs/adr/0007-compose-provider.md) | Provider Docker Compose + estado por labels |
-
-### Referência (baseline OrbStack 2.2.5)
-
-| Documento | Conteúdo |
-|---|---|
-| [`docs/reference/orbstack-2.2.5.md`](docs/reference/orbstack-2.2.5.md) | Inventário estático do DMG: arquitetura, UI, CLI e settings |
-| [`docs/reference/orbstack-2.2.5-official-notes.md`](docs/reference/orbstack-2.2.5-official-notes.md) | Correções e detalhes da documentação oficial |
-| [`docs/reference/cli-tree.json`](docs/reference/cli-tree.json) | Árvore completa do CLI (51 nós, flags) |
-| [`docs/reference/cli-tree.md`](docs/reference/cli-tree.md) | Versão legível da árvore |
-| [`docs/reference/swift-files.txt`](docs/reference/swift-files.txt) | 29 arquivos de tela/modelo Swift identificados |
-| [`docs/reference/settings-keys.txt`](docs/reference/settings-keys.txt) | Chaves de settings observadas |
+| [`0008 — Coexistência com Docker`](docs/adr/0008-docker-coexistence-setup.md) | Docker e Podman coexistem; remoção opt-in |
+| [`0009 — Bandeja SNI`](docs/adr/0009-tray-sni-lifecycle.md) | Bandeja, fechar-para-bandeja e instância única |
+| [`0010 — DEB Ubuntu`](docs/adr/0010-deb-ubuntu-qtermwidget-vendorizado.md) | QTermWidget vendorizado no DEB |
+| [`0012 — Update e logs`](docs/adr/0012-update-logging.md) | Update assinado e logs de debug com retenção |
 
 ---
 
@@ -157,26 +129,21 @@ Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`. Regras de uso, tam
 │   │   ├── podstack-icon-{16,24,32,48,64,128,256,512}.png
 │   │   └── tray/
 │   └── logo.md
-├── docs/                  # especificação, PRD, arquitetura, ADRs e referência
+├── docs/                  # engenharia, ADRs e documentação de usuário
     ├── README.md
-    ├── constitution.md
-    ├── PRD.md
-    ├── spec.md
-    ├── plan.md
-    ├── tasks.md
-    ├── architecture.md
-    ├── data-model.md
-    ├── api-rpc.md
-    ├── ui-map.md
-    ├── branding.md
-    ├── cli-parity.md
-    ├── settings.md
-    ├── security.md
-    ├── testing.md
-    ├── packaging.md
-    ├── roadmap.md
+    ├── engineering/
+    │   ├── architecture.md
+    │   ├── data-model.md
+    │   ├── api-rpc.md
+    │   ├── ui-map.md
+    │   ├── branding.md
+    │   ├── cli-parity.md
+    │   ├── settings.md
+    │   ├── security.md
+    │   ├── packaging.md
+    │   └── web.md
     ├── adr/
-    └── reference/
+    └── user/
 ├── CMakeLists.txt
 ├── CMakePresets.json
 ├── src/
@@ -206,8 +173,6 @@ Paleta: índigo `#3730A3`, acento `#6366F1`, ciano `#22D3EE`. Regras de uso, tam
 | **M6** | Domínios, HTTPS, port forwarding |
 | **M7** | Tray, settings, updates, v1.0 |
 | **M8** | USB/serial, X11/áudio, migração (pós-v1) |
-
-Detalhes e critérios de saída em [`docs/sdd/roadmap.md`](docs/sdd/roadmap.md).
 
 ---
 
@@ -277,7 +242,7 @@ O CLI também pode ser usado separadamente:
 ./build/dev/podstack exec <container> -- /bin/echo hello
 ```
 
-Leia [`AGENTS.md`](AGENTS.md) antes de contribuir. Ele define ordem de leitura, regras de clean-room, convenções de código, fluxo de tarefas e critérios de verificação.
+Leia [`AGENTS.md`](AGENTS.md) antes de contribuir. Ele define regras de clean-room, arquitetura, build, convenções de código, segurança e critérios de verificação.
 
 ---
 

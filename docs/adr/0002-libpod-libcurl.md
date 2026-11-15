@@ -5,7 +5,7 @@
 | Status | Aceito |
 | Data | 2026-11-08 |
 | Decisores | Arquitetura |
-| Relacionados | ADR-0001, `plan.md` |
+| Relacionados | ADR-0001, [`architecture.md`](../engineering/architecture.md) |
 
 ## Contexto
 

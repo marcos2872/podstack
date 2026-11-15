@@ -5,7 +5,7 @@
 | Status | Aceito |
 | Data | 2026-11-08 |
 | Decisores | Arquitetura |
-| Relacionados | ADR-0002, `spec.md` |
+| Relacionados | ADR-0002, [`architecture.md`](../engineering/architecture.md) |
 
 ## Contexto
 
