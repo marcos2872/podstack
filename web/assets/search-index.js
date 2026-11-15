@@ -35,8 +35,8 @@ window.PODSTACK_SEARCH = [
   {
     "title": "Instalação",
     "url": "install.html",
-    "description": "Instale o PodStack no Fedora ou Ubuntu, configure o daemon de usuário e conclua o setup em 7 etapas.",
-    "keys": "Instalação Instale o PodStack no Fedora ou Ubuntu, configure o daemon de usuário e conclua o setup em 7 etapas. Requisitos Instalar o pacote Fedora (RPM) Ubuntu (DEB) Build a partir do código Primeiro start Setup em 7 etapas Helper e polkit Verificar a instalação Atualizar e desinstalar Atualizar Desinstalar Limitações de instalação",
+    "description": "Instale o PodStack no Fedora ou Ubuntu, deixe o daemon de usuário subir sozinho e conclua o setup em 7 etapas.",
+    "keys": "Instalação Instale o PodStack no Fedora ou Ubuntu, deixe o daemon de usuário subir sozinho e conclua o setup em 7 etapas. Requisitos Instalar o pacote Fedora (RPM) Ubuntu (DEB) Build a partir do código Primeiro start Setup em 7 etapas Helper e polkit Verificar a instalação Atualizar e desinstalar Atualizar Desinstalar Limitações de instalação",
     "headings": [
       {
         "title": "Requisitos",

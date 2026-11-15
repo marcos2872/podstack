@@ -397,6 +397,11 @@ como <code>--machine</code> ou <code>--format</code>; cada comando tem as suas. 
 <code>0700</code> e socket <code>0600</code>. Não há TCP; o daemon roda com o seu usuário. O
 <code>podstack.service</code> não é habilitado no boot: ele é ativado na primeira conexão ao socket
 e permanece ativo até o fim da sessão.</p>
+<p>A instalação habilita <strong>e inicia</strong> o <code>podstack.socket</code> para os usuários com
+sessão aberta. Se ele estiver parado (instalação sem sessão, upgrade, <code>systemctl --user stop</code>),
+a GUI e o CLI executam <code>daemon-reload</code> + <code>start</code> na primeira conexão — inclusive
+streams de logs/stats — e a GUI oferece o botão <strong>Ativar serviço</strong> no banner de erro.
+Os comandos abaixo são o fallback manual:</p>
 <pre data-lang="bash" tabindex="0"><code>systemctl --user daemon-reload
 systemctl --user start podstack.socket
 systemctl --user status podstack.socket
@@ -420,7 +425,7 @@ PODSTACK_CONTROL_SOCKET=/tmp/podstack-dev.sock ./build/dev/podstackd --socket /t
 </tr>
 <tr>
 <td><code>podstack doctor</code></td>
-<td>Diagnóstico rápido do socket do daemon e do socket do Podman. Exit 1 se algum check falhar.</td>
+<td>Diagnóstico rápido. O socket do daemon é checado no cliente (tenta reativar e mostra a remediação), junto do socket do Podman. Exit 1 se algum check falhar; exit 7 se o daemon continuar indisponível.</td>
 </tr>
 <tr>
 <td><code>podstack report [--include-logs] [--json]</code></td>

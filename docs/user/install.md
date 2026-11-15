@@ -52,8 +52,9 @@ Se você configurou um repositório do PodStack, o pacote pode ser instalado por
 sudo dnf install podstack
 ```
 
-O `%post` do pacote habilita `podstack.socket` globalmente para os usuários. O daemon continua
-subindo sob demanda, na primeira conexão da GUI ou do CLI.
+O `%post` do pacote habilita **e inicia** `podstack.socket` para os usuários com sessão aberta (a
+instalação não falha se não houver sessão detectável). O daemon continua subindo sob demanda, na
+primeira conexão da GUI ou do CLI.
 
 Para gerar o RPM a partir do código:
 
@@ -90,8 +91,8 @@ sudo apt install ./podstack_0.1.4_amd64.deb
 ```
 
 O pacote inclui o binário, as units do helper e os dados do terminal em
-`/usr/share/podstack/qtermwidget6`. O `postinst` habilita `podstack.socket` por usuário e o
-`podstack-helper.service`; o daemon sobe sob demanda na primeira conexão da GUI/CLI.
+`/usr/share/podstack/qtermwidget6`. O `postinst` habilita **e inicia** `podstack.socket` por usuário
+e o `podstack-helper.service`; o daemon sobe sob demanda na primeira conexão da GUI/CLI.
 
 ## 4. Build a partir do código
 

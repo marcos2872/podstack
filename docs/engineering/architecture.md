@@ -476,7 +476,9 @@ Detalhes em [`data-model.md`](data-model.md).
 /usr/share/metainfo/dev.podstack.PodStack.appdata.xml
 ```
 
-**Ativação:** `systemctl --global enable podstack.socket` no `%post`; GUI conecta no socket; daemon sobe sob demanda.
+**Ativação:** `systemctl --global enable podstack.socket` + `start` por uid logado no
+`%post`/`postinst`; a GUI/CLI reativam o socket na primeira conexão (`DaemonBootstrap`), e o daemon
+sobe sob demanda.
 
 ---
 

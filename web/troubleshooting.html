@@ -402,7 +402,10 @@ ls -l &quot;$XDG_RUNTIME_DIR/podstack/control.sock&quot;
 stat -c &#x27;%a %U %G&#x27; &quot;$XDG_RUNTIME_DIR/podstack/control.sock&quot;
 journalctl --user -u podstack.service -n 200 --no-pager</code></pre>
 <p>O socket deve ser um Unix socket <code>0600</code>, no diretório <code>0700</code>, pertencente ao
-seu usuário. O daemon é ativado na primeira conexão. Causas comuns: units não recarregadas após
+seu usuário. O daemon é ativado na primeira conexão e a GUI/CLI já tentam <code>daemon-reload</code>
++ <code>start</code> sozinhas — o botão <strong>Ativar serviço</strong> no banner e
+<code>podstack doctor</code> fazem o mesmo e mostram a remediação quando falham. Causas comuns:
+instalação feita sem sessão (socket ativa no próximo login), units não recarregadas após
 atualização, socket inativo, daemon que falhou no start, <code>PODSTACK_CONTROL_SOCKET</code>
 apontando para outro caminho ou permissão errada. Não use <code>chmod 0666</code>.</p>
 <p>Em desenvolvimento, inicie o daemon manualmente para diagnóstico:</p>
