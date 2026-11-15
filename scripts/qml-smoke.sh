@@ -31,9 +31,11 @@ timeout "$seconds" env \
     PODSTACK_CONTROL_SOCKET="$work/run/none.sock" \
     "$bin" >"$log" 2>&1 || true
 
-# Ruído do backend offscreen, não do app.
+# Ruído do backend offscreen, não do app. No Qt 6.4 o plugin de bandeja ainda
+# tenta conectar um sinal que não existe na plataforma offscreen
+# (systemTrayWindowChanged), o que não tem relação com o QML carregado.
 filtered="$(grep -E 'warn:|error:|TypeError|ReferenceError|is not a function|no signal of the target' \
-    "$log" | grep -vE 'This plugin does not support' || true)"
+    "$log" | grep -vE 'This plugin does not support|systemTrayWindowChanged' || true)"
 
 if [[ -n "$filtered" ]]; then
     echo "== warnings de QML =="
