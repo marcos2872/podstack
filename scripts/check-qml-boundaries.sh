@@ -9,6 +9,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 qml="$root/src/gui/qml"
+main_qml="$root/src/gui/Main.qml"
 strict=0
 [[ "${1:-}" == "--strict" ]] && strict=1
 fail=0
@@ -34,10 +35,10 @@ if [[ $strict -eq 1 ]]; then
     echo "== controles nativos fora de ds/primitives =="
     check "Dialog/Button/ComboBox/TextField nativo fora de ds/primitives" \
         grep -rnE '^[[:space:]]*(Dialog|Button|ComboBox|TextField)[[:space:]]*\{' \
-        "$qml/pages" "$qml/features" "$qml/Main.qml"
+        "$qml/pages" "$qml/features" "$main_qml"
 else
     count=$(grep -rhoE '^[[:space:]]*(Dialog|Button|ComboBox|TextField)[[:space:]]*\{' \
-        "$qml/pages" "$qml/features" "$qml/Main.qml" 2>/dev/null | wc -l)
+        "$qml/pages" "$qml/features" "$main_qml" 2>/dev/null | wc -l || true)
     echo "aviso: $count controles nativos restantes fora de ds/primitives (rode com --strict no fim da migração)"
 fi
 
