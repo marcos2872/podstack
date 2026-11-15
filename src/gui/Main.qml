@@ -141,6 +141,15 @@ Rectangle {
         return backend.settings.values["engine.mode"] === "rootful" ? "rootful" : "rootless"
     }
 
+    // Ação do banner de erro: só oferece ativar o serviço quando o podstackd
+    // está inacessível (não para erros de operação).
+    readonly property string serviceActionText: {
+        if (backend.connected) {
+            return ""
+        }
+        return backend.serviceActivating ? qsTr("Ativando…") : qsTr("Ativar serviço")
+    }
+
     function countFor(key) {
         if (key === "containers") {
             return containersPage.containerCount
@@ -473,33 +482,11 @@ Rectangle {
             }
 
             // Error banner
-            Rectangle {
+            AppErrorBanner {
                 Layout.fillWidth: true
-                Layout.preferredHeight: backend.error.length > 0 ? 34 : 0
-                visible: backend.error.length > 0
-                color: Theme.dangerSoft
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 20
-                    spacing: 8
-
-                    AppIcon {
-                        name: "alert"
-                        size: 14
-                        color: Theme.danger
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: backend.error
-                        color: Theme.danger
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontBody
-                        elide: Text.ElideRight
-                    }
-                }
+                message: backend.error
+                actionText: window.serviceActionText
+                onActionClicked: backend.activateDaemonService()
             }
 
             // Páginas

@@ -6,6 +6,7 @@
 #include "core/logging/LogReader.h"
 #include "core/logging/Logging.h"
 #include "core/logging/Redaction.h"
+#include "core/rpc/DaemonBootstrap.h"
 #include "core/rpc/RpcClient.h"
 #include "core/setup/SetupActions.h"
 #include "core/setup/SetupPolicy.h"
@@ -188,6 +189,8 @@ Backend::Backend(QObject *parent) : QObject(parent)
 {
     connect(&m_actionWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onActionFinished);
+    connect(&m_serviceWatcher, &QFutureWatcher<int>::finished, this,
+            &Backend::onServiceActivationFinished);
     connect(&m_containers, &ContainerController::connectionChanged, this,
             [this](bool connected, const QString &error) {
                 if (connected) {
@@ -346,6 +349,34 @@ void Backend::refreshCatalog()
 void Backend::refreshDiskUsage()
 {
     refreshSection(QStringLiteral("df"));
+}
+
+void Backend::activateDaemonService()
+{
+    if (m_serviceActivating) {
+        return;
+    }
+    m_serviceActivating = true;
+    emit serviceActivationChanged();
+    m_serviceWatcher.setFuture(
+        QtConcurrent::run([] { return static_cast<int>(DaemonBootstrap::ensureRunning()); }));
+}
+
+void Backend::onServiceActivationFinished()
+{
+    m_serviceActivating = false;
+    emit serviceActivationChanged();
+    const auto status = static_cast<DaemonBootstrap::Status>(m_serviceWatcher.result());
+    if (status == DaemonBootstrap::Status::NotInstalled) {
+        m_lastError = QStringLiteral("A unit podstack.socket não está instalada.");
+        emit lastErrorChanged();
+    } else if (status == DaemonBootstrap::Status::Failed) {
+        m_lastError = QStringLiteral("Não foi possível ativar o podstack.socket. Rode: %1")
+                          .arg(DaemonBootstrap::manualRemedy());
+        emit lastErrorChanged();
+    }
+    refresh();
+    m_eventsStream.subscribeEvents();
 }
 
 void Backend::refreshSection(const QString &section)

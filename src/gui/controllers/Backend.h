@@ -57,6 +57,7 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantMap prunePreview READ prunePreview NOTIFY prunePreviewChanged)
     Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
     Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
+    Q_PROPERTY(bool serviceActivating READ serviceActivating NOTIFY serviceActivationChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -85,10 +86,13 @@ public:
     QVariantMap prunePreview() const { return m_prunePreview; }
     QString eventMessage() const { return m_eventMessage; }
     QString eventKind() const { return m_eventKind; }
+    bool serviceActivating() const { return m_serviceActivating; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
     Q_INVOKABLE void refreshDiskUsage();
+    /// Tenta ativar o podstack.socket em background (botão "Ativar serviço").
+    Q_INVOKABLE void activateDaemonService();
     Q_INVOKABLE void openPath(const QString &path);
     Q_INVOKABLE QString choosePath(const QString &mode, const QString &title,
                                    const QString &filter = QString(),
@@ -98,6 +102,7 @@ signals:
     void actionStateChanged();
     void stateChanged();
     void lastErrorChanged();
+    void serviceActivationChanged();
     void actionFinished(bool ok, const QString &error);
     void diskUsageChanged();
     void prunePreviewChanged();
@@ -117,6 +122,7 @@ private:
     void startUpdateRunner(bool resume);
     void onSystemLogsFinished();
     void onDiskFinished();
+    void onServiceActivationFinished();
     void applySetupStatus(const QJsonObject &status);
     void applySetupJob(const QJsonObject &job);
     void runSetupRequest(const QString &method, const QJsonObject &params);
@@ -136,6 +142,8 @@ private:
 
     QFutureWatcher<QJsonObject> m_actionWatcher;
     QFutureWatcher<QJsonObject> m_catalogWatcher;
+    QFutureWatcher<int> m_serviceWatcher;
+    bool m_serviceActivating = false;
     QString m_catalogSection;
     QStringList m_catalogQueue;
     StreamClient m_eventsStream;
