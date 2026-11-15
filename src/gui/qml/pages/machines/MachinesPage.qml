@@ -220,13 +220,7 @@ ColumnLayout {
             variant: "ghost"
             iconName: "download"
             enabled: !backend.machines.createActive
-            onClicked: {
-                importPath.text = ""
-                importName.text = ""
-                importForce.checked = false
-                backend.machines.resetCreateState()
-                importDialog.open()
-            }
+            onClicked: importDialog.openDialog()
             Accessible.name: qsTr("Importar machine de um arquivo .tar.zst")
         }
 
