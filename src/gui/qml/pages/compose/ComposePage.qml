@@ -46,7 +46,7 @@ ColumnLayout {
         AppButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.compose.refreshCompose()
+            onClicked: backend.compose.refresh()
             Accessible.name: qsTr("Atualizar")
         }
     }
@@ -77,7 +77,7 @@ ColumnLayout {
             visible: composeSelection.count > 0
             text: qsTr("Down")
             iconName: "stop"
-            onClicked: backend.compose.batchCompose(composeSelection.ids(), "down")
+            onClicked: batchDownDialog.open()
         }
 
         AppButton {
@@ -356,6 +356,16 @@ ColumnLayout {
         }
     }
 
-    Component.onCompleted: backend.compose.refreshCompose()
+    Component.onCompleted: backend.compose.refresh()
     Component.onDestruction: backend.compose.unsubscribeComposeLogs()
+
+    AppConfirmDialog {
+        id: batchDownDialog
+        title: qsTr("Derrubar projetos selecionados")
+        message: qsTr("%1 projeto(s) serão derrubados. Os volumes são preservados.")
+                     .arg(composeSelection.count)
+        confirmText: qsTr("Derrubar")
+        destructive: true
+        onConfirmed: backend.compose.batchCompose(composeSelection.ids(), "down")
+    }
 }

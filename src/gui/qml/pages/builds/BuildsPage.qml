@@ -88,7 +88,7 @@ ColumnLayout {
         AppButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.builds.refreshBuilds()
+            onClicked: backend.builds.refresh()
             Accessible.name: qsTr("Atualizar")
         }
     }
@@ -307,5 +307,5 @@ ColumnLayout {
         }
     }
 
-    Component.onCompleted: backend.builds.refreshBuilds()
+    Component.onCompleted: backend.builds.refresh()
 }
