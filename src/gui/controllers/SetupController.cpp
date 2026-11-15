@@ -72,6 +72,8 @@ void SetupController::setError(const QString &error)
 void SetupController::runRequest(const QString &method, const QJsonObject &params)
 {
     if (m_watcher.isRunning()) {
+        // Antes a requisição era descartada em silêncio (inclusive `setup.cancel`).
+        setError(QStringLiteral("Aguarde a verificação atual terminar e tente de novo."));
         return;
     }
     m_pendingMethod = method;
@@ -148,7 +150,7 @@ void SetupController::applyStatus(const QJsonObject &status)
     m_summary = status.value(QStringLiteral("summary")).toObject().toVariantMap();
     const QJsonObject active = status.value(QStringLiteral("activeJob")).toObject();
     applyJob(active);
-    if (!active.isEmpty() && !m_jobActive) {
+    if (!active.isEmpty() && m_jobActive) {
         const QString jobId = active.value(QStringLiteral("jobId")).toString();
         if (!jobId.isEmpty()) {
             m_stream.subscribeSetup(jobId);

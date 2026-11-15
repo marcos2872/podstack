@@ -84,7 +84,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.volumes.batchVolumes(volumeSelection.ids(), false)
+            onClicked: batchRemoveDialog.open()
             Accessible.name: qsTr("Remover volumes selecionados")
         }
 
@@ -104,6 +104,16 @@ ColumnLayout {
         }
     }
 
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.volumes.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.volumes.dismissError()
+    }
+
     AppCatalogList {
         id: volumesList
         Layout.fillWidth: true
@@ -114,6 +124,13 @@ ColumnLayout {
         emptyIcon: "volumes"
             emptyText: qsTr("Nenhum volume.\nCrie um volume para persistir dados.")
         items: backend.volumes.items
+        screenState: backend.volumes.loading ? "loading"
+                     : backend.volumes.items.length > 0 ? "ready"
+                     : backend.volumes.lastError.length > 0 ? "error" : "empty"
+        errorText: backend.volumes.lastError
+        retrying: backend.volumes.loading
+        onRetryRequested: backend.volumes.refresh()
+
         selection: volumeSelection
         idKey: "name"
         columns: [
@@ -126,8 +143,9 @@ ColumnLayout {
 
     AppModal {
         id: createDialog
-        title: "Novo volume"
+        title: qsTr("Novo volume")
         modal: true
+        actionController: backend.volumes
         width: 440
         background: Rectangle {
             color: Theme.bgSurface
@@ -137,7 +155,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 8
             Label {
-                text: "Nome"
+                text: qsTr("Nome")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -148,7 +166,7 @@ ColumnLayout {
                 placeholderText: "dados"
             }
             Label {
-                text: "Driver"
+                text: qsTr("Driver")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -162,25 +180,28 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !createDialog.busy
                 onClicked: createDialog.close()
             }
             AppButton {
-                text: "Criar"
-                enabled: volumeName.text.length > 0
-                onClicked: {
+                text: qsTr("Criar")
+                busy: createDialog.busy
+                busyText: qsTr("Criando…")
+                enabled: !createDialog.busy && volumeName.text.length > 0
+                onClicked: createDialog.runAction(function() {
                     backend.volumes.createVolume(volumeName.text, volumeDriver.text)
-                    createDialog.close()
-                }
+                }, "volumes.create")
             }
         }
     }
 
     AppModal {
         id: cloneDialog
-        title: "Clonar volume"
+        title: qsTr("Clonar volume")
         modal: true
+        actionController: backend.volumes
         width: 440
         background: Rectangle {
             color: Theme.bgSurface
@@ -190,7 +211,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 8
             Label {
-                text: "Origem"
+                text: qsTr("Origem")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -201,7 +222,7 @@ ColumnLayout {
                 readOnly: true
             }
             Label {
-                text: "Destino (novo volume)"
+                text: qsTr("Destino (novo volume)")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -215,25 +236,28 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !cloneDialog.busy
                 onClicked: cloneDialog.close()
             }
             AppButton {
-                text: "Clonar"
-                enabled: cloneDestination.text.length > 0
-                onClicked: {
+                text: qsTr("Clonar")
+                busy: cloneDialog.busy
+                busyText: qsTr("Clonando…")
+                enabled: !cloneDialog.busy && cloneDestination.text.length > 0
+                onClicked: cloneDialog.runAction(function() {
                     backend.volumes.cloneVolume(cloneSource.text, cloneDestination.text)
-                    cloneDialog.close()
-                }
+                }, "volumes.clone")
             }
         }
     }
 
     AppModal {
         id: importHostDialog
-        title: "Importar do host"
+        title: qsTr("Importar do host")
         modal: true
+        actionController: backend.volumes
         width: 460
         background: Rectangle {
             color: Theme.bgSurface
@@ -243,7 +267,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 8
             Label {
-                text: "Volume"
+                text: qsTr("Volume")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -254,7 +278,7 @@ ColumnLayout {
                 readOnly: true
             }
             Label {
-                text: "Diretório de origem"
+                text: qsTr("Diretório de origem")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -267,7 +291,7 @@ ColumnLayout {
                 placeholderText: "/home/usuario/dados"
             }
             Label {
-                text: "O conteúdo será copiado para o volume (aditivo)."
+                text: qsTr("O conteúdo será copiado para o volume (aditivo).")
                 color: Theme.textSecondary
                 font.pixelSize: 10
                 wrapMode: Text.WordWrap
@@ -277,37 +301,30 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !importHostDialog.busy
                 onClicked: importHostDialog.close()
             }
             AppButton {
-                text: "Importar"
-                enabled: importHostSource.text.length > 0
-                onClicked: {
+                text: qsTr("Importar")
+                busy: importHostDialog.busy
+                busyText: qsTr("Importando…")
+                enabled: !importHostDialog.busy && importHostSource.text.length > 0
+                onClicked: importHostDialog.runAction(function() {
                     backend.volumes.importHostPath(importVolumeName.text, importHostSource.text)
-                    importHostDialog.close()
-                }
+                }, "volumes.importHostPath")
             }
         }
     }
 
-    AppModal {
+    AppConfirmDialog {
         id: removeDialog
-        title: "Remover volume?"
-        modal: true
-        standardButtons: Dialog.Yes | Dialog.No
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.color: Theme.border
-        }
-        contentItem: Label {
-            text: "O volume e seus dados serão removidos permanentemente."
-            color: Theme.textPrimary
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: {
+        title: qsTr("Remover volume?")
+        message: qsTr("O volume e seus dados serão removidos permanentemente.")
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: {
             if (volumesList.currentRow >= 0) {
                 backend.volumes.removeVolume(backend.volumes.items[volumesList.currentRow].name, false)
             }
@@ -316,10 +333,9 @@ ColumnLayout {
 
     AppModal {
         id: pruneDialog
-        title: "Limpar volumes?"
+        title: qsTr("Limpar volumes?")
         modal: true
         implicitWidth: 560
-        standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -330,7 +346,7 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                text: "Remove volumes sem containers usando. Os dados desses volumes serão perdidos."
+                text: qsTr("Remove volumes sem containers usando. Os dados desses volumes serão perdidos.")
                 color: Theme.textPrimary
                 wrapMode: Text.WordWrap
             }
@@ -395,6 +411,34 @@ ColumnLayout {
             }
         }
         onOpened: backend.refreshDiskUsage()
-        onAccepted: backend.volumes.pruneVolumes()
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            AppButton {
+                text: qsTr("Cancelar")
+                variant: "secondary"
+                onClicked: pruneDialog.close()
+            }
+            AppButton {
+                text: qsTr("Limpar")
+                variant: "danger"
+                onClicked: {
+                    pruneDialog.close()
+                    backend.volumes.pruneVolumes()
+                }
+            }
+        }
+    }
+
+    AppConfirmDialog {
+        id: batchRemoveDialog
+        title: qsTr("Remover volumes selecionados")
+        message: qsTr("%1 volume(s) serão removidos com os dados. Esta ação não pode ser desfeita.")
+                     .arg(volumeSelection.count)
+        confirmText: qsTr("Remover")
+        destructive: true
+        busyText: qsTr("Removendo…")
+        actionController: backend.volumes
+        actionMethod: "volumes.batch"
+        onConfirmed: backend.volumes.batchVolumes(volumeSelection.ids(), false)
     }
 }

@@ -37,7 +37,10 @@ Item {
         { key: "stopped", label: qsTr("Parados"), count: stoppedCount }
     ]
 
-    onFilterTextChanged: rebuild()
+    onFilterTextChanged: {
+        selectionCleared = false
+        rebuild()
+    }
     onFilterChanged: rebuild()
 
     function shortId(item) {
@@ -139,7 +142,7 @@ Item {
         }
         containerList.currentIndex = index
         currentId = index >= 0 ? next[index].id : ""
-        if (index >= 0 && !selectedIds[currentId]) {
+        if (index >= 0 && !selectionCleared && !selectedIds[currentId]) {
             selectOnly(index)
         }
         pruneSelection()
@@ -233,9 +236,19 @@ Item {
         selectedIds = next
     }
 
+    /// O usuário limpou a seleção de propósito: o próximo refresh não pode
+    /// re-selecionar o container atual (era o "Esc não funciona").
+    property bool selectionCleared: false
+
     function clearSelection() {
         selectedIds = {}
         anchorIndex = -1
+        selectionCleared = true
+    }
+
+    /// Ação em andamento **neste** container (start/stop/restart/remove…).
+    function isBusy(id) {
+        return backend.containers.runningTargets[id] !== undefined
     }
 
     function setContainers(items) {
@@ -506,12 +519,14 @@ Item {
 
                         Keys.onUpPressed: {
                             if (currentIndex > 0) {
+                                containersPage.selectionCleared = false
                                 currentIndex -= 1
                                 containersPage.selectOnly(currentIndex)
                             }
                         }
                         Keys.onDownPressed: {
                             if (currentIndex + 1 < containersPage.visibleItems.length) {
+                                containersPage.selectionCleared = false
                                 currentIndex += 1
                                 containersPage.selectOnly(currentIndex)
                             }
@@ -560,6 +575,7 @@ Item {
                                 anchors.fill: parent
                                 onClicked: function(mouse) {
                                     containerList.forceActiveFocus()
+                                    containersPage.selectionCleared = false
                                     containerList.currentIndex = index
                                     containersPage.currentId = modelData.id
                                     if (mouse.modifiers & Qt.ControlModifier) {
@@ -663,20 +679,27 @@ Item {
                                         font.pixelSize: Theme.fontMeta
                                     }
 
+                                    AppSpinner {
+                                        visible: containersPage.isBusy(modelData.id)
+                                        size: 14
+                                        Layout.alignment: Qt.AlignVCenter
+                                    }
+
                                     RowLayout {
                                         spacing: 4
-                                        opacity: containerRow.hovered || containersPage.selectedIds[modelData.id]
-                                                 ? 1 : 0
-                                        visible: opacity > 0
-
-                                        Behavior on opacity {
-                                            NumberAnimation { duration: Theme.duration }
-                                        }
+                                        // Ações da linha aparecem no hover, na
+                                        // seleção e na linha atual: antes só no
+                                        // hover, o que as tirava do foco por
+                                        // teclado.
+                                        visible: containerRow.hovered
+                                                 || containersPage.selectedIds[modelData.id]
+                                                 || index === containerList.currentIndex
 
                                         AppButton {
                                             size: "sm"
                                             variant: "ghost"
                                             iconName: modelData.state === "running" ? "stop" : "play"
+                                            enabled: !containersPage.isBusy(modelData.id)
                                             onClicked: backend.containers.lifecycle(
                                                            modelData.state === "running" ? "stop" : "start",
                                                            modelData.id)
@@ -688,6 +711,7 @@ Item {
                                             size: "sm"
                                             variant: "ghost"
                                             iconName: "rotate"
+                                            enabled: !containersPage.isBusy(modelData.id)
                                             onClicked: backend.containers.lifecycle("restart", modelData.id)
                                             Accessible.name: qsTr("Reiniciar")
                                         }
@@ -696,84 +720,34 @@ Item {
                             }
                         }
 
-                        // Estado vazio / carregando / erro
-                        ColumnLayout {
-                            anchors.centerIn: parent
-                            width: parent.width - 48
-                            visible: containerList.count === 0
-                            spacing: 10
-
-                            // Carregando: não confundir com engine vazio.
-                            AppSpinner {
-                                Layout.alignment: Qt.AlignHCenter
-                                visible: backend.containers.loading && backend.connected
-                            }
-
-                            AppIcon {
-                                Layout.alignment: Qt.AlignHCenter
-                                visible: !backend.containers.loading || !backend.connected
-                                name: backend.connected ? "containers" : "alert"
-                                size: 24
-                                color: Theme.textTertiary
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                visible: backend.containers.loading && backend.connected
-                                text: qsTr("Carregando containers…")
-                                color: Theme.textSecondary
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontBody
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                visible: !backend.containers.loading && backend.connected
-                                text: qsTr("Nenhum container encontrado.\nCrie um pelo botão “Novo container”.")
-                                color: Theme.textSecondary
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontBody
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                visible: !backend.connected
-                                text: backend.error.length > 0
-                                      ? backend.error
-                                      : qsTr("O podstackd não está acessível.")
-                                color: Theme.textSecondary
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontBody
-                                wrapMode: Text.WordWrap
-                            }
-
-                            RowLayout {
-                                Layout.alignment: Qt.AlignHCenter
-                                visible: !backend.connected
-                                spacing: 8
-
-                                AppButton {
-                                    text: qsTr("Tentar novamente")
-                                    size: "sm"
-                                    variant: "secondary"
-                                    enabled: !backend.containers.loading
-                                    onClicked: backend.refresh()
-                                }
-
-                                AppButton {
-                                    text: backend.serviceActivating
-                                          ? qsTr("Reiniciando…")
-                                          : qsTr("Reiniciar daemon")
-                                    size: "sm"
-                                    variant: "primary"
-                                    enabled: !backend.serviceActivating
-                                    onClicked: backend.restartDaemonService()
-                                }
+                        // Estado vazio / carregando / erro / filtro sem resultado
+                        AppScreenState {
+                            anchors.fill: parent
+                            state: !backend.connected ? "error"
+                                 : backend.containers.loading ? "loading"
+                                 : containersPage.visibleItems.length > 0 ? "ready"
+                                 : (containersPage.filterText.length > 0
+                                    || containersPage.filter !== "all") ? "filteredEmpty"
+                                 : "empty"
+                            iconName: "containers"
+                            emptyTitle: qsTr("Nenhum container encontrado.")
+                            emptyHint: qsTr("Crie um pelo botão “Novo container”.")
+                            filteredHint: qsTr("Ajuste a busca ou volte para todos.")
+                            errorText: backend.error.length > 0
+                                       ? backend.error
+                                       : qsTr("O podstackd não está acessível.")
+                            retrying: backend.containers.loading
+                            extraActionText: !backend.connected
+                                             ? (backend.serviceActivating
+                                                ? qsTr("Reiniciando…")
+                                                : qsTr("Reiniciar daemon"))
+                                             : ""
+                            extraActionBusy: backend.serviceActivating
+                            onRetryRequested: backend.refresh()
+                            onExtraActionClicked: backend.restartDaemonService()
+                            onClearFilterRequested: {
+                                containersPage.filterText = ""
+                                containersPage.filter = "all"
                             }
                         }
                     }
@@ -870,6 +844,7 @@ Item {
         modal: true
         width: 440
         anchors.centerIn: parent
+        actionController: backend.containers
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -889,15 +864,18 @@ Item {
             AppButton {
                 text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !batchRemoveDialog.busy
                 onClicked: batchRemoveDialog.close()
             }
             AppButton {
                 text: qsTr("Remover")
                 variant: "danger"
-                onClicked: {
+                busy: batchRemoveDialog.busy
+                busyText: qsTr("Removendo…")
+                enabled: !batchRemoveDialog.busy
+                onClicked: batchRemoveDialog.runAction(function() {
                     backend.containers.batchIds(Object.keys(containersPage.selectedIds), "remove")
-                    batchRemoveDialog.close()
-                }
+                }, "containers.batch")
             }
         }
     }

@@ -131,7 +131,7 @@ private:
         uid_t uid = 0;
     };
 
-    Fixture makeFixture(const QString &name, const QString &version = QStringLiteral("0.1.5"),
+    Fixture makeFixture(const QString &name, const QString &version = QStringLiteral("0.1.6"),
                         bool valid = true);
     QString makeTool(const QString &root, const QString &format, const QString &name,
                      const QString &version, const QString &arch);
@@ -298,7 +298,7 @@ void UpdateServiceTest::stageAndStatus()
     QVERIFY(service.status(fixture.uid, result.value(QStringLiteral("jobId")).toString(), &status,
                            &error));
     QCOMPARE(status.value(QStringLiteral("phase")).toString(), QStringLiteral("staged"));
-    QCOMPARE(status.value(QStringLiteral("version")).toString(), QStringLiteral("0.1.5"));
+    QCOMPARE(status.value(QStringLiteral("version")).toString(), QStringLiteral("0.1.6"));
 }
 
 void UpdateServiceTest::stageRejectsSignatureAndHash()

@@ -80,8 +80,8 @@ Item {
                 width: parent.width - 32
                 visible: root.inspectText.length === 0
                 horizontalAlignment: Text.AlignHCenter
-                text: backend.containerDetail.detail.loading ? qsTr("Carregando inspect…")
-                                                             : qsTr("Inspect indisponível.")
+                text: backend.containerDetail.loading ? qsTr("Carregando inspect…")
+                                                     : qsTr("Inspect indisponível.")
                 color: Theme.textTertiary
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMeta

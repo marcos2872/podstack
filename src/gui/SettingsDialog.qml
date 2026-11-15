@@ -150,23 +150,35 @@ AppModal {
         Rectangle {
             Layout.fillWidth: true
             visible: backend.settings.pendingRestartKeys.length > 0
-            implicitHeight: restartNotice.implicitHeight + 12
+            implicitHeight: restartRow.implicitHeight + 12
             radius: Theme.radiusSm
             color: Theme.warningSoft
             border.width: 1
             border.color: Theme.warning
 
-            Text {
-                id: restartNotice
+            RowLayout {
+                id: restartRow
                 anchors.fill: parent
                 anchors.margins: 6
-                text: qsTr("Reinicie o PodStack para aplicar: %1")
-                          .arg(backend.settings.pendingRestartKeys.join(", "))
-                color: Theme.warning
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMicro
-                wrapMode: Text.WordWrap
-                verticalAlignment: Text.AlignVCenter
+                spacing: 8
+
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Feche e abra o PodStack para aplicar: %1")
+                              .arg(backend.settings.pendingRestartKeys.join(", "))
+                    color: Theme.warning
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    wrapMode: Text.WordWrap
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                AppButton {
+                    text: qsTr("Fechar agora")
+                    size: "sm"
+                    variant: "secondary"
+                    onClicked: appWindow.quitApp()
+                }
             }
         }
 

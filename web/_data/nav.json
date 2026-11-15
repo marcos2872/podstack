@@ -4,7 +4,7 @@
     {
       "title": "Começar",
       "pages": [
-        { "file": "index.html", "title": "Visão geral", "icon": "i-home", "status": "published" },
+        { "file": "docs.html", "title": "Visão geral", "icon": "i-home", "status": "published" },
         { "file": "install.html", "title": "Instalação", "icon": "i-download", "status": "published" },
         { "file": "onboarding.html", "title": "Onboarding", "icon": "i-layers", "status": "published", "parent": "install.html" }
       ]

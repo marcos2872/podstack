@@ -8,6 +8,29 @@ ColumnLayout {
 
     property string containerId
 
+    readonly property string currentPath: backend.containers.filesPath
+    readonly property bool canGoUp: currentPath.length > 1
+
+    function joinPath(base, name) {
+        return (base.endsWith("/") ? base : base + "/") + name
+    }
+
+    function parentPath() {
+        var path = currentPath
+        if (path.length <= 1) {
+            return "/"
+        }
+        if (path.endsWith("/")) {
+            path = path.slice(0, -1)
+        }
+        const slash = path.lastIndexOf("/")
+        return slash <= 0 ? "/" : path.slice(0, slash)
+    }
+
+    function enterDirectory(name) {
+        backend.containers.listFiles(filesView.containerId, joinPath(currentPath, name))
+    }
+
     spacing: 8
 
     RowLayout {
@@ -21,6 +44,17 @@ ColumnLayout {
             font.family: Theme.monoFamily
             font.pixelSize: Theme.fontMeta
             elide: Text.ElideMiddle
+        }
+
+        AppButton {
+            text: qsTr("Subir")
+            variant: "ghost"
+            size: "sm"
+            iconName: "arrowUp"
+            enabled: filesView.containerId !== "" && filesView.canGoUp
+            onClicked: backend.containers.listFiles(filesView.containerId,
+                                                    filesView.parentPath())
+            Accessible.name: qsTr("Subir um diretório")
         }
 
         AppButton {
@@ -76,11 +110,14 @@ ColumnLayout {
 
                 onClicked: {
                     if (modelData.directory) {
+                        // Antes o clique em diretório não fazia nada: só a raiz
+                        // era navegável.
+                        filesView.enterDirectory(modelData.name)
                         return
                     }
-                    const base = backend.containers.filesPath.endsWith("/") ? backend.containers.filesPath
-                                                                 : backend.containers.filesPath + "/"
-                    backend.containers.downloadFile(filesView.containerId, base + modelData.name)
+                    backend.containers.downloadFile(filesView.containerId,
+                                                    filesView.joinPath(filesView.currentPath,
+                                                                       modelData.name))
                 }
 
                 background: Rectangle {

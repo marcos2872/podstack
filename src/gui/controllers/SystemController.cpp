@@ -205,6 +205,13 @@ void SystemController::onDiskFinished()
     m_diskRunning = false;
     const QJsonObject result = m_diskWatcher.result();
     if (result.contains(QStringLiteral("__error"))) {
+        // Antes a falha de `system.disk` era descartada: o painel de disco
+        // ficava vazio sem explicar nada.
+        const QJsonValue value = result.value(QStringLiteral("__error"));
+        const QString message = value.isObject()
+                                    ? value.toObject().value(QStringLiteral("message")).toString()
+                                    : value.toString();
+        setLastError(message.isEmpty() ? QStringLiteral("Falha ao consultar o disco.") : message);
         return;
     }
     m_diskHealth = result.toVariantMap();

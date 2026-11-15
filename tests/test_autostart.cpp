@@ -21,6 +21,7 @@ private slots:
 
     void enablesAndDisables();
     void preservesForeignFile();
+    void refusesToOverwriteForeignFile();
     void syncFromConfig();
 };
 
@@ -57,6 +58,29 @@ void AutostartTest::enablesAndDisables()
 
     QVERIFY2(PodStack::Autostart::setEnabled(false, &error), qPrintable(error));
     QVERIFY(!PodStack::Autostart::isEnabled());
+}
+
+void AutostartTest::refusesToOverwriteForeignFile()
+{
+    const QString path = PodStack::Autostart::filePath();
+    QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+
+    const QByteArray foreign = "[Desktop Entry]\nExec=outra-coisa\n";
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(foreign);
+    file.close();
+
+    // Habilitar não pode sobrescrever o autostart de outro app — e o settings
+    // não pode dizer "ligado" só porque o arquivo existe.
+    QString error;
+    QVERIFY(!PodStack::Autostart::setEnabled(true, &error));
+    QVERIFY(!error.isEmpty());
+    QVERIFY(!PodStack::Autostart::isEnabled());
+
+    QFile check(path);
+    QVERIFY(check.open(QIODevice::ReadOnly));
+    QCOMPARE(check.readAll(), foreign);
 }
 
 void AutostartTest::syncFromConfig()

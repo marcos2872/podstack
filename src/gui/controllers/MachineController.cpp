@@ -130,7 +130,7 @@ MachineController::MachineController(QObject *parent) : ControllerBase(parent)
                 const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
                 const QString code = errorObject.value(QStringLiteral("code")).toString();
                 m_machineCreateActive = false;
-                m_machineCreateProgress = 100;
+                m_machineCreateProgress = 0;
                 m_machineCreateError.clear();
                 if (!errorObject.isEmpty() && code != QStringLiteral("PODSTACK_CANCELLED")) {
                     m_machineCreateStage = QStringLiteral("error");
@@ -175,6 +175,9 @@ void MachineController::onActionFinished(const QString &method, const QJsonObjec
 {
     ControllerBase::onActionFinished(method, params, result);
     if (isErrorResult(result)) {
+        // Portas, recursos, snapshots, serial e USB usam esta conclusão para
+        // sair do estado "aplicando"; antes o sinal só saía em create/export.
+        emit actionFinished(false, errorMessage(result));
         return;
     }
     refresh();
@@ -185,6 +188,7 @@ void MachineController::onActionFinished(const QString &method, const QJsonObjec
     if (!id.isEmpty() && method.startsWith(QStringLiteral("machines.snapshots."))) {
         refreshSnapshots(id);
     }
+    emit actionFinished(true, {});
 }
 
 void MachineController::batch(const QStringList &ids, const QString &action, bool force)
@@ -749,6 +753,12 @@ void MachineController::refreshSnapshots(const QString &id)
         return;
     }
 
+    // Ao trocar de machine, a lista anterior não pode continuar visível (o
+    // diálogo mostrava nomes de A com o alvo de B).
+    if (!m_machineSnapshots.isEmpty()) {
+        m_machineSnapshots.clear();
+        emit snapshotsChanged();
+    }
     m_machineSnapshotsError.clear();
     m_machineSnapshotsWatcher.setFuture(QtConcurrent::run([id] {
         RpcClient client;
@@ -917,20 +927,40 @@ void MachineController::create(const QVariantMap &spec)
     m_machineCreateStream.startMachineCreate(params);
 }
 
-void MachineController::cancelCreate()
+void MachineController::cancelCreate(const QString &kind)
 {
     if (m_machineCreateJobId.isEmpty()) {
+        return;
+    }
+    // Cada diálogo cancela só o **seu** job: antes, cancelar no diálogo de
+    // export podia derrubar a criação que estava rodando.
+    if (!kind.isEmpty() && !m_machineJobKind.isEmpty() && kind != m_machineJobKind) {
         return;
     }
 
     const QString jobId = m_machineCreateJobId;
     m_machineCreateStage = QStringLiteral("cancelling");
     emit createStateChanged();
-    (void) QtConcurrent::run([jobId] {
+    (void) QtConcurrent::run([this, jobId] {
         RpcClient client;
         Error error;
         client.call(QStringLiteral("machines.cancel"),
                     QJsonObject{{QStringLiteral("jobId"), jobId}}, &error, 30000);
+        if (error.isEmpty()) {
+            return;
+        }
+        // Sem isso o painel ficava em "cancelling" para sempre, sem explicar.
+        const QString message = error.message;
+        QMetaObject::invokeMethod(
+            this,
+            [this, message] {
+                m_machineCreateStage = QStringLiteral("error");
+                m_machineCreateError = message;
+                m_lastError = message;
+                emit createStateChanged();
+                emit lastErrorChanged();
+            },
+            Qt::QueuedConnection);
     });
 }
 

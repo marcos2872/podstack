@@ -23,6 +23,9 @@ Rectangle {
     property bool reloadPending: false
 
     readonly property bool compact: width < 1180
+    /// Ação em andamento neste container (start/stop/restart/remove).
+    readonly property bool detailBusy: containerId.length > 0
+                                       && backend.containers.runningTargets[containerId] !== undefined
     readonly property var detail: backend.containerDetail.detail || ({})
     readonly property var config: root.detail.Config || ({})
     readonly property var detailState: root.detail.State || ({})
@@ -280,10 +283,13 @@ Rectangle {
     }
 
     Connections {
-        target: backend
+        target: backend.containers
 
-        function onActionFinished(ok) {
-            if (root.removePending) {
+        function onActionCompleted(method, id, ok) {
+            if (id !== root.containerId) {
+                return
+            }
+            if (root.removePending && method === "containers.remove") {
                 root.removePending = false
                 if (ok) {
                     root.close()
@@ -291,6 +297,12 @@ Rectangle {
                 return
             }
             if (!root.reloadPending) {
+                return
+            }
+            const lifecycle = method === "containers.start" || method === "containers.stop"
+                    || method === "containers.restart" || method === "containers.pause"
+                    || method === "containers.unpause" || method === "containers.kill"
+            if (!lifecycle) {
                 return
             }
             root.reloadPending = false
@@ -353,6 +365,12 @@ Rectangle {
                             text: root.stateText.length > 0 ? root.stateText : "—"
                             tone: root.stateTone(root.stateText)
                         }
+
+                        AppSpinner {
+                            visible: root.detailBusy
+                            size: 14
+                            Layout.alignment: Qt.AlignVCenter
+                        }
                     }
 
                     Text {
@@ -373,7 +391,7 @@ Rectangle {
                     iconName: "play"
                     variant: "primary"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
+                    enabled: root.containerId.length > 0 && !root.detailBusy
                     onClicked: root.lifecycle("start")
                     Accessible.name: qsTr("Iniciar container")
                 }
@@ -383,7 +401,7 @@ Rectangle {
                     text: root.compact ? "" : qsTr("Parar")
                     iconName: "stop"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
+                    enabled: root.containerId.length > 0 && !root.detailBusy
                     onClicked: root.lifecycle("stop")
                     Accessible.name: qsTr("Parar container")
                 }
@@ -392,7 +410,7 @@ Rectangle {
                     text: root.compact ? "" : qsTr("Reiniciar")
                     iconName: "rotate"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
+                    enabled: root.containerId.length > 0 && !root.detailBusy
                     onClicked: root.lifecycle("restart")
                     Accessible.name: qsTr("Reiniciar container")
                 }
@@ -402,7 +420,7 @@ Rectangle {
                     iconName: "trash"
                     variant: "danger"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
+                    enabled: root.containerId.length > 0 && !root.detailBusy
                     onClicked: removeDialog.open()
                     Accessible.name: qsTr("Remover container")
                 }
@@ -439,7 +457,7 @@ Rectangle {
             Layout.rightMargin: 20
             Layout.topMargin: 8
             Layout.preferredHeight: visible ? 36 : 0
-            visible: backend.containerDetail.detail.error.length > 0
+            visible: backend.containerDetail.error.length > 0
             radius: Theme.radiusSm
             color: Theme.dangerSoft
             border.width: 1
@@ -459,7 +477,7 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
-                    text: backend.containerDetail.detail.error
+                    text: backend.containerDetail.error
                     color: Theme.danger
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMeta
@@ -535,30 +553,17 @@ Rectangle {
         }
     }
 
-    AppModal {
+    AppConfirmDialog {
         id: removeDialog
         title: qsTr("Remover container?")
-        modal: true
-        anchors.centerIn: parent
-        standardButtons: Dialog.Yes | Dialog.No
+        message: qsTr("O container “%1” será removido permanentemente.").arg(root.containerName)
+        confirmText: qsTr("Remover")
+        destructive: true
         // O terminal nativo ficaria sobre o diálogo QML; oculta a sessão
         // enquanto o modal estiver aberto e reaplica a área ao fechar.
         onOpened: root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
         onClosed: root.syncTerminalArea()
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.width: 1
-            border.color: Theme.border
-        }
-        contentItem: Text {
-            text: qsTr("O container “%1” será removido permanentemente.").arg(root.containerName)
-            color: Theme.textPrimary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: {
+        onConfirmed: {
             root.removePending = true
             backend.containerDetail.remove(root.containerId, true)
         }

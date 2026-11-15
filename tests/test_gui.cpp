@@ -50,10 +50,13 @@ private slots:
     void backendCreateMissingImage();
     void backendStreams();
     void backendContainerDetail();
+    void backendContainerDetailRace();
     void backendCatalog();
+    void backendRefreshUpdatesCatalog();
     void backendKubernetes();
     void backendKubernetesEnabledError();
     void backendKubernetesDisableJob();
+    void backendKubernetesEdges();
     void backendControllerEdges();
     void backendMachines();
     void backendMachineStats();
@@ -61,10 +64,16 @@ private slots:
     void backendMachineFiles();
     void backendTerminal();
     void backendM3();
+    void backendBuildCancelIdle();
     void backendErrors();
     void backendInvalidArguments();
     void backendOperations();
     void backendBatchActions();
+    void backendBatchPartial();
+    void backendCreateValidationReports();
+    void backendComposeErrorDetail();
+    void backendRejectDuplicateAction();
+    void feedbackQueue();
     void backendTheme();
     void backendSettings();
     void backendProxy();
@@ -138,8 +147,16 @@ void GuiTest::initTestCase()
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    provider.write("#!/bin/sh\ncase \"$*\" in *fail*) echo \"fake failure\" >&2; exit 1;; "
-                   "esac\necho \"fake compose $@\"\nexit 0\n");
+    provider.write("#!/bin/sh\n"
+                   "case \"$*\" in\n"
+                   "  *fail*)\n"
+                   "    echo \"Emulate Docker CLI using podman. Create /etc/containers/nodocker to "
+                   "quiet msg.\" >&2\n"
+                   "    echo \"Error response from daemon: rootlessport listen tcp "
+                   "0.0.0.0:18081: bind: address already in use\" >&2\n"
+                   "    exit 1;;\n"
+                   "esac\n"
+                   "echo \"fake compose $@\"\nexit 0\n");
     provider.close();
     QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
                                     QFileDevice::ExeOwner));
@@ -607,6 +624,28 @@ void GuiTest::backendContainerDetail()
     QVERIFY(!detail->lastError().isEmpty());
 }
 
+void GuiTest::backendContainerDetailRace()
+{
+    PodStack::Backend backend;
+    auto *detail = backend.containerDetail();
+
+    // Dois cliques rápidos: só o último alvo pode aparecer. "first123" não
+    // existe (volta erro); "abc123" existe. Sem a guarda de corrida, a
+    // resposta atrasada do primeiro inspect sobrescreve o segundo.
+    detail->load(QStringLiteral("first123"));
+    detail->load(QStringLiteral("abc123"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!detail->loading(), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(detail->detail().value(QStringLiteral("Id")).toString(),
+                              QStringLiteral("abc123"), 5000);
+    QVERIFY2(detail->error().isEmpty(), qPrintable(detail->error()));
+
+    // O mesmo alvo em sequência não deve trocar o conteúdo exibido.
+    detail->load(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!detail->loading(), 5000);
+    QCOMPARE(detail->detail().value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
+}
+
 void GuiTest::backendKubernetes()
 {
     PodStack::Backend backend;
@@ -754,6 +793,43 @@ void GuiTest::backendKubernetesDisableJob()
     k8s->reset();
     QTRY_VERIFY_WITH_TIMEOUT(!k8s->jobActive(), 5000);
     QCOMPARE(k8s->state(), QStringLiteral("disabled"));
+}
+
+void GuiTest::backendKubernetesEdges()
+{
+    PodStack::Backend backend;
+    auto *k8s = backend.k8s();
+
+    // Sem job ativo, cancelar é no-op: não pode prender o painel nem mentir.
+    k8s->cancelJob();
+    QVERIFY(k8s->jobError().isEmpty());
+    QVERIFY(!k8s->jobActive());
+
+    // O resumo do port-forward só existe com um forward ativo.
+    QVERIFY(k8s->portForwardSummary().isEmpty());
+    k8s->stopPortForward();
+    QVERIFY(k8s->portForwardSummary().isEmpty());
+}
+
+void GuiTest::backendRefreshUpdatesCatalog()
+{
+    PodStack::Backend backend;
+    auto *compose = backend.compose();
+    QSignalSpy composeSpy(compose, &PodStack::ComposeController::itemsChanged);
+    QSignalSpy imagesSpy(backend.images(), &PodStack::ImageController::itemsChanged);
+
+    // Espera o boot terminar, então mede só o refresh explícito.
+    QTRY_VERIFY_WITH_TIMEOUT(compose->items().size() >= 1, 5000);
+    composeSpy.clear();
+    imagesSpy.clear();
+
+    // Um evento/refresh de containers precisa atualizar o catálogo: subir uma
+    // stack por fora deixava o Compose vazio até sair e voltar para a página.
+    backend.refresh();
+
+    QTRY_VERIFY_WITH_TIMEOUT(composeSpy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(imagesSpy.count() > 0, 5000);
+    QCOMPARE(compose->items().size(), 1);
 }
 
 void GuiTest::backendCatalog()
@@ -1318,6 +1394,19 @@ void GuiTest::backendTerminal()
     QCOMPARE(terminalSpy.count(), 0);
 }
 
+void GuiTest::backendBuildCancelIdle()
+{
+    PodStack::Backend backend;
+    auto *builds = backend.builds();
+
+    // Sem build em andamento, cancelar é no-op: não pode mentir "Cancelando"
+    // nem deixar o botão preso (regressão do botão que ficava travado).
+    QVERIFY(!builds->buildActive());
+    builds->cancelBuild();
+    QVERIFY(!builds->buildActive());
+    QVERIFY(!builds->buildStatus().contains(QStringLiteral("Cancelando")));
+}
+
 void GuiTest::backendM3()
 {
     PodStack::Backend backend;
@@ -1600,6 +1689,130 @@ void GuiTest::backendBatchActions()
     backend.compose()->batchCompose({QStringLiteral("/tmp/mock-project")}, QStringLiteral("up"));
     QTRY_VERIFY_WITH_TIMEOUT(!backend.compose()->actionActive(), 10000);
     QVERIFY2(backend.compose()->lastError().isEmpty(), qPrintable(backend.compose()->lastError()));
+}
+
+void GuiTest::backendBatchPartial()
+{
+    PodStack::Backend backend;
+    auto *volumes = backend.volumes();
+    QSignalSpy itemsSpy(volumes, &PodStack::VolumeController::itemsChanged);
+    QSignalSpy settledSpy(volumes, &PodStack::ControllerBase::actionSettled);
+
+    QTRY_VERIFY_WITH_TIMEOUT(volumes->items().size() >= 1, 5000);
+    itemsSpy.clear();
+
+    // Remover um volume inexistente falha; mesmo assim a lista precisa
+    // recarregar (antes o lote abortava o refresh e o usuário via "nada
+    // aconteceu" até clicar em Atualizar) e o resumo precisa sair.
+    volumes->batchVolumes({QStringLiteral("missing-volume")}, false);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!volumes->actionActive(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(itemsSpy.count() > 0, 5000);
+    QVERIFY2(volumes->lastError().contains(QStringLiteral("1 de 1")),
+             qPrintable(volumes->lastError()));
+    QCOMPARE(settledSpy.count(), 1);
+    QCOMPARE(settledSpy.first().at(1).toBool(), false);
+
+    // O banner da página usa o invokable para dispensar o erro.
+    volumes->dismissError();
+    QVERIFY(volumes->lastError().isEmpty());
+}
+
+void GuiTest::backendCreateValidationReports()
+{
+    PodStack::Backend backend;
+    auto *containers = backend.containers();
+    QSignalSpy failedSpy(containers, &PodStack::ContainerController::actionFailed);
+
+    QVariantMap spec;
+    spec.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    spec.insert(QStringLiteral("name"), QStringLiteral("valid-name"));
+    spec.insert(QStringLiteral("envText"), QStringLiteral("SEMIGUAL"));
+
+    // A validação local precisa chegar ao diálogo (antes só ia para o rodapé
+    // do inspetor e o formulário não mostrava nada).
+    containers->createContainer(spec, false);
+
+    QCOMPARE(failedSpy.count(), 1);
+    QCOMPARE(failedSpy.first().at(0).toString(), QStringLiteral("containers.create"));
+    QVERIFY(!containers->lastError().isEmpty());
+    QVERIFY(!containers->actionActive());
+}
+
+void GuiTest::backendComposeErrorDetail()
+{
+    PodStack::Backend backend;
+    auto *compose = backend.compose();
+
+    // O provider do Podman escreve um banner de emulação no stderr; usar o
+    // stderr inteiro como detalhe escondia o erro real por trás do banner.
+    const QString projectDir = m_testDataDir + QStringLiteral("/fail-project");
+    QVERIFY(QDir().mkpath(projectDir));
+    compose->composeUp(projectDir);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!compose->actionActive(), 10000);
+    const QString error = compose->lastError();
+    QVERIFY2(error.contains(QStringLiteral("bind: address already in use")), qPrintable(error));
+    QVERIFY2(!error.contains(QStringLiteral("Emulate Docker CLI")), qPrintable(error));
+}
+
+void GuiTest::backendRejectDuplicateAction()
+{
+    PodStack::Backend backend;
+    auto *containers = backend.containers();
+    const QString path = QStringLiteral("/libpod/containers/abc123/start");
+    const int before = m_mock.requestCount(path);
+
+    // Duplo clique no mesmo item: a segunda chamada não pode empilhar outra
+    // ação igual (antes ela rodava de novo depois).
+    containers->lifecycle(QStringLiteral("start"), QStringLiteral("abc123"));
+    containers->lifecycle(QStringLiteral("start"), QStringLiteral("abc123"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QCOMPARE(m_mock.requestCount(path), before + 1);
+    QVERIFY(containers->runningTargets().isEmpty());
+}
+
+void GuiTest::feedbackQueue()
+{
+    PodStack::Backend backend;
+    auto *feedback = backend.feedback();
+    QSignalSpy spy(feedback, &PodStack::Feedback::currentChanged);
+
+    feedback->show(QStringLiteral("primeiro"), QStringLiteral("success"), 1000);
+    QCOMPARE(feedback->message(), QStringLiteral("primeiro"));
+    QCOMPARE(feedback->severity(), QStringLiteral("success"));
+    QVERIFY(feedback->active());
+
+    // Rajada repete o mesmo texto: não empilha nem rouba a vez.
+    feedback->show(QStringLiteral("primeiro"), QStringLiteral("success"), 1000);
+    feedback->show(QStringLiteral("segundo"), QStringLiteral("error"), 1000);
+    QCOMPARE(feedback->message(), QStringLiteral("primeiro"));
+
+    QTRY_COMPARE_WITH_TIMEOUT(feedback->message(), QStringLiteral("segundo"), 3000);
+    QCOMPARE(feedback->severity(), QStringLiteral("error"));
+    QVERIFY(spy.count() >= 2);
+
+    feedback->dismiss();
+    QVERIFY(!feedback->active());
+    QCOMPARE(feedback->message(), QString());
+
+    // Ação concluída com sucesso vira toast (mapa central em `Backend`).
+    const QString projectDir = m_testDataDir + QStringLiteral("/toast-project");
+    QVERIFY(QDir().mkpath(projectDir));
+    backend.compose()->composeUp(projectDir);
+    QTRY_COMPARE_WITH_TIMEOUT(feedback->message(), QStringLiteral("Projeto no ar"), 8000);
+
+    // Aviso com ação: o toast chama triggerAction() e o Backend usa o payload.
+    QSignalSpy actionSpy(feedback, &PodStack::Feedback::actionTriggered);
+    feedback->dismiss();
+    feedback->show(QStringLiteral("baixado"), QStringLiteral("success"), 1000,
+                   QStringLiteral("Abrir pasta"));
+    QTRY_COMPARE_WITH_TIMEOUT(feedback->actionText(), QStringLiteral("Abrir pasta"), 3000);
+    feedback->triggerAction();
+    QCOMPARE(actionSpy.count(), 1);
+    QCOMPARE(actionSpy.first().at(0).toString(), QStringLiteral("baixado"));
+    QVERIFY(!feedback->active());
 }
 
 void GuiTest::backendTheme()

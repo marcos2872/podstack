@@ -33,7 +33,7 @@ QJsonValue embeddedUpdatePublicKey()
 }
 
 SettingDef makeBool(const QString &key, bool value, const QString &category,
-                    const QString &description, bool restart = false)
+                    const QString &description, bool restart = false, bool hidden = false)
 {
     SettingDef definition;
     definition.key = key;
@@ -42,6 +42,7 @@ SettingDef makeBool(const QString &key, bool value, const QString &category,
     definition.category = category;
     definition.description = description;
     definition.restartRequired = restart;
+    definition.hidden = hidden;
     return definition;
 }
 
@@ -217,7 +218,7 @@ const QVector<SettingDef> &definitions()
                              QStringLiteral("Cria o autostart com --hidden no login.")));
         list.append(makeBool(QStringLiteral("app.waitForContainerStop"), true,
                              QStringLiteral("Geral"),
-                             QStringLiteral("Aguarda containers pararem ao sair.")));
+                             QStringLiteral("Aguarda containers pararem ao sair."), false, true));
         list.append(makeBool(QStringLiteral("app.keepRunningInTray"), true,
                              QStringLiteral("Geral"),
                              QStringLiteral("Fechar a janela esconde para a bandeja.")));
@@ -241,8 +242,8 @@ const QVector<SettingDef> &definitions()
                              QStringLiteral("Geral"),
                              QStringLiteral("Idioma da interface (pt-BR ou en-US)."), true));
         list.append(makeBool(QStringLiteral("app.confirmDestructive"), true,
-                             QStringLiteral("Geral"),
-                             QStringLiteral("Confirma ações destrutivas.")));
+                             QStringLiteral("Geral"), QStringLiteral("Confirma ações destrutivas."),
+                             false, true));
         list.append(makeBool(QStringLiteral("app.showOnboarding"), true,
                              QStringLiteral("Geral"),
                              QStringLiteral("Exibe onboarding se incompleto.")));

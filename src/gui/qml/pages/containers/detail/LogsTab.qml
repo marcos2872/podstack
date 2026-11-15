@@ -17,8 +17,8 @@ Item {
 
         Text {
             Layout.fillWidth: true
-            visible: backend.containerDetail.detail.logsError.length > 0
-            text: backend.containerDetail.detail.logsError
+            visible: backend.containerDetail.logsError.length > 0
+            text: backend.containerDetail.logsError
             color: Theme.danger
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontMicro
@@ -28,7 +28,7 @@ Item {
         AppLogView {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            lines: backend.containerDetail.detail.logLines
+            lines: backend.containerDetail.logLines
             emptyText: qsTr("Sem logs. O stream do container será exibido aqui em tempo real.")
             onClearRequested: backend.containerDetail.clearLogs()
         }

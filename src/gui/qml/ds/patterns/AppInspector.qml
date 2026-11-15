@@ -43,9 +43,12 @@ Rectangle {
     }
 
     Connections {
-        target: backend
-        function onActionFinished(ok) {
-            if (!inspector.lanPending) {
+        target: backend.containers
+        function onActionCompleted(method, id, ok) {
+            if (!inspector.lanPending || method !== "containers.exposeLan") {
+                return
+            }
+            if (inspector.lanPendingId !== "" && id !== inspector.lanPendingId) {
                 return
             }
             inspector.lanPending = false
@@ -534,27 +537,14 @@ Rectangle {
             }
         }
 
-    AppModal {
+    AppConfirmDialog {
         id: removeDialog
         property string containerId
         title: qsTr("Remover container?")
-        modal: true
-        anchors.centerIn: parent
-        standardButtons: Dialog.Yes | Dialog.No
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.width: 1
-            border.color: Theme.border
-        }
-        contentItem: Text {
-            text: qsTr("O container será removido permanentemente.")
-            color: Theme.textPrimary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: backend.containers.removeContainer(containerId, true, false)
+        message: qsTr("O container será removido permanentemente.")
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: backend.containers.removeContainer(containerId, true, false)
     }
 
     AppModal {
@@ -564,6 +554,7 @@ Rectangle {
         modal: true
         width: 420
         anchors.centerIn: parent
+        actionController: backend.containers
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -591,15 +582,18 @@ Rectangle {
             AppButton {
                 text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !renameDialog.busy
                 onClicked: renameDialog.close()
             }
             AppButton {
                 text: qsTr("Salvar")
                 variant: "primary"
-                onClicked: {
+                busy: renameDialog.busy
+                busyText: qsTr("Renomeando…")
+                enabled: !renameDialog.busy && renameName.text.length > 0
+                onClicked: renameDialog.runAction(function() {
                     backend.containers.renameContainer(renameDialog.containerId, renameName.text)
-                    renameDialog.close()
-                }
+                }, "containers.rename")
             }
         }
     }

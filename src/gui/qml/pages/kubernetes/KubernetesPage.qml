@@ -14,6 +14,11 @@ ColumnLayout {
     property string actionKind: ""
     property string clusterActionKind: "disable"
 
+    readonly property int forwardLocalPort: parseInt(forwardLocal.text)
+    readonly property int forwardRemotePort: parseInt(forwardRemote.text)
+    readonly property bool forwardPortsValid: forwardLocalPort >= 1 && forwardLocalPort <= 65535
+                                               && forwardRemotePort >= 1 && forwardRemotePort <= 65535
+
     function selectedItem() {
         if (page.tab === 0) {
             return podsList.currentRow >= 0 ? backend.k8s.pods[podsList.currentRow] : null
@@ -49,7 +54,9 @@ ColumnLayout {
         }
         forwardLocal.text = "8080"
         forwardRemote.text = String(remote)
-        backend.k8s.stopPortForward()
+        // O forward ativo não é derrubado aqui: abrir o diálogo de outro pod não
+        // pode matar o que o usuário está usando. "Iniciar" fica desabilitado
+        // enquanto houver um ativo; parar é ação explícita.
         forwardDialog.open()
     }
 
@@ -167,6 +174,16 @@ ColumnLayout {
         }
     }
 
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.k8s.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.k8s.dismissError()
+    }
+
     Rectangle {
         objectName: "k8sDisabledCard"
         Layout.fillWidth: true
@@ -223,23 +240,29 @@ ColumnLayout {
         visible: backend.k8s.jobActive || backend.k8s.jobError.length > 0
         spacing: 4
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            Label {
-                text: backend.k8s.jobStage
-                color: Theme.textSecondary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMicro
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: backend.k8s.jobActive
+                    text: backend.k8s.jobStage + " · " + backend.k8s.jobProgress + "%"
+                    color: Theme.textSecondary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                }
+
+                AppButton {
+                    text: qsTr("Cancelar")
+                    variant: "ghost"
+                    size: "sm"
+                    visible: backend.k8s.jobActive
+                    enabled: backend.k8s.jobStage !== "cancelling"
+                    onClicked: backend.k8s.cancelJob()
+                    Accessible.name: qsTr("Cancelar o job do cluster")
+                }
             }
-            Item { Layout.fillWidth: true }
-            Label {
-                text: backend.k8s.jobProgress + "%"
-                color: Theme.textTertiary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMicro
-            }
-        }
 
         ProgressBar {
             Layout.fillWidth: true
@@ -576,9 +599,17 @@ ColumnLayout {
             Label {
                 Layout.fillWidth: true
                 visible: backend.k8s.portForwardActive
-                text: qsTr("ativo: 127.0.0.1:%1 → %2").arg(forwardLocal.text)
-                          .arg(forwardRemote.text)
+                text: qsTr("ativo: %1").arg(backend.k8s.portForwardSummary)
                 color: Theme.cyan
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: !page.forwardPortsValid
+                text: qsTr("Informe portas entre 1 e 65535.")
+                color: Theme.danger
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro
             }
@@ -607,11 +638,11 @@ ColumnLayout {
                 AppButton {
                     text: qsTr("Iniciar")
                     variant: "primary"
-                    enabled: !backend.k8s.portForwardActive
+                    enabled: !backend.k8s.portForwardActive && page.forwardPortsValid
                     onClicked: backend.k8s.startPortForward(page.actionNamespace,
                                                            page.actionName,
-                                                           parseInt(forwardLocal.text),
-                                                           parseInt(forwardRemote.text),
+                                                           page.forwardLocalPort,
+                                                           page.forwardRemotePort,
                                                            page.actionKind)
                 }
 
@@ -623,7 +654,7 @@ ColumnLayout {
             }
         }
 
-        onClosed: backend.k8s.stopPortForward()
+        // O forward ativo continua até "Parar" — fechar o diálogo não o derruba.
     }
 
     Item {

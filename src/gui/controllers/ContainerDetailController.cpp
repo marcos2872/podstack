@@ -140,32 +140,48 @@ void ContainerDetailController::load(const QString &id)
         return;
     }
 
+    // Já existe um inspect em voo: guarda o alvo mais recente. O callback
+    // atual encadeia o próximo load, então a resposta antiga nunca sobrescreve
+    // o container selecionado.
+    if (m_loading) {
+        if (id != m_loadingId) {
+            m_pendingId = id;
+        }
+        return;
+    }
+
     m_detail.clear();
     m_detailJson = {};
     m_error.clear();
     m_loading = true;
+    m_loadingId = id;
     emit detailChanged();
 
     callRpc(QStringLiteral("containers.inspect"), QJsonObject{{QStringLiteral("id"), id}},
             [this, id](const QJsonObject &result) {
                 m_loading = false;
-                if (isErrorResult(result)) {
-                    m_error = errorMessage(result);
-                    if (m_error.isEmpty()) {
-                        m_error = QStringLiteral("Falha ao carregar o inspect.");
-                    }
-                } else {
-                    const QJsonObject json = result.value(QStringLiteral("json")).toObject();
-                    if (json.isEmpty()) {
-                        m_error = QStringLiteral("Inspect vazio ou inválido.");
+                // Só aplica a resposta do container que ainda é o alvo; uma
+                // resposta atrasada de outro container é descartada.
+                if (m_loadingId == id) {
+                    m_loadingId.clear();
+                    if (isErrorResult(result)) {
+                        m_error = errorMessage(result);
+                        if (m_error.isEmpty()) {
+                            m_error = QStringLiteral("Falha ao carregar o inspect.");
+                        }
                     } else {
-                        m_detailJson = json;
-                        m_detail = json.toVariantMap();
-                        m_error.clear();
+                        const QJsonObject json = result.value(QStringLiteral("json")).toObject();
+                        if (json.isEmpty()) {
+                            m_error = QStringLiteral("Inspect vazio ou inválido.");
+                        } else {
+                            m_detailJson = json;
+                            m_detail = json.toVariantMap();
+                            m_error.clear();
+                        }
                     }
+                    emit detailChanged();
                 }
-                emit detailChanged();
-                if (!m_pendingId.isEmpty() && m_pendingId != id) {
+                if (!m_pendingId.isEmpty()) {
                     const QString next = m_pendingId;
                     m_pendingId.clear();
                     load(next);

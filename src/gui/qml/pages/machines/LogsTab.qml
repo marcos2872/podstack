@@ -19,13 +19,13 @@ ColumnLayout {
     }
 
     Connections {
-        target: backend
+        target: backend.machineDetail
 
-        function onMachineLogsChanged() {
+        function onLogsChanged() {
             Qt.callLater(root.scrollToEnd)
         }
 
-        function onMachineConsoleChanged() {
+        function onConsoleChanged() {
             if (backend.machineDetail.consoleActive) {
                 Qt.callLater(root.scrollToEnd)
             }

@@ -6,19 +6,23 @@ import PodStack.Design
 BusyIndicator {
     id: control
 
-    implicitWidth: 24
-    implicitHeight: 24
+    /// Diâmetro visual. O desenho é feito em 24 px e escalado.
+    property int size: 24
+
+    implicitWidth: size
+    implicitHeight: size
     running: visible
 
     contentItem: Item {
-        implicitWidth: 24
-        implicitHeight: 24
+        implicitWidth: control.size
+        implicitHeight: control.size
 
         Item {
             id: spinner
             width: 24
             height: 24
             anchors.centerIn: parent
+            scale: control.size / 24
 
             Repeater {
                 model: 8

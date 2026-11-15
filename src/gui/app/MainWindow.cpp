@@ -17,6 +17,7 @@
 #include <QDebug>
 #include <QDockWidget>
 #include <QGuiApplication>
+#include <QMessageBox>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
@@ -184,6 +185,24 @@ void MainWindow::reveal()
 
 void MainWindow::quitApp()
 {
+    prepareForExit();
+    // Sair sem aviso com containers rodando derruba o trabalho do guest.
+    int running = 0;
+    const QVariantList containers = m_backend ? m_backend->containers()->items() : QVariantList();
+    for (const QVariant &value : containers) {
+        if (value.toMap().value(QStringLiteral("state")).toString() == QStringLiteral("running")) {
+            ++running;
+        }
+    }
+    if (running > 0) {
+        const auto answer = QMessageBox::question(
+            this, tr("Sair do PodStack"),
+            tr("%n container(s) estão em execução. Sair agora?", nullptr, running),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
+    }
     QCoreApplication::quit();
 }
 

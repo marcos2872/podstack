@@ -10,6 +10,17 @@ AppModal {
     /// Função de rótulo de etapa, compartilhada pela página.
     property var stageLabel: function(stage) { return stage }
 
+    /// Abre limpando o formulário. A página não pode tocar nos campos
+    /// internos: ids de um arquivo filho não existem no escopo do pai (era o
+    /// que impedia o diálogo de abrir).
+    function openDialog() {
+        importPath.text = ""
+        importName.text = ""
+        importForce.checked = false
+        backend.machines.resetCreateState()
+        control.open()
+    }
+
     title: qsTr("Importar machine")
     modal: true
     width: 520
@@ -105,7 +116,7 @@ AppModal {
             variant: "secondary"
             onClicked: {
                 if (backend.machines.createActive) {
-                    backend.machines.cancelCreate()
+                    backend.machines.cancelCreate("import")
                 } else {
                     control.close()
                 }

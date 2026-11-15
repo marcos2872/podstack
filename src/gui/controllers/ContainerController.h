@@ -12,7 +12,6 @@ namespace PodStack {
 
 class ContainerController : public CatalogController {
     Q_OBJECT
-    Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(QString lastErrorCode READ lastErrorCode NOTIFY lastErrorCodeChanged)
     Q_PROPERTY(QVariantList files READ files NOTIFY filesChanged)
     Q_PROPERTY(QString filesPath READ filesPath NOTIFY filesChanged)
@@ -25,7 +24,6 @@ public:
     explicit ContainerController(QObject *parent = nullptr);
 
     QVariantList files() const { return m_files; }
-    bool loading() const { return m_loading; }
     /// Código estável do último erro de ação (ex.: `PODSTACK_IMAGE_NOT_FOUND`).
     QString lastErrorCode() const { return m_lastErrorCode; }
     QString filesPath() const { return m_filesPath; }
@@ -58,7 +56,6 @@ public:
 
 signals:
     void filesChanged();
-    void loadingChanged();
     void lastErrorCodeChanged();
     void logsChanged();
     void statsChanged();
@@ -71,6 +68,12 @@ signals:
     /// para a UI (inclui a remediação). A criação usa isso para manter o
     /// diálogo aberto e oferecer o pull quando falta a imagem.
     void actionFailed(const QString &method, const QString &code, const QString &message);
+    /// Emitido ao fim de toda ação (sucesso ou falha), com o método e o id do
+    /// alvo. A UI usa para fechar o diálogo e reconciliar **só** o recurso
+    /// afetado, em vez de reagir a qualquer ação do app.
+    void actionCompleted(const QString &method, const QString &id, bool ok);
+    /// Caminho local onde o download foi gravado (para toast + "Abrir pasta").
+    void fileDownloaded(const QString &path);
     /// Emitido depois de uma ação bem-sucedida para o hub recarregar catálogos.
     void catalogDirty();
 
@@ -85,7 +88,6 @@ private:
     QVariantList m_files;
     QString m_filesPath = QStringLiteral("/");
     QStringList m_logLines;
-    bool m_loading = false;
     QString m_lastErrorCode;
     QVariantMap m_stats;
     QVariantList m_cpuHistory;

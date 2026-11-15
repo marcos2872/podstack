@@ -88,9 +88,19 @@ ColumnLayout {
         AppButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.builds.refreshBuilds()
+            onClicked: backend.builds.refresh()
             Accessible.name: qsTr("Atualizar")
         }
+    }
+
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.builds.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.builds.dismissError()
     }
 
     RowLayout {
@@ -110,6 +120,13 @@ ColumnLayout {
             emptyText: qsTr("Nenhum build registrado.\n"
                             + "Inicie um build informando contexto, Dockerfile e tag.")
             items: backend.builds.items
+            screenState: backend.builds.loading ? "loading"
+                         : backend.builds.items.length > 0 ? "ready"
+                         : backend.builds.lastError.length > 0 ? "error" : "empty"
+            errorText: backend.builds.lastError
+            retrying: backend.builds.loading
+            onRetryRequested: backend.builds.refresh()
+
             selection: buildSelection
             idKey: "id"
             columns: {
@@ -190,8 +207,8 @@ ColumnLayout {
                     }
 
                     Connections {
-                        target: backend
-                        function onBuildLogChanged() {
+                        target: backend.builds
+                        function onLogLinesChanged() {
                             buildLogView.positionViewAtEnd()
                         }
                     }
@@ -253,7 +270,7 @@ ColumnLayout {
                 AppInput {
                     id: buildTag
                     Layout.fillWidth: true
-                    placeholderText: "minha-imagem:latest"
+                    placeholderText: qsTr("minha-imagem:latest")
                 }
 
                 Text { text: qsTr("Build args"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
@@ -307,5 +324,5 @@ ColumnLayout {
         }
     }
 
-    Component.onCompleted: backend.builds.refreshBuilds()
+    Component.onCompleted: backend.builds.refresh()
 }

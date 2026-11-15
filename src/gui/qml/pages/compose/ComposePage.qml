@@ -12,6 +12,15 @@ ColumnLayout {
 
     SelectionState { id: composeSelection }
 
+    readonly property var selectedProject: composeList.currentRow >= 0
+                                          ? backend.compose.items[composeList.currentRow] : null
+    readonly property string selectedPath: selectedProject ? String(selectedProject.workingDir) : ""
+    /// Ação em andamento neste projeto (up/down/restart/stop/start).
+    readonly property bool selectedBusy: selectedPath.length > 0
+                                         && backend.compose.runningTargets[selectedPath] !== undefined
+    /// O log segue o fim só enquanto o usuário não rolar para cima.
+    property bool followLogs: true
+
     function openProject(project, service, logs) {
         for (let i = 0; i < backend.compose.items.length; ++i) {
             if (backend.compose.items[i].name === project) {
@@ -46,9 +55,19 @@ ColumnLayout {
         AppButton {
             variant: "ghost"
             iconName: "refresh"
-            onClicked: backend.compose.refreshCompose()
+            onClicked: backend.compose.refresh()
             Accessible.name: qsTr("Atualizar")
         }
+    }
+
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.compose.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.compose.dismissError()
     }
 
     RowLayout {
@@ -70,6 +89,7 @@ ColumnLayout {
             visible: composeSelection.count > 0
             text: qsTr("Up")
             iconName: "play"
+            enabled: !backend.compose.actionActive
             onClicked: backend.compose.batchCompose(composeSelection.ids(), "up")
         }
 
@@ -77,44 +97,50 @@ ColumnLayout {
             visible: composeSelection.count > 0
             text: qsTr("Down")
             iconName: "stop"
-            onClicked: backend.compose.batchCompose(composeSelection.ids(), "down")
+            enabled: !backend.compose.actionActive
+            onClicked: batchDownDialog.open()
         }
 
         AppButton {
             visible: composeSelection.count > 0
             text: qsTr("Restart")
+            enabled: !backend.compose.actionActive
             onClicked: backend.compose.batchCompose(composeSelection.ids(), "restart")
         }
 
         AppButton {
             visible: composeSelection.count === 0
             text: qsTr("Up")
-            enabled: composeList.currentRow >= 0
-            onClicked: backend.compose.composeUp(
-                           backend.compose.items[composeList.currentRow].workingDir)
+            busy: composeView.selectedBusy
+            busyText: qsTr("Subindo…")
+            enabled: composeView.selectedPath.length > 0 && !composeView.selectedBusy
+            onClicked: backend.compose.composeUp(composeView.selectedPath)
         }
 
         AppButton {
             visible: composeSelection.count === 0
             text: qsTr("Down")
-            enabled: composeList.currentRow >= 0
+            busy: composeView.selectedBusy
+            busyText: qsTr("Derrubando…")
+            enabled: composeView.selectedPath.length > 0 && !composeView.selectedBusy
             onClicked: downDialog.open()
         }
 
         AppButton {
             visible: composeSelection.count === 0
             text: qsTr("Restart")
-            enabled: composeList.currentRow >= 0
-            onClicked: backend.compose.composeRestart(
-                           backend.compose.items[composeList.currentRow].workingDir, "")
+            busy: composeView.selectedBusy
+            busyText: qsTr("Reiniciando…")
+            enabled: composeView.selectedPath.length > 0 && !composeView.selectedBusy
+            onClicked: backend.compose.composeRestart(composeView.selectedPath, "")
         }
 
         AppButton {
             text: qsTr("Abrir YAML")
             iconName: "file"
-            enabled: composeList.currentRow >= 0
+            enabled: composeView.selectedProject !== null
             onClicked: {
-                const project = backend.compose.items[composeList.currentRow]
+                const project = composeView.selectedProject
                 backend.openPath(project.configFile.length > 0
                                  ? project.configFile : project.workingDir)
             }
@@ -123,9 +149,8 @@ ColumnLayout {
         AppButton {
             text: qsTr("Abrir diretório")
             iconName: "folder"
-            enabled: composeList.currentRow >= 0
-            onClicked: backend.openPath(
-                           backend.compose.items[composeList.currentRow].workingDir)
+            enabled: composeView.selectedProject !== null
+            onClicked: backend.openPath(composeView.selectedPath)
         }
 
         Item { Layout.fillWidth: true }
@@ -148,6 +173,13 @@ ColumnLayout {
             emptyText: qsTr("Nenhum projeto Compose em execução.\n"
                             + "Use a CLI: podstack compose up <diretório>.")
             items: backend.compose.items
+            screenState: backend.compose.loading ? "loading"
+                         : backend.compose.items.length > 0 ? "ready"
+                         : backend.compose.lastError.length > 0 ? "error" : "empty"
+            errorText: backend.compose.lastError
+            retrying: backend.compose.loading
+            onRetryRequested: backend.compose.refresh()
+
             selection: composeSelection
             idKey: "workingDir"
             columns: [
@@ -197,10 +229,9 @@ ColumnLayout {
                     AppButton {
                         text: qsTr("Assinar")
                         size: "sm"
-                        enabled: composeList.currentRow >= 0
+                        enabled: composeView.selectedProject !== null
                         onClicked: backend.compose.subscribeComposeLogs(
-                                       backend.compose.items[composeList.currentRow].name,
-                                       logService.text)
+                                       String(composeView.selectedProject.name), logService.text)
                     }
 
                     AppButton {
@@ -208,6 +239,17 @@ ColumnLayout {
                         variant: "ghost"
                         size: "sm"
                         onClicked: backend.compose.unsubscribeComposeLogs()
+                    }
+
+                    AppButton {
+                        text: composeView.followLogs ? qsTr("Seguindo") : qsTr("Seguir")
+                        variant: composeView.followLogs ? "ghost" : "secondary"
+                        size: "sm"
+                        onClicked: {
+                            composeView.followLogs = true
+                            composeLogs.positionViewAtEnd()
+                        }
+                        Accessible.name: qsTr("Seguir o fim do log")
                     }
                 }
 
@@ -237,11 +279,16 @@ ColumnLayout {
                     }
 
                     Connections {
-                        target: backend
-                        function onComposeLogsChanged() {
-                            composeLogs.positionViewAtEnd()
+                        target: backend.compose
+                        function onLogLinesChanged() {
+                            if (composeView.followLogs) {
+                                composeLogs.positionViewAtEnd()
+                            }
                         }
                     }
+
+                    // Rolar para cima pausa o "seguir"; voltar ao fim religa.
+                    onMovementEnded: composeView.followLogs = atYEnd
 
                     Text {
                         anchors.centerIn: parent
@@ -265,6 +312,7 @@ ColumnLayout {
         modal: true
         width: 460
         anchors.centerIn: parent
+        actionController: backend.compose
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -304,16 +352,18 @@ ColumnLayout {
             AppButton {
                 text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !upDialog.busy
                 onClicked: upDialog.close()
             }
             AppButton {
                 text: qsTr("Subir")
                 variant: "primary"
-                enabled: upProjectPath.text.length > 0
-                onClicked: {
+                busy: upDialog.busy
+                busyText: qsTr("Subindo…")
+                enabled: !upDialog.busy && upProjectPath.text.length > 0
+                onClicked: upDialog.runAction(function() {
                     backend.compose.composeUp(upProjectPath.text)
-                    upDialog.close()
-                }
+                }, "compose.up")
             }
         }
     }
@@ -323,7 +373,7 @@ ColumnLayout {
         title: qsTr("Derrubar projeto?")
         modal: true
         anchors.centerIn: parent
-        standardButtons: Dialog.Yes | Dialog.No
+        actionController: backend.compose
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -348,14 +398,48 @@ ColumnLayout {
             }
         }
         onOpened: removeVolumes.checked = false
-        onAccepted: {
-            if (composeList.currentRow >= 0) {
-                backend.compose.composeDown(backend.compose.items[composeList.currentRow].workingDir,
-                                    removeVolumes.checked)
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            AppButton {
+                text: qsTr("Cancelar")
+                variant: "secondary"
+                enabled: !downDialog.busy
+                onClicked: downDialog.close()
+            }
+            AppButton {
+                text: qsTr("Derrubar")
+                variant: "danger"
+                busy: downDialog.busy
+                busyText: qsTr("Derrubando…")
+                enabled: !downDialog.busy && composeView.selectedPath.length > 0
+                onClicked: downDialog.runAction(function() {
+                    backend.compose.composeDown(composeView.selectedPath, removeVolumes.checked)
+                }, "compose.down")
             }
         }
     }
 
-    Component.onCompleted: backend.compose.refreshCompose()
+    Component.onCompleted: backend.compose.refresh()
     Component.onDestruction: backend.compose.unsubscribeComposeLogs()
+
+    // Sair da página encerra o stream: antes ele ficava crescendo em background.
+    onVisibleChanged: {
+        if (!visible) {
+            backend.compose.unsubscribeComposeLogs()
+            composeView.followLogs = true
+        }
+    }
+
+    AppConfirmDialog {
+        id: batchDownDialog
+        title: qsTr("Derrubar projetos selecionados")
+        message: qsTr("%1 projeto(s) serão derrubados. Os volumes são preservados.")
+                     .arg(composeSelection.count)
+        confirmText: qsTr("Derrubar")
+        destructive: true
+        busyText: qsTr("Derrubando…")
+        actionController: backend.compose
+        actionMethod: "compose.batch"
+        onConfirmed: backend.compose.batchCompose(composeSelection.ids(), "down")
+    }
 }

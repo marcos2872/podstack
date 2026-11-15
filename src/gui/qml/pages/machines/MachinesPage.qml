@@ -220,13 +220,7 @@ ColumnLayout {
             variant: "ghost"
             iconName: "download"
             enabled: !backend.machines.createActive
-            onClicked: {
-                importPath.text = ""
-                importName.text = ""
-                importForce.checked = false
-                backend.machines.resetCreateState()
-                importDialog.open()
-            }
+            onClicked: importDialog.openDialog()
             Accessible.name: qsTr("Importar machine de um arquivo .tar.zst")
         }
 
@@ -257,7 +251,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.machines.batch(machineSelection.ids(), "delete", true)
+            onClicked: batchRemoveDialog.open()
         }
 
         AppButton {
@@ -266,6 +260,16 @@ ColumnLayout {
             onClicked: backend.machines.refresh()
             Accessible.name: qsTr("Atualizar machines")
         }
+    }
+
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.machines.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.machines.dismissError()
     }
 
     RowLayout {
@@ -280,6 +284,11 @@ ColumnLayout {
             id: machineCatalog
 
             items: backend.machines.items
+            screenState: backend.machines.items.length > 0 ? "ready"
+                         : backend.machines.lastError.length > 0 ? "error" : "empty"
+            errorText: backend.machines.lastError
+            onRetryRequested: backend.machines.refresh()
+
             selection: machineSelection
 
             onActivated: function(index) {
@@ -330,13 +339,13 @@ ColumnLayout {
     }
 
     Connections {
-        target: backend
+        target: backend.machines
 
-        function onMachinesChanged() {
+        function onItemsChanged() {
             machinesPage.syncSelection()
         }
 
-        function onMachineCreateStateChanged() {
+        function onCreateStateChanged() {
             if (backend.machines.createActive || backend.machines.createStage !== "done") {
                 return
             }
@@ -410,5 +419,27 @@ ColumnLayout {
         backend.machines.refresh()
         backend.machines.refreshDistros()
         syncSelection()
+    }
+
+    // O engine não emite evento de machine: com a página visível, relê a lista
+    // para não mostrar uma VM parada por fora como "em execução".
+    Timer {
+        interval: 5000
+        repeat: true
+        running: machinesPage.visible
+        onTriggered: backend.machines.refresh()
+    }
+
+    AppConfirmDialog {
+        id: batchRemoveDialog
+        title: qsTr("Remover machines selecionadas")
+        message: qsTr("%1 machine(s) serão removidas com os discos. As que estiverem rodando serão encerradas à força.")
+                     .arg(machineSelection.count)
+        confirmText: qsTr("Remover")
+        destructive: true
+        busyText: qsTr("Removendo…")
+        actionController: backend.machines
+        actionMethod: "machines.batch"
+        onConfirmed: backend.machines.batch(machineSelection.ids(), "delete", true)
     }
 }

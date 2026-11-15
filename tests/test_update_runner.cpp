@@ -206,7 +206,7 @@ private:
         PodStack::UpdateRunnerOptions options;
     };
 
-    std::unique_ptr<Fixture> makeFixture(const QString &version = QStringLiteral("0.1.5"));
+    std::unique_ptr<Fixture> makeFixture(const QString &version = QStringLiteral("0.1.6"));
 };
 
 void UpdateRunnerTest::initTestCase()
@@ -271,7 +271,7 @@ void UpdateRunnerTest::prepareDownloadsAndVerifies()
     PodStack::Error error;
     QVERIFY2(runner.prepare(&error),
              qPrintable(error.message + QStringLiteral(" ") + error.detail));
-    QCOMPARE(runner.version(), QStringLiteral("0.1.5"));
+    QCOMPARE(runner.version(), QStringLiteral("0.1.6"));
     QCOMPARE(runner.channel(), QStringLiteral("stable"));
     QVERIFY(!runner.statePath().isEmpty());
     QVERIFY(QFileInfo::exists(runner.artifactPath()));
@@ -499,7 +499,7 @@ void UpdateRunnerTest::prepareRejectsArtifactHash()
 {
     auto fixture = makeFixture();
     QVERIFY(fixture != nullptr);
-    fixture->server.setResponse(QStringLiteral("/podstack-") + QStringLiteral("0.1.5.") +
+    fixture->server.setResponse(QStringLiteral("/podstack-") + QStringLiteral("0.1.6.") +
                                     hostArch() + QStringLiteral(".") + hostFormat(),
                                 200, QByteArrayLiteral("conteúdo divergente"));
     FakeUpdateHelper helper;
@@ -829,7 +829,7 @@ void UpdateRunnerTest::resumeFailedRestartsServices()
     QFile state(fixture->options.stateDir + QStringLiteral("/state.json"));
     QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
     state.write(QByteArrayLiteral(
-        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.5","channel":"stable"})"));
+        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.6","channel":"stable"})"));
     state.close();
     FakeUpdateHelper helper;
     helper.failed = true;
@@ -901,7 +901,7 @@ void UpdateRunnerTest::resumeRestartFails()
     QFile state(fixture->options.stateDir + QStringLiteral("/state.json"));
     QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
     state.write(QByteArrayLiteral(
-        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.5","channel":"stable"})"));
+        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.6","channel":"stable"})"));
     state.close();
     FakeUpdateHelper helper;
     PodStack::UpdateRunner runner(&helper, fixture->options);
@@ -930,7 +930,7 @@ void UpdateRunnerTest::resumeInstallingJob()
     QFile state(fixture->options.stateDir + QStringLiteral("/state.json"));
     QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
     state.write(QByteArrayLiteral(
-        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.5","channel":"stable"})"));
+        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.6","channel":"stable"})"));
     state.close();
 
     FakeUpdateHelper helper;
@@ -1051,7 +1051,7 @@ void UpdateRunnerTest::prepareFromManifestCache()
 
     PodStack::UpdateRunner cached(&helper, fixture->options);
     QVERIFY2(cached.prepareFromManifest(manifestPath, &error), qPrintable(error.message));
-    QCOMPARE(cached.version(), QStringLiteral("0.1.5"));
+    QCOMPARE(cached.version(), QStringLiteral("0.1.6"));
 }
 
 QTEST_GUILESS_MAIN(UpdateRunnerTest)

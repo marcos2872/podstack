@@ -245,9 +245,9 @@ ColumnLayout {
     }
 
     Connections {
-        target: backend
+        target: backend.machineDetail
 
-        function onMachineFilesChanged() {
+        function onFilesChanged() {
             pathField.text = backend.machineDetail.filesPath
         }
     }

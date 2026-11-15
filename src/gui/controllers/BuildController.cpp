@@ -14,6 +14,8 @@ BuildController::BuildController(QObject *parent) : CatalogController(parent)
         if (!buildId.isEmpty()) {
             m_activeBuildId = buildId;
             emit buildStateChanged();
+            // O usuário pode ter clicado em cancelar antes do id chegar.
+            requestBuildCancel();
         }
     });
     connect(&m_stream, &StreamClient::buildEvent, this, [this](const QJsonObject &event) {
@@ -31,6 +33,7 @@ BuildController::BuildController(QObject *parent) : CatalogController(parent)
     connect(&m_stream, &StreamClient::buildFinished, this, [this](const QJsonObject &result) {
         const QString status = result.value(QStringLiteral("status")).toString();
         m_buildActive = false;
+        m_cancelRequested = false;
         m_buildStatus = status == QStringLiteral("success") ? QStringLiteral("Build concluído")
                         : status == QStringLiteral("cancelled")
                             ? QStringLiteral("Build cancelado")
@@ -46,6 +49,7 @@ BuildController::BuildController(QObject *parent) : CatalogController(parent)
     });
     connect(&m_stream, &StreamClient::error, this, [this](const QString &message) {
         m_buildActive = false;
+        m_cancelRequested = false;
         m_buildStatus = message;
         emit buildStateChanged();
         setLastError(message);
@@ -166,9 +170,38 @@ void BuildController::startBuild(const QVariantMap &spec)
 
 void BuildController::cancelBuild()
 {
-    m_stream.unsubscribe();
+    if (!m_buildActive) {
+        return;
+    }
+    m_cancelRequested = true;
     m_buildStatus = QStringLiteral("Cancelando build...");
     emit buildStateChanged();
+    requestBuildCancel();
+}
+
+void BuildController::requestBuildCancel()
+{
+    if (!m_cancelRequested || m_activeBuildId.isEmpty()) {
+        // Sem id ainda: `subscriptionReady` chama de novo quando ele chegar.
+        return;
+    }
+    m_cancelRequested = false;
+    callRpc(QStringLiteral("builds.cancel"), QJsonObject{{QStringLiteral("id"), m_activeBuildId}},
+            [this](const QJsonObject &result) {
+                if (isErrorResult(result)) {
+                    setLastError(errorMessage(result));
+                    m_buildActive = false;
+                    m_buildStatus = QStringLiteral("Build não está mais em execução");
+                    emit buildStateChanged();
+                    refresh();
+                    return;
+                }
+                // Libera a UI já; o `builds.done` (cancelled) reconcilia depois.
+                m_buildActive = false;
+                m_buildStatus = QStringLiteral("Build cancelado");
+                emit buildStateChanged();
+                refresh();
+            });
 }
 
 void BuildController::removeBuild(const QString &id)

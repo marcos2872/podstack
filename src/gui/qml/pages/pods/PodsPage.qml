@@ -11,6 +11,13 @@ ColumnLayout {
 
     SelectionState { id: podSelection }
 
+    readonly property var currentPod: podsList.currentRow >= 0
+                                     ? backend.pods.items[podsList.currentRow] : null
+    readonly property string currentPodId: currentPod ? String(currentPod.id) : ""
+    /// Ação em andamento neste pod; desabilita só os botões dele.
+    readonly property bool currentPodBusy: currentPodId.length > 0
+                                           && backend.pods.runningTargets[currentPodId] !== undefined
+
     AppViewHeader {
         Layout.fillWidth: true
         Layout.leftMargin: 22
@@ -63,35 +70,41 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.pods.batchPods(podSelection.ids(), "remove", true)
+            onClicked: batchRemoveDialog.open()
         }
 
         AppButton {
             visible: podSelection.count === 0
             text: qsTr("Start")
-            enabled: podsList.currentRow >= 0
-            onClicked: backend.pods.podAction("start", backend.pods.items[podsList.currentRow].id)
+            busy: podsView.currentPodBusy
+            busyText: qsTr("Iniciando…")
+            enabled: podsView.currentPodId.length > 0 && !podsView.currentPodBusy
+            onClicked: backend.pods.podAction("start", podsView.currentPodId)
         }
 
         AppButton {
             visible: podSelection.count === 0
             text: qsTr("Stop")
-            enabled: podsList.currentRow >= 0
-            onClicked: backend.pods.podAction("stop", backend.pods.items[podsList.currentRow].id)
+            busy: podsView.currentPodBusy
+            busyText: qsTr("Parando…")
+            enabled: podsView.currentPodId.length > 0 && !podsView.currentPodBusy
+            onClicked: backend.pods.podAction("stop", podsView.currentPodId)
         }
 
         AppButton {
             visible: podSelection.count === 0
             text: qsTr("Restart")
-            enabled: podsList.currentRow >= 0
-            onClicked: backend.pods.podAction("restart", backend.pods.items[podsList.currentRow].id)
+            busy: podsView.currentPodBusy
+            busyText: qsTr("Reiniciando…")
+            enabled: podsView.currentPodId.length > 0 && !podsView.currentPodBusy
+            onClicked: backend.pods.podAction("restart", podsView.currentPodId)
         }
 
         AppButton {
             visible: podSelection.count === 0
             text: qsTr("Remover")
             variant: "danger"
-            enabled: podsList.currentRow >= 0
+            enabled: podsView.currentPodId.length > 0 && !podsView.currentPodBusy
             onClicked: removeDialog.open()
         }
 
@@ -101,6 +114,16 @@ ColumnLayout {
             onClicked: backend.pods.refresh()
             Accessible.name: qsTr("Atualizar")
         }
+    }
+
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.pods.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.pods.dismissError()
     }
 
     AppCatalogList {
@@ -113,6 +136,13 @@ ColumnLayout {
         emptyIcon: "pods"
             emptyText: qsTr("Nenhum pod.\nCrie um pod para agrupar containers.")
         items: backend.pods.items
+        screenState: backend.pods.loading ? "loading"
+                     : backend.pods.items.length > 0 ? "ready"
+                     : backend.pods.lastError.length > 0 ? "error" : "empty"
+        errorText: backend.pods.lastError
+        retrying: backend.pods.loading
+        onRetryRequested: backend.pods.refresh()
+
         selection: podSelection
         idKey: "id"
         columns: [
@@ -125,9 +155,10 @@ ColumnLayout {
 
     AppModal {
         id: createDialog
-        title: "Novo pod"
+        title: qsTr("Novo pod")
         modal: true
         width: 440
+        actionController: backend.pods
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -136,7 +167,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 8
             Label {
-                text: "Nome"
+                text: qsTr("Nome")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -150,40 +181,46 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !createDialog.busy
                 onClicked: createDialog.close()
             }
             AppButton {
-                text: "Criar"
-                enabled: podName.text.length > 0
-                onClicked: {
+                text: qsTr("Criar")
+                busy: createDialog.busy
+                busyText: qsTr("Criando…")
+                enabled: !createDialog.busy && podName.text.length > 0
+                onClicked: createDialog.runAction(function() {
                     backend.pods.createPod(podName.text)
-                    createDialog.close()
-                }
+                }, "pods.create")
             }
         }
     }
 
-    AppModal {
+    AppConfirmDialog {
         id: removeDialog
-        title: "Remover pod?"
-        modal: true
-        standardButtons: Dialog.Yes | Dialog.No
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.color: Theme.border
-        }
-        contentItem: Label {
-            text: "O pod e seus containers serão removidos."
-            color: Theme.textPrimary
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: {
+        title: qsTr("Remover pod?")
+        message: qsTr("O pod e seus containers serão removidos.")
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: {
             if (podsList.currentRow >= 0) {
                 backend.pods.removePod(backend.pods.items[podsList.currentRow].id, true)
             }
         }
+    }
+
+    AppConfirmDialog {
+        id: batchRemoveDialog
+        title: qsTr("Remover pods selecionados")
+        message: qsTr("%1 pod(s) serão removidos à força, junto com os containers.")
+                     .arg(podSelection.count)
+        confirmText: qsTr("Remover")
+        destructive: true
+        busyText: qsTr("Removendo…")
+        actionController: backend.pods
+        actionMethod: "pods.batch"
+        onConfirmed: backend.pods.batchPods(podSelection.ids(), "remove", true)
     }
 }

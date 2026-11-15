@@ -67,15 +67,25 @@ Rectangle {
     }
 
     Connections {
-        target: backend
+        target: backend.setup
 
-        function onSetupChanged() {
+        function onChanged() {
             if (backend.setup.error.length > 0 && !backend.setup.completed) {
                 appWindow.reveal()
             }
         }
+    }
 
-        function onSettingsValuesChanged() {
+    Connections {
+        target: backend.settings
+
+        function onSchemaChanged() {
+            if (settingsDialog.opened) {
+                settingsDialog.rebuildSettingsRows()
+            }
+        }
+
+        function onValuesChanged() {
             applyAppearance()
             // Salvar/restaurar atualiza os valores no daemon; sem reconstruir as
             // linhas o campo continuaria exibindo o snapshot antigo.
@@ -108,20 +118,20 @@ Rectangle {
 
     readonly property var sections: {
         var engine = { group: "Engine", items: [
-            { key: "containers", label: "Containers", icon: "containers" },
-            { key: "images", label: "Images", icon: "images" },
-            { key: "volumes", label: "Volumes", icon: "volumes" },
-            { key: "networks", label: "Networks", icon: "networks" },
-            { key: "compose", label: "Compose", icon: "compose" },
-            { key: "builds", label: "Builds", icon: "builds" },
-            { key: "pods", label: "Pods", icon: "pods" }
+            { key: "containers", label: qsTr("Containers"), icon: "containers" },
+            { key: "images", label: qsTr("Images"), icon: "images" },
+            { key: "volumes", label: qsTr("Volumes"), icon: "volumes" },
+            { key: "networks", label: qsTr("Networks"), icon: "networks" },
+            { key: "compose", label: qsTr("Compose"), icon: "compose" },
+            { key: "builds", label: qsTr("Builds"), icon: "builds" },
+            { key: "pods", label: qsTr("Pods"), icon: "pods" }
         ] }
         var linux = { group: "Linux", items: [
-            { key: "machines", label: "Machines", icon: "machines" },
-            { key: "devices", label: "Devices", icon: "devices", disabled: true }
+            { key: "machines", label: qsTr("Machines"), icon: "machines" },
+            { key: "devices", label: qsTr("Devices"), icon: "devices", disabled: true }
         ] }
         return [engine, { group: "Kubernetes", items: [
-            { key: "kubernetes", label: "Kubernetes", icon: "pods" }
+            { key: "kubernetes", label: qsTr("Kubernetes"), icon: "pods" }
         ] }, linux]
     }
 
@@ -366,14 +376,14 @@ Rectangle {
                 AppNavItem {
                     Layout.fillWidth: true
                     iconName: "settings"
-                    label: "Settings"
+                    label: qsTr("Settings")
                     onClicked: settingsDialog.open()
                 }
 
                 AppNavItem {
                     Layout.fillWidth: true
                     iconName: "file"
-                    label: "Logs"
+                    label: qsTr("Logs")
                     onClicked: systemLogsDialog.open()
                 }
             }
@@ -442,8 +452,13 @@ Rectangle {
                         variant: "ghost"
                         iconName: Theme.dark ? "sun" : "moon"
                         onClicked: {
-                            Theme.dark = !Theme.dark
-                            backend.settings.saveTheme(Theme.dark ? "dark" : "light")
+                            // Ciclo system → dark → light: antes o primeiro
+                            // clique gravava dark/light e o app deixava de
+                            // seguir o tema do desktop para sempre.
+                            const current = backend.settings.values["app.theme"] || "system"
+                            const next = current === "system" ? "dark"
+                                       : current === "dark" ? "light" : "system"
+                            backend.settings.setSetting("app.theme", next)
                         }
                         Accessible.name: qsTr("Alternar tema")
                     }
@@ -729,19 +744,35 @@ Rectangle {
     }
 
     AppToast {
-        message: backend.eventMessage
-        kind: backend.eventKind
+        message: backend.feedback.message
+        severity: backend.feedback.severity
+        actionText: backend.feedback.actionText
+        onActionClicked: backend.feedback.triggerAction()
+    }
+
+    Connections {
+        target: backend
+        function onEventsChanged() {
+            if (backend.eventMessage.length === 0) {
+                return
+            }
+            const kind = backend.eventKind
+            const severity = (kind === "die" || kind === "stop" || kind === "remove")
+                             ? "warning"
+                             : (kind === "start" || kind === "create") ? "success" : "info"
+            backend.feedback.show(backend.eventMessage, severity, 3000)
+        }
     }
 
     Shortcut {
-        sequence: StandardKey.Find
+        sequences: [ StandardKey.Find ]
         enabled: !setupWindow.visible && window.section === "containers"
         onActivated: searchField.forceActiveFocus()
     }
 
     Shortcut {
         objectName: "shortcutNew"
-        sequence: StandardKey.New
+        sequences: [ StandardKey.New ]
         enabled: !setupWindow.visible && window.section === "containers"
         onActivated: containersPage.openCreate()
     }
@@ -876,12 +907,6 @@ Rectangle {
             window.searchText = ""
             containersPage.filter = "all"
             containersPage.openContainer(id)
-        }
-        function onSettingsSchemaChanged() {
-            settingsDialog.rebuildSettingsRows()
-        }
-        function onSettingsValuesChanged() {
-            settingsDialog.rebuildSettingsRows()
         }
     }
 

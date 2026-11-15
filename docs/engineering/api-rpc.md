@@ -107,13 +107,12 @@ interface Subscription { subscriptionId: string }
 | `system.disk` | `{}` | `{checkedAt, thresholdPercent, low, filesystems:[{path, kind, totalBytes, freeBytes, availableBytes, usedPercent}], errors:[]}` |
 | `system.emulation` | `{}` | `{hostArch, handlers:[{name,interpreter,enabled}], foreignEmulation}` |
 | `system.hello` | `{client, version, api}` | `{apiVersion, daemonVersion, podman:{version,api,socket,rootless}}` |
-| `system.status` | `{}` | `{state, engine, mode, version, uptimeSeconds, counts, warnings[]}` |
+| `system.status` | `{}` | `{state, engine, daemonVersion, podman:{apiVersion, socket, mode}, error?}` — `state` é `ok`/`error`, `engine` é `running`/`unavailable`; `error` só existe quando o ping falha |
 | `system.doctor` | `{deep?:bool}` | `{checks:[{id,status,detail,remediation}]}` |
 | `system.report` | `{includeLogs?:bool}` | `{path, bytes, sha256}` |
 | `system.df` | `{detailed?:bool}` | `{json, detailed, sections, totalReclaimableBytes}` |
 | `system.stats.subscribe` | `{intervalSeconds?}` | `Subscription`; notifica `system.stats.delta` |
 | `system.stats.unsubscribe` | `{subscriptionId}` | `{subscriptionId, cancelled}` |
-| `system.shutdown` | `{stopContainers?:bool}` | `{}` |
 
 #### `system.report`
 
@@ -201,20 +200,22 @@ Regras de normalização:
 | `containers.inspect` | `{id}` | `{id, json: object}` |
 | `containers.top` | `{id}` | `{id, titles:[], processes:[][]}` |
 | `containers.changes` | `{id}` | `{id, changes:[{path,kind}]}` |
-| `containers.logs.subscribe` | `{id, tail?, follow?, timestamps?, since?}` | `Subscription` |
+| `containers.logs.subscribe` | `{id, tail?, follow?}` | `Subscription` |
 | `containers.logs.unsubscribe` | `{subscriptionId}` | `{}` |
-| `containers.stats.subscribe` | `{ids?, intervalSeconds?}` | `Subscription` |
+| `containers.stats.subscribe` | `{id, intervalSeconds?}` | `Subscription` |
 | `containers.stats.unsubscribe` | `{subscriptionId}` | `{}` |
-| `containers.exec` | `{id, cmd: string[]}` | `{id, exitCode, stdout}` (one-shot; TTY/sessão via `exec.*` no M1) |
-| `containers.exec.create` | `{id, cmd, tty?, user?, workdir?, env?}` | `{sessionId, execId}` |
-| `containers.exec.write` | `{sessionId, dataBase64}` | `{}` |
-| `containers.exec.resize` | `{sessionId, rows, cols}` | `{}` |
-| `containers.exec.close` | `{sessionId}` | `{exitCode?}` |
+| `containers.exec` | `{id, cmd: string[]}` | `{id, exitCode, stdout}` (one-shot) |
+
+
 | `containers.files.list` | `{id, path}` | `{path, entries:[{name,size,directory,mode,modified}]}` |
 | `containers.files.download` | `{id, path, destination}` | `{path, destination}` |
 | `containers.files.upload` | `{id, path, sourcePath}` | `{path, sourcePath, ok:true}` |
 | `containers.export` | `{id, path}` | `{id, path, size}` (tar síncrono, até 600 s) |
 | `containers.commit` | `{id, repo, tag?, message?}` | `{id, imageId}` |
+
+> **Não implementado:** sessão TTY (`containers.exec.create`/`write`/`resize`/`close` e as
+> notificações `containers.exec.data`/`exec.exit`) não existe nesta versão — o terminal usa
+> o `containers.exec` one-shot. O contrato planejado está em §9.
 
 > **Validação do `containers.create`:** a imagem precisa existir localmente
 > (`PODSTACK_IMAGE_NOT_FOUND` com a referência em `detail`; o pull é uma ação
@@ -702,32 +703,19 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > `kubernetes.enabled=false`; são idempotentes. `k8s.reset` equivale a `disable` com
 > `force=true`. A CLI expõe `podstack kube start` e `podstack kube stop|disable [--force]`.
 
-### 4.9 `domains.*` e `proxy.*`
+### 4.9 `domains.*` e `proxy.*` (planejado)
 
-| Método | Params | Result |
-|---|---|---|
-| `domains.list` | `{}` | `{items: Domain[]}` |
-| `domains.add` | `{hostname, targetType, targetId, port?, https?}` | `Domain` |
-| `domains.remove` | `{hostname}` | `{removed:true}` |
-| `proxy.status` | `{}` | `{httpPort, httpsPort, caInstalled, dnsMode}` |
-| `proxy.ca.install` | `{}` | `JobRef` |
-| `proxy.ca.remove` | `{}` | `JobRef` |
-| `proxy.dns.install` | `{}` | `JobRef` |
-| `proxy.dns.remove` | `{}` | `JobRef` |
-
-> **T6-04/T6-05/T6-06:** o helper já expõe `InstallDnsZone`/`RemoveDnsZone`
-> (drop-in do resolved + reload) e `BindPorts`/`UnbindPorts` (socket activation
-> :80/:443 → proxy local); o daemon sobe o `DnsServer` em `127.0.0.1:5353` e o
-> Caddy (CA interna/HTTPS on-demand) quando `network.https=true`, e o helper
-> confia/remove a CA no host (`TrustCa`/`UntrustCa`). Os métodos
-> `proxy.dns.*`/`proxy.ca.*`/`proxy.status` e os toggles de setup ainda serão
-> fiados em T7.
+> **Não implementado nesta versão.** O helper já tem as operações privilegiadas
+> (`InstallDnsZone`/`RemoveDnsZone`, `BindPorts`/`UnbindPorts`, `TrustCa`/`UntrustCa`) e o
+> daemon sobe `DnsServer`/Caddy quando `network.https=true`, mas os métodos RPC de domínio e
+> proxy ainda não existem. O contrato planejado está em §9.
 
 ### 4.10 `settings.*`
 
 Fonte única: o `podstackd` lê/valida/escreve `~/.config/podstack/config.json` (0600, escrita
-atômica). GUI e CLI usam estes métodos; ninguém escreve o arquivo diretamente. O schema tem 82
-chaves em `src/core/Settings.cpp` (a tabela de [`settings.md`](settings.md) é a referência).
+atômica). GUI e CLI usam estes métodos; ninguém escreve o arquivo diretamente. O schema tem 87
+chaves em `src/core/config/Settings.cpp` — 88 em builds de release, quando a chave pública de
+update é embutida (a tabela de [`settings.md`](settings.md) é a referência).
 
 `values` é sempre um **mapa plano** `chave -> valor` (as chaves `a.b.c` viram `"a.b.c"`). O socket
 é local (`0600` + `SO_PEERCRED`); por isso `network.proxy` é devolvido **sem máscara** para
@@ -736,7 +724,7 @@ logado.
 
 | Método | Params | Result |
 |---|---|---|
-| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve as 88 chaves; com `key`, um único item |
+| `settings.get` | `{key?}` | `{values}` — sem `key`, devolve todas as chaves; com `key`, um único item |
 | `settings.set` | `{key, value}` | `{values, key, restartRequired}` — `value` é validado antes de salvar |
 | `settings.reset` | `{key?}` | `{values, restartRequired}` — sem `key`, restaura todos |
 | `settings.schema` | `{}` | `{schema:[{key,type,default,category,description,restartRequired,secret,nullable,enum?,min?,max?}]}` |
@@ -757,11 +745,11 @@ Regras:
 
 | Método | Params | Result |
 |---|---|---|
-| `jobs.get` | `{id}` | `Job` |
-| `jobs.list` | `{state?}` | `{items: Job[]}` |
-| `jobs.cancel` | `{id}` | `{}` |
-| `events.subscribe` | `{types?}` | `Subscription` |
+| `events.subscribe` | `{types?}` | `Subscription` (notifica `method: "event"`) |
 | `events.unsubscribe` | `{subscriptionId}` | `{}` |
+
+> **Não implementado:** `jobs.get`/`jobs.list`/`jobs.cancel`. Cada job tem canal próprio
+> (`machines.*`, `builds.*`, `k8s.*`, `setup.*`) com `subscribe`/`unsubscribe` e `waitForFinished`.
 
 ### 4.12 `setup.*`
 
@@ -811,7 +799,13 @@ privilegiadas passam pelo helper allowlisted e nunca por shell na GUI.
 
 ## 5. Notificações de stream
 
-Todas usam `method: "<canal>.delta"` e `params.subscriptionId`.
+Os canais abaixo usam `method: "<canal>.delta"` e `params.subscriptionId`.
+A exceção é `events.subscribe`, que notifica `method: "event"` com o objeto cru do Podman
+(sem `subscriptionId`).
+
+Canais com `unsubscribe`: `containers.logs`, `containers.stats`, `system.stats`,
+`images.pull`, `images.push`, `compose.logs`, `builds`, `setup`, `machines.stats`,
+`machines.console`, `k8s.logs` e `events`.
 
 ### 5.1 Logs
 
@@ -826,13 +820,17 @@ Todas usam `method: "<canal>.delta"` e `params.subscriptionId`.
 
 ### 5.2 Stats
 
+O daemon repassa a linha de stats do Libpod **como veio**, com `subscriptionId` acrescentado:
+
 ```json
 { "jsonrpc":"2.0", "method":"containers.stats.delta",
-  "params": { "subscriptionId":"sub-2", "items":[{
-    "id":"abc","cpuPercent":1.2,"memoryBytes":104857600,"memoryLimitBytes":1073741824,
-    "networkRxBytes":1000,"networkTxBytes":2000,"blockReadBytes":0,"blockWriteBytes":0,"pids":12
-  }] } }
+  "params": { "subscriptionId":"sub-2", "cpu_percent":"1.5%", "mem_percent":"50.0%",
+              "mem_usage":"1MB / 1GB", "net_io":"1.00kB / 2.00kB",
+              "block_io":"30B / 40B", "pids":"1" } }
 ```
+
+Os valores são strings formatadas (o cliente converte). Erro do stream vem em
+`containers.stats.error` com `{subscriptionId, error}`.
 
 ### 5.3 Events
 
@@ -1012,3 +1010,20 @@ Resposta:
 ```
 
 Notificações seguem até `containers.logs.unsubscribe`.
+
+## 9. Fora da API atual
+
+Métodos que constam em planos e **não existem** em `Daemon::handle` nesta versão. Chamá-los
+responde `PODSTACK_METHOD_NOT_FOUND`.
+
+| Método | Situação |
+|---|---|
+| `system.shutdown` | descartado; o encerramento é do systemd/serviço, não do RPC |
+| `domains.list` | planejado (T7) — `{}` → `{items: Domain[]}` |
+| `domains.add` | planejado (T7) — `{hostname, targetType, targetId, port?, https?}` → `Domain` |
+| `domains.remove` | planejado (T7) — `{hostname}` → `{removed:true}` |
+| `proxy.status` | planejado (T7) — `{}` → `{httpPort, httpsPort, caInstalled, dnsMode}` |
+| `proxy.ca.install` / `proxy.ca.remove` | planejado (T7) — `{}` → `JobRef` |
+| `proxy.dns.install` / `proxy.dns.remove` | planejado (T7) — `{}` → `JobRef` |
+| `jobs.get` / `jobs.list` / `jobs.cancel` | substituído pelos canais por job (`builds.*`, `machines.*`, `k8s.*`, `setup.*`), cada um com `subscribe`/`unsubscribe` |
+| `containers.exec.create` / `exec.write` / `exec.resize` / `exec.close` e as notificações `containers.exec.data` / `exec.exit` | só o `containers.exec` one-shot existe |

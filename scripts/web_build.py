@@ -236,14 +236,20 @@ def render_topbar(site: dict, nav: dict) -> str:
   </header>"""
 
 
-def render_breadcrumb(nav: dict, active_file: str) -> str:
+def render_breadcrumb(nav: dict, active_file: str, site: dict) -> str:
     page = find_page(nav, active_file)
     if not page:
         return ""
-    parts = ['<a href="index.html">Documentação</a>']
-    if active_file != "index.html":
-        parts.append('<span class="sep" aria-hidden="true">›</span>')
-        parts.append(f'<span>{html.escape(page["group"])}</span>')
+    landing = site.get("landing", "index.html")
+    docs = site.get("docs", "docs.html")
+    parts = [f'<a href="{html.escape(landing)}">Início</a>']
+    parts.append('<span class="sep" aria-hidden="true">›</span>')
+    if active_file == docs:
+        parts.append('<span aria-current="page">Documentação</span>')
+        return '<nav class="breadcrumb" aria-label="Trilha de navegação">' + "".join(parts) + "</nav>"
+    parts.append(f'<a href="{html.escape(docs)}">Documentação</a>')
+    parts.append('<span class="sep" aria-hidden="true">›</span>')
+    parts.append(f'<span>{html.escape(page["group"])}</span>')
     parts.append('<span class="sep" aria-hidden="true">›</span>')
     parts.append(f'<span aria-current="page">{html.escape(page["title"])}</span>')
     return '<nav class="breadcrumb" aria-label="Trilha de navegação">' + "".join(parts) + "</nav>"
@@ -347,7 +353,7 @@ def transform(
         '<div class="dx-overlay" data-dx-overlay aria-hidden="true"></div>',
     )
 
-    breadcrumb = render_breadcrumb(nav, active_file)
+    breadcrumb = render_breadcrumb(nav, active_file, site)
     source = re.sub(
         r'<nav class="breadcrumb" aria-label="Trilha de navegação">.*?</nav>',
         lambda _match: breadcrumb,
@@ -484,9 +490,14 @@ def main() -> int:
             descriptions[page["file"]] = page_description(source)
 
     targets = args.pages or [page["file"] for page in pages]
+    landing = site.get("landing", "index.html")
     stale = False
 
     for filename in targets:
+        if filename == landing:
+            # A landing é escrita à mão (sem sidebar, TOC nem pager).
+            print(f"skip    {filename} (landing)")
+            continue
         path = WEB / filename
         if not path.exists():
             print(f"erro: página não encontrada: {path}", file=sys.stderr)

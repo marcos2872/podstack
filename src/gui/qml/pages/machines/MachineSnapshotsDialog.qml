@@ -91,7 +91,7 @@ AppModal {
     }
 
     Connections {
-        target: backend
+        target: backend.machines
 
         function onActionFinished(ok, message) {
             if (!root.actionPending || !root.opened) {
@@ -107,7 +107,7 @@ AppModal {
                     snapshotsName.text = ""
                 }
             } else {
-                snapshotsError.text = message.length > 0 ? message : backend.lastError
+                snapshotsError.text = message.length > 0 ? message : backend.machines.lastError
             }
         }
     }

@@ -146,6 +146,17 @@ Flickable {
             }
         }
 
+        Connections {
+            target: backend.machines
+            function onActionFinished(ok) {
+                // O clique quebra o binding de `checked`; se o daemon recusou,
+                // o checkbox ficaria marcado mentindo o estado real.
+                if (!ok) {
+                    forwardAgentCheck.checked = root.machine.forwardSshAgent === true
+                }
+            }
+        }
+
         Text {
             Layout.fillWidth: true
             text: qsTr("Aviso: com o agent encaminhado, processos no guest podem usar as chaves do seu SSH agent do host. Ative apenas em machines confiáveis.")

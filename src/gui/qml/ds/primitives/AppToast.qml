@@ -2,14 +2,29 @@ import QtQuick
 import QtQuick.Layouts
 import PodStack.Design
 
+// Aviso transitório do topo. Fila, dedup e duração vêm de `Feedback` (C++).
 Rectangle {
     id: toast
 
-    property string message
-    property string kind
+    property string message: ""
+    /// info | success | warning | error
+    property string severity: "info"
+    property string actionText: ""
 
-    readonly property bool warning: kind === "die" || kind === "stop" || kind === "remove"
-    readonly property bool success: kind === "start" || kind === "create"
+    signal actionClicked()
+
+    readonly property color tone: {
+        if (severity === "success") {
+            return Theme.success
+        }
+        if (severity === "warning") {
+            return Theme.warning
+        }
+        if (severity === "error") {
+            return Theme.danger
+        }
+        return Theme.indigo400
+    }
 
     anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
     anchors.top: parent ? parent.top : undefined
@@ -20,7 +35,7 @@ Rectangle {
     radius: Theme.radiusSm
     color: Theme.bgElevated
     border.width: 1
-    border.color: Theme.borderStrong
+    border.color: Qt.rgba(toast.tone.r, toast.tone.g, toast.tone.b, 0.45)
     opacity: message.length > 0 ? 1 : 0
     visible: opacity > 0
 
@@ -34,10 +49,10 @@ Rectangle {
         spacing: 8
 
         AppIcon {
-            name: toast.warning ? "alert" : toast.success ? "check" : "activity"
+            name: toast.severity === "success" ? "check"
+                  : toast.severity === "info" ? "activity" : "alert"
             size: 14
-            color: toast.warning ? Theme.warning
-                                 : toast.success ? Theme.success : Theme.indigo400
+            color: toast.tone
             Layout.alignment: Qt.AlignVCenter
         }
 
@@ -50,6 +65,14 @@ Rectangle {
             elide: Text.ElideRight
             Layout.preferredWidth: Math.min(implicitWidth, 500)
             Layout.alignment: Qt.AlignVCenter
+        }
+
+        AppButton {
+            visible: toast.actionText.length > 0
+            text: toast.actionText
+            variant: "ghost"
+            size: "sm"
+            onClicked: toast.actionClicked()
         }
     }
 }

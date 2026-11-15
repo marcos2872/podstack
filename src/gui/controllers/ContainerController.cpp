@@ -76,11 +76,16 @@ void ContainerController::refresh()
         m_loading = true;
         emit loadingChanged();
     }
+    const quint64 generation = ++m_refreshGeneration;
     // Timeout curto: um daemon travado precisa aparecer como erro em segundos,
     // não deixar a lista vazia por 30 s como se não houvesse containers.
     callRpc(
         listMethod(), listParams(),
-        [this](const QJsonObject &result) {
+        [this, generation](const QJsonObject &result) {
+            if (generation != m_refreshGeneration) {
+                // Leitura atrasada: a mais nova é quem fecha o loading.
+                return;
+            }
             m_loading = false;
             emit loadingChanged();
             if (isErrorResult(result)) {
@@ -154,6 +159,14 @@ void ContainerController::removeContainer(const QString &id, bool force, bool vo
 
 void ContainerController::createContainer(const QVariantMap &spec, bool start)
 {
+    // Validação local também precisa chegar ao diálogo: antes ela só ia para
+    // `lastError` (rodapé do inspetor) e clicar em Criar com porta/env inválido
+    // não mostrava nada no formulário.
+    const auto fail = [this](const QString &message) {
+        ControllerBase::setLastError(message);
+        emit actionFailed(QStringLiteral("containers.create"),
+                          QStringLiteral("PODSTACK_INVALID_PARAMS"), message);
+    };
     QJsonObject params;
     params.insert(QStringLiteral("image"),
                   spec.value(QStringLiteral("image")).toString().trimmed());
@@ -183,8 +196,8 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
     for (const QString &line : envLines) {
         const int equals = line.indexOf(QLatin1Char('='));
         if (equals <= 0) {
-            setLastError(QStringLiteral("Variável de ambiente inválida: “%1” (use CHAVE=valor).")
-                             .arg(line.trimmed()));
+            fail(QStringLiteral("Variável de ambiente inválida: “%1” (use CHAVE=valor).")
+                     .arg(line.trimmed()));
             return;
         }
         env.insert(line.left(equals).trimmed(), line.mid(equals + 1).trimmed());
@@ -198,8 +211,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
     for (const QString &line : labelLines) {
         const int equals = line.indexOf(QLatin1Char('='));
         if (equals <= 0) {
-            setLastError(
-                QStringLiteral("Label inválida: “%1” (use chave=valor).").arg(line.trimmed()));
+            fail(QStringLiteral("Label inválida: “%1” (use chave=valor).").arg(line.trimmed()));
             return;
         }
         labels.insert(line.left(equals).trimmed(), line.mid(equals + 1).trimmed());
@@ -214,7 +226,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         const QString item = raw.trimmed();
         const QStringList parts = item.split(QLatin1Char(':'));
         if (parts.size() < 2 || parts.size() > 3) {
-            setLastError(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
+            fail(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
             return;
         }
         QString containerPart = parts.last();
@@ -229,7 +241,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         const int containerPort = containerPart.toInt(&containerOk);
         const int hostPort = parts.at(parts.size() == 2 ? 0 : 1).toInt(&hostOk);
         if (!containerOk || !hostOk || containerPort <= 0 || hostPort <= 0) {
-            setLastError(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
+            fail(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
             return;
         }
         QJsonObject port;
@@ -239,7 +251,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         if (parts.size() == 3) {
             const QString hostIp = parts.at(0).trimmed();
             if (hostIp.isEmpty()) {
-                setLastError(QStringLiteral("IP inválido em “%1”.").arg(item));
+                fail(QStringLiteral("IP inválido em “%1”.").arg(item));
                 return;
             }
             port.insert(QStringLiteral("hostIp"), exposeLan ? QStringLiteral("0.0.0.0") : hostIp);
@@ -260,15 +272,13 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         const QString item = raw.trimmed();
         const QStringList parts = item.split(QLatin1Char(':'));
         if (parts.size() < 2 || parts.size() > 3) {
-            setLastError(
-                QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
+            fail(QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
             return;
         }
         const QString source = parts.at(0).trimmed();
         const QString destination = parts.at(1).trimmed();
         if (source.isEmpty() || destination.isEmpty()) {
-            setLastError(
-                QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
+            fail(QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
             return;
         }
         QJsonObject mount;
@@ -357,10 +367,9 @@ void ContainerController::batchIds(const QStringList &ids, const QString &action
             QJsonObject result;
             result.insert(QStringLiteral("count"), ids.size());
             result.insert(QStringLiteral("failed"), failed);
+            result.insert(QStringLiteral("ok"), failed == 0);
             if (failed > 0) {
-                result.insert(QStringLiteral("error"), lastError);
-            } else {
-                result.insert(QStringLiteral("ok"), true);
+                result.insert(QStringLiteral("lastError"), lastError);
             }
             return result;
         },
@@ -503,21 +512,12 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
         emit lastErrorCodeChanged();
     };
 
-    // O lote devolve `count`/`failed` (o `error` do resultado é o último erro
-    // por item, não uma falha do método): trata antes do caminho genérico.
+    // O lote devolve `count`/`failed` (falha parcial não é falha do método):
+    // trata antes do caminho genérico para emitir o código de erro por item.
     if (method == QStringLiteral("containers.batch")) {
-        const int count = result.value(QStringLiteral("count")).toInt();
         const int failed = result.value(QStringLiteral("failed")).toInt();
+        const QString message = batchSummary(result);
         if (failed > 0) {
-            const QString detail = result.value(QStringLiteral("error"))
-                                       .toObject()
-                                       .value(QStringLiteral("message"))
-                                       .toString();
-            const QString message =
-                QStringLiteral("%1 de %2 containers falharam.%3")
-                    .arg(failed)
-                    .arg(count)
-                    .arg(detail.isEmpty() ? QString() : QLatin1Char(' ') + detail);
             setCode(QStringLiteral("PODSTACK_BATCH_PARTIAL"));
             setLastError(message);
             emit actionFailed(method, m_lastErrorCode, message);
@@ -527,8 +527,11 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
         }
         refresh();
         emit catalogDirty();
+        emit actionCompleted(method, QString(), failed == 0);
         return;
     }
+
+    const QString targetId = params.value(QStringLiteral("id")).toString();
 
     const QJsonObject errorObject = result.value(QStringLiteral("__error")).isObject()
                                         ? result.value(QStringLiteral("__error")).toObject()
@@ -538,6 +541,7 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
     ControllerBase::onActionFinished(method, params, result);
     if (isErrorResult(result)) {
         emit actionFailed(method, m_lastErrorCode, errorMessage(result));
+        emit actionCompleted(method, targetId, false);
         return;
     }
     refresh();
@@ -548,6 +552,22 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
             emit containerCreated(id);
         }
     }
+    if (method == QStringLiteral("containers.files.download")) {
+        const QString path = params.value(QStringLiteral("destination")).toString();
+        if (!path.isEmpty()) {
+            emit fileDownloaded(path);
+        }
+    }
+    if (method == QStringLiteral("containers.files.upload")) {
+        // A listagem não recarregava sozinha: o arquivo enviado só aparecia no
+        // próximo clique em Atualizar.
+        const QString id = params.value(QStringLiteral("id")).toString();
+        const QString path = params.value(QStringLiteral("path")).toString();
+        if (!id.isEmpty() && !path.isEmpty()) {
+            listFiles(id, path);
+        }
+    }
+    emit actionCompleted(method, targetId, true);
 }
 
 } // namespace PodStack

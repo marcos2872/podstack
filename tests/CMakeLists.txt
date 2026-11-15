@@ -151,3 +151,10 @@ target_link_libraries(test_qml PRIVATE podstack_qml podstack_qmlplugin
 qt_import_qml_plugins(test_qml)
 add_test(NAME qml COMMAND test_qml -input ${CMAKE_CURRENT_SOURCE_DIR}/qml -import qrc:/qt/qml)
 set_tests_properties(qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# A GUI precisa carregar todas as páginas sem warning de QML (handler órfão,
+# método inexistente, TypeError). O qmllint não cobre isso porque `backend` é
+# context property; só o runtime pega.
+add_test(NAME qml_smoke
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/qml-smoke.sh $<TARGET_FILE:podstack-gui>)
+set_tests_properties(qml_smoke PROPERTIES TIMEOUT 60)

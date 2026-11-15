@@ -51,7 +51,7 @@ AppModal {
     }
 
     Connections {
-        target: backend
+        target: backend.machines
 
         function onActionFinished(ok, message) {
             if (!root.actionPending) {
@@ -63,7 +63,7 @@ AppModal {
                 backend.machines.refreshSerialPorts(root.pendingId)
                 backend.machines.loadInfo(root.pendingId)
             } else {
-                serialError.text = message.length > 0 ? message : backend.lastError
+                serialError.text = message.length > 0 ? message : backend.machines.lastError
             }
             if (!root.opened) {
                 root.pendingId = ""

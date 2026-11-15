@@ -10,6 +10,8 @@ Rectangle {
     property string actionText: qsTr("Tentar novamente")
     /// `danger` para falhas, `warning` para avisos (ex.: versão divergente).
     property string tone: "danger"
+    /// Ação em andamento: spinner no botão de repetir.
+    property bool busy: false
     readonly property color toneColor: tone === "warning" ? Theme.warning : Theme.danger
     readonly property color toneSoft: tone === "warning" ? Theme.warningSoft : Theme.dangerSoft
     signal actionClicked()
@@ -47,6 +49,9 @@ Rectangle {
             text: root.actionText
             variant: "ghost"
             size: "sm"
+            busy: root.busy
+            busyText: qsTr("Tentando…")
+            enabled: !root.busy
             onClicked: root.actionClicked()
         }
     }

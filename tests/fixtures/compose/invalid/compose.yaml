@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Compose com configuração inválida: `depends_on` aponta para um serviço que
+# não existe. O provider falha na validação, **antes** de criar qualquer coisa —
+# é o caso mais rápido para testar a superfície de erro do Up/Down (#80, #77).
+#
+#   podstack compose up -f tests/fixtures/compose/invalid/compose.yaml
+#
+# Esperado na GUI: o diálogo "Subir projeto Compose" permanece aberto e mostra
+# a mensagem do provider ("depends on undefined service ..."), sem fechar nem
+# perder o diretório digitado. Ao reabrir o diálogo, a mensagem some.
+
+name: podstack-fixture-invalid
+
+services:
+  app:
+    image: alpine:3.20
+    command: ["sleep", "300"]
+    depends_on:
+      - servico-que-nao-existe

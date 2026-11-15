@@ -12,12 +12,20 @@ Rectangle {
     property int currentRow: -1
     property string emptyText: qsTr("Nenhum item.")
     property string emptyIcon: "file"
+    /// Estado da tela: carregando/vazio/filtro sem resultado/erro. As páginas
+    /// passam o estado do controller; o padrão mantém o vazio simples.
+    property string screenState: list.count === 0 ? "empty" : "ready"
+    property string emptyHint: ""
+    property string errorText: ""
+    property bool retrying: false
     /// SelectionState opcional; quando definido, habilita clique com Ctrl/Shift.
     property var selection: null
     /// Campo usado como identidade estável do item (id, name, workingDir...).
     property string idKey: "id"
 
     signal activated(int index)
+    signal retryRequested()
+    signal clearFilterRequested()
 
     function itemId(item) {
         return item ? String(item[root.idKey] || "") : ""
@@ -227,29 +235,17 @@ Rectangle {
                 }
             }
 
-            // Estado vazio
-            ColumnLayout {
-                anchors.centerIn: parent
-                width: Math.min(parent.width - 48, 420)
-                visible: list.count === 0
-                spacing: 6
-
-                AppIcon {
-                    Layout.alignment: Qt.AlignHCenter
-                    name: root.emptyIcon
-                    size: 22
-                    color: Theme.textTertiary
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: root.emptyText
-                    color: Theme.textTertiary
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontBody
-                    wrapMode: Text.WordWrap
-                }
+            // Estado vazio / carregando / erro
+            AppScreenState {
+                anchors.fill: parent
+                state: root.screenState
+                emptyTitle: root.emptyText
+                emptyHint: root.emptyHint
+                iconName: root.emptyIcon
+                errorText: root.errorText
+                retrying: root.retrying
+                onRetryRequested: root.retryRequested()
+                onClearFilterRequested: root.clearFilterRequested()
             }
         }
     }

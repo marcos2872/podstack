@@ -49,10 +49,18 @@ Rectangle {
     signal terminalAreaChanged(rect area, bool visible)
     signal externalTerminalRequested()
 
+    /// O overlay (MachineDetailDialog) só trata excluir e terminal; as demais
+    /// ações ficam na página, onde os diálogos existem. Sem isso, os botões
+    /// aparecem no overlay e não fazem nada.
+    property bool showPageActions: true
+
     readonly property string machineId: machine && machine.id ? String(machine.id) : ""
     readonly property string machineName: machine && machine.name ? String(machine.name)
                                                                  : machineId
     readonly property string machineState: machine && machine.state ? String(machine.state) : ""
+    /// Ação em andamento nesta machine (start/stop/restart/update/…).
+    readonly property bool machineBusy: machineId.length > 0
+                                        && backend.machines.runningTargets[machineId] !== undefined
 
     function selectTab(nextTab) {
         if (root.tab === "stats" && nextTab !== "stats") {
@@ -239,6 +247,12 @@ Rectangle {
                 tone: root.stateTone(root.machineState)
             }
 
+            AppSpinner {
+                visible: root.machineBusy
+                size: 14
+                Layout.alignment: Qt.AlignVCenter
+            }
+
             AppButton {
                 visible: root.showTerminalTab
                 text: ""
@@ -266,7 +280,7 @@ Rectangle {
                 size: "sm"
                 enabled: root.machineId.length > 0 && root.machineState !== "running"
                          && root.machineState !== "starting"
-                         && backend.actionActive === false
+                         && !root.machineBusy
                          && backend.machines.createActive === false
                 onClicked: backend.machines.lifecycle("start", root.machineId)
             }
@@ -277,7 +291,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && (root.machineState === "running"
                              || root.machineState === "starting")
-                         && backend.actionActive === false
+                         && !root.machineBusy
                          && backend.machines.createActive === false
                 onClicked: backend.machines.lifecycle("stop", root.machineId, false)
             }
@@ -290,7 +304,7 @@ Rectangle {
                 iconName: "terminal"
                 size: "sm"
                 enabled: root.machineId.length > 0 && root.machineState === "running"
-                         && backend.actionActive === false
+                         && !root.machineBusy
                 onClicked: root.expandRequested(root.machineId, root.terminalTabIndex)
             }
 
@@ -310,12 +324,13 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && !root.machineBusy
                          && backend.machines.createActive === false
                 onClicked: backend.machines.lifecycle("restart", root.machineId)
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Exportar")
                 size: "sm"
                 enabled: root.machineId.length > 0
@@ -326,6 +341,7 @@ Rectangle {
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Renomear")
                 size: "sm"
                 enabled: root.machineId.length > 0
@@ -336,6 +352,7 @@ Rectangle {
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Clonar")
                 size: "sm"
                 enabled: root.machineId.length > 0
@@ -346,12 +363,13 @@ Rectangle {
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Portas")
                 size: "sm"
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && !root.machineBusy
                 onClicked: root.portsRequested(root.machineId)
                 Accessible.name: qsTr("Gerenciar portas encaminhadas da machine")
             }
@@ -359,11 +377,11 @@ Rectangle {
             AppButton {
                 text: qsTr("Serial")
                 size: "sm"
-                visible: !root.showTerminalTab
+                visible: root.showPageActions && !root.showTerminalTab
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && !root.machineBusy
                 onClicked: root.serialRequested(root.machineId)
                 Accessible.name: qsTr("Gerenciar portas seriais da machine")
             }
@@ -371,11 +389,11 @@ Rectangle {
             AppButton {
                 text: qsTr("USB")
                 size: "sm"
-                visible: !root.showTerminalTab
+                visible: root.showPageActions && !root.showTerminalTab
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && !root.machineBusy
                 onClicked: root.usbRequested(root.machineId)
                 Accessible.name: qsTr("Gerenciar dispositivos USB da machine")
             }
@@ -388,7 +406,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && !root.machineBusy
                 onClicked: backend.machines.setAudio(root.machineId,
                                                    !(root.machine
                                                      && root.machine.audioEnabled))
@@ -400,22 +418,23 @@ Rectangle {
                 size: "sm"
                 // O diálogo vive na MachinesPage; no overlay (detalhe) as demais
                 // ações do inspetor também não têm handler.
-                visible: !root.showTerminalTab
+                visible: root.showPageActions && !root.showTerminalTab
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && !root.machineBusy
                 onClicked: root.snapshotsRequested(root.machineId)
                 Accessible.name: qsTr("Gerenciar snapshots do disco da machine")
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Recursos")
                 size: "sm"
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && !root.machineBusy
                 onClicked: root.resourcesRequested(root.machineId)
             }
 
@@ -423,7 +442,7 @@ Rectangle {
                 text: qsTr("Excluir")
                 variant: "danger"
                 size: "sm"
-                enabled: root.machineId.length > 0 && backend.actionActive === false
+                enabled: root.machineId.length > 0 && !root.machineBusy
                          && backend.machines.createActive === false
                 onClicked: root.deleteRequested(root.machineId)
             }

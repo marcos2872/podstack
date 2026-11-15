@@ -18,6 +18,8 @@
 #include "gui/controllers/UpdateController.h"
 #include "gui/controllers/VolumeController.h"
 
+#include "gui/app/Feedback.h"
+
 #include <QFutureWatcher>
 #include <QJsonObject>
 #include <QObject>
@@ -40,6 +42,7 @@ class Backend : public QObject {
     Q_PROPERTY(PodStack::SetupController *setup READ setup CONSTANT)
     Q_PROPERTY(PodStack::SystemController *system READ system CONSTANT)
     Q_PROPERTY(PodStack::UpdateController *updates READ updates CONSTANT)
+    Q_PROPERTY(PodStack::Feedback *feedback READ feedback CONSTANT)
     Q_PROPERTY(PodStack::ContainerController *containers READ containers CONSTANT)
     Q_PROPERTY(PodStack::ContainerDetailController *containerDetail READ containerDetail CONSTANT)
     Q_PROPERTY(PodStack::ImageController *images READ images CONSTANT)
@@ -72,6 +75,7 @@ public:
     SetupController *setup() { return &m_setup; }
     SystemController *system() { return &m_system; }
     UpdateController *updates() { return &m_updates; }
+    Feedback *feedback() { return &m_feedback; }
     ContainerController *containers() { return &m_containers; }
     ContainerDetailController *containerDetail() { return &m_containerDetail; }
     ImageController *images() { return &m_images; }
@@ -129,6 +133,8 @@ private:
     void onContainerDetailFinished();
     void onFilesFinished();
     void onCatalogFinished();
+    /// Texto de confirmação para um método concluído com sucesso ("" = sem toast).
+    static QString successText(const QString &method);
     void onSetupFinished();
     void onUpdateFinished();
     void loadUpdateState();
@@ -175,6 +181,7 @@ private:
     QString m_error;
     QString m_lastError;
     QStringList m_logLines;
+    QString m_lastDownloadDir;
     K8sController m_k8s;
     MachineController m_machines;
     MachineDetailController m_machineDetail;
@@ -182,6 +189,7 @@ private:
     SetupController m_setup;
     SystemController m_system;
     UpdateController m_updates;
+    Feedback m_feedback;
     ContainerController m_containers;
     ContainerDetailController m_containerDetail{&m_containers};
     ImageController m_images;

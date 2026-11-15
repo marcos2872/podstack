@@ -219,9 +219,38 @@ Backend::Backend(QObject *parent) : QObject(parent)
             [this](const QString &id) { emit containerCreated(id); });
     connect(&m_containers, &ContainerController::terminalRequested, this,
             &Backend::terminalRequested);
+    connect(&m_containers, &ContainerController::fileDownloaded, this, [this](const QString &path) {
+        m_lastDownloadDir = QFileInfo(path).absolutePath();
+        m_feedback.show(tr("Arquivo baixado em %1").arg(m_lastDownloadDir),
+                        QStringLiteral("success"), 6000, tr("Abrir pasta"));
+    });
+    connect(&m_feedback, &Feedback::actionTriggered, this, [this](const QString &message) {
+        // O toast de download é o único com ação; abre a pasta de destino.
+        if (message.startsWith(tr("Arquivo baixado")) && !m_lastDownloadDir.isEmpty()) {
+            openPath(m_lastDownloadDir);
+        }
+    });
     connect(&m_machines, &MachineController::terminalRequested, this, &Backend::terminalRequested);
     connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onCatalogFinished);
+    // Confirmação de sucesso no toast: um único ponto para todas as áreas.
+    // `containers.*` só tem entradas para arquivos — start/stop/remove já são
+    // anunciados pelos eventos do engine.
+    ControllerBase *const settledControllers[] = {&m_images, &m_volumes,   &m_networks,
+                                                  &m_pods,   &m_machines,  &m_compose,
+                                                  &m_builds, &m_containers};
+    for (ControllerBase *controller : settledControllers) {
+        connect(controller, &ControllerBase::actionSettled, this,
+                [this](const QString &method, bool ok, const QString &) {
+                    if (!ok) {
+                        return; // erro já aparece no banner da página
+                    }
+                    const QString text = successText(method);
+                    if (!text.isEmpty()) {
+                        m_feedback.show(text, QStringLiteral("success"));
+                    }
+                });
+    }
     connect(&m_settings, &SettingsController::valuesChanged, this, [this] {
         m_updates.setEnabled(m_settings.values()
                                  .value(QStringLiteral("updates.mode"), QStringLiteral("check"))
@@ -338,9 +367,54 @@ QString Backend::version() const
     return QStringLiteral(PODSTACK_VERSION);
 }
 
+QString Backend::successText(const QString &method)
+{
+    // Sem `containers.*`: os eventos do engine já viram toast (start/stop/die).
+    static const QHash<QString, QString> texts{
+        {QStringLiteral("volumes.create"), QStringLiteral("Volume criado")},
+        {QStringLiteral("volumes.remove"), QStringLiteral("Volume removido")},
+        {QStringLiteral("volumes.clone"), QStringLiteral("Volume clonado")},
+        {QStringLiteral("volumes.prune"), QStringLiteral("Volumes sem uso removidos")},
+        {QStringLiteral("volumes.importHostPath"), QStringLiteral("Volume importado")},
+        {QStringLiteral("images.tag"), QStringLiteral("Tag aplicada")},
+        {QStringLiteral("images.untag"), QStringLiteral("Tag removida")},
+        {QStringLiteral("images.load"), QStringLiteral("Imagem importada")},
+        {QStringLiteral("images.remove"), QStringLiteral("Imagem removida")},
+        {QStringLiteral("images.prune"), QStringLiteral("Imagens sem uso removidas")},
+        {QStringLiteral("networks.create"), QStringLiteral("Rede criada")},
+        {QStringLiteral("networks.remove"), QStringLiteral("Rede removida")},
+        {QStringLiteral("networks.connect"), QStringLiteral("Container conectado à rede")},
+        {QStringLiteral("networks.disconnect"), QStringLiteral("Container desconectado da rede")},
+        {QStringLiteral("pods.create"), QStringLiteral("Pod criado")},
+        {QStringLiteral("pods.start"), QStringLiteral("Pod iniciado")},
+        {QStringLiteral("pods.stop"), QStringLiteral("Pod parado")},
+        {QStringLiteral("pods.restart"), QStringLiteral("Pod reiniciado")},
+        {QStringLiteral("pods.remove"), QStringLiteral("Pod removido")},
+        {QStringLiteral("machines.start"), QStringLiteral("Machine iniciada")},
+        {QStringLiteral("machines.stop"), QStringLiteral("Machine parada")},
+        {QStringLiteral("machines.restart"), QStringLiteral("Machine reiniciada")},
+        {QStringLiteral("machines.delete"), QStringLiteral("Machine removida")},
+        {QStringLiteral("machines.rename"), QStringLiteral("Machine renomeada")},
+        {QStringLiteral("machines.update"), QStringLiteral("Machine atualizada")},
+        {QStringLiteral("machines.ports.set"), QStringLiteral("Portas atualizadas")},
+        {QStringLiteral("compose.up"), QStringLiteral("Projeto no ar")},
+        {QStringLiteral("compose.down"), QStringLiteral("Projeto derrubado")},
+        {QStringLiteral("compose.restart"), QStringLiteral("Projeto reiniciado")},
+        {QStringLiteral("compose.stop"), QStringLiteral("Projeto parado")},
+        {QStringLiteral("compose.start"), QStringLiteral("Projeto iniciado")},
+        {QStringLiteral("containers.files.upload"), QStringLiteral("Arquivo enviado")},
+    };
+    return texts.value(method);
+}
+
 void Backend::refresh()
 {
     m_containers.refresh();
+    // Container mudou (evento, ação ou botão Atualizar): o catálogo depende
+    // dele — Compose, volumes e imagens mudam de estado. Antes só a lista de
+    // containers era relida, então subir uma stack por fora deixava a página
+    // Compose vazia até sair e voltar.
+    refreshCatalog();
 }
 
 void Backend::refreshCatalog()
@@ -562,9 +636,8 @@ void Backend::openPath(const QString &path)
 QString Backend::choosePath(const QString &mode, const QString &title, const QString &filter,
                             const QString &initialPath)
 {
-    const QString resolvedTitle = title.isEmpty() ? QStringLiteral("Selecionar arquivo") : title;
-    const QString resolvedFilter =
-        filter.isEmpty() ? QStringLiteral("Todos os arquivos (*)") : filter;
+    const QString resolvedTitle = title.isEmpty() ? tr("Selecionar arquivo") : title;
+    const QString resolvedFilter = filter.isEmpty() ? tr("Todos os arquivos (*)") : filter;
     if (mode == QStringLiteral("save")) {
         return QFileDialog::getSaveFileName(nullptr, resolvedTitle, initialPath, resolvedFilter);
     }

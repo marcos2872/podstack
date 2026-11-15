@@ -4,6 +4,10 @@ import QtQuick.Layouts
 import PodStack.Design
 
 // Modal de confirmação com ação destrutiva opcional.
+//
+// Com `actionController`/`actionMethod`, o confirmar usa `runAction()` do
+// AppModal: mostra progresso, não fecha na chamada e só fecha no sucesso — em
+// erro, mantém a mensagem no header e o diálogo aberto.
 AppModal {
     id: control
 
@@ -16,7 +20,7 @@ AppModal {
     signal cancelled()
 
     width: Math.min(parent ? parent.width - 48 : 460, 460)
-    closePolicy: Popup.CloseOnEscape
+    closePolicy: busy ? Popup.NoAutoClose : Popup.CloseOnEscape
 
     onRejected: control.cancelled()
 
@@ -32,6 +36,7 @@ AppModal {
             AppButton {
                 text: control.cancelText
                 variant: "secondary"
+                enabled: !control.busy
                 onClicked: {
                     control.cancelled()
                     control.close()
@@ -41,10 +46,10 @@ AppModal {
             AppButton {
                 text: control.confirmText
                 variant: control.destructive ? "danger" : "primary"
-                onClicked: {
-                    control.confirmed()
-                    control.close()
-                }
+                busy: control.busy
+                busyText: control.busyText
+                enabled: !control.busy
+                onClicked: control.runAction(function() { control.confirmed() })
             }
         }
     }

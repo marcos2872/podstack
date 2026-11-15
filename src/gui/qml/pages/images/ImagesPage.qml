@@ -125,7 +125,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.images.batchImages(imageSelection.ids(), false)
+            onClicked: batchRemoveDialog.open()
             Accessible.name: qsTr("Remover imagens selecionadas")
         }
 
@@ -145,6 +145,16 @@ ColumnLayout {
         }
     }
 
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.images.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.images.dismissError()
+    }
+
     AppCatalogList {
         id: imagesList
         Layout.fillWidth: true
@@ -155,6 +165,13 @@ ColumnLayout {
         emptyIcon: "images"
             emptyText: qsTr("Nenhuma imagem.\nUse Pull para baixar uma imagem.")
         items: backend.images.items
+        screenState: backend.images.loading ? "loading"
+                     : backend.images.items.length > 0 ? "ready"
+                     : backend.images.lastError.length > 0 ? "error" : "empty"
+        errorText: backend.images.lastError
+        retrying: backend.images.loading
+        onRetryRequested: backend.images.refresh()
+
         selection: imageSelection
         idKey: "id"
         columns: [
@@ -171,7 +188,7 @@ ColumnLayout {
 
     AppModal {
         id: pullDialog
-        title: "Pull de imagem"
+        title: qsTr("Pull de imagem")
         modal: true
         width: 460
         background: Rectangle {
@@ -183,7 +200,7 @@ ColumnLayout {
             spacing: 8
 
             Label {
-                text: "Imagem"
+                text: qsTr("Imagem")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -233,7 +250,7 @@ ColumnLayout {
                 }
             }
             AppButton {
-                text: "Pull"
+                text: qsTr("Pull")
                 enabled: pullReference.text.length > 0 && !backend.images.pullActive
                 onClicked: {
                     backend.images.pullImage(pullReference.text,
@@ -246,9 +263,10 @@ ColumnLayout {
 
     AppModal {
         id: importDialog
-        title: "Importar imagem"
+        title: qsTr("Importar imagem")
         modal: true
         width: 460
+        actionController: backend.images
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -257,7 +275,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 8
             Label {
-                text: "Arquivo tar"
+                text: qsTr("Arquivo tar")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -273,37 +291,30 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !importDialog.busy
                 onClicked: importDialog.close()
             }
             AppButton {
-                text: "Importar"
-                enabled: importPath.text.length > 0
-                onClicked: {
+                text: qsTr("Importar")
+                busy: importDialog.busy
+                busyText: qsTr("Importando…")
+                enabled: !importDialog.busy && importPath.text.length > 0
+                onClicked: importDialog.runAction(function() {
                     backend.images.loadImage(importPath.text)
-                    importDialog.close()
-                }
+                }, "images.load")
             }
         }
     }
 
-    AppModal {
+    AppConfirmDialog {
         id: removeDialog
-        title: "Remover imagem?"
-        modal: true
-        standardButtons: Dialog.Yes | Dialog.No
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.color: Theme.border
-        }
-        contentItem: Label {
-            text: "A imagem será removida. Containers em uso bloqueiam a remoção."
-            color: Theme.textPrimary
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: {
+        title: qsTr("Remover imagem?")
+        message: qsTr("A imagem será removida. Containers em uso bloqueiam a remoção.")
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: {
             if (imagesList.currentRow >= 0) {
                 backend.images.removeImage(backend.images.items[imagesList.currentRow].id, false)
             }
@@ -312,10 +323,9 @@ ColumnLayout {
 
     AppModal {
         id: pruneDialog
-        title: "Limpar imagens?"
+        title: qsTr("Limpar imagens?")
         modal: true
         implicitWidth: 560
-        standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -326,7 +336,7 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                text: "Remove imagens sem uso (dangling). Containers existentes não são afetados."
+                text: qsTr("Remove imagens sem uso (dangling). Containers existentes não são afetados.")
                 color: Theme.textPrimary
                 wrapMode: Text.WordWrap
             }
@@ -390,14 +400,30 @@ ColumnLayout {
             }
         }
         onOpened: backend.refreshDiskUsage()
-        onAccepted: backend.images.pruneImages(false)
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            AppButton {
+                text: qsTr("Cancelar")
+                variant: "secondary"
+                onClicked: pruneDialog.close()
+            }
+            AppButton {
+                text: qsTr("Limpar")
+                variant: "danger"
+                onClicked: {
+                    pruneDialog.close()
+                    backend.images.pruneImages(false)
+                }
+            }
+        }
     }
 
     AppModal {
         id: tagDialog
-        title: "Tag da imagem"
+        title: qsTr("Tag da imagem")
         modal: true
         width: 460
+        actionController: backend.images
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -414,7 +440,7 @@ ColumnLayout {
                 Layout.fillWidth: true
             }
             Label {
-                text: "Nova referência"
+                text: qsTr("Nova referência")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -433,27 +459,43 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !tagDialog.busy
                 onClicked: tagDialog.close()
             }
             AppButton {
-                text: "Remover tag"
+                text: qsTr("Remover tag")
                 variant: "danger"
-                enabled: tagRepo.text.length > 0
-                onClicked: {
+                busy: tagDialog.busy
+                busyText: qsTr("Removendo…")
+                enabled: !tagDialog.busy && tagRepo.text.length > 0
+                onClicked: tagDialog.runAction(function() {
                     backend.images.untagImage(tagId.text, tagRepo.text)
-                    tagDialog.close()
-                }
+                }, "images.untag")
             }
             AppButton {
-                text: "Aplicar"
-                enabled: tagRepo.text.length > 0
-                onClicked: {
+                text: qsTr("Aplicar")
+                busy: tagDialog.busy
+                busyText: qsTr("Aplicando…")
+                enabled: !tagDialog.busy && tagRepo.text.length > 0
+                onClicked: tagDialog.runAction(function() {
                     backend.images.tagImage(tagId.text, tagRepo.text)
-                    tagDialog.close()
-                }
+                }, "images.tag")
             }
         }
+    }
+
+    AppConfirmDialog {
+        id: batchRemoveDialog
+        title: qsTr("Remover imagens selecionadas")
+        message: qsTr("%1 imagem(ns) serão removidas. Containers que as usam podem impedir a remoção.")
+                     .arg(imageSelection.count)
+        confirmText: qsTr("Remover")
+        destructive: true
+        busyText: qsTr("Removendo…")
+        actionController: backend.images
+        actionMethod: "images.batch"
+        onConfirmed: backend.images.batchImages(imageSelection.ids(), false)
     }
 }

@@ -1,15 +1,19 @@
 # Site público (GitHub Pages) — PodStack
 
 > **URL:** https://marcos2872.github.io/podstack/
-> **Fonte:** [`../web/`](../../web) — 16 páginas HTML + CSS/JS/SVG + `_data/`, geradas por
-> [`../scripts/web_build.py`](../../scripts/web_build.py) e commitadas. O Pages publica o HTML estático.
+> **Fonte:** [`../web/`](../../web) — 1 landing page (`index.html`) + 16 páginas de documentação
+> + CSS/JS/SVG + `_data/`, com o chrome gerado por
+> [`../scripts/web_build.py`](../../scripts/web_build.py) e commitado. O Pages publica o HTML estático.
 > **Workflow:** [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml)
 
-O site é a vitrine pública do PodStack: páginas estáticas por área do produto (containers,
-images, volumes, networks, pods, compose, builds, machines, kubernetes, domains, settings,
-CLI, troubleshooting, instalação e onboarding). O HTML/CSS/JS é estático e sem dependências
-externas (sem CDN, sem fontes remotas, sem backend). O único gerador é local/CI: ele injeta
-topbar, sidebar, TOC, pager e o índice de busca, e o resultado é commitado em `web/`.
+O site é a vitrine pública do PodStack. A raiz (`index.html`) é a **landing page**: apresenta o
+produto, oferece o download do RPM/DEB da última release e leva à documentação. As 16 páginas de
+documentação (containers, images, volumes, networks, pods, compose, builds, machines, kubernetes,
+domains, settings, CLI, troubleshooting, instalação, onboarding e visão geral) ficam abaixo de
+`docs.html`. O HTML/CSS/JS é estático e sem dependências externas (sem CDN, sem fontes remotas, sem
+backend); o gerador local/CI injeta topbar, sidebar, TOC, pager e o índice de busca nas páginas de
+documentação, e o resultado é commitado em `web/`.
+
 
 ---
 
@@ -19,8 +23,9 @@ topbar, sidebar, TOC, pager e o índice de busca, e o resultado é commitado em 
 web/
 ├── _data/
 │   ├── nav.json          # árvore: grupos, páginas, ícones, ordem e estados
-│   └── site.json         # versão, URL do GitHub e licença
-├── index.html            # visão geral (gerado)
+│   └── site.json         # versão, URL do GitHub, licença, landing e entrada de docs
+├── index.html            # landing page (escrita à mão, fora do gerador)
+├── docs.html             # visão geral e entrada da documentação (gerado)
 ├── install.html          # instalação (gerado)
 ├── onboarding.html       # 7 telas do setup (gerado)
 ├── containers.html       # + images, volumes, networks, pods (gerados)
@@ -29,11 +34,14 @@ web/
 ├── settings.html         # + cli, troubleshooting (gerados)
 └── assets/
     ├── style.css         # tokens de tema (claro/escuro) e componentes
+    ├── landing.css       # layout da landing page
+    ├── landing.js        # resolve a última release (RPM/DEB) no GitHub
     ├── docs-next.css     # shell de 3 colunas, sidebar, TOC e onboarding
     ├── app.js            # tema, busca, copiar código
     ├── docs-next.js      # drawer, accordion e scrollspy
     ├── search-index.js   # gerado a partir de nav.json + headings
     ├── img/setup/        # 7 capturas WebP do SetupWindow
+    ├── img/app/          # capturas da GUI usadas na landing (containers, machines, compose, images)
     └── podstack-capsule.svg
 
 scripts/web_build.py      # gera o chrome, o pager e o índice de busca
@@ -46,8 +54,33 @@ Regras que o site já cumpre e que **não devem ser quebradas**:
 | Todos os links e assets são **relativos** (`cli.html`, `assets/style.css`) | O site é servido em subpath (`/podstack/`), não na raiz do domínio. Caminhos absolutos (`/assets/...`) quebrariam. |
 | Sem `<base>` | `app.js` resolve a página atual por `location.pathname`; a lógica já trata o caso vazio (`/podstack/` → `index.html`). |
 | HTML gerado e commitado | O Pages publica `web/` estático; `scripts/web_build.py` roda local/CI e `--check` impede divergência. Sem `node_modules`, sem CDN, sem fontes remotas. |
+| A landing **não** é gerada | `site.json` marca `landing: index.html`; ela fica fora de `nav.json`, então o gerador não injeta topbar/sidebar/TOC (e `--pages index.html` imprime `skip`). Links e âncoras dela continuam validados por `validate_site`. |
 | `nav.json` é a fonte da árvore | Sidebar, pager e índice de busca saem do mesmo arquivo; não edite a navegação à mão nas 16 páginas. |
-| Sem backend | Não há `<form>`, `fetch` ou XHR — nada de endpoint para hospedar. |
+| Sem backend | Não há `<form>` nem endpoint próprio. O único `fetch` do site é o de `assets/landing.js`, que lê a release pública no GitHub para apontar os botões de download. |
+
+### 1.1 Landing page e downloads
+
+A landing é a única página escrita à mão e tem CSS/JS próprios:
+
+| Arquivo | Papel |
+|---|---|
+| `web/index.html` | Hero com captura real da GUI, recursos, como funciona, download e rodapé (GitHub, licença e aviso de desenvolvimento). |
+| `web/assets/landing.css` | Layout da landing sobre os tokens de `style.css` (tema claro/escuro, responsivo em 1280/768/390 px). |
+| `web/assets/img/app/*.webp` | Capturas da janela real (Containers, Machines, Compose, Images) em 1277 px de largura. |
+| `web/assets/landing.js` | Resolve a última release e reescreve os `href` para o `.rpm`/`.deb` exatos. |
+
+Detalhes do download:
+
+- Os `href` do HTML apontam para `https://github.com/marcos2872/podstack/releases/latest`
+  (fallback que sempre funciona).
+- `landing.js` consulta `api.github.com/repos/marcos2872/podstack/releases/latest`, escolhe o
+  primeiro asset `.rpm` e `.deb` (ignorando `debuginfo`/`debugsource`), troca os `href` e o texto
+  dos nomes de arquivo, e também atualiza `[data-latest-version]`.
+- A resposta fica em `sessionStorage` por 10 minutos. Se a API falhar (offline ou rate limit de
+  60 req/h por IP), o site continua no fallback, sem erro visível.
+- Os comandos de instalação usam continuação de linha (`\`) para caber na coluna do card sem
+  rolagem horizontal; o texto copiado continua sendo um comando de shell válido.
+
 
 ---
 
@@ -162,9 +195,11 @@ python3 -m http.server -d web 8080
 Checklist antes de publicar:
 
 - [ ] Rodar `python3 scripts/web_build.py --check` (HTML e `search-index.js` em dia).
-- [ ] Abrir todas as páginas pelo menu e conferir navegação/âncoras.
+- [ ] Abrir a landing e conferir que os botões de RPM/DEB apontam para o asset da última release;
+      simular a falha da API (bloqueio de rede no DevTools) e confirmar o fallback para `/releases/latest`.
+- [ ] Abrir todas as páginas de docs pelo menu e conferir navegação/âncoras.
 - [ ] Testar a busca (`app.js`) em pelo menos duas páginas; buscar `Instalação` e `Onboarding` e conferir as subseções.
-- [ ] Conferir as 7 capturas em `web/assets/img/setup/` e o link de abrir em tamanho real.
+- [ ] Conferir as 7 capturas em `web/assets/img/setup/`, as da landing em `web/assets/img/app/` e o link de abrir em tamanho real.
 - [ ] Conferir tema claro/escuro e layout em 1280 px e 390 px de largura.
 - [ ] Verificar que nenhum link relativo ficou quebrado:
 
@@ -175,7 +210,7 @@ for f in web/*.html; do
 done
 ```
 
-- [ ] Nenhum `console.log` de depuração em `web/assets/app.js`.
+- [ ] Nenhum `console.log` de depuração em `web/assets/app.js` nem em `web/assets/landing.js`.
 
 ---
 
@@ -188,6 +223,8 @@ done
 | Links para o GitHub | Instalação e licença apontam para `github.com/marcos2872/podstack` (`docs/user/install.md`, `LICENSE`). Dependem de o caminho existir em `main`. |
 | Limites do Pages | 1 GB de site, ~100 GB/mês de banda, ~10 builds/hora. Irrelevantes para o tamanho atual (menos de 1 MB). |
 | Validação no CI | O `--check` valida links/âncoras internas e o índice de busca. A validação visual, o contraste e o Lighthouse continuam manuais. |
+| API de releases | `landing.js` consulta a API pública do GitHub sem token (limite de 60 req/h por IP). Em caso de falha o botão fica em `/releases/latest`; não há erro para o usuário. |
+| Capturas da GUI | As imagens de `web/assets/img/app/` foram capturadas em uma sessão real (containers `podstack-fixture-*` e duas machines). Ao mudar a UI, recapture e regenere os WebP. |
 | Capturas do onboarding | Foram feitas em ambiente isolado; estados de checks (socket/systemd) variam por host. |
 
 ---
@@ -208,8 +245,10 @@ done
 ## 8. Arquivos relacionados
 
 - [`../web/`](../../web) — fonte do site.
+- [`../web/index.html`](../../web/index.html) — landing page (escrita à mão).
 - [`../web/_data/nav.json`](../../web/_data/nav.json) — árvore da navegação.
-- [`../web/_data/site.json`](../../web/_data/site.json) — versão, GitHub e licença.
+- [`../web/_data/site.json`](../../web/_data/site.json) — versão, GitHub, licença, landing e entrada de docs.
+- [`../web/assets/landing.js`](../../web/assets/landing.js) — resolução da última release (RPM/DEB).
 - [`../scripts/web_build.py`](../../scripts/web_build.py) — gerador do chrome, pager e busca.
 - [`../.github/workflows/pages.yml`](../../.github/workflows/pages.yml) — pipeline de publicação.
 - [`packaging.md`](packaging.md) — empacotamento de binários (RPM/DEB/Flatpak), que é independente do site.
