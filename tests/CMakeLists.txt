@@ -50,6 +50,7 @@ target_link_libraries(test_terminal PRIVATE podstack_gui_lib podstack_qml podsta
     podstack_qml_design podstack_qml_designplugin podstack_qml_pages podstack_qml_pagesplugin
     podstack_qml_features podstack_qml_featuresplugin
     Qt6::Test Qt6::Widgets)
+qt_import_qml_plugins(test_terminal)
 add_test(NAME terminal COMMAND test_terminal)
 set_tests_properties(terminal PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
@@ -135,5 +136,6 @@ target_link_libraries(test_qml PRIVATE podstack_qml podstack_qmlplugin
     podstack_qml_pages podstack_qml_pagesplugin
     podstack_qml_features podstack_qml_featuresplugin
     Qt6::QuickTest Qt6::Test)
+qt_import_qml_plugins(test_qml)
 add_test(NAME qml COMMAND test_qml -input ${CMAKE_CURRENT_SOURCE_DIR}/qml)
 set_tests_properties(qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

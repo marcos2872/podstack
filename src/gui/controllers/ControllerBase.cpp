@@ -55,6 +55,9 @@ bool ControllerBase::isErrorResult(const QJsonObject &result)
            result.value(QStringLiteral("error")).isObject();
 }
 
+// O QFutureWatcher é deletado com deleteLater no handler; o analyzer não
+// acompanha o ownership através do lambda.
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
 void ControllerBase::callRpc(const QString &method, const QJsonObject &params, Callback done,
                              int timeoutMs)
 {
@@ -78,6 +81,7 @@ void ControllerBase::callRpc(const QString &method, const QJsonObject &params, C
         return result;
     }));
 }
+// NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
 
 void ControllerBase::runAction(const QString &method, const QJsonObject &params, Callback done,
                                int timeoutMs)
@@ -112,6 +116,7 @@ void ControllerBase::runJob(const QString &label, const QJsonObject &params, Job
     startAction(action, std::move(done));
 }
 
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
 void ControllerBase::startAction(const PendingAction &action, Callback done)
 {
     m_currentAction = action;
@@ -132,7 +137,7 @@ void ControllerBase::startAction(const PendingAction &action, Callback done)
 
     if (action.job) {
         // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
-    auto *watcher = new QFutureWatcher<QJsonObject>(this);
+        auto *watcher = new QFutureWatcher<QJsonObject>(this);
         connect(watcher, &QFutureWatcher<QJsonObject>::finished, this,
                 [watcher, finish = std::move(finish)]() {
                     const QJsonObject result = watcher->result();
@@ -145,6 +150,7 @@ void ControllerBase::startAction(const PendingAction &action, Callback done)
 
     callRpc(action.method, action.params, finish, action.timeoutMs);
 }
+// NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
 
 void ControllerBase::enqueueAction(const PendingAction &action)
 {

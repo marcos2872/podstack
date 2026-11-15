@@ -328,7 +328,7 @@ QJsonObject StatsCollector::sample(PodmanClient &podman, Error *error)
     m_prevDiskRead = diskRead;
     m_prevDiskWrite = diskWrite;
     m_prevTimestampMs = now;
-    m_prevContainers = nextPrevious;
+    m_prevContainers = std::move(nextPrevious);
     return result;
 }
 

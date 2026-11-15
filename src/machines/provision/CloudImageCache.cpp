@@ -234,7 +234,7 @@ bool CloudImageCache::ensure(const DistroImage &image, const DownloadProgress &p
                 hashFile(target, image.algorithm, progress, cancelled, &hashError);
             if (actual.isEmpty()) {
                 if (error) {
-                    *error = hashError;
+                    *error = std::move(hashError);
                 }
                 return false;
             }
@@ -286,7 +286,7 @@ bool CloudImageCache::ensure(const DistroImage &image, const DownloadProgress &p
         QFile::remove(target);
         QFile::remove(sidecarPath(image));
         if (error) {
-            *error = hashError;
+            *error = std::move(hashError);
         }
         return false;
     }

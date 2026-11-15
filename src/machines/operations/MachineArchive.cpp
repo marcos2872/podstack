@@ -24,8 +24,8 @@ namespace PodStack {
 namespace {
 
 constexpr int kChunkBytes = 256 * 1024;
-constexpr qint64 kMaxArtifactBytes = 1LL << 40; // 1 TiB por artefato
-constexpr qint64 kMaxTotalBytes = 2LL << 40;    // 2 TiB por pacote
+constexpr qint64 kMaxArtifactBytes = 1099511627776LL; // 1 TiB por artefato
+constexpr qint64 kMaxTotalBytes = 2199023255552LL;    // 2 TiB por pacote
 constexpr qint64 kMaxManifestBytes = 1024LL * 1024;
 constexpr int kMaxEntries = 8;
 
@@ -617,9 +617,7 @@ bool MachineArchive::extract(const QString &archivePath, const QString &director
 
         if (progress) {
             const qint64 percent =
-                expected.isEmpty()
-                    ? 0
-                    : static_cast<qint64>(entryCount) * 100 / expected.size();
+                expected.isEmpty() ? 0 : static_cast<qint64>(entryCount) * 100 / expected.size();
             progress(QStringLiteral("verify"), static_cast<int>(qMin<qint64>(100, percent)));
         }
     }
@@ -643,7 +641,7 @@ bool MachineArchive::extract(const QString &archivePath, const QString &director
         MachineArchiveManifest::fromJson(document.object(), &manifestError);
     if (!manifestError.isEmpty()) {
         if (error) {
-            *error = manifestError;
+            *error = std::move(manifestError);
         }
         return false;
     }
@@ -673,7 +671,7 @@ bool MachineArchive::extract(const QString &archivePath, const QString &director
     }
 
     if (manifest) {
-        *manifest = parsed;
+        *manifest = std::move(parsed);
     }
     if (paths) {
         paths->directory = directory;

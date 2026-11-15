@@ -98,8 +98,8 @@ qt_add_qml_module(podstack_qml
     VERSION 1.0
     RESOURCE_PREFIX "/qt/qml"
     QML_FILES
-        qml/Main.qml
-        qml/SettingsDialog.qml
+        Main.qml
+        SettingsDialog.qml
     IMPORTS
         PodStack.Design
         PodStack.Pages
@@ -141,6 +141,8 @@ target_link_libraries(podstack-gui PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
 )
+
+qt_import_qml_plugins(podstack-gui)
 
 set_target_properties(podstack-gui PROPERTIES
     OUTPUT_NAME podstack-gui
