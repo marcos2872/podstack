@@ -11,6 +11,15 @@ Button {
     property string size: "md"           // md | sm
     property string iconName: ""
 
+    /// Ação em andamento: mostra spinner, troca o rótulo por `busyText` e
+    /// bloqueia o clique. Consumidores que não podem confiar no `enabled`
+    /// devem usar `interactive`.
+    property bool busy: false
+    property string busyText: ""
+
+    readonly property bool interactive: enabled && !busy
+    readonly property string shownText: busy && busyText.length > 0 ? busyText : text
+
     // Compatibilidade com chamadas antigas (accentColor). Se definido,
     // o botão vira um "soft" na cor indicada.
     property color accentColor: "transparent"
@@ -68,16 +77,22 @@ Button {
             spacing: 7
 
             AppIcon {
-                visible: control.iconName.length > 0
+                visible: control.iconName.length > 0 && !control.busy
                 name: control.iconName
                 size: control.compact ? 13 : 14
                 color: control.foreground
                 Layout.alignment: Qt.AlignVCenter
             }
 
+            AppSpinner {
+                visible: control.busy
+                size: control.compact ? 12 : 14
+                Layout.alignment: Qt.AlignVCenter
+            }
+
             Text {
-                visible: control.text.length > 0
-                text: control.text
+                visible: control.shownText.length > 0
+                text: control.shownText
                 color: control.foreground
                 font: control.font
                 verticalAlignment: Text.AlignVCenter

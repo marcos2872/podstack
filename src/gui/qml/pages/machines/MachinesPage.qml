@@ -419,6 +419,9 @@ ColumnLayout {
                      .arg(machineSelection.count)
         confirmText: qsTr("Remover")
         destructive: true
+        busyText: qsTr("Removendo…")
+        actionController: backend.machines
+        actionMethod: "machines.batch"
         onConfirmed: backend.machines.batch(machineSelection.ids(), "delete", true)
     }
 }

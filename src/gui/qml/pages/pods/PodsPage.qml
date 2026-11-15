@@ -194,6 +194,9 @@ ColumnLayout {
                      .arg(podSelection.count)
         confirmText: qsTr("Remover")
         destructive: true
+        busyText: qsTr("Removendo…")
+        actionController: backend.pods
+        actionMethod: "pods.batch"
         onConfirmed: backend.pods.batchPods(podSelection.ids(), "remove", true)
     }
 }

@@ -464,6 +464,9 @@ ColumnLayout {
                      .arg(imageSelection.count)
         confirmText: qsTr("Remover")
         destructive: true
+        busyText: qsTr("Removendo…")
+        actionController: backend.images
+        actionMethod: "images.batch"
         onConfirmed: backend.images.batchImages(imageSelection.ids(), false)
     }
 }

@@ -304,6 +304,9 @@ ColumnLayout {
                      .arg(networkSelection.count)
         confirmText: qsTr("Remover")
         destructive: true
+        busyText: qsTr("Removendo…")
+        actionController: backend.networks
+        actionMethod: "networks.batch"
         onConfirmed: backend.networks.batchNetworks(networkSelection.ids(), false)
     }
 }

@@ -405,6 +405,9 @@ ColumnLayout {
                      .arg(volumeSelection.count)
         confirmText: qsTr("Remover")
         destructive: true
+        busyText: qsTr("Removendo…")
+        actionController: backend.volumes
+        actionMethod: "volumes.batch"
         onConfirmed: backend.volumes.batchVolumes(volumeSelection.ids(), false)
     }
 }

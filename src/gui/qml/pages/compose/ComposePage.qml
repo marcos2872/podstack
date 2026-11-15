@@ -366,6 +366,9 @@ ColumnLayout {
                      .arg(composeSelection.count)
         confirmText: qsTr("Derrubar")
         destructive: true
+        busyText: qsTr("Derrubando…")
+        actionController: backend.compose
+        actionMethod: "compose.batch"
         onConfirmed: backend.compose.batchCompose(composeSelection.ids(), "down")
     }
 }
