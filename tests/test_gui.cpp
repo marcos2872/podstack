@@ -1280,7 +1280,7 @@ void GuiTest::backendM3()
     QVERIFY(!backend.builds()->activeBuildId().isEmpty());
 
     QTRY_VERIFY_WITH_TIMEOUT(buildsSpy.count() > 0, 5000);
-    QVERIFY(backend.builds()->items().size() >= 1);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.builds()->items().size() >= 1, 5000);
 
     QFile::remove(m_testDataDir + QStringLiteral("/podman-args.log"));
     QVariantMap multiSpec = spec;

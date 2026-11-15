@@ -3,6 +3,7 @@
 
 #include <QJsonArray>
 #include <QRegularExpression>
+#include <QTimer>
 
 namespace PodStack {
 
@@ -39,6 +40,9 @@ BuildController::BuildController(QObject *parent) : CatalogController(parent)
         }
         emit buildStateChanged();
         refresh();
+        // O daemon persiste o build logo após o done; uma segunda leitura
+        // evita a corrida em máquinas lentas (CI do DEB).
+        QTimer::singleShot(200, this, &BuildController::refresh);
     });
     connect(&m_stream, &StreamClient::error, this, [this](const QString &message) {
         m_buildActive = false;
