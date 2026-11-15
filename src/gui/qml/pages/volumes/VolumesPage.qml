@@ -128,6 +128,7 @@ ColumnLayout {
         id: createDialog
         title: "Novo volume"
         modal: true
+        actionController: backend.volumes
         width: 440
         background: Rectangle {
             color: Theme.bgSurface
@@ -164,15 +165,17 @@ ColumnLayout {
             AppButton {
                 text: "Cancelar"
                 variant: "secondary"
+                enabled: !createDialog.busy
                 onClicked: createDialog.close()
             }
             AppButton {
                 text: "Criar"
-                enabled: volumeName.text.length > 0
-                onClicked: {
+                busy: createDialog.busy
+                busyText: qsTr("Criando…")
+                enabled: !createDialog.busy && volumeName.text.length > 0
+                onClicked: createDialog.runAction(function() {
                     backend.volumes.createVolume(volumeName.text, volumeDriver.text)
-                    createDialog.close()
-                }
+                }, "volumes.create")
             }
         }
     }
@@ -181,6 +184,7 @@ ColumnLayout {
         id: cloneDialog
         title: "Clonar volume"
         modal: true
+        actionController: backend.volumes
         width: 440
         background: Rectangle {
             color: Theme.bgSurface
@@ -217,15 +221,17 @@ ColumnLayout {
             AppButton {
                 text: "Cancelar"
                 variant: "secondary"
+                enabled: !cloneDialog.busy
                 onClicked: cloneDialog.close()
             }
             AppButton {
                 text: "Clonar"
-                enabled: cloneDestination.text.length > 0
-                onClicked: {
+                busy: cloneDialog.busy
+                busyText: qsTr("Clonando…")
+                enabled: !cloneDialog.busy && cloneDestination.text.length > 0
+                onClicked: cloneDialog.runAction(function() {
                     backend.volumes.cloneVolume(cloneSource.text, cloneDestination.text)
-                    cloneDialog.close()
-                }
+                }, "volumes.clone")
             }
         }
     }
@@ -234,6 +240,7 @@ ColumnLayout {
         id: importHostDialog
         title: "Importar do host"
         modal: true
+        actionController: backend.volumes
         width: 460
         background: Rectangle {
             color: Theme.bgSurface
@@ -279,15 +286,17 @@ ColumnLayout {
             AppButton {
                 text: "Cancelar"
                 variant: "secondary"
+                enabled: !importHostDialog.busy
                 onClicked: importHostDialog.close()
             }
             AppButton {
                 text: "Importar"
-                enabled: importHostSource.text.length > 0
-                onClicked: {
+                busy: importHostDialog.busy
+                busyText: qsTr("Importando…")
+                enabled: !importHostDialog.busy && importHostSource.text.length > 0
+                onClicked: importHostDialog.runAction(function() {
                     backend.volumes.importHostPath(importVolumeName.text, importHostSource.text)
-                    importHostDialog.close()
-                }
+                }, "volumes.importHostPath")
             }
         }
     }

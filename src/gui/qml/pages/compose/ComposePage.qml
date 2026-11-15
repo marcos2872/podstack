@@ -265,6 +265,7 @@ ColumnLayout {
         modal: true
         width: 460
         anchors.centerIn: parent
+        actionController: backend.compose
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -304,16 +305,18 @@ ColumnLayout {
             AppButton {
                 text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !upDialog.busy
                 onClicked: upDialog.close()
             }
             AppButton {
                 text: qsTr("Subir")
                 variant: "primary"
-                enabled: upProjectPath.text.length > 0
-                onClicked: {
+                busy: upDialog.busy
+                busyText: qsTr("Subindo…")
+                enabled: !upDialog.busy && upProjectPath.text.length > 0
+                onClicked: upDialog.runAction(function() {
                     backend.compose.composeUp(upProjectPath.text)
-                    upDialog.close()
-                }
+                }, "compose.up")
             }
         }
     }

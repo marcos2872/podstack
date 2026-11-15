@@ -567,6 +567,7 @@ Rectangle {
         modal: true
         width: 420
         anchors.centerIn: parent
+        actionController: backend.containers
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -594,15 +595,18 @@ Rectangle {
             AppButton {
                 text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !renameDialog.busy
                 onClicked: renameDialog.close()
             }
             AppButton {
                 text: qsTr("Salvar")
                 variant: "primary"
-                onClicked: {
+                busy: renameDialog.busy
+                busyText: qsTr("Renomeando…")
+                enabled: !renameDialog.busy && renameName.text.length > 0
+                onClicked: renameDialog.runAction(function() {
                     backend.containers.renameContainer(renameDialog.containerId, renameName.text)
-                    renameDialog.close()
-                }
+                }, "containers.rename")
             }
         }
     }

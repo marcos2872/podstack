@@ -870,6 +870,7 @@ Item {
         modal: true
         width: 440
         anchors.centerIn: parent
+        actionController: backend.containers
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -889,15 +890,18 @@ Item {
             AppButton {
                 text: qsTr("Cancelar")
                 variant: "secondary"
+                enabled: !batchRemoveDialog.busy
                 onClicked: batchRemoveDialog.close()
             }
             AppButton {
                 text: qsTr("Remover")
                 variant: "danger"
-                onClicked: {
+                busy: batchRemoveDialog.busy
+                busyText: qsTr("Removendo…")
+                enabled: !batchRemoveDialog.busy
+                onClicked: batchRemoveDialog.runAction(function() {
                     backend.containers.batchIds(Object.keys(containersPage.selectedIds), "remove")
-                    batchRemoveDialog.close()
-                }
+                }, "containers.batch")
             }
         }
     }

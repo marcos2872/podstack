@@ -249,6 +249,7 @@ ColumnLayout {
         title: "Importar imagem"
         modal: true
         width: 460
+        actionController: backend.images
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -275,15 +276,17 @@ ColumnLayout {
             AppButton {
                 text: "Cancelar"
                 variant: "secondary"
+                enabled: !importDialog.busy
                 onClicked: importDialog.close()
             }
             AppButton {
                 text: "Importar"
-                enabled: importPath.text.length > 0
-                onClicked: {
+                busy: importDialog.busy
+                busyText: qsTr("Importando…")
+                enabled: !importDialog.busy && importPath.text.length > 0
+                onClicked: importDialog.runAction(function() {
                     backend.images.loadImage(importPath.text)
-                    importDialog.close()
-                }
+                }, "images.load")
             }
         }
     }
@@ -398,6 +401,7 @@ ColumnLayout {
         title: "Tag da imagem"
         modal: true
         width: 460
+        actionController: backend.images
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -435,24 +439,27 @@ ColumnLayout {
             AppButton {
                 text: "Cancelar"
                 variant: "secondary"
+                enabled: !tagDialog.busy
                 onClicked: tagDialog.close()
             }
             AppButton {
                 text: "Remover tag"
                 variant: "danger"
-                enabled: tagRepo.text.length > 0
-                onClicked: {
+                busy: tagDialog.busy
+                busyText: qsTr("Removendo…")
+                enabled: !tagDialog.busy && tagRepo.text.length > 0
+                onClicked: tagDialog.runAction(function() {
                     backend.images.untagImage(tagId.text, tagRepo.text)
-                    tagDialog.close()
-                }
+                }, "images.untag")
             }
             AppButton {
                 text: "Aplicar"
-                enabled: tagRepo.text.length > 0
-                onClicked: {
+                busy: tagDialog.busy
+                busyText: qsTr("Aplicando…")
+                enabled: !tagDialog.busy && tagRepo.text.length > 0
+                onClicked: tagDialog.runAction(function() {
                     backend.images.tagImage(tagId.text, tagRepo.text)
-                    tagDialog.close()
-                }
+                }, "images.tag")
             }
         }
     }

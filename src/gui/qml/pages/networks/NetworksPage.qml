@@ -110,6 +110,7 @@ ColumnLayout {
         title: "Nova rede"
         modal: true
         width: 460
+        actionController: backend.networks
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -156,16 +157,18 @@ ColumnLayout {
             AppButton {
                 text: "Cancelar"
                 variant: "secondary"
+                enabled: !createDialog.busy
                 onClicked: createDialog.close()
             }
             AppButton {
                 text: "Criar"
-                enabled: networkName.text.length > 0
-                onClicked: {
+                busy: createDialog.busy
+                busyText: qsTr("Criando…")
+                enabled: !createDialog.busy && networkName.text.length > 0
+                onClicked: createDialog.runAction(function() {
                     backend.networks.createNetwork(networkName.text, networkSubnet.text,
-                                          networkGateway.text)
-                    createDialog.close()
-                }
+                                                   networkGateway.text)
+                }, "networks.create")
             }
         }
     }
@@ -175,6 +178,7 @@ ColumnLayout {
         title: "Conectar container"
         modal: true
         width: 440
+        actionController: backend.networks
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -209,15 +213,17 @@ ColumnLayout {
             AppButton {
                 text: "Cancelar"
                 variant: "secondary"
+                enabled: !connectDialog.busy
                 onClicked: connectDialog.close()
             }
             AppButton {
                 text: "Conectar"
-                enabled: connectContainer.text.length > 0
-                onClicked: {
+                busy: connectDialog.busy
+                busyText: qsTr("Conectando…")
+                enabled: !connectDialog.busy && connectContainer.text.length > 0
+                onClicked: connectDialog.runAction(function() {
                     backend.networks.connectNetwork(connectNetworkName.text, connectContainer.text)
-                    connectDialog.close()
-                }
+                }, "networks.connect")
             }
         }
     }
@@ -227,6 +233,7 @@ ColumnLayout {
         title: "Desconectar container"
         modal: true
         width: 440
+        actionController: backend.networks
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -261,16 +268,18 @@ ColumnLayout {
             AppButton {
                 text: "Cancelar"
                 variant: "secondary"
+                enabled: !disconnectDialog.busy
                 onClicked: disconnectDialog.close()
             }
             AppButton {
                 text: "Desconectar"
-                enabled: disconnectContainer.text.length > 0
-                onClicked: {
+                busy: disconnectDialog.busy
+                busyText: qsTr("Desconectando…")
+                enabled: !disconnectDialog.busy && disconnectContainer.text.length > 0
+                onClicked: disconnectDialog.runAction(function() {
                     backend.networks.disconnectNetwork(disconnectNetworkName.text,
-                                               disconnectContainer.text)
-                    disconnectDialog.close()
-                }
+                                                       disconnectContainer.text)
+                }, "networks.disconnect")
             }
         }
     }

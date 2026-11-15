@@ -128,6 +128,7 @@ ColumnLayout {
         title: "Novo pod"
         modal: true
         width: 440
+        actionController: backend.pods
         background: Rectangle {
             color: Theme.bgSurface
             radius: Theme.radiusLg
@@ -152,15 +153,17 @@ ColumnLayout {
             AppButton {
                 text: "Cancelar"
                 variant: "secondary"
+                enabled: !createDialog.busy
                 onClicked: createDialog.close()
             }
             AppButton {
                 text: "Criar"
-                enabled: podName.text.length > 0
-                onClicked: {
+                busy: createDialog.busy
+                busyText: qsTr("Criando…")
+                enabled: !createDialog.busy && podName.text.length > 0
+                onClicked: createDialog.runAction(function() {
                     backend.pods.createPod(podName.text)
-                    createDialog.close()
-                }
+                }, "pods.create")
             }
         }
     }
