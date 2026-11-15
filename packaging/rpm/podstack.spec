@@ -1,5 +1,5 @@
 Name:           podstack
-Version:        0.1.4
+Version:        0.1.5
 Release:        1%{?dist}
 Summary:        Native desktop for Podman containers, VMs and Kubernetes
 License:        GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.0-or-later
@@ -284,6 +284,13 @@ fi
 %{_datadir}/selinux/packages/podstack.pp
 
 %changelog
+* Sun Nov 15 2026 PodStack contributors <dev@podstack.dev> - 0.1.5-1
+- Fix empty container list, zombie daemon and socket diagnostics; GUI/daemon
+  version mismatch warning.
+- Container creation per spec: name/port/mount validation with retry, new
+  fields, volumes by comma, missing documented methods and batch removal.
+- New public landing page with direct RPM/DEB download of the latest release.
+
 * Fri Nov 13 2026 PodStack contributors <dev@podstack.dev> - 0.1.4-1
 - Secure assisted update with signed manifest, transient unit and resume.
 - JSONL logs with 7-day retention, root logs and scoped GetLogs.

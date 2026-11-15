@@ -7,6 +7,8 @@ versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado]
 
+## [0.1.5] - 2026-11-15
+
 ### Corrigido
 
 - **Lista de containers vazia:** a página não recebia os itens porque o
@@ -38,6 +40,12 @@ versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Listagem:** ID curto, idade e projeto Compose na linha e no inspector; busca por ID.
 - **Remoção em lote** com confirmação e `force` (antes removia sem perguntar e falhava
   em containers em execução).
+- **Site: landing page na raiz.** `web/index.html` deixou de ser a visão geral da
+  documentação e passou a apresentar o produto, com capturas reais da GUI, aviso de que
+  o app está em desenvolvimento e botões de download do RPM/DEB da última release
+  (resolvidos pela API do GitHub, com fallback para `/releases/latest`). A documentação
+  passou a entrar por `web/docs.html`, e o gerador do site ficou responsável apenas pelas
+  páginas de documentação.
 
 ## [0.1.4] - 2026-11-13
 
