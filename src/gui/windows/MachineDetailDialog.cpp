@@ -109,6 +109,12 @@ void MachineDetailDialog::setupInterface(bool loadQml)
                             qWarning().noquote() << error.toString();
                         }
                     } else if (status == QQuickWidget::Ready) {
+                        // As ações de página (exportar/renomear/clonar/portas/…)
+                        // abrem diálogos que vivem na MachinesPage; no overlay
+                        // elas ficariam visíveis e sem efeito.
+                        if (auto *root = m_quickWidget->rootObject()) {
+                            root->setProperty("showPageActions", false);
+                        }
                         connectQmlSignals();
                     }
                 });
@@ -120,6 +126,9 @@ void MachineDetailDialog::setupInterface(bool loadQml)
             QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Pages/machines/MachineInspector.qml")));
 #endif
         connectQmlSignals();
+        if (auto *root = m_quickWidget->rootObject()) {
+            root->setProperty("showPageActions", false);
+        }
         cardLayout->addWidget(m_quickWidget);
     } else {
         auto *placeholder = new QLabel(tr("Detalhes indisponíveis neste contexto."), m_card);

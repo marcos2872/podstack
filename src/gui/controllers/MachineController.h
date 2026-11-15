@@ -66,7 +66,7 @@ public:
     Q_INVOKABLE void update(const QVariantMap &spec);
     Q_INVOKABLE void setPorts(const QString &id, const QVariantList &ports);
     Q_INVOKABLE void create(const QVariantMap &spec);
-    Q_INVOKABLE void cancelCreate();
+    Q_INVOKABLE void cancelCreate(const QString &kind = QString());
     Q_INVOKABLE void resetCreateState();
     Q_INVOKABLE void exportTo(const QString &id, const QString &path, bool force = false);
     Q_INVOKABLE void importFrom(const QString &path, const QString &name = QString(),

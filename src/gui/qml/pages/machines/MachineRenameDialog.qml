@@ -13,6 +13,7 @@ AppModal {
     modal: true
     width: 440
     anchors.centerIn: parent
+    actionController: backend.machines
 
     onOpened: renameName.text = ""
 
@@ -34,10 +35,14 @@ AppModal {
     }
 
     function submit() {
-        if (renameName.text.trim().length > 0 && control.machineId.length > 0) {
-            backend.machines.rename(control.machineId, renameName.text.trim())
-            control.close()
+        if (renameName.text.trim().length === 0 || control.machineId.length === 0) {
+            return
         }
+        // Só fecha no sucesso: nome inválido/duplicado mantém o diálogo aberto
+        // com o erro no header (antes fechava como se tivesse renomeado).
+        control.runAction(function() {
+            backend.machines.rename(control.machineId, renameName.text.trim())
+        }, "machines.rename")
     }
 
     footer: AppFooter {
@@ -45,12 +50,16 @@ AppModal {
         AppButton {
             text: qsTr("Cancelar")
             variant: "secondary"
+            enabled: !control.busy
             onClicked: control.close()
         }
         AppButton {
             text: qsTr("Renomear")
             variant: "primary"
-            enabled: renameName.text.trim().length > 0 && control.machineId.length > 0
+            busy: control.busy
+            busyText: qsTr("Renomeando…")
+            enabled: !control.busy && renameName.text.trim().length > 0
+                     && control.machineId.length > 0
             onClicked: control.submit()
         }
     }

@@ -416,6 +416,15 @@ ColumnLayout {
         syncSelection()
     }
 
+    // O engine não emite evento de machine: com a página visível, relê a lista
+    // para não mostrar uma VM parada por fora como "em execução".
+    Timer {
+        interval: 5000
+        repeat: true
+        running: machinesPage.visible
+        onTriggered: backend.machines.refresh()
+    }
+
     AppConfirmDialog {
         id: batchRemoveDialog
         title: qsTr("Remover machines selecionadas")

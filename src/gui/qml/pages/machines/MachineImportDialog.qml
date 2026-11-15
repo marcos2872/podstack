@@ -116,7 +116,7 @@ AppModal {
             variant: "secondary"
             onClicked: {
                 if (backend.machines.createActive) {
-                    backend.machines.cancelCreate()
+                    backend.machines.cancelCreate("import")
                 } else {
                     control.close()
                 }

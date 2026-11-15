@@ -113,7 +113,7 @@ AppModal {
             variant: "secondary"
             onClicked: {
                 if (backend.machines.createActive) {
-                    backend.machines.cancelCreate()
+                    backend.machines.cancelCreate("clone")
                 } else {
                     root.close()
                 }

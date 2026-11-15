@@ -753,6 +753,12 @@ void MachineController::refreshSnapshots(const QString &id)
         return;
     }
 
+    // Ao trocar de machine, a lista anterior não pode continuar visível (o
+    // diálogo mostrava nomes de A com o alvo de B).
+    if (!m_machineSnapshots.isEmpty()) {
+        m_machineSnapshots.clear();
+        emit snapshotsChanged();
+    }
     m_machineSnapshotsError.clear();
     m_machineSnapshotsWatcher.setFuture(QtConcurrent::run([id] {
         RpcClient client;
@@ -921,9 +927,14 @@ void MachineController::create(const QVariantMap &spec)
     m_machineCreateStream.startMachineCreate(params);
 }
 
-void MachineController::cancelCreate()
+void MachineController::cancelCreate(const QString &kind)
 {
     if (m_machineCreateJobId.isEmpty()) {
+        return;
+    }
+    // Cada diálogo cancela só o **seu** job: antes, cancelar no diálogo de
+    // export podia derrubar a criação que estava rodando.
+    if (!kind.isEmpty() && !m_machineJobKind.isEmpty() && kind != m_machineJobKind) {
         return;
     }
 

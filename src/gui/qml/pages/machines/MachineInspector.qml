@@ -49,6 +49,11 @@ Rectangle {
     signal terminalAreaChanged(rect area, bool visible)
     signal externalTerminalRequested()
 
+    /// O overlay (MachineDetailDialog) só trata excluir e terminal; as demais
+    /// ações ficam na página, onde os diálogos existem. Sem isso, os botões
+    /// aparecem no overlay e não fazem nada.
+    property bool showPageActions: true
+
     readonly property string machineId: machine && machine.id ? String(machine.id) : ""
     readonly property string machineName: machine && machine.name ? String(machine.name)
                                                                  : machineId
@@ -325,6 +330,7 @@ Rectangle {
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Exportar")
                 size: "sm"
                 enabled: root.machineId.length > 0
@@ -335,6 +341,7 @@ Rectangle {
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Renomear")
                 size: "sm"
                 enabled: root.machineId.length > 0
@@ -345,6 +352,7 @@ Rectangle {
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Clonar")
                 size: "sm"
                 enabled: root.machineId.length > 0
@@ -355,6 +363,7 @@ Rectangle {
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Portas")
                 size: "sm"
                 enabled: root.machineId.length > 0
@@ -368,7 +377,7 @@ Rectangle {
             AppButton {
                 text: qsTr("Serial")
                 size: "sm"
-                visible: !root.showTerminalTab
+                visible: root.showPageActions && !root.showTerminalTab
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
@@ -380,7 +389,7 @@ Rectangle {
             AppButton {
                 text: qsTr("USB")
                 size: "sm"
-                visible: !root.showTerminalTab
+                visible: root.showPageActions && !root.showTerminalTab
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
@@ -409,7 +418,7 @@ Rectangle {
                 size: "sm"
                 // O diálogo vive na MachinesPage; no overlay (detalhe) as demais
                 // ações do inspetor também não têm handler.
-                visible: !root.showTerminalTab
+                visible: root.showPageActions && !root.showTerminalTab
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
@@ -419,6 +428,7 @@ Rectangle {
             }
 
             AppButton {
+                visible: root.showPageActions
                 text: qsTr("Recursos")
                 size: "sm"
                 enabled: root.machineId.length > 0
