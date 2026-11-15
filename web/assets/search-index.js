@@ -1,33 +1,33 @@
 window.PODSTACK_SEARCH = [
   {
     "title": "Visão geral",
-    "url": "index.html",
+    "url": "docs.html",
     "description": "O que é o PodStack, arquitetura, primeiros passos, mapa da documentação e limitações gerais da versão 0.1.4.",
     "keys": "Visão geral O que é o PodStack, arquitetura, primeiros passos, mapa da documentação e limitações gerais da versão 0.1.4. Visão geral Arquitetura em uma frase Primeiros passos Mapa da documentação Limitações gerais do 0.1.4",
     "headings": [
       {
         "title": "Visão geral",
-        "url": "index.html#visao-geral",
+        "url": "docs.html#visao-geral",
         "level": 2
       },
       {
         "title": "Arquitetura em uma frase",
-        "url": "index.html#arquitetura",
+        "url": "docs.html#arquitetura",
         "level": 2
       },
       {
         "title": "Primeiros passos",
-        "url": "index.html#primeiros-passos",
+        "url": "docs.html#primeiros-passos",
         "level": 2
       },
       {
         "title": "Mapa da documentação",
-        "url": "index.html#mapa",
+        "url": "docs.html#mapa",
         "level": 2
       },
       {
         "title": "Limitações gerais do 0.1.4",
-        "url": "index.html#limitacoes",
+        "url": "docs.html#limitacoes",
         "level": 2
       }
     ]

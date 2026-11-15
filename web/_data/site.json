@@ -2,5 +2,7 @@
   "title": "PodStack Docs",
   "version": "0.1.4",
   "github": "https://github.com/marcos2872/podstack",
-  "license": "GPL-3.0-or-later"
+  "license": "GPL-3.0-or-later",
+  "landing": "index.html",
+  "docs": "docs.html"
 }
