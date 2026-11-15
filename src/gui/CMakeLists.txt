@@ -134,6 +134,10 @@ target_link_libraries(podstack-gui PRIVATE
     podstack_qml_pagesplugin
     podstack_qml_features
     podstack_qml_featuresplugin
+    podstack_qmlplugin_init
+    podstack_qml_designplugin_init
+    podstack_qml_pagesplugin_init
+    podstack_qml_featuresplugin_init
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
