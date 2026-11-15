@@ -104,6 +104,16 @@ ColumnLayout {
         }
     }
 
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.volumes.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.volumes.dismissError()
+    }
+
     AppCatalogList {
         id: volumesList
         Layout.fillWidth: true

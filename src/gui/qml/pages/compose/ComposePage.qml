@@ -51,6 +51,16 @@ ColumnLayout {
         }
     }
 
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.compose.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.compose.dismissError()
+    }
+
     RowLayout {
         Layout.fillWidth: true
         Layout.leftMargin: compact ? 14 : 22

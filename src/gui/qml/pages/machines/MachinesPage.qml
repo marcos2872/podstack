@@ -262,6 +262,16 @@ ColumnLayout {
         }
     }
 
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.machines.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.machines.dismissError()
+    }
+
     RowLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true

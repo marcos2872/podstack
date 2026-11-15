@@ -145,6 +145,16 @@ ColumnLayout {
         }
     }
 
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.images.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.images.dismissError()
+    }
+
     AppCatalogList {
         id: imagesList
         Layout.fillWidth: true

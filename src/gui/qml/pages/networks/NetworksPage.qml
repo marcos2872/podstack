@@ -85,6 +85,16 @@ ColumnLayout {
         }
     }
 
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.networks.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.networks.dismissError()
+    }
+
     AppCatalogList {
         id: networksList
         Layout.fillWidth: true

@@ -103,6 +103,16 @@ ColumnLayout {
         }
     }
 
+    AppErrorBanner {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 8
+        message: backend.pods.lastError
+        actionText: qsTr("Dispensar")
+        onActionClicked: backend.pods.dismissError()
+    }
+
     AppCatalogList {
         id: podsList
         Layout.fillWidth: true
