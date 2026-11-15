@@ -71,6 +71,12 @@ Dialog {
         }
     }
 
+    // Reabrir não pode herdar o erro da tentativa anterior.
+    onOpened: {
+        control.errorText = ""
+        control.busy = false
+    }
+
     background: Rectangle {
         color: Theme.bgSurface
         radius: Theme.radiusLg
