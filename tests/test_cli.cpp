@@ -2353,7 +2353,16 @@ void CliTest::errorPaths()
                                   + QStringLiteral("/podstack-missing-%1.sock")
                                         .arg(QCoreApplication::applicationPid());
     QFile::remove(missingSocket);
-    const QProcessEnvironment offline = environment(missingSocket);
+    QProcessEnvironment offline = environment(missingSocket);
+    // Unit presente para o doctor imprimir a remediação independentemente de o
+    // host ter o pacote instalado.
+    const QString unitDir = m_testDataDir + QStringLiteral("/user-units");
+    QVERIFY(QDir().mkpath(unitDir));
+    QFile unit(unitDir + QStringLiteral("/podstack.socket"));
+    QVERIFY(unit.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    unit.write("[Socket]\n");
+    unit.close();
+    offline.insert(QStringLiteral("PODSTACK_USER_UNIT_DIR"), unitDir);
 
     result = run({QStringLiteral("status")}, offline);
     QCOMPARE(result.code, 7);
@@ -2368,6 +2377,8 @@ void CliTest::errorPaths()
 
     result = run({QStringLiteral("doctor")}, offline);
     QCOMPARE(result.code, 7);
+    QVERIFY(result.out.contains(QStringLiteral("[fail] daemon.socket")));
+    QVERIFY(result.out.contains(QStringLiteral("systemctl --user start podstack.socket")));
     QCOMPARE(run({QStringLiteral("build")}, environment(m_controlSocket)).code, 2);
     QCOMPARE(run({QStringLiteral("builds"), QStringLiteral("rm")},
                  environment(m_controlSocket)).code, 2);

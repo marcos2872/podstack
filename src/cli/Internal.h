@@ -7,6 +7,7 @@
 #include "core/logging/LogReader.h"
 #include "core/logging/Logging.h"
 #include "core/logging/Redaction.h"
+#include "core/rpc/DaemonBootstrap.h"
 #include "core/rpc/RpcClient.h"
 #include "core/rpc/RpcStream.h"
 #include "core/update/UpdateRunner.h"

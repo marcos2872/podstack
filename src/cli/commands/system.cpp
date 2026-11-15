@@ -343,7 +343,32 @@ int commandUpdate(const QStringList &args)
 
 int commandDoctor()
 {
-    PodStack::RpcClient client;
+    // O check do socket roda no cliente: com o socket parado o daemon não
+    // responde e o check antigo (dentro de system.doctor) nunca executava.
+    const QString socketPath = PodStack::Paths::controlSocket();
+    PodStack::DaemonBootstrap::Probe probe = PodStack::DaemonBootstrap::probe(socketPath);
+    if (!probe.connectable) {
+        const PodStack::DaemonBootstrap::Status status =
+            PodStack::DaemonBootstrap::ensureRunning(socketPath);
+        if (status == PodStack::DaemonBootstrap::Status::Started ||
+            status == PodStack::DaemonBootstrap::Status::AlreadyRunning) {
+            probe = PodStack::DaemonBootstrap::probe(socketPath);
+        }
+    }
+
+    out() << (probe.connectable ? "[ok]   " : "[fail] ") << "daemon.socket - " << socketPath
+          << (probe.socketExists ? "" : " (ausente)") << '\n';
+    if (!probe.connectable) {
+        if (probe.unitInstalled) {
+            out() << "       ação: " << PodStack::DaemonBootstrap::manualRemedy() << '\n';
+        } else {
+            out() << "       ação: instale o pacote do PodStack (unit podstack.socket ausente)\n";
+        }
+        out().flush();
+        return kExitEngineUnavailable;
+    }
+
+    PodStack::RpcClient client(socketPath);
     PodStack::Error error;
     const QJsonObject result = client.call(QStringLiteral("system.doctor"), {}, &error);
     if (!error.isEmpty()) {
@@ -354,10 +379,15 @@ int commandDoctor()
     const QJsonArray checks = result.value(QStringLiteral("checks")).toArray();
     for (const QJsonValue &value : checks) {
         const QJsonObject check = value.toObject();
+        const QString id = check.value(QStringLiteral("id")).toString();
+        // O daemon reporta o próprio socket; o check do cliente o substitui.
+        if (id == QStringLiteral("daemon.socket")) {
+            continue;
+        }
         const bool ok = check.value(QStringLiteral("status")).toString() == QStringLiteral("ok");
         allOk = allOk && ok;
-        out() << (ok ? "[ok]   " : "[fail] ") << check.value(QStringLiteral("id")).toString()
-              << " - " << check.value(QStringLiteral("detail")).toString() << '\n';
+        out() << (ok ? "[ok]   " : "[fail] ") << id << " - "
+              << check.value(QStringLiteral("detail")).toString() << '\n';
         const QString remediation = check.value(QStringLiteral("remediation")).toString();
         if (!remediation.isEmpty()) {
             out() << "       ação: " << remediation << '\n';
