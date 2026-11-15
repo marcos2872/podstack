@@ -10,7 +10,6 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
-#include <QDeadlineTimer>
 #include <QSocketNotifier>
 #include <QThreadPool>
 
@@ -138,7 +137,9 @@ int main(int argc, char *argv[])
     // Workers de RPC ainda podem estar usando o Daemon/RpcServer (ex.: um
     // restart de machine em andamento). Espera antes de destruir os objetos,
     // mas com prazo: um worker preso não pode impedir o encerramento.
-    if (!QThreadPool::globalInstance()->waitForDone(QDeadlineTimer(3000))) {
+    // `waitForDone(int)` em vez de `QDeadlineTimer`: o Qt 6.4 do DEB ainda não
+    // tem a sobrecarga com deadline.
+    if (!QThreadPool::globalInstance()->waitForDone(3000)) {
         qCWarning(lcRpc) << "workers ainda ativos no shutdown; encerrando mesmo assim";
     }
     return exitCode;
