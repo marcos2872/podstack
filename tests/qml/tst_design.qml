@@ -47,4 +47,14 @@ TestCase {
         compare(dialog.message, "Remover?")
         compare(dialog.destructive, false)
     }
+
+    function test_modalAsyncAction() {
+        const modal = createTemporaryObject(modalComponent, null)
+        verify(modal !== null)
+        // Sem controller a ação é local: runAction fecha na hora.
+        compare(modal.busy, false)
+        compare(modal.awaitsAction, false)
+        compare(modal.errorText, "")
+        verify(typeof modal.runAction === "function")
+    }
 }
