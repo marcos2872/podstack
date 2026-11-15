@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "daemon/StatsCollector.h"
+#include "daemon/stats/StatsCollector.h"
 #include "podman/PodmanClient.h"
 
 #include <QJsonArray>

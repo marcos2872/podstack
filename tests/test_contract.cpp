@@ -1,7 +1,7 @@
 #include "MockPodmanServer.h"
 
 #include "podman/PodmanClient.h"
-#include "podman/UnixHttpClient.h"
+#include "podman/transport/UnixHttpClient.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>

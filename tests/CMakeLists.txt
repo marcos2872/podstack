@@ -1,7 +1,7 @@
-find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Test QuickTest)
 
-qt_add_executable(test_core test_core.cpp ../src/daemon/BuildStore.cpp
-    ../src/daemon/ManifestBuilder.cpp)
+qt_add_executable(test_core test_core.cpp ../src/daemon/builds/BuildStore.cpp
+    ../src/daemon/builds/ManifestBuilder.cpp)
 target_link_libraries(test_core PRIVATE podstack_core SQLite::SQLite3 Qt6::Test)
 add_test(NAME core COMMAND test_core)
 
@@ -13,21 +13,21 @@ qt_add_executable(test_contract test_contract.cpp MockPodmanServer.cpp)
 target_link_libraries(test_contract PRIVATE podstack_podman Qt6::Test)
 add_test(NAME contract COMMAND test_contract)
 
-qt_add_executable(test_http_proxy test_http_proxy.cpp ../src/daemon/HttpProxy.cpp)
+qt_add_executable(test_http_proxy test_http_proxy.cpp ../src/daemon/domains/HttpProxy.cpp)
 target_link_libraries(test_http_proxy PRIVATE podstack_core podstack_podman Qt6::Network
     Qt6::Test)
 add_test(NAME http_proxy COMMAND test_http_proxy)
 
-qt_add_executable(test_dns test_dns.cpp ../src/daemon/DnsServer.cpp)
+qt_add_executable(test_dns test_dns.cpp ../src/daemon/domains/DnsServer.cpp)
 target_link_libraries(test_dns PRIVATE podstack_core Qt6::Network Qt6::Test)
 add_test(NAME dns COMMAND test_dns)
 
-qt_add_executable(test_caddy test_caddy.cpp ../src/daemon/CaddyProxy.cpp)
+qt_add_executable(test_caddy test_caddy.cpp ../src/daemon/domains/CaddyProxy.cpp)
 target_link_libraries(test_caddy PRIVATE podstack_core Qt6::Network Qt6::Test)
 add_test(NAME caddy COMMAND test_caddy)
 
 qt_add_executable(test_rpc test_rpc.cpp MockPodmanServer.cpp MockHttpServer.cpp
-    ../src/daemon/ComposeManager.cpp)
+    ../src/daemon/compose/ComposeManager.cpp)
 target_link_libraries(test_rpc PRIVATE podstack_core podstack_machines podstack_k8s
     podstack_podman Qt6::Test
     Qt6::Network)
@@ -47,7 +47,14 @@ add_test(NAME gui COMMAND test_gui)
 
 qt_add_executable(test_terminal test_terminal.cpp)
 target_link_libraries(test_terminal PRIVATE podstack_gui_lib podstack_qml podstack_qmlplugin
+    podstack_qml_design podstack_qml_designplugin podstack_qml_pages podstack_qml_pagesplugin
+    podstack_qml_features podstack_qml_featuresplugin
+    podstack_qmlplugin_init
+    podstack_qml_designplugin_init
+    podstack_qml_pagesplugin_init
+    podstack_qml_featuresplugin_init
     Qt6::Test Qt6::Widgets)
+qt_import_qml_plugins(test_terminal)
 add_test(NAME terminal COMMAND test_terminal)
 set_tests_properties(terminal PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
@@ -75,7 +82,7 @@ qt_add_executable(test_autostart test_autostart.cpp)
 target_link_libraries(test_autostart PRIVATE podstack_gui_lib Qt6::Test)
 add_test(NAME autostart COMMAND test_autostart)
 
-qt_add_executable(test_stats test_stats.cpp ../src/daemon/StatsCollector.cpp)
+qt_add_executable(test_stats test_stats.cpp ../src/daemon/stats/StatsCollector.cpp)
 target_link_libraries(test_stats PRIVATE podstack_podman Qt6::Test)
 add_test(NAME stats COMMAND test_stats)
 
@@ -84,8 +91,8 @@ target_link_libraries(test_notifications PRIVATE podstack_gui_lib Qt6::Test)
 add_test(NAME notifications COMMAND test_notifications)
 
 qt_add_executable(test_machines test_machines.cpp MockHttpServer.cpp MockQmpServer.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/BuildStore.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/StatsCollector.cpp)
+    ${CMAKE_SOURCE_DIR}/src/daemon/builds/BuildStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/stats/StatsCollector.cpp)
 target_link_libraries(test_machines PRIVATE podstack_machines podstack_k8s podstack_podman
     LibArchive::LibArchive Qt6::Test)
 add_test(NAME machines COMMAND test_machines)
@@ -95,7 +102,7 @@ target_link_libraries(test_logging PRIVATE podstack_core Qt6::Test)
 add_test(NAME logging COMMAND test_logging)
 
 qt_add_executable(test_update_service test_update_service.cpp
-    ${CMAKE_SOURCE_DIR}/src/helper/UpdateService.cpp)
+    ${CMAKE_SOURCE_DIR}/src/helper/updates/UpdateService.cpp)
 target_link_libraries(test_update_service PRIVATE podstack_core Qt6::Test)
 add_test(NAME update_service COMMAND test_update_service)
 
@@ -104,16 +111,16 @@ target_link_libraries(test_update_runner PRIVATE podstack_core Qt6::Network Qt6:
 add_test(NAME update_runner COMMAND test_update_runner)
 
 qt_add_executable(test_setup test_setup.cpp MockPodmanServer.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/SetupManager.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/DockerInventory.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/HelperClient.cpp
-    ${CMAKE_SOURCE_DIR}/src/helper/CaTrust.cpp
-    ${CMAKE_SOURCE_DIR}/src/helper/DnsZone.cpp
-    ${CMAKE_SOURCE_DIR}/src/helper/PortBinding.cpp
-    ${CMAKE_SOURCE_DIR}/src/helper/Firewall.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/setup/SetupManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/docker/DockerInventory.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/helper/HelperClient.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/ca/CaTrust.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/dns/DnsZone.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/ports/PortBinding.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/ports/Firewall.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/HelperService.cpp
-    ${CMAKE_SOURCE_DIR}/src/helper/UpdateService.cpp
-    ${CMAKE_SOURCE_DIR}/src/helper/Polkit.cpp)
+    ${CMAKE_SOURCE_DIR}/src/helper/updates/UpdateService.cpp
+    ${CMAKE_SOURCE_DIR}/src/helper/polkit/Polkit.cpp)
 target_link_libraries(test_setup PRIVATE podstack_podman Qt6::Concurrent Qt6::DBus
     SQLite::SQLite3 Qt6::Test)
 add_test(NAME setup COMMAND test_setup)
@@ -126,3 +133,17 @@ set_tests_properties(package_scriptlets PROPERTIES
 add_test(NAME update_exec
     COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-update-exec.sh
             $<TARGET_FILE:podstack-update-exec>)
+
+qt_add_executable(test_qml qml/main.cpp)
+target_link_libraries(test_qml PRIVATE podstack_qml podstack_qmlplugin
+    podstack_qml_design podstack_qml_designplugin
+    podstack_qml_pages podstack_qml_pagesplugin
+    podstack_qml_features podstack_qml_featuresplugin
+    podstack_qmlplugin_init
+    podstack_qml_designplugin_init
+    podstack_qml_pagesplugin_init
+    podstack_qml_featuresplugin_init
+    Qt6::QuickTest Qt6::Test)
+qt_import_qml_plugins(test_qml)
+add_test(NAME qml COMMAND test_qml -input ${CMAKE_CURRENT_SOURCE_DIR}/qml -import qrc:/qt/qml)
+set_tests_properties(qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

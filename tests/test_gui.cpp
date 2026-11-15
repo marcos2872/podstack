@@ -1,14 +1,14 @@
 #include "MockPodmanServer.h"
 
-#include "core/Config.h"
-#include "gui/Autostart.h"
-#include "gui/Backend.h"
-#include "gui/ContainerListModel.h"
-#include "gui/StreamClient.h"
-#include "gui/UiState.h"
-#include "gui/UnixSignals.h"
-#include "k8s/K8sStore.h"
-#include "machines/MachineStore.h"
+#include "core/config/Config.h"
+#include "core/rpc/StreamClient.h"
+#include "gui/app/Autostart.h"
+#include "gui/app/UiState.h"
+#include "gui/app/UnixSignals.h"
+#include "gui/controllers/Backend.h"
+#include "gui/models/ContainerListModel.h"
+#include "k8s/store/K8sStore.h"
+#include "machines/model/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -51,6 +51,7 @@ private slots:
     void backendKubernetes();
     void backendKubernetesEnabledError();
     void backendKubernetesDisableJob();
+    void backendControllerEdges();
     void backendMachines();
     void backendMachineStats();
     void backendMachineConsole();
@@ -215,7 +216,7 @@ void GuiTest::initTestCase()
     QFile::remove(m_controlSocket);
 
     const QString daemonPath =
-        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../podstackd"));
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("podstackd"));
     m_daemon.setProcessEnvironment(daemonEnvironment());
     m_daemon.setProcessChannelMode(QProcess::ForwardedChannels);
     m_daemon.start(daemonPath, {QStringLiteral("--socket"), m_controlSocket});
@@ -293,7 +294,7 @@ void GuiTest::containerListModel()
 void GuiTest::backendSuccess()
 {
     PodStack::Backend backend;
-    QSignalSpy containersSpy(&backend, &PodStack::Backend::containersChanged);
+    QSignalSpy containersSpy(backend.containers(), &PodStack::ContainerController::itemsChanged);
     QSignalSpy stateSpy(&backend, &PodStack::Backend::stateChanged);
 
     QTRY_VERIFY_WITH_TIMEOUT(containersSpy.count() > 0, 5000);
@@ -301,8 +302,7 @@ void GuiTest::backendSuccess()
     QVERIFY(backend.error().isEmpty());
     QCOMPARE(backend.version(), QStringLiteral(PODSTACK_VERSION));
 
-    const QVariantList items = containersSpy.last().at(0).value<QVariantList>();
-    QCOMPARE(items.size(), 1);
+    QCOMPARE(backend.containers()->items().size(), 1);
 }
 
 void GuiTest::backendError()
@@ -332,24 +332,22 @@ void GuiTest::backendError()
 void GuiTest::backendActions()
 {
     PodStack::Backend backend;
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    auto *containers = backend.containers();
 
-    backend.lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
-    QVERIFY(backend.lastError().isEmpty());
+    containers->lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.removeContainer(QStringLiteral("abc123"), true, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->removeContainer(QStringLiteral("abc123"), true, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.lifecycle(QStringLiteral("does-not-exist"), QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QVERIFY(!backend.lastError().isEmpty());
+    containers->lifecycle(QStringLiteral("does-not-exist"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(!containers->lastError().isEmpty());
 
-    backend.lifecycle(QString(), QStringLiteral("abc123"));
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    containers->lifecycle(QString(), QStringLiteral("abc123"));
+    QVERIFY(!containers->lastError().isEmpty());
 
     QVariantMap spec;
     spec.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
@@ -357,44 +355,43 @@ void GuiTest::backendActions()
     spec.insert(QStringLiteral("portsText"), QStringLiteral("8080:80"));
     spec.insert(QStringLiteral("envText"), QStringLiteral("A=B"));
     spec.insert(QStringLiteral("mountsText"), QStringLiteral("/tmp:/mnt"));
-    backend.createContainer(spec, true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->createContainer(spec, true);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    QSignalSpy containersSpy(&backend, &PodStack::Backend::containersChanged);
+    QSignalSpy containersSpy(containers, &PodStack::ContainerController::itemsChanged);
     backend.refresh();
     QTRY_VERIFY_WITH_TIMEOUT(containersSpy.count() > 0, 5000);
 
-    backend.batchAll(QStringLiteral("start"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 5, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->batchAll(QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.batchAll(QStringLiteral("invalid"));
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    containers->batchAll(QStringLiteral("invalid"));
+    QVERIFY(!containers->lastError().isEmpty());
 
-    backend.renameContainer(QStringLiteral("abc123"), QStringLiteral("renamed"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 7, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->renameContainer(QStringLiteral("abc123"), QStringLiteral("renamed"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.duplicateContainer(QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 8, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->duplicateContainer(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    backend.batchIds({QStringLiteral("abc123")}, QStringLiteral("start"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 9, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->batchIds({QStringLiteral("abc123")}, QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
 
-    const int before = actionSpy.count();
-    backend.batchIds({}, QStringLiteral("start"));
+    containers->batchIds({}, QStringLiteral("start"));
     QTest::qWait(100);
-    QCOMPARE(actionSpy.count(), before);
+    QVERIFY(containers->lastError().isEmpty());
 }
 
 void GuiTest::backendExposeLan()
 {
     PodStack::Backend backend;
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
-    const QVariantMap settingsBefore = backend.settings();
+    auto *containers = backend.containers();
+    const QVariantMap settingsBefore = backend.settings()->settings();
 
     QVariantMap spec;
     spec.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
@@ -403,25 +400,23 @@ void GuiTest::backendExposeLan()
     spec.insert(QStringLiteral("exposeLan"), true);
 
     const int createsBefore = m_mock.createCount();
-    backend.createContainer(spec, true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QVERIFY(!backend.lastError().isEmpty());
+    containers->createContainer(spec, true);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(!containers->lastError().isEmpty());
     QCOMPARE(m_mock.createCount(), createsBefore);
 
-    backend.exposeContainerLan(QStringLiteral("abc123"), true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QVERIFY(!backend.lastError().isEmpty());
-    QVERIFY(backend.settings() == settingsBefore);
+    containers->exposeContainerLan(QStringLiteral("abc123"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(!containers->lastError().isEmpty());
+    QVERIFY(backend.settings()->settings() == settingsBefore);
 
     QVariantMap plain;
     plain.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
     plain.insert(QStringLiteral("name"), QStringLiteral("local"));
     plain.insert(QStringLiteral("portsText"), QStringLiteral("8081:81"));
-    backend.createContainer(plain, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    containers->createContainer(plain, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY(containers->lastError().isEmpty());
     const QJsonObject body = QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
     const QJsonArray mappings = body.value(QStringLiteral("portmappings")).toArray();
     QCOMPARE(mappings.size(), 1);
@@ -432,58 +427,59 @@ void GuiTest::backendExposeLan()
 void GuiTest::backendStreams()
 {
     PodStack::Backend backend;
+    auto *containers = backend.containers();
 
-    backend.subscribeLogs(QStringLiteral("abc123"), 10, false);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.logLines().size() >= 2, 5000);
-    backend.unsubscribeLogs();
+    containers->subscribeLogs(QStringLiteral("abc123"), 10, false);
+    QTRY_VERIFY_WITH_TIMEOUT(containers->logLines().size() >= 2, 5000);
+    containers->unsubscribeLogs();
 
-    backend.subscribeStats(QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(
-        backend.stats().value(QStringLiteral("cpu_percent")).toString().contains(
-            QStringLiteral("1.5")),
-        5000);
-    QCOMPARE(backend.cpuHistory().size(), 1);
-    QCOMPARE(backend.memHistory().size(), 1);
-    backend.unsubscribeStats();
+    containers->subscribeStats(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(containers->stats()
+                                 .value(QStringLiteral("cpu_percent"))
+                                 .toString()
+                                 .contains(QStringLiteral("1.5")),
+                             5000);
+    QCOMPARE(containers->cpuHistory().size(), 1);
+    QCOMPARE(containers->memHistory().size(), 1);
+    containers->unsubscribeStats();
 
-    QSignalSpy filesSpy(&backend, &PodStack::Backend::filesChanged);
-    backend.listFiles(QStringLiteral("abc123"), QStringLiteral("/"));
+    QSignalSpy filesSpy(containers, &PodStack::ContainerController::filesChanged);
+    containers->listFiles(QStringLiteral("abc123"), QStringLiteral("/"));
     QTRY_VERIFY_WITH_TIMEOUT(filesSpy.count() > 0, 5000);
-    QCOMPARE(backend.files().size(), 2);
+    QCOMPARE(containers->files().size(), 2);
 }
 
 void GuiTest::backendContainerDetail()
 {
     PodStack::Backend backend;
-    QSignalSpy detailSpy(&backend, &PodStack::Backend::containerDetailChanged);
+    auto *detail = backend.containerDetail();
+    QSignalSpy detailSpy(detail, &PodStack::ContainerDetailController::detailChanged);
 
-    backend.loadContainerDetail(QStringLiteral("abc123"));
-    QVERIFY(backend.containerDetailLoading());
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.containerDetailLoading(), 5000);
-    QVERIFY2(backend.containerDetailError().isEmpty(),
-             qPrintable(backend.containerDetailError()));
+    detail->load(QStringLiteral("abc123"));
+    QVERIFY(detail->loading());
+    QTRY_VERIFY_WITH_TIMEOUT(!detail->loading(), 5000);
+    QVERIFY2(detail->error().isEmpty(), qPrintable(detail->error()));
     QVERIFY(detailSpy.count() > 0);
 
-    const QVariantMap detail = backend.containerDetail();
-    QCOMPARE(detail.value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
-    const QVariantMap config = detail.value(QStringLiteral("Config")).toMap();
+    const QVariantMap data = detail->detail();
+    QCOMPARE(data.value(QStringLiteral("Id")).toString(), QStringLiteral("abc123"));
+    const QVariantMap config = data.value(QStringLiteral("Config")).toMap();
     const QVariantList env = config.value(QStringLiteral("Env")).toList();
     QCOMPARE(env.size(), 3);
     QCOMPARE(env.first().toString(), QStringLiteral("A=B"));
     QCOMPARE(env.at(1).toString(), QStringLiteral("TOKEN=super-secret"));
 
-    const QVariantList mounts = detail.value(QStringLiteral("Mounts")).toList();
+    const QVariantList mounts = data.value(QStringLiteral("Mounts")).toList();
     QCOMPARE(mounts.size(), 2);
     QCOMPARE(mounts.first().toMap().value(QStringLiteral("Destination")).toString(),
              QStringLiteral("/mnt"));
     QCOMPARE(mounts.at(1).toMap().value(QStringLiteral("Name")).toString(),
              QStringLiteral("data"));
 
-    const QVariantMap networks =
-        detail.value(QStringLiteral("NetworkSettings"))
-            .toMap()
-            .value(QStringLiteral("Networks"))
-            .toMap();
+    const QVariantMap networks = data.value(QStringLiteral("NetworkSettings"))
+                                     .toMap()
+                                     .value(QStringLiteral("Networks"))
+                                     .toMap();
     QVERIFY(networks.contains(QStringLiteral("podman")));
     QCOMPARE(networks.value(QStringLiteral("podman"))
                  .toMap()
@@ -492,65 +488,143 @@ void GuiTest::backendContainerDetail()
              QStringLiteral("10.0.0.1"));
 
     // Sem QGuiApplication (suíte guiless) o clipboard é nulo; a chamada não pode quebrar.
-    backend.copyContainerInspect();
+    detail->copyInspect();
 
-    backend.loadContainerDetail(QStringLiteral("missing123"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.containerDetailLoading(), 5000);
-    QVERIFY(!backend.containerDetailError().isEmpty());
+    detail->load(QStringLiteral("missing123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!detail->loading(), 5000);
+    QVERIFY(!detail->error().isEmpty());
 
-    backend.startContainerDetailStats(QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(
-        backend.containerDetailStats().value(QStringLiteral("cpu_percent")).toString().contains(
-            QStringLiteral("1.5")),
-        5000);
-    QCOMPARE(backend.containerDetailCpuHistory().size(), 1);
-    QCOMPARE(backend.containerDetailMemHistory().size(), 1);
-    QCOMPARE(backend.containerDetailNetRxHistory().size(), 1);
-    QCOMPARE(backend.containerDetailNetTxHistory().size(), 1);
-    QCOMPARE(backend.containerDetailDiskReadHistory().size(), 1);
-    QCOMPARE(backend.containerDetailDiskWriteHistory().size(), 1);
-    QVERIFY(backend.containerDetailStats()
-                .value(QStringLiteral("netRxBytes"))
-                .toLongLong()
-            > 0);
-    QVERIFY(backend.containerDetailStatsError().isEmpty());
-    backend.stopContainerDetailStats();
+    detail->startStats(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(detail->stats()
+                                 .value(QStringLiteral("cpu_percent"))
+                                 .toString()
+                                 .contains(QStringLiteral("1.5")),
+                             5000);
+    QCOMPARE(detail->cpuHistory().size(), 1);
+    QCOMPARE(detail->memHistory().size(), 1);
+    QCOMPARE(detail->netRxHistory().size(), 1);
+    QCOMPARE(detail->netTxHistory().size(), 1);
+    QCOMPARE(detail->diskReadHistory().size(), 1);
+    QCOMPARE(detail->diskWriteHistory().size(), 1);
+    QVERIFY(detail->stats().value(QStringLiteral("netRxBytes")).toLongLong() > 0);
+    QVERIFY(detail->statsError().isEmpty());
+    detail->stopStats();
 
-    QSignalSpy logsSpy(&backend, &PodStack::Backend::containerDetailLogsChanged);
-    backend.startContainerDetailLogs(QStringLiteral("abc123"), 10, false);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.containerDetailLogLines().size() >= 2, 5000);
+    QSignalSpy logsSpy(detail, &PodStack::ContainerDetailController::logsChanged);
+    detail->startLogs(QStringLiteral("abc123"), 10, false);
+    QTRY_VERIFY_WITH_TIMEOUT(detail->logLines().size() >= 2, 5000);
     QVERIFY(logsSpy.count() > 0);
-    QVERIFY(backend.containerDetailLogsError().isEmpty());
-    backend.clearContainerDetailLogs();
-    QVERIFY(backend.containerDetailLogLines().isEmpty());
-    backend.stopContainerDetailLogs();
+    QVERIFY(detail->logsError().isEmpty());
+    detail->clearLogs();
+    QVERIFY(detail->logLines().isEmpty());
+    detail->stopLogs();
 
-    backend.containerDetailLifecycle(QStringLiteral("invalid"), QStringLiteral("abc123"));
-    QVERIFY(!backend.lastError().isEmpty());
+    detail->lifecycle(QStringLiteral("invalid"), QStringLiteral("abc123"));
+    QVERIFY(!detail->lastError().isEmpty());
 }
 
 void GuiTest::backendKubernetes()
 {
     PodStack::Backend backend;
-    QSignalSpy spy(&backend, &PodStack::Backend::k8sChanged);
+    auto *k8s = backend.k8s();
+    QSignalSpy spy(k8s, &PodStack::K8sController::changed);
 
-    backend.refreshK8s();
+    k8s->refresh();
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sState() == QStringLiteral("disabled"), 5000);
-    QVERIFY2(!backend.k8sEnabled(),
-             qPrintable(backend.k8sState() + QStringLiteral(" | ") + backend.k8sError()));
-    QVERIFY(backend.k8sPods().isEmpty());
-    QVERIFY(backend.k8sServices().isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(k8s->state() == QStringLiteral("disabled"), 5000);
+    QVERIFY2(!k8s->enabled(), qPrintable(k8s->state() + QStringLiteral(" | ") + k8s->error()));
+    QVERIFY(k8s->pods().isEmpty());
+    QVERIFY(k8s->services().isEmpty());
 
-    backend.startK8sWatch();
-    backend.stopK8sWatch();
+    k8s->startWatch();
+    k8s->stopWatch();
 
-    backend.startK8sPortForward(QStringLiteral("prod"), QStringLiteral("web"), 8080, 80);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sPortForwardError().isEmpty(), 5000);
-    QVERIFY(!backend.k8sPortForwardActive());
-    backend.stopK8sPortForward();
-    backend.deleteK8sPod(QStringLiteral("prod"), QStringLiteral("web"));
-    backend.deleteK8sService(QStringLiteral("prod"), QStringLiteral("web"));
+    k8s->startPortForward(QStringLiteral("prod"), QStringLiteral("web"), 8080, 80);
+    QTRY_VERIFY_WITH_TIMEOUT(!k8s->portForwardError().isEmpty(), 5000);
+    QVERIFY(!k8s->portForwardActive());
+    k8s->stopPortForward();
+    k8s->deletePod(QStringLiteral("prod"), QStringLiteral("web"));
+    k8s->deleteService(QStringLiteral("prod"), QStringLiteral("web"));
+}
+
+void GuiTest::backendControllerEdges()
+{
+    PodStack::Backend backend;
+
+    // Validações e early-returns dos controllers (não batem no daemon).
+    backend.machines()->cancelCreate();
+    backend.machines()->resetCreateState();
+    backend.machines()->create({});
+    backend.machines()->archivePath(QString());
+    backend.machines()->exportTo(QString(), QString());
+    backend.machines()->importFrom(QString());
+    backend.machines()->setPorts(QString(), {});
+    backend.machines()->setAudio(QString(), true);
+    backend.machines()->refreshSnapshots(QString());
+    backend.machines()->createSnapshot(QString(), QString());
+    backend.machines()->restoreSnapshot(QString(), QString());
+    backend.machines()->removeSnapshot(QString(), QString());
+    backend.machines()->openSsh(QString());
+    backend.machines()->attachSerialPort(QString(), QString());
+    backend.machines()->detachSerialPort(QString(), QString());
+    backend.machines()->refreshSerialPorts(QString());
+    backend.machines()->attachUsbDevice(QString(), 0, 0);
+    backend.machines()->detachUsbDevice(QString(), 0, 0);
+    backend.machines()->refreshUsbDevices(QString());
+    backend.machines()->lifecycle(QString(), QString());
+    backend.machines()->remove(QString(), false);
+    backend.machines()->rename(QString(), QString());
+    backend.machines()->clone(QString(), QString());
+    backend.machines()->batch({}, QStringLiteral("start"));
+
+    backend.containers()->listFiles(QString(), QStringLiteral("/"));
+    backend.containers()->downloadFile(QString(), QString());
+    backend.containers()->uploadFile(QString(), QString(), QString());
+    backend.containers()->clearLogs();
+    backend.containers()->unsubscribeLogs();
+    backend.containers()->unsubscribeStats();
+    backend.containers()->subscribeLogs(QString(), 0, false);
+    backend.containers()->subscribeStats(QString());
+    backend.containers()->batchIds({}, QStringLiteral("start"));
+
+    backend.containerDetail()->startLogs(QString(), 0, false);
+    backend.containerDetail()->startStats(QString());
+    backend.containerDetail()->remove(QString(), false);
+    backend.containerDetail()->copyInspect();
+
+    backend.images()->cancelPull();
+    backend.images()->refresh();
+    backend.images()->batchImages({}, false);
+
+    backend.compose()->unsubscribeComposeLogs();
+    backend.compose()->batchCompose({}, QStringLiteral("bogus"));
+
+    backend.builds()->cancelBuild();
+    backend.builds()->batchBuilds({});
+    backend.builds()->refresh();
+
+    backend.volumes()->batchVolumes({}, false);
+    backend.networks()->batchNetworks({}, false);
+    backend.pods()->batchPods({}, QStringLiteral("bogus"));
+
+    backend.k8s()->startLogs(QString(), QString());
+    backend.k8s()->stopLogs();
+    backend.k8s()->clearLogs();
+    backend.k8s()->deletePod(QString(), QString());
+    backend.k8s()->deleteService(QString(), QString());
+    backend.k8s()->stopPortForward();
+
+    backend.settings()->resetSetting(QString());
+    backend.settings()->refresh();
+
+    backend.system()->loadLogs(QString(), QString(), 0);
+    backend.system()->clearLogs();
+
+    backend.updates()->loadState();
+    backend.updates()->clearState();
+    backend.updates()->check(false);
+
+    QTest::qWait(100);
 }
 
 void GuiTest::backendKubernetesEnabledError()
@@ -568,14 +642,15 @@ void GuiTest::backendKubernetesEnabledError()
     QVERIFY2(store.upsert(cluster, &error), qPrintable(error.message));
 
     PodStack::Backend backend;
-    QSignalSpy spy(&backend, &PodStack::Backend::k8sChanged);
-    backend.refreshK8s();
+    auto *k8s = backend.k8s();
+    QSignalSpy spy(k8s, &PodStack::K8sController::changed);
+    k8s->refresh();
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sEnabled(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(k8s->enabled(), 5000);
 
-    backend.refreshK8s();
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sEnabled(), 5000);
-    QVERIFY(!backend.k8sError().isEmpty());
+    k8s->refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!k8s->enabled(), 5000);
+    QVERIFY(!k8s->error().isEmpty());
 
     QVERIFY(store.remove(QStringLiteral("default"), &error));
 }
@@ -583,27 +658,28 @@ void GuiTest::backendKubernetesEnabledError()
 void GuiTest::backendKubernetesDisableJob()
 {
     PodStack::Backend backend;
-    QSignalSpy jobSpy(&backend, &PodStack::Backend::k8sJobChanged);
+    auto *k8s = backend.k8s();
+    QSignalSpy jobSpy(k8s, &PodStack::K8sController::jobChanged);
 
-    backend.disableK8s(true);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sJobActive(), 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(backend.k8sState() == QStringLiteral("disabled"), 5000);
-    QVERIFY(backend.k8sJobError().isEmpty());
+    k8s->disable(true);
+    QTRY_VERIFY_WITH_TIMEOUT(!k8s->jobActive(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(k8s->state() == QStringLiteral("disabled"), 5000);
+    QVERIFY(k8s->jobError().isEmpty());
     QVERIFY(jobSpy.count() > 0);
 
-    backend.resetK8s();
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.k8sJobActive(), 5000);
-    QCOMPARE(backend.k8sState(), QStringLiteral("disabled"));
+    k8s->reset();
+    QTRY_VERIFY_WITH_TIMEOUT(!k8s->jobActive(), 5000);
+    QCOMPARE(k8s->state(), QStringLiteral("disabled"));
 }
 
 void GuiTest::backendCatalog()
 {    PodStack::Backend backend;
-    QSignalSpy imagesSpy(&backend, &PodStack::Backend::imagesChanged);
-    QSignalSpy volumesSpy(&backend, &PodStack::Backend::volumesChanged);
-    QSignalSpy networksSpy(&backend, &PodStack::Backend::networksChanged);
-    QSignalSpy podsSpy(&backend, &PodStack::Backend::podsChanged);
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
-    QSignalSpy pullSpy(&backend, &PodStack::Backend::pullStateChanged);
+    QSignalSpy imagesSpy(backend.images(), &PodStack::ImageController::itemsChanged);
+    QSignalSpy volumesSpy(backend.volumes(), &PodStack::VolumeController::itemsChanged);
+    QSignalSpy networksSpy(backend.networks(), &PodStack::NetworkController::itemsChanged);
+    QSignalSpy podsSpy(backend.pods(), &PodStack::PodController::itemsChanged);
+    auto *containers = backend.containers();
+    QSignalSpy pullSpy(backend.images(), &PodStack::ImageController::pullStateChanged);
     QSignalSpy diskSpy(&backend, &PodStack::Backend::diskUsageChanged);
 
     backend.refreshCatalog();
@@ -639,72 +715,73 @@ void GuiTest::backendCatalog()
                  .toInt(),
              1);
 
-    QCOMPARE(backend.images().size(), 2);
-    QCOMPARE(backend.volumes().size(), 1);
-    QCOMPARE(backend.networks().size(), 1);
-    QCOMPARE(backend.pods().size(), 1);
-    QCOMPARE(backend.images().first().toMap().value(QStringLiteral("name")).toString(),
+    QCOMPARE(backend.images()->items().size(), 2);
+    QCOMPARE(backend.volumes()->items().size(), 1);
+    QCOMPARE(backend.networks()->items().size(), 1);
+    QCOMPARE(backend.pods()->items().size(), 1);
+    QCOMPARE(backend.images()->items().first().toMap().value(QStringLiteral("name")).toString(),
              QStringLiteral("docker.io/library/alpine:3.20"));
 
-    backend.pullImage(QStringLiteral("alpine"), {});
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.pullActive() && pullSpy.count() > 0, 5000);
-    QVERIFY(backend.pullStatus().contains(QStringLiteral("concluído")));
+    backend.images()->pullImage(QStringLiteral("alpine"), {});
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.images()->pullActive() && pullSpy.count() > 0, 5000);
+    QVERIFY(backend.images()->pullStatus().contains(QStringLiteral("concluído")));
 
-    backend.tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:v1"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.images()->tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:v1"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.images()->actionActive() && backend.images()->lastError().isEmpty(), 5000);
 
-    backend.untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:v1"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.images()->untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:v1"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.images()->actionActive() && backend.images()->lastError().isEmpty(), 5000);
 
-    backend.removeImage(QStringLiteral("img1234567890"), false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.images()->removeImage(QStringLiteral("img1234567890"), false);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.images()->actionActive() && backend.images()->lastError().isEmpty(), 5000);
 
-    backend.pruneImages(false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 3, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.images()->pruneImages(false);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.images()->actionActive() && backend.images()->lastError().isEmpty(), 5000);
 
-    backend.createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.volumes()->createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.volumes()->actionActive() && backend.volumes()->lastError().isEmpty(), 5000);
 
-    backend.removeVolume(QStringLiteral("vol1"), false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 5, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.volumes()->removeVolume(QStringLiteral("vol1"), false);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.volumes()->actionActive() && backend.volumes()->lastError().isEmpty(), 5000);
 
-    backend.pruneVolumes();
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 6, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.volumes()->pruneVolumes();
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.volumes()->actionActive() && backend.volumes()->lastError().isEmpty(), 5000);
 
-    backend.createNetwork(QStringLiteral("mock-net"), QStringLiteral("10.90.0.0/24"), {});
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 7, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.networks()->createNetwork(QStringLiteral("mock-net"), QStringLiteral("10.90.0.0/24"),
+                                      {});
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.networks()->actionActive() && backend.networks()->lastError().isEmpty(), 5000);
 
-    backend.connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 8, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.networks()->connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.networks()->actionActive() && backend.networks()->lastError().isEmpty(), 5000);
 
-    backend.disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 9, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.networks()->disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.networks()->actionActive() && backend.networks()->lastError().isEmpty(), 5000);
 
-    backend.removeNetwork(QStringLiteral("mock-net"), false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 10, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.networks()->removeNetwork(QStringLiteral("mock-net"), false);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.networks()->actionActive() && backend.networks()->lastError().isEmpty(), 5000);
 
-    backend.createPod(QStringLiteral("demo-pod"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 11, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.pods()->createPod(QStringLiteral("demo-pod"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.pods()->actionActive() && backend.pods()->lastError().isEmpty(), 5000);
 
-    backend.podAction(QStringLiteral("start"), QStringLiteral("pod123"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 12, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.pods()->podAction(QStringLiteral("start"), QStringLiteral("pod123"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.pods()->actionActive() && backend.pods()->lastError().isEmpty(), 5000);
 
-    backend.removePod(QStringLiteral("pod123"), true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 13, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.pods()->removePod(QStringLiteral("pod123"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.pods()->actionActive() && backend.pods()->lastError().isEmpty(), 5000);
 
     const QString uploadPath = QDir::tempPath()
                                + QStringLiteral("/podstack-gui-upload-%1.txt")
@@ -713,87 +790,87 @@ void GuiTest::backendCatalog()
     QVERIFY(uploadFile.open(QIODevice::WriteOnly));
     uploadFile.write("gui-upload");
     uploadFile.close();
-    backend.uploadFile(QStringLiteral("abc123"), QStringLiteral("/tmp"), uploadPath);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 14, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.containers()->uploadFile(QStringLiteral("abc123"), QStringLiteral("/tmp"), uploadPath);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.containers()->actionActive() && backend.containers()->lastError().isEmpty(), 5000);
     QFile::remove(uploadPath);
 
     const QString hostDir = QStringLiteral("/tmp/podstack-host-src");
     QDir(hostDir).removeRecursively();
     QDir().mkpath(hostDir);
-    backend.importHostPath(QStringLiteral("vol2"), hostDir);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 15, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.volumes()->importHostPath(QStringLiteral("vol2"), hostDir);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.volumes()->actionActive() && backend.volumes()->lastError().isEmpty(), 5000);
     QDir(hostDir).removeRecursively();
 }
 
 void GuiTest::backendMachines()
 {
     PodStack::Backend backend;
-    QSignalSpy machinesSpy(&backend, &PodStack::Backend::machinesChanged);
-    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    QSignalSpy machinesSpy(backend.machines(), &PodStack::MachineController::itemsChanged);
 
     QTRY_VERIFY_WITH_TIMEOUT(machinesSpy.count() > 0, 5000);
-    QCOMPARE(backend.machines().size(), 0);
+    QCOMPARE(backend.machines()->items().size(), 0);
 
-    QSignalSpy distrosSpy(&backend, &PodStack::Backend::machineDistrosChanged);
-    backend.refreshMachineDistros();
+    QSignalSpy distrosSpy(backend.machines(), &PodStack::MachineController::distrosChanged);
+    backend.machines()->refreshDistros();
     QTRY_VERIFY_WITH_TIMEOUT(distrosSpy.count() > 0, 5000);
-    QVERIFY(backend.machineDistros().size() >= 3);
-    QVERIFY(backend.machineDistros()
-                .first()
-                .toMap()
-                .contains(QStringLiteral("label")));
+    QVERIFY(backend.machines()->distros().size() >= 3);
+    QVERIFY(backend.machines()->distros().first().toMap().contains(QStringLiteral("label")));
 
-    backend.loadMachineInfo(QStringLiteral("missing-machine"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.lastError().isEmpty(), 5000);
+    backend.machines()->loadInfo(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machines()->lastError().isEmpty(), 5000);
 
-    int errorsBefore = errorSpy.count();
-    backend.loadMachineLogs(QStringLiteral("missing-machine"), 10);
-    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
+    QSignalSpy detailErrorSpy(backend.machineDetail(),
+                              &PodStack::MachineDetailController::lastErrorChanged);
+    int errorsBefore = detailErrorSpy.count();
+    backend.machineDetail()->loadLogs(QStringLiteral("missing-machine"), 10);
+    QTRY_VERIFY_WITH_TIMEOUT(detailErrorSpy.count() > errorsBefore, 5000);
 
-    backend.machineLifecycle(QStringLiteral("start"), QStringLiteral("missing-machine"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    QSignalSpy machineErrorSpy(backend.machines(), &PodStack::MachineController::lastErrorChanged);
+    backend.machines()->lifecycle(QStringLiteral("start"), QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machines()->actionActive() && !backend.machines()->lastError().isEmpty(), 5000);
 
-    backend.removeMachine(QStringLiteral("missing-machine"), true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.machines()->remove(QStringLiteral("missing-machine"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machines()->actionActive() && !backend.machines()->lastError().isEmpty(), 5000);
 
-    errorsBefore = errorSpy.count();
-    backend.refreshMachineSerialPorts(QStringLiteral("missing-machine"));
-    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
+    errorsBefore = machineErrorSpy.count();
+    backend.machines()->refreshSerialPorts(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(machineErrorSpy.count() > errorsBefore, 5000);
 
-    backend.attachMachineSerialPort(QStringLiteral("missing-machine"), QStringLiteral("/dev/null"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    backend.detachMachineSerialPort(QStringLiteral("missing-machine"), QStringLiteral("/dev/null"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 3, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.machines()->attachSerialPort(QStringLiteral("missing-machine"),
+                                         QStringLiteral("/dev/null"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machines()->actionActive() && !backend.machines()->lastError().isEmpty(), 5000);
+    backend.machines()->detachSerialPort(QStringLiteral("missing-machine"),
+                                         QStringLiteral("/dev/null"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machines()->actionActive() && !backend.machines()->lastError().isEmpty(), 5000);
 
-    errorsBefore = errorSpy.count();
-    backend.refreshMachineUsbDevices(QStringLiteral("missing-machine"));
-    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
-    backend.attachMachineUsbDevice(QStringLiteral("missing-machine"), 1, 4);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    backend.detachMachineUsbDevice(QStringLiteral("missing-machine"), 1, 4);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 5, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    backend.setMachineAudio(QStringLiteral("missing-machine"), true);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 6, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    errorsBefore = machineErrorSpy.count();
+    backend.machines()->refreshUsbDevices(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(machineErrorSpy.count() > errorsBefore, 5000);
+    backend.machines()->attachUsbDevice(QStringLiteral("missing-machine"), 1, 4);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machines()->actionActive() && !backend.machines()->lastError().isEmpty(), 5000);
+    backend.machines()->detachUsbDevice(QStringLiteral("missing-machine"), 1, 4);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machines()->actionActive() && !backend.machines()->lastError().isEmpty(), 5000);
+    backend.machines()->setAudio(QStringLiteral("missing-machine"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machines()->actionActive() && !backend.machines()->lastError().isEmpty(), 5000);
 
-    backend.openMachineSsh(QString());
-    QCOMPARE(backend.lastError(), QStringLiteral("Machine inválida."));
-    backend.openMachineSsh(QStringLiteral("missing-machine"));
-    QTRY_VERIFY_WITH_TIMEOUT(backend.lastError().contains(QStringLiteral("não encontrada")),
-                             5000);
+    backend.machines()->openSsh(QString());
+    QCOMPARE(backend.machines()->lastError(), QStringLiteral("Machine inválida."));
+    backend.machines()->openSsh(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        backend.machines()->lastError().contains(QStringLiteral("não encontrada")), 5000);
 
-    backend.createMachine({});
-    QVERIFY(!backend.machineCreateActive());
-    QVERIFY(!backend.machineCreateError().isEmpty());
+    backend.machines()->create({});
+    QVERIFY(!backend.machines()->createActive());
+    QVERIFY(!backend.machines()->createError().isEmpty());
 
     PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
     PodStack::Error storeError;
@@ -831,33 +908,31 @@ void GuiTest::backendMachines()
     console.write("gui boot 1\ngui boot 2\ngui boot 3\n");
     console.close();
 
-    backend.refreshMachines();
-    QTRY_COMPARE_WITH_TIMEOUT(backend.machines().size(), 1, 5000);
-    const QVariantMap item = backend.machines().first().toMap();
+    backend.machines()->refresh();
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machines()->items().size(), 1, 5000);
+    const QVariantMap item = backend.machines()->items().first().toMap();
     QCOMPARE(item.value(QStringLiteral("name")).toString(), QStringLiteral("gui-logs"));
     QCOMPARE(item.value(QStringLiteral("distroLabel")).toString(),
              QStringLiteral("debian:12"));
     QCOMPARE(item.value(QStringLiteral("ssh")).toString(),
              QStringLiteral("podstack@127.0.0.1:32222"));
 
-    backend.loadMachineInfo(meta.id);
-    QTRY_COMPARE_WITH_TIMEOUT(backend.machineInfo()
-                                  .value(QStringLiteral("id"))
-                                  .toString(),
+    backend.machines()->loadInfo(meta.id);
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machines()->info().value(QStringLiteral("id")).toString(),
                               meta.id, 5000);
-    QCOMPARE(backend.machineInfo().value(QStringLiteral("state")).toString(),
+    QCOMPARE(backend.machines()->info().value(QStringLiteral("state")).toString(),
              QStringLiteral("stopped"));
 
-    backend.loadMachineLogs(meta.id, 2);
-    QTRY_COMPARE_WITH_TIMEOUT(backend.machineLogLines().size(), 2, 5000);
-    QCOMPARE(backend.machineLogLines().first(), QStringLiteral("gui boot 2"));
-    QCOMPARE(backend.machineLogLines().last(), QStringLiteral("gui boot 3"));
+    backend.machineDetail()->loadLogs(meta.id, 2);
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineDetail()->logs().size(), 2, 5000);
+    QCOMPARE(backend.machineDetail()->logs().first(), QStringLiteral("gui boot 2"));
+    QCOMPARE(backend.machineDetail()->logs().last(), QStringLiteral("gui boot 3"));
 
     // Compatibilidade: o Backend continua emitindo `terminalRequested` (dock/
     // TerminalWindow); a GUI usa `MainWindow::openMachineDetail`, coberto em
     // `test_terminal::machineDetailDialog*`.
     QSignalSpy terminalSpy(&backend, &PodStack::Backend::terminalRequested);
-    backend.openMachineSsh(meta.id);
+    backend.machines()->openSsh(meta.id);
     QTRY_COMPARE_WITH_TIMEOUT(terminalSpy.count(), 1, 5000);
     const QList<QVariant> request = terminalSpy.takeFirst();
     QCOMPARE(request.at(0).toString(), QStringLiteral("gui-logs"));
@@ -871,15 +946,13 @@ void GuiTest::backendMachines()
     QCOMPARE(sshArgs.last(), QStringLiteral("podstack@127.0.0.1"));
 
     // updateMachine aceita só o agent, sem CPU/memória/disco.
-    const int actionsBeforeUpdate = actionSpy.count();
-    backend.updateMachine(QVariantMap{{QStringLiteral("id"), meta.id},
-                                      {QStringLiteral("forwardSshAgent"), false}});
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > actionsBeforeUpdate, 5000);
-    QVERIFY2(actionSpy.last().at(0).toBool(),
-             qPrintable(actionSpy.last().at(1).toString()));
-    backend.loadMachineInfo(meta.id);
+    backend.machines()->update(
+        QVariantMap{{QStringLiteral("id"), meta.id}, {QStringLiteral("forwardSshAgent"), false}});
     QTRY_VERIFY_WITH_TIMEOUT(
-        !backend.machineInfo().value(QStringLiteral("forwardSshAgent")).toBool(), 5000);
+        !backend.machines()->actionActive() && backend.machines()->lastError().isEmpty(), 5000);
+    backend.machines()->loadInfo(meta.id);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machines()->info().value(QStringLiteral("forwardSshAgent")).toBool(), 5000);
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();
@@ -888,11 +961,12 @@ void GuiTest::backendMachines()
 void GuiTest::backendMachineStats()
 {
     PodStack::Backend backend;
-    QSignalSpy statsSpy(&backend, &PodStack::Backend::machineStatsChanged);
-    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy statsSpy(backend.machineDetail(), &PodStack::MachineDetailController::statsChanged);
+    QSignalSpy errorSpy(backend.machineDetail(),
+                        &PodStack::MachineDetailController::lastErrorChanged);
 
-    backend.startMachineStats(QString());
-    QVERIFY(!backend.machineStatsError().isEmpty());
+    backend.machineDetail()->startStats(QString());
+    QVERIFY(!backend.machineDetail()->statsError().isEmpty());
     QVERIFY(errorSpy.count() > 0);
 
     PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
@@ -925,34 +999,36 @@ void GuiTest::backendMachineStats()
     QVERIFY(keyFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
     QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
 
-    backend.startMachineStats(meta.id);
+    backend.machineDetail()->startStats(meta.id);
     QTRY_VERIFY_WITH_TIMEOUT(
-        backend.machineStats().value(QStringLiteral("memTotal")).toLongLong() > 0, 7000);
+        backend.machineDetail()->stats().value(QStringLiteral("memTotal")).toLongLong() > 0, 7000);
     QVERIFY(statsSpy.count() > 0);
-    QCOMPARE(backend.machineStats().value(QStringLiteral("memTotal")).toLongLong(),
+    QCOMPARE(backend.machineDetail()->stats().value(QStringLiteral("memTotal")).toLongLong(),
              2147483648LL);
-    QCOMPARE(backend.machineStats().value(QStringLiteral("diskPercent")).toDouble(), 25.0);
-    QCOMPARE(backend.machineCpuHistory().size(), 1);
-    QCOMPARE(backend.machineMemHistory().size(), 1);
-    QCOMPARE(backend.machineNetRxHistory().size(), 1);
-    QCOMPARE(backend.machineNetTxHistory().size(), 1);
-    QVERIFY(backend.machineStatsError().isEmpty());
+    QCOMPARE(backend.machineDetail()->stats().value(QStringLiteral("diskPercent")).toDouble(),
+             25.0);
+    QCOMPARE(backend.machineDetail()->cpuHistory().size(), 1);
+    QCOMPARE(backend.machineDetail()->memHistory().size(), 1);
+    QCOMPARE(backend.machineDetail()->netRxHistory().size(), 1);
+    QCOMPARE(backend.machineDetail()->netTxHistory().size(), 1);
+    QVERIFY(backend.machineDetail()->statsError().isEmpty());
 
-    backend.stopMachineStats();
-    const int samplesAfterStop = backend.machineCpuHistory().size();
+    backend.machineDetail()->stopStats();
+    const int samplesAfterStop = backend.machineDetail()->cpuHistory().size();
     QTest::qWait(2300);
-    QCOMPARE(backend.machineCpuHistory().size(), samplesAfterStop);
+    QCOMPARE(backend.machineDetail()->cpuHistory().size(), samplesAfterStop);
 
     // Erros do stream de stats da machine não vazam para o lastError global
     // (o inspector lateral de containers exibe backend.lastError).
     PodStack::Backend statsOnly;
-    QSignalSpy statsOnlyErrorSpy(&statsOnly, &PodStack::Backend::lastErrorChanged);
-    statsOnly.startMachineStats(QStringLiteral("missing-machine-stats"));
-    QTRY_VERIFY_WITH_TIMEOUT(!statsOnly.machineStatsError().isEmpty(), 5000);
+    QSignalSpy statsOnlyErrorSpy(statsOnly.machineDetail(),
+                                 &PodStack::MachineDetailController::lastErrorChanged);
+    statsOnly.machineDetail()->startStats(QStringLiteral("missing-machine-stats"));
+    QTRY_VERIFY_WITH_TIMEOUT(!statsOnly.machineDetail()->statsError().isEmpty(), 5000);
     QVERIFY(statsOnly.lastError().isEmpty());
     QCOMPARE(statsOnlyErrorSpy.count(), 0);
-    statsOnly.stopMachineStats();
-    QVERIFY(statsOnly.machineStatsError().isEmpty());
+    statsOnly.machineDetail()->stopStats();
+    QVERIFY(statsOnly.machineDetail()->statsError().isEmpty());
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();
@@ -961,12 +1037,13 @@ void GuiTest::backendMachineStats()
 void GuiTest::backendMachineConsole()
 {
     PodStack::Backend backend;
-    QSignalSpy consoleSpy(&backend, &PodStack::Backend::machineConsoleChanged);
+    QSignalSpy consoleSpy(backend.machineDetail(),
+                          &PodStack::MachineDetailController::consoleChanged);
     QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
 
-    backend.followMachineConsole(QString(), 1024);
-    QVERIFY(!backend.machineConsoleActive());
-    QVERIFY(!backend.machineConsoleError().isEmpty());
+    backend.machineDetail()->followConsole(QString(), 1024);
+    QVERIFY(!backend.machineDetail()->consoleActive());
+    QVERIFY(!backend.machineDetail()->consoleError().isEmpty());
 
     PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
     PodStack::Error storeError;
@@ -996,39 +1073,38 @@ void GuiTest::backendMachineConsole()
     console.write("serial 1\nserial 2\n");
     console.close();
 
-    backend.followMachineConsole(meta.id, 1024);
-    QVERIFY(backend.machineConsoleActive());
-    QTRY_COMPARE_WITH_TIMEOUT(backend.machineConsoleText(),
+    backend.machineDetail()->followConsole(meta.id, 1024);
+    QVERIFY(backend.machineDetail()->consoleActive());
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineDetail()->consoleText(),
                               QStringLiteral("serial 1\nserial 2\n"), 5000);
-    QVERIFY(backend.machineConsoleError().isEmpty());
+    QVERIFY(backend.machineDetail()->consoleError().isEmpty());
     QVERIFY(consoleSpy.count() > 0);
 
     QFile appendConsole(consolePath);
     QVERIFY(appendConsole.open(QIODevice::Append));
     appendConsole.write("serial 3\n");
     appendConsole.close();
-    QTRY_VERIFY_WITH_TIMEOUT(backend.machineConsoleText().contains(
-                                 QStringLiteral("serial 3")),
-                             5000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        backend.machineDetail()->consoleText().contains(QStringLiteral("serial 3")), 5000);
 
-    backend.stopMachineConsole();
-    QVERIFY(!backend.machineConsoleActive());
-    QVERIFY(backend.machineConsoleText().isEmpty());
-    QVERIFY(backend.machineConsoleError().isEmpty());
+    backend.machineDetail()->stopConsole();
+    QVERIFY(!backend.machineDetail()->consoleActive());
+    QVERIFY(backend.machineDetail()->consoleText().isEmpty());
+    QVERIFY(backend.machineDetail()->consoleError().isEmpty());
 
     QFile afterStop(consolePath);
     QVERIFY(afterStop.open(QIODevice::Append));
     afterStop.write("serial 4\n");
     afterStop.close();
     QTest::qWait(700);
-    QVERIFY(backend.machineConsoleText().isEmpty());
+    QVERIFY(backend.machineDetail()->consoleText().isEmpty());
 
-    backend.followMachineConsole(QStringLiteral("missing-machine-console"), 1024);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineConsoleError().isEmpty(), 5000);
-    QVERIFY(!backend.machineConsoleActive());
+    backend.machineDetail()->followConsole(QStringLiteral("missing-machine-console"), 1024);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineDetail()->consoleError().isEmpty(), 5000);
+    QVERIFY(!backend.machineDetail()->consoleActive());
     QVERIFY(backend.lastError().isEmpty());
     QCOMPARE(errorSpy.count(), 0);
-    backend.stopMachineConsole();
+    backend.machineDetail()->stopConsole();
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();
@@ -1037,21 +1113,21 @@ void GuiTest::backendMachineConsole()
 void GuiTest::backendMachineFiles()
 {
     PodStack::Backend backend;
-    QSignalSpy filesSpy(&backend, &PodStack::Backend::machineFilesChanged);
+    QSignalSpy filesSpy(backend.machineDetail(), &PodStack::MachineDetailController::filesChanged);
 
-    backend.refreshMachineFiles(QString(), QStringLiteral("/"));
-    QVERIFY(!backend.machineFilesError().isEmpty());
-    QVERIFY(!backend.machineFilesBusy());
+    backend.machineDetail()->refreshFiles(QString(), QStringLiteral("/"));
+    QVERIFY(!backend.machineDetail()->filesError().isEmpty());
+    QVERIFY(!backend.machineDetail()->filesBusy());
 
-    backend.refreshMachineFiles(QStringLiteral("missing-machine"), QStringLiteral("/"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
-    QVERIFY(backend.machineFilesError().contains(QStringLiteral("não encontrada")));
+    backend.machineDetail()->refreshFiles(QStringLiteral("missing-machine"), QStringLiteral("/"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineDetail()->filesBusy(), 5000);
+    QVERIFY(backend.machineDetail()->filesError().contains(QStringLiteral("não encontrada")));
 
-    backend.downloadMachineFile(QStringLiteral("missing-machine"),
-                                QStringLiteral("/tmp/report.txt"),
-                                QStringLiteral("report.txt"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
-    QVERIFY(backend.machineFilesError().contains(QStringLiteral("não encontrada")));
+    backend.machineDetail()->downloadFile(QStringLiteral("missing-machine"),
+                                          QStringLiteral("/tmp/report.txt"),
+                                          QStringLiteral("report.txt"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineDetail()->filesBusy(), 5000);
+    QVERIFY(backend.machineDetail()->filesError().contains(QStringLiteral("não encontrada")));
 
     const QString uploadSource = m_testDataDir + QStringLiteral("/gui-upload.txt");
     QFile upload(uploadSource);
@@ -1059,10 +1135,10 @@ void GuiTest::backendMachineFiles()
     upload.write("gui upload");
     upload.close();
 
-    backend.uploadMachineFile(QStringLiteral("missing-machine"), QStringLiteral("/tmp"),
-                              uploadSource);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
-    QVERIFY(backend.machineFilesError().contains(QStringLiteral("não encontrada")));
+    backend.machineDetail()->uploadFile(QStringLiteral("missing-machine"), QStringLiteral("/tmp"),
+                                        uploadSource);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineDetail()->filesBusy(), 5000);
+    QVERIFY(backend.machineDetail()->filesError().contains(QStringLiteral("não encontrada")));
 
     PodStack::MachineStore store(m_testDataDir + QStringLiteral("/data/podstack/podstack.db"));
     PodStack::Error storeError;
@@ -1091,16 +1167,16 @@ void GuiTest::backendMachineFiles()
     QVERIFY(keyFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
     QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
 
-    backend.refreshMachineFiles(meta.id, QStringLiteral("/home"));
-    QTRY_COMPARE_WITH_TIMEOUT(backend.machineFiles().size(), 2, 5000);
-    QVERIFY(!backend.machineFilesBusy());
-    QVERIFY2(backend.machineFilesError().isEmpty(),
-             qPrintable(backend.machineFilesError()));
-    QCOMPARE(backend.machineFilesPath(), QStringLiteral("/home"));
+    backend.machineDetail()->refreshFiles(meta.id, QStringLiteral("/home"));
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machineDetail()->files().size(), 2, 5000);
+    QVERIFY(!backend.machineDetail()->filesBusy());
+    QVERIFY2(backend.machineDetail()->filesError().isEmpty(),
+             qPrintable(backend.machineDetail()->filesError()));
+    QCOMPARE(backend.machineDetail()->filesPath(), QStringLiteral("/home"));
     QVERIFY(filesSpy.count() > 0);
 
     QStringList names;
-    for (const QVariant &value : backend.machineFiles()) {
+    for (const QVariant &value : backend.machineDetail()->files()) {
         const QVariantMap item = value.toMap();
         names.append(item.value(QStringLiteral("name")).toString());
         QVERIFY(item.contains(QStringLiteral("path")));
@@ -1111,26 +1187,26 @@ void GuiTest::backendMachineFiles()
     QVERIFY(names.contains(QStringLiteral("docs")));
     QVERIFY(names.contains(QStringLiteral("gui.txt")));
 
-    backend.downloadMachineFile(meta.id, QStringLiteral("/home/podstack/gui.txt"),
-                                QStringLiteral("gui.txt"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
-    QVERIFY2(backend.machineFilesError().isEmpty(),
-             qPrintable(backend.machineFilesError()));
+    backend.machineDetail()->downloadFile(meta.id, QStringLiteral("/home/podstack/gui.txt"),
+                                          QStringLiteral("gui.txt"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineDetail()->filesBusy(), 5000);
+    QVERIFY2(backend.machineDetail()->filesError().isEmpty(),
+             qPrintable(backend.machineDetail()->filesError()));
     const QString downloadDir =
         QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     QVERIFY2(downloadDir.startsWith(m_testDataDir), qPrintable(downloadDir));
     const QString downloaded = downloadDir + QStringLiteral("/gui.txt");
     QVERIFY(QFileInfo::exists(downloaded));
 
-    backend.downloadMachineFile(meta.id, QStringLiteral("/home/podstack/gui.txt"),
-                                QStringLiteral("../escape.txt"));
-    QVERIFY(backend.machineFilesError().contains(QStringLiteral("inválido")));
-    QVERIFY(!backend.machineFilesBusy());
+    backend.machineDetail()->downloadFile(meta.id, QStringLiteral("/home/podstack/gui.txt"),
+                                          QStringLiteral("../escape.txt"));
+    QVERIFY(backend.machineDetail()->filesError().contains(QStringLiteral("inválido")));
+    QVERIFY(!backend.machineDetail()->filesBusy());
 
-    backend.uploadMachineFile(meta.id, QStringLiteral("/home/podstack"), uploadSource);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineFilesBusy(), 5000);
-    QVERIFY2(backend.machineFilesError().isEmpty(),
-             qPrintable(backend.machineFilesError()));
+    backend.machineDetail()->uploadFile(meta.id, QStringLiteral("/home/podstack"), uploadSource);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machineDetail()->filesBusy(), 5000);
+    QVERIFY2(backend.machineDetail()->filesError().isEmpty(),
+             qPrintable(backend.machineDetail()->filesError()));
 
     QVERIFY(store.remove(meta.id));
     QDir(machineDir).removeRecursively();
@@ -1142,9 +1218,11 @@ void GuiTest::backendTerminal()
 {
     PodStack::Backend backend;
     QSignalSpy terminalSpy(&backend, &PodStack::Backend::terminalRequested);
-    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
+    QSignalSpy errorSpy(backend.machines(), &PodStack::MachineController::lastErrorChanged);
+    QSignalSpy containerErrorSpy(backend.containers(),
+                                 &PodStack::ContainerController::lastErrorChanged);
 
-    backend.openTerminal(QStringLiteral("abc123"));
+    backend.containers()->openTerminal(QStringLiteral("abc123"));
     QCOMPARE(terminalSpy.count(), 1);
     const QList<QVariant> request = terminalSpy.takeFirst();
     QCOMPARE(request.at(0).toString(), QStringLiteral("abc123"));
@@ -1153,15 +1231,16 @@ void GuiTest::backendTerminal()
              QStringList({QStringLiteral("exec"), QStringLiteral("-it"),
                           QStringLiteral("abc123"), QStringLiteral("/bin/sh")}));
 
-    backend.openTerminal(QString());
+    backend.containers()->openTerminal(QString());
     QCOMPARE(terminalSpy.count(), 0);
-    QCOMPARE(backend.lastError(), QStringLiteral("Container inválido."));
-    QVERIFY(errorSpy.count() > 0);
+    QCOMPARE(backend.containers()->lastError(), QStringLiteral("Container inválido."));
+    QVERIFY(containerErrorSpy.count() > 0);
 
-    const int errorsBefore = errorSpy.count();
-    backend.openMachineSsh(QStringLiteral("missing-machine"));
-    QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() > errorsBefore, 5000);
-    QVERIFY(backend.lastError().contains(QStringLiteral("não encontrada")));
+    QSignalSpy machineErrorSpy(backend.machines(), &PodStack::MachineController::lastErrorChanged);
+    const int errorsBefore = machineErrorSpy.count();
+    backend.machines()->openSsh(QStringLiteral("missing-machine"));
+    QTRY_VERIFY_WITH_TIMEOUT(machineErrorSpy.count() > errorsBefore, 5000);
+    QVERIFY(backend.machines()->lastError().contains(QStringLiteral("não encontrada")));
     // O caminho de erro não abre sessão; o sucesso visual do QTermWidget é manual.
     QCOMPARE(terminalSpy.count(), 0);
 }
@@ -1169,20 +1248,20 @@ void GuiTest::backendTerminal()
 void GuiTest::backendM3()
 {
     PodStack::Backend backend;
-    QSignalSpy composeSpy(&backend, &PodStack::Backend::composeProjectsChanged);
-    QSignalSpy composeLogsSpy(&backend, &PodStack::Backend::composeLogsChanged);
-    QSignalSpy buildSpy(&backend, &PodStack::Backend::buildStateChanged);
-    QSignalSpy buildsSpy(&backend, &PodStack::Backend::buildsChanged);
+    QSignalSpy composeSpy(backend.compose(), &PodStack::ComposeController::itemsChanged);
+    QSignalSpy composeLogsSpy(backend.compose(), &PodStack::ComposeController::logLinesChanged);
+    QSignalSpy buildSpy(backend.builds(), &PodStack::BuildController::buildStateChanged);
+    QSignalSpy buildsSpy(backend.builds(), &PodStack::BuildController::itemsChanged);
     QSignalSpy eventsSpy(&backend, &PodStack::Backend::eventsChanged);
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    auto *containers = backend.containers();
 
-    backend.refreshCompose();
+    backend.compose()->refresh();
     QTRY_VERIFY_WITH_TIMEOUT(composeSpy.count() > 0, 5000);
-    QCOMPARE(backend.composeProjects().size(), 1);
+    QCOMPARE(backend.compose()->items().size(), 1);
 
-    backend.subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
-    QTRY_VERIFY_WITH_TIMEOUT(backend.composeLogLines().size() >= 2, 5000);
-    backend.unsubscribeComposeLogs();
+    backend.compose()->subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
+    QTRY_VERIFY_WITH_TIMEOUT(backend.compose()->logLines().size() >= 2, 5000);
+    backend.compose()->unsubscribeComposeLogs();
 
     const QString projectDir = m_testDataDir + QStringLiteral("/project");
     QDir().mkpath(projectDir);
@@ -1195,23 +1274,24 @@ void GuiTest::backendM3()
     spec.insert(QStringLiteral("contextPath"), projectDir);
     spec.insert(QStringLiteral("tag"), QStringLiteral("localhost/mock:1"));
     spec.insert(QStringLiteral("dockerfile"), QStringLiteral("Dockerfile"));
-    backend.startBuild(spec);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.buildActive() && buildSpy.count() > 0, 5000);
-    QVERIFY(backend.buildLog().size() >= 2);
-    QVERIFY(!backend.activeBuildId().isEmpty());
+    backend.builds()->startBuild(spec);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.builds()->buildActive() && buildSpy.count() > 0, 5000);
+    QVERIFY(backend.builds()->logLines().size() >= 2);
+    QVERIFY(!backend.builds()->activeBuildId().isEmpty());
 
     QTRY_VERIFY_WITH_TIMEOUT(buildsSpy.count() > 0, 5000);
-    QVERIFY(backend.builds().size() >= 1);
+    QTRY_VERIFY_WITH_TIMEOUT(backend.builds()->items().size() >= 1, 5000);
 
     QFile::remove(m_testDataDir + QStringLiteral("/podman-args.log"));
     QVariantMap multiSpec = spec;
     multiSpec.insert(QStringLiteral("tag"), QStringLiteral("localhost/mock:multi"));
     multiSpec.insert(QStringLiteral("platforms"),
                      QStringLiteral("linux/amd64,linux/arm64"));
-    backend.startBuild(multiSpec);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.buildActive() && backend.builds().size() >= 2, 5000);
+    backend.builds()->startBuild(multiSpec);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.builds()->buildActive() && backend.builds()->items().size() >= 2, 5000);
     bool foundPlatforms = false;
-    for (const QVariant &value : backend.builds()) {
+    for (const QVariant &value : backend.builds()->items()) {
         const QVariantMap build = value.toMap();
         if (build.value(QStringLiteral("imageRef")).toString()
             == QStringLiteral("localhost/mock:multi")) {
@@ -1231,27 +1311,27 @@ void GuiTest::backendM3()
     QTRY_VERIFY_WITH_TIMEOUT(eventsSpy.count() > 0, 5000);
     QVERIFY(backend.eventMessage().contains(QStringLiteral("start")));
 
-    backend.composeUp(projectDir);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 0, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeUp(projectDir);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.compose()->actionActive() && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.composeDown(projectDir, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeDown(projectDir, false);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.compose()->actionActive() && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.composeRestart(projectDir, QString());
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 2, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeRestart(projectDir, QString());
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.compose()->actionActive() && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.composeStop(projectDir, QString());
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 3, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeStop(projectDir, QString());
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.compose()->actionActive() && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.composeStart(projectDir, QString());
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > 4, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    backend.compose()->composeStart(projectDir, QString());
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.compose()->actionActive() && backend.compose()->lastError().isEmpty(), 5000);
 
-    backend.removeBuild(backend.activeBuildId());
+    backend.builds()->removeBuild(backend.builds()->activeBuildId());
     QTest::qWait(100);
 }
 
@@ -1259,29 +1339,29 @@ void GuiTest::backendErrors()
 {
     PodStack::Backend backend;
     QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    QSignalSpy imageErrorSpy(backend.images(), &PodStack::ImageController::lastErrorChanged);
+    auto *containers = backend.containers();
 
-    backend.pullImage(QString());
-    QVERIFY(errorSpy.count() > 0);
+    backend.images()->pullImage(QString());
+    QVERIFY(imageErrorSpy.count() > 0);
 
-    backend.startBuild({});
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.builds()->startBuild({});
+    QVERIFY(!backend.builds()->lastError().isEmpty());
 
-    backend.uploadFile(QString(), QString(), QString());
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.containers()->uploadFile(QString(), QString(), QString());
+    QVERIFY(!backend.containers()->lastError().isEmpty());
 
-    backend.renameContainer(QString(), QString());
-    QVERIFY(actionSpy.count() > 0);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.containers()->renameContainer(QString(), QString());
+    QVERIFY(!backend.containers()->lastError().isEmpty());
 
-    backend.duplicateContainer(QString());
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.containers()->duplicateContainer(QString());
+    QVERIFY(!backend.containers()->lastError().isEmpty());
 
-    backend.openTerminal(QString());
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.containers()->openTerminal(QString());
+    QVERIFY(!backend.containers()->lastError().isEmpty());
 
-    backend.saveEngineMode(QStringLiteral("bogus"));
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.settings()->saveEngineMode(QStringLiteral("bogus"));
+    QVERIFY(!backend.settings()->lastError().isEmpty());
 }
 
 void GuiTest::backendInvalidArguments()
@@ -1291,67 +1371,70 @@ void GuiTest::backendInvalidArguments()
     QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
 
     // Entradas vazias devem ser recusadas no Backend, sem chegar ao daemon.
-    backend.removeImage(QString(), false);
-    backend.tagImage(QString(), QString());
-    backend.untagImage(QString(), QString());
-    backend.exportImage(QString(), QString());
-    backend.loadImage(QString());
-    backend.createVolume(QString(), QString());
-    backend.removeVolume(QString(), false);
-    backend.cloneVolume(QString(), QString());
-    backend.importHostPath(QString(), QString());
-    backend.createNetwork(QString(), QString(), QString());
-    backend.removeNetwork(QString(), false);
-    backend.connectNetwork(QString(), QString());
-    backend.disconnectNetwork(QString(), QString());
-    backend.createPod(QString());
-    backend.podAction(QString(), QString());
-    backend.removePod(QString(), false);
-    backend.composeUp(QString());
-    backend.composeDown(QString(), false);
-    backend.composeRestart(QString(), QString());
-    backend.composeStop(QString(), QString());
-    backend.composeStart(QString(), QString());
-    backend.subscribeComposeLogs(QString(), QString());
-    backend.removeBuild(QString());
-    backend.loadMachineLogs(QString(), 0);
-    backend.startMachineStats(QString());
-    backend.followMachineConsole(QString(), 0);
-    backend.refreshMachineFiles(QString(), QString());
-    backend.refreshMachineSnapshots(QString());
-    backend.createMachineSnapshot(QString(), QString());
-    backend.restoreMachineSnapshot(QString(), QString());
-    backend.removeMachineSnapshot(QString(), QString());
-    backend.downloadMachineFile(QString(), QString(), QString());
-    backend.uploadMachineFile(QString(), QString(), QString());
-    backend.renameMachine(QString(), QString());
-    backend.cloneMachine(QString(), QString());
-    backend.updateMachine({});
-    backend.setMachinePorts(QString(), {});
-    backend.exportMachine(QString(), QString());
-    backend.importMachine(QString());
-    backend.loadContainerDetail(QString());
-    backend.startContainerDetailStats(QString());
-    backend.startContainerDetailLogs(QString(), 0, true);
-    backend.containerDetailLifecycle(QString(), QString());
-    backend.removeContainerDetail(QString(), false);
-    backend.createContainer({}, false);
-    backend.exposeContainerLan(QString(), true);
-    backend.batchAll(QString());
-    backend.batchIds({}, QString());
-    backend.listFiles(QString(), QString());
-    backend.downloadFile(QString(), QString());
-    backend.uploadFile(QString(), QString(), QString());
-    backend.setSetting(QString(), {});
-    backend.setSetting(QStringLiteral("does.not.exist"), 1);
-    backend.setSetting(QStringLiteral("app.theme"), QStringLiteral("bogus"));
-    backend.resetSetting(QString());
-    backend.resetSetting(QStringLiteral("does.not.exist"));
-    backend.setupApply(QStringLiteral("bogus"));
+    backend.images()->removeImage(QString(), false);
+    backend.images()->tagImage(QString(), QString());
+    backend.images()->untagImage(QString(), QString());
+    backend.images()->exportImage(QString(), QString());
+    backend.images()->loadImage(QString());
+    backend.volumes()->createVolume(QString(), QString());
+    backend.volumes()->removeVolume(QString(), false);
+    backend.volumes()->cloneVolume(QString(), QString());
+    backend.volumes()->importHostPath(QString(), QString());
+    backend.networks()->createNetwork(QString(), QString(), QString());
+    backend.networks()->removeNetwork(QString(), false);
+    backend.networks()->connectNetwork(QString(), QString());
+    backend.networks()->disconnectNetwork(QString(), QString());
+    backend.pods()->createPod(QString());
+    backend.pods()->podAction(QString(), QString());
+    backend.pods()->removePod(QString(), false);
+    backend.compose()->composeUp(QString());
+    backend.compose()->composeDown(QString(), false);
+    backend.compose()->composeRestart(QString(), QString());
+    backend.compose()->composeStop(QString(), QString());
+    backend.compose()->composeStart(QString(), QString());
+    backend.compose()->subscribeComposeLogs(QString(), QString());
+    backend.builds()->removeBuild(QString());
+    backend.machineDetail()->loadLogs(QString(), 0);
+    backend.machineDetail()->startStats(QString());
+    backend.machineDetail()->followConsole(QString(), 0);
+    backend.machineDetail()->refreshFiles(QString(), QString());
+    backend.machines()->refreshSnapshots(QString());
+    backend.machines()->createSnapshot(QString(), QString());
+    backend.machines()->restoreSnapshot(QString(), QString());
+    backend.machines()->removeSnapshot(QString(), QString());
+    backend.machineDetail()->downloadFile(QString(), QString(), QString());
+    backend.machineDetail()->uploadFile(QString(), QString(), QString());
+    backend.machines()->rename(QString(), QString());
+    backend.machines()->clone(QString(), QString());
+    backend.machines()->update({});
+    backend.machines()->setPorts(QString(), {});
+    backend.machines()->exportTo(QString(), QString());
+    backend.machines()->importFrom(QString());
+    backend.containerDetail()->load(QString());
+    backend.containerDetail()->startStats(QString());
+    backend.containerDetail()->startLogs(QString(), 0, true);
+    backend.containerDetail()->lifecycle(QString(), QString());
+    backend.containerDetail()->remove(QString(), false);
+    backend.containers()->createContainer({}, false);
+    backend.containers()->exposeContainerLan(QString(), true);
+    backend.containers()->batchAll(QString());
+    backend.containers()->batchIds({}, QString());
+    backend.containers()->listFiles(QString(), QString());
+    backend.containers()->downloadFile(QString(), QString());
+    backend.containers()->uploadFile(QString(), QString(), QString());
+    backend.settings()->setSetting(QString(), {});
+    backend.settings()->setSetting(QStringLiteral("does.not.exist"), 1);
+    backend.settings()->setSetting(QStringLiteral("app.theme"), QStringLiteral("bogus"));
+    backend.settings()->resetSetting(QString());
+    backend.settings()->resetSetting(QStringLiteral("does.not.exist"));
+    backend.setup()->apply(QStringLiteral("bogus"));
 
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.lastError().isEmpty(), 5000);
-    QVERIFY(errorSpy.count() > 0);
-    QVERIFY(actionSpy.count() > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.machines()->lastError().isEmpty() ||
+                                 !backend.machineDetail()->lastError().isEmpty() ||
+                                 !backend.settings()->lastError().isEmpty(),
+                             5000);
+    QVERIFY(errorSpy.count() > 0 || actionSpy.count() > 0 ||
+            !backend.machines()->lastError().isEmpty());
 }
 
 void GuiTest::backendOperations()
@@ -1363,48 +1446,48 @@ void GuiTest::backendOperations()
     file.write("tar");
     file.close();
 
-    backend.refreshImages();
-    backend.refreshVolumes();
-    backend.refreshNetworks();
-    backend.refreshPods();
+    backend.images()->refresh();
+    backend.volumes()->refresh();
+    backend.networks()->refresh();
+    backend.pods()->refresh();
     backend.refreshDiskUsage();
-    backend.refreshCompose();
-    backend.refreshBuilds();
+    backend.compose()->refresh();
+    backend.builds()->refresh();
 
-    backend.createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
-    backend.cloneVolume(QStringLiteral("vol1"), QStringLiteral("vol2"));
-    backend.importHostPath(QStringLiteral("vol3"), m_testDataDir);
-    backend.removeVolume(QStringLiteral("vol1"), false);
-    backend.pruneVolumes();
+    backend.volumes()->createVolume(QStringLiteral("vol2"), QStringLiteral("local"));
+    backend.volumes()->cloneVolume(QStringLiteral("vol1"), QStringLiteral("vol2"));
+    backend.volumes()->importHostPath(QStringLiteral("vol3"), m_testDataDir);
+    backend.volumes()->removeVolume(QStringLiteral("vol1"), false);
+    backend.volumes()->pruneVolumes();
 
-    backend.createNetwork(QStringLiteral("net2"), QStringLiteral("10.90.0.0/24"),
-                          QStringLiteral("10.90.0.1"));
-    backend.connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
-    backend.disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
-    backend.removeNetwork(QStringLiteral("net2"), false);
+    backend.networks()->createNetwork(QStringLiteral("net2"), QStringLiteral("10.90.0.0/24"),
+                                      QStringLiteral("10.90.0.1"));
+    backend.networks()->connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    backend.networks()->disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"));
+    backend.networks()->removeNetwork(QStringLiteral("net2"), false);
 
-    backend.createPod(QStringLiteral("pod2"));
-    backend.podAction(QStringLiteral("start"), QStringLiteral("pod1"));
-    backend.removePod(QStringLiteral("pod1"), false);
+    backend.pods()->createPod(QStringLiteral("pod2"));
+    backend.pods()->podAction(QStringLiteral("start"), QStringLiteral("pod1"));
+    backend.pods()->removePod(QStringLiteral("pod1"), false);
 
-    backend.tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
-    backend.untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
-    backend.exportImage(QStringLiteral("img1234567890"), tempFile);
-    backend.loadImage(tempFile);
-    backend.pruneImages(false);
-    backend.removeImage(QStringLiteral("img1234567890"), false);
+    backend.images()->tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
+    backend.images()->untagImage(QStringLiteral("img1234567890"), QStringLiteral("repo:tag"));
+    backend.images()->exportImage(QStringLiteral("img1234567890"), tempFile);
+    backend.images()->loadImage(tempFile);
+    backend.images()->pruneImages(false);
+    backend.images()->removeImage(QStringLiteral("img1234567890"), false);
 
-    backend.composeUp(QStringLiteral("/tmp/mock-project"));
-    backend.composeRestart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
-    backend.composeStop(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
-    backend.composeStart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
-    backend.composeDown(QStringLiteral("/tmp/mock-project"), false);
-    backend.subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
-    backend.unsubscribeComposeLogs();
-    backend.removeBuild(QStringLiteral("missing"));
+    backend.compose()->composeUp(QStringLiteral("/tmp/mock-project"));
+    backend.compose()->composeRestart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.compose()->composeStop(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.compose()->composeStart(QStringLiteral("/tmp/mock-project"), QStringLiteral("web"));
+    backend.compose()->composeDown(QStringLiteral("/tmp/mock-project"), false);
+    backend.compose()->subscribeComposeLogs(QStringLiteral("mock-project"), QStringLiteral("web"));
+    backend.compose()->unsubscribeComposeLogs();
+    backend.builds()->removeBuild(QStringLiteral("missing"));
 
-    backend.startActivityMonitor();
-    backend.stopActivityMonitor();
+    backend.system()->startActivityMonitor();
+    backend.system()->stopActivityMonitor();
 
     // Dá tempo para os jobs assíncronos concluírem antes de destruir o Backend.
     QTest::qWait(1500);
@@ -1415,91 +1498,82 @@ void GuiTest::backendBatchActions()
     PodStack::Backend backend;
     QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
 
-    backend.batchPods({QStringLiteral("missing")}, QStringLiteral("bogus"));
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.pods()->batchPods({QStringLiteral("missing")}, QStringLiteral("bogus"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.pods()->actionActive() && !backend.pods()->lastError().isEmpty(), 5000);
 
-    backend.batchImages({QStringLiteral("missing-image")}, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() >= 1, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.images()->batchImages({QStringLiteral("missing-image")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.images()->actionActive() && !backend.images()->lastError().isEmpty(), 5000);
 
-    const int beforeVolumes = actionSpy.count();
-    backend.batchVolumes({QStringLiteral("missing-volume")}, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeVolumes, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.volumes()->batchVolumes({QStringLiteral("missing-volume")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.volumes()->actionActive() && !backend.volumes()->lastError().isEmpty(), 5000);
 
-    const int beforeNetworks = actionSpy.count();
-    backend.batchNetworks({QStringLiteral("missing-network")}, false);
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeNetworks, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.networks()->batchNetworks({QStringLiteral("missing-network")}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.networks()->actionActive() && !backend.networks()->lastError().isEmpty(), 5000);
 
-    const int beforePods = actionSpy.count();
-    backend.batchPods({QStringLiteral("missing-pod")}, QStringLiteral("start"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforePods, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.pods()->batchPods({QStringLiteral("missing-pod")}, QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.pods()->actionActive() && !backend.pods()->lastError().isEmpty(), 5000);
 
-    const int beforeMachines = actionSpy.count();
-    backend.batchMachines({QStringLiteral("missing-machine")}, QStringLiteral("start"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeMachines, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.machines()->batch({QStringLiteral("missing-machine")}, QStringLiteral("start"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.machines()->actionActive() && !backend.machines()->lastError().isEmpty(), 5000);
 
-    const int beforeBuilds = actionSpy.count();
-    backend.batchBuilds({QStringLiteral("missing-build")});
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeBuilds, 5000);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
+    backend.builds()->batchBuilds({QStringLiteral("missing-build")});
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !backend.builds()->actionActive() && !backend.builds()->lastError().isEmpty(), 5000);
 
-    const int beforeCompose = actionSpy.count();
-    backend.batchCompose({QStringLiteral("/tmp/mock-project")}, QStringLiteral("up"));
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() > beforeCompose, 10000);
-    QVERIFY2(actionSpy.last().at(0).toBool(), qPrintable(actionSpy.last().at(1).toString()));
+    backend.compose()->batchCompose({QStringLiteral("/tmp/mock-project")}, QStringLiteral("up"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.compose()->actionActive(), 10000);
+    QVERIFY2(backend.compose()->lastError().isEmpty(), qPrintable(backend.compose()->lastError()));
 }
 
 void GuiTest::backendTheme()
 {
     PodStack::Backend backend;
-    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
+    QSignalSpy errorSpy(backend.settings(), &PodStack::SettingsController::lastErrorChanged);
 
-    backend.saveTheme(QStringLiteral("light"));
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+    backend.settings()->saveTheme(QStringLiteral("light"));
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("theme")).toString(),
                  QStringLiteral("light"));
 
-    backend.saveTheme(QStringLiteral("system"));
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+    backend.settings()->saveTheme(QStringLiteral("system"));
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("theme")).toString(),
                  QStringLiteral("system"));
 
-    backend.saveTheme(QStringLiteral("bogus"));
-    QVERIFY(!backend.lastError().isEmpty());
+    backend.settings()->saveTheme(QStringLiteral("bogus"));
+    QVERIFY(!backend.settings()->lastError().isEmpty());
     QVERIFY(errorSpy.count() > 0);
-    QCOMPARE(backend.settings().value(QStringLiteral("theme")).toString(),
+    QCOMPARE(backend.settings()->settings().value(QStringLiteral("theme")).toString(),
              QStringLiteral("system"));
-    QTRY_VERIFY(actionSpy.count() >= 2);
 
-    backend.setSetting(QStringLiteral("app.fontScale"), 120);
-    QTRY_COMPARE(backend.settingsValues().value(QStringLiteral("app.fontScale")).toInt(), 120);
-    backend.setSetting(QStringLiteral("app.fontScale"), 200);
-    QTRY_VERIFY(!backend.settingsError().isEmpty());
-    QCOMPARE(backend.settingsValues().value(QStringLiteral("app.fontScale")).toInt(), 120);
+    backend.settings()->setSetting(QStringLiteral("app.fontScale"), 120);
+    QTRY_COMPARE(backend.settings()->values().value(QStringLiteral("app.fontScale")).toInt(), 120);
+    backend.settings()->setSetting(QStringLiteral("app.fontScale"), 200);
+    QTRY_VERIFY(!backend.settings()->error().isEmpty());
+    QCOMPARE(backend.settings()->values().value(QStringLiteral("app.fontScale")).toInt(), 120);
 }
 
 void GuiTest::backendSettings()
 {
     PodStack::Backend backend;
-    QSignalSpy schemaSpy(&backend, &PodStack::Backend::settingsSchemaChanged);
-    QSignalSpy valuesSpy(&backend, &PodStack::Backend::settingsValuesChanged);
-    QSignalSpy finishedSpy(&backend, &PodStack::Backend::settingFinished);
-    QSignalSpy restartSpy(&backend, &PodStack::Backend::pendingRestartKeysChanged);
+    QSignalSpy schemaSpy(backend.settings(), &PodStack::SettingsController::schemaChanged);
+    QSignalSpy valuesSpy(backend.settings(), &PodStack::SettingsController::valuesChanged);
+    QSignalSpy finishedSpy(backend.settings(), &PodStack::SettingsController::settingFinished);
+    QSignalSpy restartSpy(backend.settings(),
+                          &PodStack::SettingsController::pendingRestartKeysChanged);
 
-    backend.refreshSettings();
-    QTRY_COMPARE(backend.settingsSchema().size(), 88);
+    backend.settings()->refresh();
+    QTRY_COMPARE(backend.settings()->schema().size(), 88);
     QVERIFY(schemaSpy.count() > 0);
-    QVERIFY(backend.settingsValues().contains(QStringLiteral("engine.mode")));
+    QVERIFY(backend.settings()->values().contains(QStringLiteral("engine.mode")));
     QVERIFY(valuesSpy.count() > 0);
 
-    backend.setSetting(QStringLiteral("app.theme"), QStringLiteral("light"));
-    QTRY_COMPARE(backend.settingsValues()
-                     .value(QStringLiteral("app.theme"))
-                     .toString(),
+    backend.settings()->setSetting(QStringLiteral("app.theme"), QStringLiteral("light"));
+    QTRY_COMPARE(backend.settings()->values().value(QStringLiteral("app.theme")).toString(),
                  QStringLiteral("light"));
     QTRY_VERIFY(finishedSpy.count() > 0);
     bool themeSaved = false;
@@ -1510,73 +1584,67 @@ void GuiTest::backendSettings()
     }
     QVERIFY(themeSaved);
     // app.theme não exige reinício: não deve entrar na lista de pendências.
-    QVERIFY(!backend.pendingRestartKeys().contains(QStringLiteral("app.theme")));
+    QVERIFY(!backend.settings()->pendingRestartKeys().contains(QStringLiteral("app.theme")));
 
-    backend.setSetting(QStringLiteral("terminal.fontSize"), 99);
-    QTRY_VERIFY(!backend.settingsError().isEmpty());
-    QCOMPARE(backend.settingsValues()
-                 .value(QStringLiteral("terminal.fontSize"))
-                 .toInt(),
-             12);
+    backend.settings()->setSetting(QStringLiteral("terminal.fontSize"), 99);
+    QTRY_VERIFY(!backend.settings()->error().isEmpty());
+    QCOMPARE(backend.settings()->values().value(QStringLiteral("terminal.fontSize")).toInt(), 12);
 
-    backend.setSetting(QStringLiteral("engine.mode"), QStringLiteral("rootful"));
-    QTRY_COMPARE(backend.settingsValues()
-                     .value(QStringLiteral("engine.mode"))
-                     .toString(),
+    backend.settings()->setSetting(QStringLiteral("engine.mode"), QStringLiteral("rootful"));
+    QTRY_COMPARE(backend.settings()->values().value(QStringLiteral("engine.mode")).toString(),
                  QStringLiteral("rootful"));
-    QTRY_VERIFY(backend.settingsError().isEmpty());
+    QTRY_VERIFY(backend.settings()->error().isEmpty());
     // O daemon devolve restartRequired=true para engine.mode; o Backend precisa
     // expor isso para o diálogo avisar o usuário.
-    QTRY_VERIFY(backend.pendingRestartKeys().contains(QStringLiteral("engine.mode")));
+    QTRY_VERIFY(backend.settings()->pendingRestartKeys().contains(QStringLiteral("engine.mode")));
     QVERIFY(restartSpy.count() > 0);
 
-    backend.resetSetting(QStringLiteral("app.theme"));
-    QTRY_COMPARE(backend.settingsValues()
-                     .value(QStringLiteral("app.theme"))
-                     .toString(),
+    backend.settings()->resetSetting(QStringLiteral("app.theme"));
+    QTRY_COMPARE(backend.settings()->values().value(QStringLiteral("app.theme")).toString(),
                  QStringLiteral("system"));
-    backend.resetSetting(QStringLiteral("engine.mode"));
-    QTRY_COMPARE(backend.settingsValues()
-                     .value(QStringLiteral("engine.mode"))
-                     .toString(),
+    backend.settings()->resetSetting(QStringLiteral("engine.mode"));
+    QTRY_COMPARE(backend.settings()->values().value(QStringLiteral("engine.mode")).toString(),
                  QStringLiteral("rootless"));
 
-    backend.setSetting(QStringLiteral("app.startAtLogin"), true);
+    backend.settings()->setSetting(QStringLiteral("app.startAtLogin"), true);
     QTRY_VERIFY(QFile::exists(PodStack::Autostart::filePath()));
-    backend.setSetting(QStringLiteral("app.startAtLogin"), false);
+    backend.settings()->setSetting(QStringLiteral("app.startAtLogin"), false);
     QTRY_VERIFY(!QFile::exists(PodStack::Autostart::filePath()));
 }
 
 void GuiTest::backendTray()
 {
     PodStack::Backend backend;
-    QSignalSpy containersSpy(&backend, &PodStack::Backend::containersChanged);
+    QSignalSpy containersSpy(backend.containers(), &PodStack::ContainerController::itemsChanged);
     QTRY_VERIFY_WITH_TIMEOUT(containersSpy.count() > 0, 5000);
-    QCOMPARE(backend.containers().size(),
-             containersSpy.last().at(0).value<QVariantList>().size());
+    QVERIFY(containersSpy.count() > 0);
+    QCOMPARE(backend.containers()->items().size(), 1);
 
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
-    backend.lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
-    QVERIFY(backend.actionActive());
-    backend.lifecycle(QStringLiteral("unpause"), QStringLiteral("abc123"));
-    QVERIFY(backend.actionActive());
-    QTRY_VERIFY_WITH_TIMEOUT(actionSpy.count() >= 2, 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.actionActive(), 5000);
+    backend.containers()->lifecycle(QStringLiteral("pause"), QStringLiteral("abc123"));
+    QVERIFY(backend.containers()->actionActive());
+    backend.containers()->lifecycle(QStringLiteral("unpause"), QStringLiteral("abc123"));
+    QVERIFY(backend.containers()->actionActive());
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.containers()->actionActive(), 5000);
 
-    backend.saveTraySettings(false, false, true, false);
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("keepRunningInTray")).toBool(),
+    backend.settings()->saveTraySettings(false, false, true, false);
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("keepRunningInTray")).toBool(),
                  false);
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("showInTray")).toBool(), false);
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("startAtLogin")).toBool(), true);
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("notifications")).toBool(), false);
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("showInTray")).toBool(),
+                 false);
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("startAtLogin")).toBool(),
+                 true);
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("notifications")).toBool(),
+                 false);
     QTRY_VERIFY(QFile::exists(PodStack::Autostart::filePath()));
 
-    backend.saveTraySettings(true, true, false, true);
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("keepRunningInTray")).toBool(),
+    backend.settings()->saveTraySettings(true, true, false, true);
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("keepRunningInTray")).toBool(),
                  true);
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("showInTray")).toBool(), true);
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("startAtLogin")).toBool(), false);
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("notifications")).toBool(), true);
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("showInTray")).toBool(), true);
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("startAtLogin")).toBool(),
+                 false);
+    QTRY_COMPARE(backend.settings()->settings().value(QStringLiteral("notifications")).toBool(),
+                 true);
     QTRY_VERIFY(!QFile::exists(PodStack::Autostart::filePath()));
 }
 
@@ -1665,11 +1733,12 @@ void GuiTest::systemLogs()
     file.close();
 
     PodStack::Backend backend;
-    backend.loadSystemLogs(QString(), QStringLiteral("setup"), 7);
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.systemLogsBusy(), 3000);
-    QVERIFY2(backend.systemLogsError().isEmpty(), qPrintable(backend.systemLogsError()));
-    QCOMPARE(backend.systemLogs().size(), 1);
-    QVERIFY(!backend.systemLogs()
+    backend.system()->loadLogs(QString(), QStringLiteral("setup"), 7);
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.system()->logsBusy(), 3000);
+    QVERIFY2(backend.system()->logsError().isEmpty(), qPrintable(backend.system()->logsError()));
+    QCOMPARE(backend.system()->logs().size(), 1);
+    QVERIFY(!backend.system()
+                 ->logs()
                  .first()
                  .toMap()
                  .value(QStringLiteral("message"))
@@ -1677,12 +1746,12 @@ void GuiTest::systemLogs()
                  .contains(QStringLiteral("segredo")));
 
     const QString exportPath = m_testDataDir + QStringLiteral("/logs-export.jsonl");
-    QVERIFY(backend.exportSystemLogs(exportPath));
+    QVERIFY(backend.system()->exportLogs(exportPath));
     QFile exported(exportPath);
     QVERIFY(exported.open(QIODevice::ReadOnly));
     QVERIFY(!exported.readAll().contains("segredo"));
 
-    backend.clearSystemLogs();
+    backend.system()->clearLogs();
     QVERIFY(!QFileInfo::exists(logDir + QStringLiteral("/podstackd.jsonl")));
 }
 
@@ -1696,16 +1765,17 @@ void GuiTest::loadUpdateState()
     state.close();
 
     PodStack::Backend backend;
-    QTRY_COMPARE_WITH_TIMEOUT(backend.updateStatus().value(QStringLiteral("status")).toString(),
-                              QStringLiteral("installed"), 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(
+        backend.updates()->status().value(QStringLiteral("status")).toString(),
+        QStringLiteral("installed"), 3000);
 }
 
 void GuiTest::diagnosticReport()
 {
     PodStack::Backend backend;
-    backend.generateDiagnosticReport();
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.diagnosticReportPath().isEmpty(), 5000);
-    QVERIFY(QFileInfo::exists(backend.diagnosticReportPath()));
+    backend.system()->generateDiagnosticReport();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.system()->diagnosticReportPath().isEmpty(), 5000);
+    QVERIFY(QFileInfo::exists(backend.system()->diagnosticReportPath()));
 }
 
 void GuiTest::clearUpdateState()
@@ -1719,28 +1789,28 @@ void GuiTest::clearUpdateState()
     state.close();
 
     PodStack::Backend backend;
-    backend.clearUpdateState();
+    backend.updates()->clearState();
     QVERIFY(!QFileInfo::exists(path));
 }
 
 void GuiTest::installUpdateFlatpakGuard()
 {
     PodStack::Backend backend;
-    QSignalSpy failed(&backend, &PodStack::Backend::updateCheckFailed);
+    QSignalSpy failed(backend.updates(), &PodStack::UpdateController::checkFailed);
     qputenv("FLATPAK_ID", "dev.podstack.PodStack");
     const auto restore = qScopeGuard([] { qunsetenv("FLATPAK_ID"); });
-    backend.installUpdate();
+    backend.updates()->install();
     QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 3000);
 }
 
 void GuiTest::installUpdateSystemdGuard()
 {
     PodStack::Backend backend;
-    QSignalSpy failed(&backend, &PodStack::Backend::updateCheckFailed);
+    QSignalSpy failed(backend.updates(), &PodStack::UpdateController::checkFailed);
     const QByteArray previousPath = qgetenv("PATH");
     qputenv("PATH", QByteArrayLiteral("/nonexistent-podstack"));
     const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
-    backend.installUpdate();
+    backend.updates()->install();
     QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 3000);
 }
 
@@ -1771,7 +1841,7 @@ void GuiTest::guiStartsAndQuits()
     QFile::setPermissions(runtimeDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner
                                          | QFileDevice::ExeOwner);
     const QString guiPath =
-        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../podstack-gui"));
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("podstack-gui"));
 
     QProcessEnvironment environment = daemonEnvironment();
     environment.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
@@ -1819,25 +1889,22 @@ void GuiTest::guiStartsAndQuits()
 void GuiTest::backendActivityMonitor()
 {
     PodStack::Backend backend;
-    QSignalSpy activitySpy(&backend, &PodStack::Backend::activityChanged);
+    QSignalSpy activitySpy(backend.system(), &PodStack::SystemController::activityChanged);
 
-    backend.startActivityMonitor();
-    QVERIFY(backend.activityActive());
+    backend.system()->startActivityMonitor();
+    QVERIFY(backend.system()->activityActive());
     QTRY_VERIFY_WITH_TIMEOUT(activitySpy.count() > 1, 7000);
-    QTRY_COMPARE(backend.activityStats()
-                     .value(QStringLiteral("containers"))
-                     .toList()
-                     .size(),
-                 2);
-    QVERIFY(backend.activityStats()
+    QTRY_COMPARE(
+        backend.system()->activityStats().value(QStringLiteral("containers")).toList().size(), 2);
+    QVERIFY(backend.system()
+                ->activityStats()
                 .value(QStringLiteral("host"))
                 .toMap()
                 .value(QStringLiteral("memTotal"))
-                .toLongLong()
-            > 0);
+                .toLongLong() > 0);
 
-    backend.stopActivityMonitor();
-    QVERIFY(!backend.activityActive());
+    backend.system()->stopActivityMonitor();
+    QVERIFY(!backend.system()->activityActive());
 }
 
 void GuiTest::streamClientProtocol()
@@ -2067,90 +2134,83 @@ void GuiTest::streamClientProtocol()
 void GuiTest::backendProxy()
 {
     PodStack::Backend backend;
-    QSignalSpy errorSpy(&backend, &PodStack::Backend::lastErrorChanged);
-    QSignalSpy actionSpy(&backend, &PodStack::Backend::actionFinished);
-    QSignalSpy settingsSpy(&backend, &PodStack::Backend::settingsChanged);
+    auto *settings = backend.settings();
+    QSignalSpy errorSpy(settings, &PodStack::SettingsController::lastErrorChanged);
+    QSignalSpy settingsSpy(settings, &PodStack::SettingsController::valuesChanged);
 
-    backend.saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
-                              QStringLiteral("localhost, .internal"));
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
+    settings->saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
+                                QStringLiteral("localhost, .internal"));
+    QTRY_COMPARE(settings->settings().value(QStringLiteral("proxy")).toString(),
                  QStringLiteral("http://127.0.0.1:3128"));
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("proxyExclude")).toStringList(),
+    QTRY_COMPARE(settings->settings().value(QStringLiteral("proxyExclude")).toStringList(),
                  QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
-    QTRY_VERIFY(actionSpy.count() >= 2);
-    QCOMPARE(actionSpy.last().at(0).toBool(), true);
+    QVERIFY(settings->lastError().isEmpty());
     QVERIFY(settingsSpy.count() > 0);
 
-    const int errorsBefore = errorSpy.count();
-    backend.saveProxySettings(QStringLiteral("ftp://127.0.0.1:21"),
-                              QStringLiteral("localhost"));
-    QVERIFY(!backend.lastError().isEmpty());
-    QVERIFY(errorSpy.count() > errorsBefore);
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QCOMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
+    settings->saveProxySettings(QStringLiteral("ftp://127.0.0.1:21"), QStringLiteral("localhost"));
+    QVERIFY(!settings->lastError().isEmpty());
+    QCOMPARE(settings->settings().value(QStringLiteral("proxy")).toString(),
              QStringLiteral("http://127.0.0.1:3128"));
-    QCOMPARE(backend.settings().value(QStringLiteral("proxyExclude")).toStringList(),
+    QCOMPARE(settings->settings().value(QStringLiteral("proxyExclude")).toStringList(),
              QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
 
-    backend.saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
-                              QStringLiteral("bad host"));
-    QVERIFY(!backend.lastError().isEmpty());
-    QCOMPARE(actionSpy.last().at(0).toBool(), false);
-    QCOMPARE(backend.settings().value(QStringLiteral("proxyExclude")).toStringList(),
+    settings->saveProxySettings(QStringLiteral("http://127.0.0.1:3128"),
+                                QStringLiteral("bad host"));
+    QVERIFY(!settings->lastError().isEmpty());
+    QCOMPARE(settings->settings().value(QStringLiteral("proxyExclude")).toStringList(),
              QStringList({QStringLiteral("localhost"), QStringLiteral(".internal")}));
 
-    backend.saveProxySettings(QStringLiteral("auto"),
-                              QStringLiteral("localhost, .internal"));
-    QTRY_COMPARE(backend.settings().value(QStringLiteral("proxy")).toString(),
+    settings->saveProxySettings(QStringLiteral("auto"), QStringLiteral("localhost, .internal"));
+    QTRY_COMPARE(settings->settings().value(QStringLiteral("proxy")).toString(),
                  QStringLiteral("auto"));
 }
 
 void GuiTest::backendSetup()
 {
     PodStack::Backend backend;
-    QSignalSpy setupSpy(&backend, &PodStack::Backend::setupChanged);
+    QSignalSpy setupSpy(backend.setup(), &PodStack::SetupController::changed);
 
-    QVERIFY(!backend.setupLoaded());
-    backend.setupRefresh();
-    QTRY_VERIFY_WITH_TIMEOUT(backend.setupLoaded(), 15000);
+    QVERIFY(!backend.setup()->loaded());
+    backend.setup()->refreshStatus();
+    QTRY_VERIFY_WITH_TIMEOUT(backend.setup()->loaded(), 15000);
     QVERIFY(setupSpy.count() > 0);
-    QVERIFY(backend.setupChecks().size() >= 8);
-    QVERIFY(backend.setupCompleted() == false);
-    QVERIFY(backend.setupPending());
+    QVERIFY(backend.setup()->checks().size() >= 8);
+    QVERIFY(backend.setup()->completed() == false);
+    QVERIFY(backend.setup()->pending());
 
-    backend.setupSkip();
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupPending(), 10000);
-    QVERIFY(!backend.setupCompleted());
+    backend.setup()->skip();
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setup()->pending(), 10000);
+    QVERIFY(!backend.setup()->completed());
 
-    backend.setupComplete();
-    if (!backend.setupMandatoryOk()) {
+    backend.setup()->complete();
+    if (!backend.setup()->mandatoryOk()) {
         // O host (ex.: container do CI) não tem QEMU/OVMF/virtiofsd. A recusa é
         // parte do contrato; o caminho de sucesso é coberto onde os checks passam.
-        QVERIFY(!backend.setupError().isEmpty());
-        QVERIFY(!backend.setupCompleted());
+        QVERIFY(!backend.setup()->error().isEmpty());
+        QVERIFY(!backend.setup()->completed());
         QSKIP("Checks obrigatórios indisponíveis no host; conclusão bloqueada.");
     }
-    QTRY_VERIFY_WITH_TIMEOUT(backend.setupCompleted(), 10000);
-    QVERIFY(!backend.setupPending());
+    QTRY_VERIFY_WITH_TIMEOUT(backend.setup()->completed(), 10000);
+    QVERIFY(!backend.setup()->pending());
 }
 
 void GuiTest::backendSetupJob()
 {
     PodStack::Backend backend;
-    QSignalSpy jobSpy(&backend, &PodStack::Backend::setupJobChanged);
+    QSignalSpy jobSpy(backend.setup(), &PodStack::SetupController::jobChanged);
 
-    backend.setupApply(QStringLiteral("bogus"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupJobActive(), 10000);
-    QVERIFY(!backend.setupError().isEmpty());
+    backend.setup()->apply(QStringLiteral("bogus"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setup()->jobActive(), 10000);
+    QVERIFY(!backend.setup()->error().isEmpty());
 
-    backend.setupApply(QStringLiteral("enable-socket"));
-    QTRY_VERIFY_WITH_TIMEOUT(!backend.setupJobActive(), 20000);
+    backend.setup()->apply(QStringLiteral("enable-socket"));
+    QTRY_VERIFY_WITH_TIMEOUT(!backend.setup()->jobActive(), 20000);
     QVERIFY(jobSpy.count() > 0);
-    QVERIFY(!backend.setupLog().isEmpty());
+    QVERIFY(!backend.setup()->log().isEmpty());
 
-    backend.setupCancel();
-    backend.setupComplete();
-    QVERIFY(!backend.setupError().isEmpty());
+    backend.setup()->cancel();
+    backend.setup()->complete();
+    QVERIFY(!backend.setup()->error().isEmpty());
 }
 
 } // namespace

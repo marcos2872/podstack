@@ -1,15 +1,15 @@
 #pragma once
 
-#include "core/Error.h"
-#include "daemon/BuildStore.h"
-#include "daemon/ComposeManager.h"
-#include "daemon/HelperClient.h"
-#include "daemon/SetupManager.h"
-#include "daemon/UpdateChecker.h"
+#include "core/error/Error.h"
+#include "core/helper/HelperClient.h"
+#include "daemon/builds/BuildStore.h"
+#include "daemon/compose/ComposeManager.h"
+#include "daemon/setup/SetupManager.h"
+#include "daemon/updates/UpdateChecker.h"
 #include "k8s/K8sManager.h"
-#include "machines/CloudImageCache.h"
 #include "machines/MachineManager.h"
-#include "machines/MachineStats.h"
+#include "machines/operations/MachineStats.h"
+#include "machines/provision/CloudImageCache.h"
 #include "podman/PodmanClient.h"
 
 #include <QHash>

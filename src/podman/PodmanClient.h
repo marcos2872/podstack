@@ -1,7 +1,7 @@
 #pragma once
 
-#include "core/Error.h"
-#include "podman/UnixHttpClient.h"
+#include "core/error/Error.h"
+#include "podman/transport/UnixHttpClient.h"
 
 #include <QJsonArray>
 #include <QJsonObject>

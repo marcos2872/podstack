@@ -1,0 +1,189 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import PodStack.Design
+
+ColumnLayout {
+    id: podsView
+
+
+    spacing: 0
+
+    SelectionState { id: podSelection }
+
+    AppViewHeader {
+        Layout.fillWidth: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.topMargin: 20
+        Layout.bottomMargin: 16
+        title: qsTr("Pods")
+        subtitle: backend.pods.items.length + qsTr(" pods")
+
+        AppButton {
+            text: qsTr("Criar")
+            variant: "primary"
+            iconName: "plus"
+            onClicked: {
+                podName.text = ""
+                createDialog.open()
+            }
+        }
+
+        Text {
+            visible: podSelection.count > 0
+            text: podSelection.count + qsTr(" selecionados")
+            color: Theme.indigo400
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontMeta
+        }
+
+        AppButton {
+            visible: podSelection.count > 0
+            text: qsTr("Start")
+            iconName: "play"
+            onClicked: backend.pods.batchPods(podSelection.ids(), "start")
+        }
+
+        AppButton {
+            visible: podSelection.count > 0
+            text: qsTr("Stop")
+            iconName: "stop"
+            onClicked: backend.pods.batchPods(podSelection.ids(), "stop")
+        }
+
+        AppButton {
+            visible: podSelection.count > 0
+            text: qsTr("Restart")
+            onClicked: backend.pods.batchPods(podSelection.ids(), "restart")
+        }
+
+        AppButton {
+            visible: podSelection.count > 0
+            text: qsTr("Remover")
+            variant: "danger"
+            iconName: "trash"
+            onClicked: backend.pods.batchPods(podSelection.ids(), "remove", true)
+        }
+
+        AppButton {
+            visible: podSelection.count === 0
+            text: qsTr("Start")
+            enabled: podsList.currentRow >= 0
+            onClicked: backend.pods.podAction("start", backend.pods.items[podsList.currentRow].id)
+        }
+
+        AppButton {
+            visible: podSelection.count === 0
+            text: qsTr("Stop")
+            enabled: podsList.currentRow >= 0
+            onClicked: backend.pods.podAction("stop", backend.pods.items[podsList.currentRow].id)
+        }
+
+        AppButton {
+            visible: podSelection.count === 0
+            text: qsTr("Restart")
+            enabled: podsList.currentRow >= 0
+            onClicked: backend.pods.podAction("restart", backend.pods.items[podsList.currentRow].id)
+        }
+
+        AppButton {
+            visible: podSelection.count === 0
+            text: qsTr("Remover")
+            variant: "danger"
+            enabled: podsList.currentRow >= 0
+            onClicked: removeDialog.open()
+        }
+
+        AppButton {
+            variant: "ghost"
+            iconName: "refresh"
+            onClicked: backend.pods.refresh()
+            Accessible.name: qsTr("Atualizar")
+        }
+    }
+
+    AppCatalogList {
+        id: podsList
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Layout.leftMargin: 22
+        Layout.rightMargin: 22
+        Layout.bottomMargin: 20
+        emptyIcon: "pods"
+            emptyText: qsTr("Nenhum pod.\nCrie um pod para agrupar containers.")
+        items: backend.pods.items
+        selection: podSelection
+        idKey: "id"
+        columns: [
+            { key: "name", label: "NAME", width: 0 },
+            { key: "status", label: "STATUS", width: 120 },
+            { key: "containers", label: "CONTAINERS", width: 100 },
+            { key: "id", label: "ID", width: 140, mono: true }
+        ]
+    }
+
+    AppModal {
+        id: createDialog
+        title: "Novo pod"
+        modal: true
+        width: 440
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.color: Theme.border
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label {
+                text: "Nome"
+                color: Theme.textSecondary
+                font.pixelSize: 11
+                font.bold: true
+            }
+            AppInput {
+                id: podName
+                Layout.fillWidth: true
+                placeholderText: "app"
+            }
+        }
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            AppButton {
+                text: "Cancelar"
+                variant: "secondary"
+                onClicked: createDialog.close()
+            }
+            AppButton {
+                text: "Criar"
+                enabled: podName.text.length > 0
+                onClicked: {
+                    backend.pods.createPod(podName.text)
+                    createDialog.close()
+                }
+            }
+        }
+    }
+
+    AppModal {
+        id: removeDialog
+        title: "Remover pod?"
+        modal: true
+        standardButtons: Dialog.Yes | Dialog.No
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.color: Theme.border
+        }
+        contentItem: Label {
+            text: "O pod e seus containers serão removidos."
+            color: Theme.textPrimary
+            wrapMode: Text.WordWrap
+        }
+        onAccepted: {
+            if (podsList.currentRow >= 0) {
+                backend.pods.removePod(backend.pods.items[podsList.currentRow].id, true)
+            }
+        }
+    }
+}

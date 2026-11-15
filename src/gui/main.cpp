@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "core/Config.h"
-#include "core/Logging.h"
-#include "gui/Autostart.h"
-#include "gui/Backend.h"
-#include "gui/ContainerListModel.h"
-#include "gui/MainWindow.h"
-#include "gui/Notifications.h"
-#include "gui/SingleInstance.h"
-#include "gui/Translation.h"
-#include "gui/Tray.h"
-#include "gui/UnixSignals.h"
+#include "core/config/Config.h"
+#include "core/logging/Logging.h"
+#include "gui/app/Autostart.h"
+#include "gui/app/MainWindow.h"
+#include "gui/app/SingleInstance.h"
+#include "gui/app/Translation.h"
+#include "gui/app/UnixSignals.h"
+#include "gui/app/notifications/Notifications.h"
+#include "gui/app/tray/Tray.h"
+#include "gui/controllers/Backend.h"
+#include "gui/models/ContainerListModel.h"
 
 #include <QApplication>
 #include <QCommandLineOption>
@@ -73,71 +73,73 @@ int main(int argc, char *argv[])
     PodStack::Autostart::syncFromConfig();
 
     PodStack::Backend backend;
-    QObject::connect(&backend, &PodStack::Backend::settingsChanged, &app,
+    QObject::connect(backend.settings(), &PodStack::SettingsController::valuesChanged, &app,
                      []() { PodStack::Logging::reload(); });
     PodStack::TrayController tray;
     PodStack::NotificationService notifications;
     notifications.setTrayIcon(tray.trayIcon());
 
-    QObject::connect(&backend, &PodStack::Backend::containersChanged, &tray,
-                     &PodStack::TrayController::setContainers);
+    QObject::connect(backend.containers(), &PodStack::ContainerController::itemsChanged, &tray,
+                     [&backend, &tray]() { tray.setContainers(backend.containers()->items()); });
     QObject::connect(&backend, &PodStack::Backend::stateChanged, &tray, [&backend, &tray]() {
         tray.setConnected(backend.connected());
-        tray.setSetupPending(backend.setupPending());
+        tray.setSetupPending(backend.setup()->pending());
     });
-    QObject::connect(&backend, &PodStack::Backend::setupChanged, &tray,
-                     [&backend, &tray]() { tray.setSetupPending(backend.setupPending()); });
-    QObject::connect(&backend, &PodStack::Backend::machinesChanged, &tray,
-                     [&backend, &tray]() { tray.setMachines(backend.machines()); });
-    QObject::connect(&backend, &PodStack::Backend::k8sChanged, &tray,
-                     [&backend, &tray]() { tray.setKubernetes(backend.k8sEnabled()); });
-    QObject::connect(&backend, &PodStack::Backend::composeProjectsChanged, &tray,
-                     [&backend, &tray]() { tray.setComposeProjects(backend.composeProjects()); });
-    QObject::connect(&backend, &PodStack::Backend::actionStateChanged, &tray,
-                     [&backend, &tray]() { tray.setActionActive(backend.actionActive()); });
+    QObject::connect(backend.setup(), &PodStack::SetupController::changed, &tray,
+                     [&backend, &tray]() { tray.setSetupPending(backend.setup()->pending()); });
+    QObject::connect(backend.machines(), &PodStack::MachineController::itemsChanged, &tray,
+                     [&backend, &tray]() { tray.setMachines(backend.machines()->items()); });
+    QObject::connect(backend.k8s(), &PodStack::K8sController::changed, &tray,
+                     [&backend, &tray]() { tray.setKubernetes(backend.k8s()->enabled()); });
+    QObject::connect(backend.compose(), &PodStack::ComposeController::itemsChanged, &tray,
+                     [&backend, &tray]() { tray.setComposeProjects(backend.compose()->items()); });
     QObject::connect(
-        &tray, &PodStack::TrayController::containerActionRequested, &backend,
-        [&backend](const QString &action, const QString &id) { backend.lifecycle(action, id); });
+        backend.containers(), &PodStack::ControllerBase::actionStateChanged, &tray,
+        [&backend, &tray]() { tray.setActionActive(backend.containers()->actionActive()); });
+    QObject::connect(&tray, &PodStack::TrayController::containerActionRequested, &backend,
+                     [&backend](const QString &action, const QString &id) {
+                         backend.containers()->lifecycle(action, id);
+                     });
     QObject::connect(&tray, &PodStack::TrayController::composeActionRequested, &backend,
                      [&backend](const QString &action, const QString &path) {
                          if (action == QStringLiteral("start")) {
-                             backend.composeStart(path, QString());
+                             backend.compose()->composeStart(path, QString());
                          } else if (action == QStringLiteral("stop")) {
-                             backend.composeStop(path, QString());
+                             backend.compose()->composeStop(path, QString());
                          } else if (action == QStringLiteral("restart")) {
-                             backend.composeRestart(path, QString());
+                             backend.compose()->composeRestart(path, QString());
                          }
                      });
     QObject::connect(&tray, &PodStack::TrayController::refreshRequested, &backend,
                      &PodStack::Backend::refresh);
-    QObject::connect(&backend, &PodStack::Backend::settingsChanged, &tray,
+    QObject::connect(backend.settings(), &PodStack::SettingsController::valuesChanged, &tray,
                      &PodStack::TrayController::reloadConfig);
     QObject::connect(&tray, &PodStack::TrayController::machineActionRequested, &backend,
                      [&backend](const QString &action, const QString &id) {
-                         backend.machineLifecycle(action, id);
+                         backend.machines()->lifecycle(action, id);
                      });
     QObject::connect(&tray, &PodStack::TrayController::machineSshRequested, &backend,
-                     [&backend](const QString &id) { backend.openMachineSsh(id); });
+                     [&backend](const QString &id) { backend.machines()->openSsh(id); });
     QObject::connect(&backend, &PodStack::Backend::containerEvent, &notifications,
                      &PodStack::NotificationService::notifyContainerEvent);
     QObject::connect(&tray, &PodStack::TrayController::updateCheckRequested, &backend,
-                     [&backend]() { backend.checkForUpdates(true); });
-    QObject::connect(&backend, &PodStack::Backend::updateAvailable, &notifications,
+                     [&backend]() { backend.updates()->check(true); });
+    QObject::connect(backend.updates(), &PodStack::UpdateController::available, &notifications,
                      [&notifications](const QVariantMap &release) {
                          notifications.notifyUpdate(
                              release.value(QStringLiteral("latestVersion")).toString(),
                              release.value(QStringLiteral("channel")).toString(),
                              release.value(QStringLiteral("releaseUrl")).toString());
                      });
-    QObject::connect(&backend, &PodStack::Backend::updateCheckFailed, &notifications,
+    QObject::connect(backend.updates(), &PodStack::UpdateController::checkFailed, &notifications,
                      &PodStack::NotificationService::notifyUpdateError);
-    QObject::connect(&backend, &PodStack::Backend::diskLow, &notifications,
+    QObject::connect(backend.system(), &PodStack::SystemController::diskLow, &notifications,
                      &PodStack::NotificationService::notifyDiskLow);
     tray.setConnected(backend.connected());
-    tray.setSetupPending(backend.setupPending());
-    tray.setComposeProjects(backend.composeProjects());
-    tray.setMachines(backend.machines());
-    tray.setKubernetes(backend.k8sEnabled());
+    tray.setSetupPending(backend.setup()->pending());
+    tray.setComposeProjects(backend.compose()->items());
+    tray.setMachines(backend.machines()->items());
+    tray.setKubernetes(backend.k8s()->enabled());
     tray.setActionActive(backend.actionActive());
 
     // A dock usa o ícone do desktop entry via app_id; em dev (sem o pacote

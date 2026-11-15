@@ -105,16 +105,39 @@ flowchart LR
 - **`SetupManager`** (daemon) detecta Podman, Docker, QEMU/KVM, `/dev/kvm`, OVMF, virtiofsd, systemd de usuário, SQLite, Caddy e k3s; expõe `setup.status/check/apply/removeDocker/cancel/complete/subscribe/validate`.
 - Ações são **jobs** internos com progresso/log/cancelamento e eventos `setup.delta`/`setup.done`; o job continua se a janela fechar e pode ser retomado por `setup.subscribe`.
 - Ações privilegiadas (pacotes, remoção do Docker) passam pelo **`podstack-helper`** (`dev.podstack.Helper1`, polkit, allowlist); a GUI nunca executa `sudo`/shell. O socket do Podman de usuário é ativado pelo daemon.
-- **`Backend`** (GUI) expõe `setupCompleted/setupPending/setupChecks/setupProgress/setupLog/setupMandatoryOk` e os invokables `setupRefresh/setupCheck/setupValidate/setupApply/setupComplete`; **`SetupWindow.qml`** é um overlay modal dentro da `MainWindow` que conduz as 7 etapas e bloqueia o app enquanto `setup.completed=false`. A conclusão é recusada no `Backend` se os checks obrigatórios não estiverem `ok` (`core/SetupPolicy.h`).
+- **`SetupController`** (GUI) expõe `completed/pending/checks/progress/log/mandatoryOk` e os invokables `refreshStatus/check/validate/apply/complete`; **`SetupWindow.qml`** é um overlay modal dentro da `MainWindow` que conduz as 7 etapas e bloqueia o app enquanto `setup.completed=false`. A conclusão é recusada no `SetupController` se os checks obrigatórios não estiverem `ok` (`core/SetupPolicy.h`).
 - O estado é persistido em `setup.completed`/`completedAt`/`dockerPolicy`/`lastValidation`; `app.showOnboarding=false` registra que o usuário optou por continuar depois.
 - Docker e Podman coexistem; a remoção do Docker é opt-in e não faz parte do fluxo principal.
+
+### 2.2.1 Controllers da GUI
+
+O antigo `Backend` monolítico foi quebrado em um **hub** e um controller por
+domínio (`src/gui/controllers/`). O hub (`Backend`) guarda apenas conexão,
+versão, eventos globais, `actionActive` das machines e o catálogo `system.df`
+(`diskUsage`/`prunePreview`); o QML acessa `backend.<domínio>`:
+
+| Controller | QML consome |
+|---|---|
+| `ContainerController` / `ContainerDetailController` | `backend.containers`, `backend.containerDetail` |
+| `ImageController`, `VolumeController`, `NetworkController`, `PodController` | `backend.images/volumes/networks/pods` |
+| `ComposeController`, `BuildController` | `backend.compose/builds` |
+| `MachineController` / `MachineDetailController` | `backend.machines`, `backend.machineDetail` |
+| `K8sController` | `backend.k8s` |
+| `SetupController`, `SettingsController`, `UpdateController`, `SystemController` | `backend.setup/settings/updates/system` |
+
+`ControllerBase` concentra RPC assíncrono (`callRpc`), fila de ações
+(`runAction`/`runJob`), `actionActive` e o último erro. Um controller não
+acessa membro de outro: comunica por sinal ou pelo hub. `SystemController`
+também mantém o buffer de logs configurado por `logs.bufferLines`, exposto
+como `ControllerBase::logBufferLines()`.
 
 ### 2.3 Bandeja, ciclo de vida e notificações
 
 - **`TrayController`** (`src/gui/Tray.cpp`) expõe `QSystemTrayIcon` + `QMenu` (SNI/DBusMenu). É uma
-  view: recebe o snapshot de `Backend` (`containersChanged`, `composeProjectsChanged`,
-  `stateChanged`, `setupChanged`, `actionStateChanged`) e emite intenções; o `main.cpp` traduz em
-  `Backend::lifecycle`/`composeStart|Stop|Restart` e o QML em navegação. O menu é reconstruído a
+  view: recebe o snapshot dos controllers (`ContainerController::itemsChanged`,
+  `ComposeController::itemsChanged`, `SettingsController::valuesChanged`,
+  `SetupController::changed`, `ControllerBase::actionStateChanged`) e emite intenções; o
+  `main.cpp` traduz em `containers()->lifecycle`/`compose()->composeStart|Stop|Restart`. O menu é reconstruído a
   cada mudança e reexportado com `setContextMenu` (o SNI não emite `aboutToShow`).
 - **`SingleInstance`** (`src/gui/SingleInstance.cpp`) escuta em
   `$XDG_RUNTIME_DIR/podstack/gui.sock` (dir `0700`, socket `0600`, `SO_PEERCRED`); a segunda

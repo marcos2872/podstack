@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "core/UpdateManifest.h"
-#include "helper/UpdateService.h"
+#include "core/update/UpdateManifest.h"
+#include "helper/updates/UpdateService.h"
 
 #include "UpdateTestUtils.h"
 

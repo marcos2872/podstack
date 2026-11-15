@@ -2,7 +2,7 @@
 #include "MockPodmanServer.h"
 #include "UpdateTestUtils.h"
 
-#include "machines/MachineStore.h"
+#include "machines/model/MachineStore.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -98,12 +98,12 @@ private:
 
 QString CliTest::cliPath() const
 {
-    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../podstack"));
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("podstack"));
 }
 
 QString CliTest::daemonPath() const
 {
-    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../podstackd"));
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("podstackd"));
 }
 
 QProcessEnvironment CliTest::environment(const QString &controlSocket) const

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "core/Config.h"
-#include "gui/Backend.h"
-#include "gui/ContainerDetailDialog.h"
-#include "gui/ExternalTerminal.h"
-#include "gui/MachineDetailDialog.h"
-#include "gui/MainWindow.h"
-#include "gui/Notifications.h"
-#include "gui/SingleInstance.h"
-#include "gui/TerminalView.h"
-#include "gui/TerminalWindow.h"
-#include "gui/Translation.h"
-#include "gui/Tray.h"
-#include "gui/UiState.h"
+#include "core/config/Config.h"
+#include "gui/app/MainWindow.h"
+#include "gui/app/SingleInstance.h"
+#include "gui/app/Translation.h"
+#include "gui/app/UiState.h"
+#include "gui/app/notifications/Notifications.h"
+#include "gui/app/terminal/ExternalTerminal.h"
+#include "gui/app/tray/Tray.h"
+#include "gui/controllers/Backend.h"
+#include "gui/windows/ContainerDetailDialog.h"
+#include "gui/windows/MachineDetailDialog.h"
+#include "gui/windows/TerminalWindow.h"
+#include "gui/windows/terminal/TerminalView.h"
 
 #include <QDockWidget>
 #include <QFile>
@@ -437,9 +437,10 @@ void TerminalTest::selectionState()
     QQmlEngine engine;
     QQmlComponent component(&engine);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-    component.loadFromModule(QStringLiteral("PodStack"), QStringLiteral("SelectionState"));
+    component.loadFromModule(QStringLiteral("PodStack.Design"), QStringLiteral("SelectionState"));
 #else
-    component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/PodStack/src/gui/qml/SelectionState.qml")));
+    component.loadUrl(
+        QUrl(QStringLiteral("qrc:/qt/qml/PodStack/Design/patterns/SelectionState.qml")));
 #endif
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
     QScopedPointer<QObject> state(component.create());
@@ -723,14 +724,14 @@ void TerminalTest::machineDetailDialogFromList()
         }
     });
 
-    backend.refreshMachines();
-    QTRY_COMPARE_WITH_TIMEOUT(backend.machines().size(), 1, 5000);
+    backend.machines()->refresh();
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machines()->items().size(), 1, 5000);
 
     QWidget host;
     host.resize(1200, 800);
     PodStack::MachineDetailDialog overlay(&backend, &host, /*loadQml=*/false);
     host.show();
-    QSignalSpy infoSpy(&backend, &PodStack::Backend::machineInfoChanged);
+    QSignalSpy infoSpy(backend.machines(), &PodStack::MachineController::infoChanged);
     overlay.openMachine(QStringLiteral("server-machine"));
     QCOMPARE(overlay.machineId(), QStringLiteral("server-machine"));
     QVERIFY(!overlay.isHidden());
@@ -985,7 +986,7 @@ void TerminalTest::appSelectKeepsSelectionWhenOpened()
     const QByteArray qml = R"(
 import QtQuick
 import QtQuick.Window
-import PodStack
+import PodStack.Design
 
 Window {
     width: 320

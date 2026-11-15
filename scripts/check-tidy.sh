@@ -19,7 +19,7 @@ fi
 files=()
 while IFS= read -r file; do
     [ -n "$file" ] && files+=("$file")
-done < <(git diff --name-only "${base}" -- 'src/*.cpp')
+done < <(git diff --name-only --diff-filter=ACMR "${base}" -- 'src/*.cpp')
 
 if [ "${#files[@]}" -eq 0 ]; then
     exit 0

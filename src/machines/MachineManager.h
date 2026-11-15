@@ -2,14 +2,14 @@
 
 #pragma once
 
-#include "core/Error.h"
-#include "machines/CloudImageCache.h"
-#include "machines/DistroRegistry.h"
-#include "machines/MachineMeta.h"
-#include "machines/MachineStore.h"
-#include "machines/QemuRuntime.h"
-#include "machines/SshConfig.h"
-#include "machines/VirtiofsdProcess.h"
+#include "core/error/Error.h"
+#include "machines/model/MachineMeta.h"
+#include "machines/model/MachineStore.h"
+#include "machines/provision/CloudImageCache.h"
+#include "machines/provision/DistroRegistry.h"
+#include "machines/provision/SshConfig.h"
+#include "machines/runtime/QemuRuntime.h"
+#include "machines/runtime/VirtiofsdProcess.h"
 
 #include <QByteArray>
 #include <QHash>

@@ -1,11 +1,11 @@
-#include "core/Config.h"
-#include "core/Logging.h"
-#include "core/Paths.h"
-#include "daemon/CaddyProxy.h"
+#include "core/config/Config.h"
+#include "core/config/Paths.h"
+#include "core/logging/Logging.h"
 #include "daemon/Daemon.h"
-#include "daemon/DnsServer.h"
-#include "daemon/HttpProxy.h"
-#include "daemon/RpcServer.h"
+#include "daemon/domains/CaddyProxy.h"
+#include "daemon/domains/DnsServer.h"
+#include "daemon/domains/HttpProxy.h"
+#include "daemon/rpc/RpcServer.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
