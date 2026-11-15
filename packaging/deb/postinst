@@ -51,6 +51,10 @@ if command -v systemctl >/dev/null 2>&1; then
                     "'systemctl --user unmask --runtime ${SOCKET_UNIT}' e reabra o app."
             fi
         fi
+        # `enable` só cria o symlink: um user manager já em execução não sobe
+        # a unit sozinho. Start em socket ativo é no-op, seguro no upgrade.
+        systemctl --machine "user@${uid}.service" --user start "$SOCKET_UNIT" \
+            >/dev/null 2>&1 || true
     done
 
     if [ "$helper_rc" -ne 0 ]; then

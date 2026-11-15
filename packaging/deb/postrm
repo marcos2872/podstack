@@ -27,6 +27,15 @@ unmask_all() {
     done
 }
 
+# Só nos abortos: o preinst parou o socket e a versão antiga precisa voltar a
+# funcionar sem passo manual.
+start_all() {
+    for uid in $(logged_uids); do
+        systemctl --machine "user@${uid}.service" --user start \
+            "$SOCKET_UNIT" >/dev/null 2>&1 || true
+    done
+}
+
 case "${1:-}" in
     abort-upgrade|abort-install)
         if command -v systemctl >/dev/null 2>&1; then
@@ -34,6 +43,7 @@ case "${1:-}" in
             systemctl enable "$HELPER_UNIT" >/dev/null 2>&1 || true
             systemctl restart "$HELPER_UNIT" >/dev/null 2>&1 || true
             unmask_all
+            start_all
         fi
         log "instalação abortada; helper restaurado. Reabra o app." >&2
         ;;
