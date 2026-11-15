@@ -145,5 +145,5 @@ target_link_libraries(test_qml PRIVATE podstack_qml podstack_qmlplugin
     podstack_qml_featuresplugin_init
     Qt6::QuickTest Qt6::Test)
 qt_import_qml_plugins(test_qml)
-add_test(NAME qml COMMAND test_qml -input ${CMAKE_CURRENT_SOURCE_DIR}/qml)
+add_test(NAME qml COMMAND test_qml -input ${CMAKE_CURRENT_SOURCE_DIR}/qml -import qrc:/qt/qml)
 set_tests_properties(qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
