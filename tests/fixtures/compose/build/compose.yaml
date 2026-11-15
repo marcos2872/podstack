@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Compose com `build:` local: sobe a partir dos fixtures, sem depender de um
+# projeto de aplicação. Testa a integração Compose → build e o log de build
+# dentro do fluxo de up.
+#
+#   podstack compose up -f tests/fixtures/compose/build/compose.yaml -d
+#
+# Na GUI: Compose → Up neste diretório deve construir a imagem local/fixture-built.
+
+name: podstack-fixture-build
+
+services:
+  app:
+    build:
+      context: ../../docker/simple
+      dockerfile: Dockerfile
+    image: local/fixture-built:1
+    container_name: podstack-fixture-app
+    environment:
+      FIXTURE_MODE: compose
+    labels:
+      - "podstack.fixture=build"

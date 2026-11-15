@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Stack de dois serviços + volume nomeado + rede própria + healthcheck.
+# Exercita a página Compose (up/down/restart, logs por serviço e agregado),
+# portas publicadas, volumes e o lote com seleção.
+#
+#   podstack compose up -f tests/fixtures/compose/stack/compose.yaml -d
+#   podstack compose down -f tests/fixtures/compose/stack/compose.yaml
+#
+# Na GUI: Compose → Up neste diretório; abra o log do web; Down e confira que
+# o volume local/fixture-cache-data é preservado (o aviso do diálogo diz isso).
+
+name: podstack-fixture-stack
+
+services:
+  web:
+    image: nginx:alpine
+    container_name: podstack-fixture-web
+    ports:
+      - "18080:80"
+    depends_on:
+      cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+    labels:
+      - "podstack.fixture=stack"
+      - "podstack.fixture.service=web"
+
+  cache:
+    image: redis:7-alpine
+    container_name: podstack-fixture-cache
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+    volumes:
+      - cache-data:/data
+    labels:
+      - "podstack.fixture=stack"
+      - "podstack.fixture.service=cache"
+
+volumes:
+  cache-data:
+    name: podstack-fixture-cache-data
+
+networks:
+  default:
+    name: podstack-fixture-net
