@@ -537,27 +537,14 @@ Rectangle {
             }
         }
 
-    AppModal {
+    AppConfirmDialog {
         id: removeDialog
         property string containerId
         title: qsTr("Remover container?")
-        modal: true
-        anchors.centerIn: parent
-        standardButtons: Dialog.Yes | Dialog.No
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.width: 1
-            border.color: Theme.border
-        }
-        contentItem: Text {
-            text: qsTr("O container será removido permanentemente.")
-            color: Theme.textPrimary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: backend.containers.removeContainer(containerId, true, false)
+        message: qsTr("O container será removido permanentemente.")
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: backend.containers.removeContainer(containerId, true, false)
     }
 
     AppModal {

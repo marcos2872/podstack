@@ -118,20 +118,20 @@ Rectangle {
 
     readonly property var sections: {
         var engine = { group: "Engine", items: [
-            { key: "containers", label: "Containers", icon: "containers" },
-            { key: "images", label: "Images", icon: "images" },
-            { key: "volumes", label: "Volumes", icon: "volumes" },
-            { key: "networks", label: "Networks", icon: "networks" },
-            { key: "compose", label: "Compose", icon: "compose" },
-            { key: "builds", label: "Builds", icon: "builds" },
-            { key: "pods", label: "Pods", icon: "pods" }
+            { key: "containers", label: qsTr("Containers"), icon: "containers" },
+            { key: "images", label: qsTr("Images"), icon: "images" },
+            { key: "volumes", label: qsTr("Volumes"), icon: "volumes" },
+            { key: "networks", label: qsTr("Networks"), icon: "networks" },
+            { key: "compose", label: qsTr("Compose"), icon: "compose" },
+            { key: "builds", label: qsTr("Builds"), icon: "builds" },
+            { key: "pods", label: qsTr("Pods"), icon: "pods" }
         ] }
         var linux = { group: "Linux", items: [
-            { key: "machines", label: "Machines", icon: "machines" },
-            { key: "devices", label: "Devices", icon: "devices", disabled: true }
+            { key: "machines", label: qsTr("Machines"), icon: "machines" },
+            { key: "devices", label: qsTr("Devices"), icon: "devices", disabled: true }
         ] }
         return [engine, { group: "Kubernetes", items: [
-            { key: "kubernetes", label: "Kubernetes", icon: "pods" }
+            { key: "kubernetes", label: qsTr("Kubernetes"), icon: "pods" }
         ] }, linux]
     }
 
@@ -376,14 +376,14 @@ Rectangle {
                 AppNavItem {
                     Layout.fillWidth: true
                     iconName: "settings"
-                    label: "Settings"
+                    label: qsTr("Settings")
                     onClicked: settingsDialog.open()
                 }
 
                 AppNavItem {
                     Layout.fillWidth: true
                     iconName: "file"
-                    label: "Logs"
+                    label: qsTr("Logs")
                     onClicked: systemLogsDialog.open()
                 }
             }

@@ -626,9 +626,10 @@ void Backend::openPath(const QString &path)
 QString Backend::choosePath(const QString &mode, const QString &title, const QString &filter,
                             const QString &initialPath)
 {
-    const QString resolvedTitle = title.isEmpty() ? QStringLiteral("Selecionar arquivo") : title;
+    const QString resolvedTitle =
+        title.isEmpty() ? tr("Selecionar arquivo") : title;
     const QString resolvedFilter =
-        filter.isEmpty() ? QStringLiteral("Todos os arquivos (*)") : filter;
+        filter.isEmpty() ? tr("Todos os arquivos (*)") : filter;
     if (mode == QStringLiteral("save")) {
         return QFileDialog::getSaveFileName(nullptr, resolvedTitle, initialPath, resolvedFilter);
     }

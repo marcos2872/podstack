@@ -117,7 +117,7 @@ ColumnLayout {
 
     AppModal {
         id: createDialog
-        title: "Nova rede"
+        title: qsTr("Nova rede")
         modal: true
         width: 460
         actionController: backend.networks
@@ -129,7 +129,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 8
             Label {
-                text: "Nome"
+                text: qsTr("Nome")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -140,7 +140,7 @@ ColumnLayout {
                 placeholderText: "backend"
             }
             Label {
-                text: "Subnet (CIDR, opcional)"
+                text: qsTr("Subnet (CIDR, opcional)")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -151,7 +151,7 @@ ColumnLayout {
                 placeholderText: "10.89.0.0/24"
             }
             Label {
-                text: "Gateway (opcional)"
+                text: qsTr("Gateway (opcional)")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -165,13 +165,13 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
                 enabled: !createDialog.busy
                 onClicked: createDialog.close()
             }
             AppButton {
-                text: "Criar"
+                text: qsTr("Criar")
                 busy: createDialog.busy
                 busyText: qsTr("Criando…")
                 enabled: !createDialog.busy && networkName.text.length > 0
@@ -185,7 +185,7 @@ ColumnLayout {
 
     AppModal {
         id: connectDialog
-        title: "Conectar container"
+        title: qsTr("Conectar container")
         modal: true
         width: 440
         actionController: backend.networks
@@ -197,7 +197,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 8
             Label {
-                text: "Rede"
+                text: qsTr("Rede")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -208,7 +208,7 @@ ColumnLayout {
                 readOnly: true
             }
             Label {
-                text: "Container (ID ou nome)"
+                text: qsTr("Container (ID ou nome)")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -221,13 +221,13 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
                 enabled: !connectDialog.busy
                 onClicked: connectDialog.close()
             }
             AppButton {
-                text: "Conectar"
+                text: qsTr("Conectar")
                 busy: connectDialog.busy
                 busyText: qsTr("Conectando…")
                 enabled: !connectDialog.busy && connectContainer.text.length > 0
@@ -240,7 +240,7 @@ ColumnLayout {
 
     AppModal {
         id: disconnectDialog
-        title: "Desconectar container"
+        title: qsTr("Desconectar container")
         modal: true
         width: 440
         actionController: backend.networks
@@ -252,7 +252,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 8
             Label {
-                text: "Rede"
+                text: qsTr("Rede")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -263,7 +263,7 @@ ColumnLayout {
                 readOnly: true
             }
             Label {
-                text: "Container (ID ou nome)"
+                text: qsTr("Container (ID ou nome)")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -276,13 +276,13 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
                 enabled: !disconnectDialog.busy
                 onClicked: disconnectDialog.close()
             }
             AppButton {
-                text: "Desconectar"
+                text: qsTr("Desconectar")
                 busy: disconnectDialog.busy
                 busyText: qsTr("Desconectando…")
                 enabled: !disconnectDialog.busy && disconnectContainer.text.length > 0
@@ -294,22 +294,13 @@ ColumnLayout {
         }
     }
 
-    AppModal {
+    AppConfirmDialog {
         id: removeDialog
-        title: "Remover rede?"
-        modal: true
-        standardButtons: Dialog.Yes | Dialog.No
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.color: Theme.border
-        }
-        contentItem: Label {
-            text: "Containers conectados bloqueiam a remoção."
-            color: Theme.textPrimary
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: {
+        title: qsTr("Remover rede?")
+        message: qsTr("Containers conectados bloqueiam a remoção.")
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: {
             if (networksList.currentRow >= 0) {
                 backend.networks.removeNetwork(backend.networks.items[networksList.currentRow].name, false)
             }

@@ -263,7 +263,7 @@ ColumnLayout {
                 AppInput {
                     id: buildTag
                     Layout.fillWidth: true
-                    placeholderText: "minha-imagem:latest"
+                    placeholderText: qsTr("minha-imagem:latest")
                 }
 
                 Text { text: qsTr("Build args"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }

@@ -17,6 +17,27 @@ Rectangle {
 
     signal dismissRequested()
 
+    /// O daemon devolve o token cru ("running", "cancelling"); a UI mostra
+    /// texto traduzido.
+    function statusLabel(status) {
+        if (status === "running") {
+            return qsTr("Executando…")
+        }
+        if (status === "queued") {
+            return qsTr("Na fila…")
+        }
+        if (status === "cancelling") {
+            return qsTr("Cancelando…")
+        }
+        if (status === "done") {
+            return qsTr("Concluído")
+        }
+        if (status === "cancelled") {
+            return qsTr("Cancelado")
+        }
+        return qsTr("Trabalhando…")
+    }
+
     Layout.fillWidth: true
     visible: root.panelVisible
     Layout.preferredHeight: visible ? 132 : 0
@@ -47,7 +68,9 @@ Rectangle {
                 Layout.fillWidth: true
                 text: backend.setup.error.length > 0
                       ? backend.setup.error
-                      : (backend.setup.status || qsTr("Trabalhando…"))
+                      : (backend.setup.status.length > 0
+                         ? control.statusLabel(backend.setup.status)
+                         : qsTr("Trabalhando…"))
                 color: backend.setup.error.length > 0 ? Theme.danger : Theme.textSecondary
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontMicro

@@ -553,30 +553,17 @@ Rectangle {
         }
     }
 
-    AppModal {
+    AppConfirmDialog {
         id: removeDialog
         title: qsTr("Remover container?")
-        modal: true
-        anchors.centerIn: parent
-        standardButtons: Dialog.Yes | Dialog.No
+        message: qsTr("O container “%1” será removido permanentemente.").arg(root.containerName)
+        confirmText: qsTr("Remover")
+        destructive: true
         // O terminal nativo ficaria sobre o diálogo QML; oculta a sessão
         // enquanto o modal estiver aberto e reaplica a área ao fechar.
         onOpened: root.terminalAreaChanged(Qt.rect(0, 0, 0, 0), false)
         onClosed: root.syncTerminalArea()
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.width: 1
-            border.color: Theme.border
-        }
-        contentItem: Text {
-            text: qsTr("O container “%1” será removido permanentemente.").arg(root.containerName)
-            color: Theme.textPrimary
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: {
+        onConfirmed: {
             root.removePending = true
             backend.containerDetail.remove(root.containerId, true)
         }

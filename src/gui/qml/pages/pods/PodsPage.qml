@@ -148,7 +148,7 @@ ColumnLayout {
 
     AppModal {
         id: createDialog
-        title: "Novo pod"
+        title: qsTr("Novo pod")
         modal: true
         width: 440
         actionController: backend.pods
@@ -160,7 +160,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 8
             Label {
-                text: "Nome"
+                text: qsTr("Nome")
                 color: Theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
@@ -174,13 +174,13 @@ ColumnLayout {
         footer: AppFooter {
             Item { Layout.fillWidth: true }
             AppButton {
-                text: "Cancelar"
+                text: qsTr("Cancelar")
                 variant: "secondary"
                 enabled: !createDialog.busy
                 onClicked: createDialog.close()
             }
             AppButton {
-                text: "Criar"
+                text: qsTr("Criar")
                 busy: createDialog.busy
                 busyText: qsTr("Criando…")
                 enabled: !createDialog.busy && podName.text.length > 0
@@ -191,22 +191,13 @@ ColumnLayout {
         }
     }
 
-    AppModal {
+    AppConfirmDialog {
         id: removeDialog
-        title: "Remover pod?"
-        modal: true
-        standardButtons: Dialog.Yes | Dialog.No
-        background: Rectangle {
-            color: Theme.bgSurface
-            radius: Theme.radiusLg
-            border.color: Theme.border
-        }
-        contentItem: Label {
-            text: "O pod e seus containers serão removidos."
-            color: Theme.textPrimary
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: {
+        title: qsTr("Remover pod?")
+        message: qsTr("O pod e seus containers serão removidos.")
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: {
             if (podsList.currentRow >= 0) {
                 backend.pods.removePod(backend.pods.items[podsList.currentRow].id, true)
             }
