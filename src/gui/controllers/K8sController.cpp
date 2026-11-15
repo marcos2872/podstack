@@ -249,6 +249,8 @@ void K8sController::startPortForward(const QString &namespaceName, const QString
                                      int localPort, int remotePort, const QString &resource)
 {
     if (m_forwardWatcher.isRunning()) {
+        m_portForwardError = QStringLiteral("Aguarde a operação de port-forward anterior terminar.");
+        emit forwardChanged();
         return;
     }
     m_portForwardError.clear();
@@ -277,11 +279,23 @@ void K8sController::stopPortForward()
     if (id.isEmpty()) {
         return;
     }
-    (void) QtConcurrent::run([id] {
+    (void) QtConcurrent::run([this, id] {
         RpcClient client;
         Error error;
         client.call(QStringLiteral("k8s.portforward.stop"), QJsonObject{{QStringLiteral("id"), id}},
                     &error);
+        if (error.isEmpty()) {
+            return;
+        }
+        // Um forward órfão no daemon ficava sem aviso; reporta na thread da UI.
+        const QString message = error.message;
+        QMetaObject::invokeMethod(
+            this,
+            [this, message] {
+                m_portForwardError = message;
+                emit forwardChanged();
+            },
+            Qt::QueuedConnection);
     });
 }
 

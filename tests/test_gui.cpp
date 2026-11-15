@@ -1693,6 +1693,10 @@ void GuiTest::backendBatchPartial()
              qPrintable(volumes->lastError()));
     QCOMPARE(settledSpy.count(), 1);
     QCOMPARE(settledSpy.first().at(1).toBool(), false);
+
+    // O banner da página usa o invokable para dispensar o erro.
+    volumes->dismissError();
+    QVERIFY(volumes->lastError().isEmpty());
 }
 
 void GuiTest::backendComposeErrorDetail()

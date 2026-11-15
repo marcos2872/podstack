@@ -930,11 +930,26 @@ void MachineController::cancelCreate()
     const QString jobId = m_machineCreateJobId;
     m_machineCreateStage = QStringLiteral("cancelling");
     emit createStateChanged();
-    (void) QtConcurrent::run([jobId] {
+    (void) QtConcurrent::run([this, jobId] {
         RpcClient client;
         Error error;
         client.call(QStringLiteral("machines.cancel"),
                     QJsonObject{{QStringLiteral("jobId"), jobId}}, &error, 30000);
+        if (error.isEmpty()) {
+            return;
+        }
+        // Sem isso o painel ficava em "cancelling" para sempre, sem explicar.
+        const QString message = error.message;
+        QMetaObject::invokeMethod(
+            this,
+            [this, message] {
+                m_machineCreateStage = QStringLiteral("error");
+                m_machineCreateError = message;
+                m_lastError = message;
+                emit createStateChanged();
+                emit lastErrorChanged();
+            },
+            Qt::QueuedConnection);
     });
 }
 

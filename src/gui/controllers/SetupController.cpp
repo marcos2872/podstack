@@ -72,6 +72,8 @@ void SetupController::setError(const QString &error)
 void SetupController::runRequest(const QString &method, const QJsonObject &params)
 {
     if (m_watcher.isRunning()) {
+        // Antes a requisição era descartada em silêncio (inclusive `setup.cancel`).
+        setError(QStringLiteral("Aguarde a verificação atual terminar e tente de novo."));
         return;
     }
     m_pendingMethod = method;

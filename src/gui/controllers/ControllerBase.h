@@ -29,6 +29,9 @@ public:
 
     void clearLastError();
 
+    /// Limpa o último erro exibido (botão "Dispensar" do banner da página).
+    Q_INVOKABLE void dismissError() { clearLastError(); }
+
 signals:
     void actionStateChanged();
     void lastErrorChanged();
