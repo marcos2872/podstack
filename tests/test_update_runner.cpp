@@ -149,6 +149,7 @@ class UpdateRunnerTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase();
     void prepareDownloadsAndVerifies();
     void prepareRejectsSignature();
     void prepareRejectsEqualVersion();
@@ -207,6 +208,14 @@ private:
 
     std::unique_ptr<Fixture> makeFixture(const QString &version = QStringLiteral("0.1.5"));
 };
+
+void UpdateRunnerTest::initTestCase()
+{
+    if (UpdateTestUtils::hasEmbeddedReleaseKey()) {
+        QSKIP("build com PODSTACK_UPDATE_PUBLIC_KEY embutida: os cenários usam a chave de "
+              "fixture e o runner recusa chave customizada por design");
+    }
+}
 
 std::unique_ptr<UpdateRunnerTest::Fixture> UpdateRunnerTest::makeFixture(const QString &version)
 {
