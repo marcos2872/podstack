@@ -765,14 +765,14 @@ Rectangle {
     }
 
     Shortcut {
-        sequence: StandardKey.Find
+        sequences: [ StandardKey.Find ]
         enabled: !setupWindow.visible && window.section === "containers"
         onActivated: searchField.forceActiveFocus()
     }
 
     Shortcut {
         objectName: "shortcutNew"
-        sequence: StandardKey.New
+        sequences: [ StandardKey.New ]
         enabled: !setupWindow.visible && window.section === "containers"
         onActivated: containersPage.openCreate()
     }
