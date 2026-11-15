@@ -8,6 +8,16 @@
 
 namespace UpdateTestUtils {
 
+/// `true` quando o build embute a chave pública de release
+/// (`-DPODSTACK_UPDATE_PUBLIC_KEY`). Nesse caso `UpdateRunner`/`UpdateService`
+/// recusam a chave de fixture por design (`PODSTACK_UPDATE_UNSUPPORTED`), então
+/// os cenários que dependem dela são pulados — a cobertura roda no CI, que
+/// compila sem a chave.
+inline bool hasEmbeddedReleaseKey()
+{
+    return !QString::fromLatin1(PODSTACK_UPDATE_PUBLIC_KEY).trimmed().isEmpty();
+}
+
 struct KeyPair {
     QByteArray publicKey;
     QByteArray privateKey;

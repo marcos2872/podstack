@@ -492,6 +492,9 @@ void UpdateServiceTest::stageRejectsSignedManifestVariants()
 
 void UpdateServiceTest::stageRejectsReleaseKeyAndState()
 {
+    if (UpdateTestUtils::hasEmbeddedReleaseKey()) {
+        QSKIP("build com PODSTACK_UPDATE_PUBLIC_KEY embutida: o serviço usa a chave de release");
+    }
     const Fixture fixture = makeFixture(QStringLiteral("release-key"));
     UpdateService::Options noKey = fixture.options;
     noKey.embeddedKey.clear();
@@ -517,6 +520,9 @@ void UpdateServiceTest::stageRejectsReleaseKeyAndState()
 
 void UpdateServiceTest::stageReadsReleaseKeyFile()
 {
+    if (UpdateTestUtils::hasEmbeddedReleaseKey()) {
+        QSKIP("build com PODSTACK_UPDATE_PUBLIC_KEY embutida: o serviço usa a chave de release");
+    }
     const Fixture fixture = makeFixture(QStringLiteral("release-file"));
     UpdateService::Options options = fixture.options;
     options.embeddedKey.clear();
