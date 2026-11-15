@@ -69,6 +69,7 @@ private slots:
     void backendOperations();
     void backendBatchActions();
     void backendBatchPartial();
+    void backendComposeErrorDetail();
     void backendTheme();
     void backendSettings();
     void backendProxy();
@@ -142,8 +143,16 @@ void GuiTest::initTestCase()
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    provider.write("#!/bin/sh\ncase \"$*\" in *fail*) echo \"fake failure\" >&2; exit 1;; "
-                   "esac\necho \"fake compose $@\"\nexit 0\n");
+    provider.write("#!/bin/sh\n"
+                   "case \"$*\" in\n"
+                   "  *fail*)\n"
+                   "    echo \"Emulate Docker CLI using podman. Create /etc/containers/nodocker to "
+                   "quiet msg.\" >&2\n"
+                   "    echo \"Error response from daemon: rootlessport listen tcp "
+                   "0.0.0.0:18081: bind: address already in use\" >&2\n"
+                   "    exit 1;;\n"
+                   "esac\n"
+                   "echo \"fake compose $@\"\nexit 0\n");
     provider.close();
     QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
                                     QFileDevice::ExeOwner));
@@ -1684,6 +1693,23 @@ void GuiTest::backendBatchPartial()
              qPrintable(volumes->lastError()));
     QCOMPARE(settledSpy.count(), 1);
     QCOMPARE(settledSpy.first().at(1).toBool(), false);
+}
+
+void GuiTest::backendComposeErrorDetail()
+{
+    PodStack::Backend backend;
+    auto *compose = backend.compose();
+
+    // O provider do Podman escreve um banner de emulação no stderr; usar o
+    // stderr inteiro como detalhe escondia o erro real por trás do banner.
+    const QString projectDir = m_testDataDir + QStringLiteral("/fail-project");
+    QVERIFY(QDir().mkpath(projectDir));
+    compose->composeUp(projectDir);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!compose->actionActive(), 10000);
+    const QString error = compose->lastError();
+    QVERIFY2(error.contains(QStringLiteral("bind: address already in use")), qPrintable(error));
+    QVERIFY2(!error.contains(QStringLiteral("Emulate Docker CLI")), qPrintable(error));
 }
 
 void GuiTest::backendTheme()

@@ -21,6 +21,37 @@ QString projectStatus(bool anyRunning, bool anyStopped)
     return anyRunning ? QStringLiteral("running") : QStringLiteral("stopped");
 }
 
+/// O provider do Podman escreve no stderr um banner de emulação e linhas de
+/// progresso. Usar o stderr inteiro como detalhe fazia a GUI mostrar o banner
+/// e esconder o erro real ("bind: address already in use", por exemplo).
+QString composeErrorDetail(const QString &stderrText, const QString &stdoutText)
+{
+    const QString source = stderrText.trimmed().isEmpty() ? stdoutText : stderrText;
+    QStringList kept;
+    for (const QString &raw : source.split(QLatin1Char('\n'))) {
+        const QString line = raw.trimmed();
+        if (line.isEmpty()
+            || line.contains(QStringLiteral("Emulate Docker CLI using podman"))
+            || line.contains(QStringLiteral("Executing external compose provider"))) {
+            continue;
+        }
+        kept.append(line);
+    }
+    if (kept.isEmpty()) {
+        return source.trimmed().left(400);
+    }
+
+    QStringList errors;
+    for (const QString &line : kept) {
+        if (line.startsWith(QStringLiteral("Error"), Qt::CaseInsensitive)
+            || line.startsWith(QStringLiteral("ERRO"), Qt::CaseInsensitive)) {
+            errors.append(line);
+        }
+    }
+    const QStringList chosen = errors.isEmpty() ? kept.mid(qMax(0, kept.size() - 3)) : errors;
+    return chosen.join(QLatin1Char(' ')).left(400);
+}
+
 } // namespace
 
 QJsonObject ComposeServiceInfo::toJson() const
@@ -289,7 +320,7 @@ bool ComposeManager::runCompose(const QString &projectPath, const QStringList &a
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_COMPOSE_ERROR"),
                                  QStringLiteral("O Compose falhou."),
-                                 stderrText.isEmpty() ? stdoutText : stderrText);
+                                 composeErrorDetail(stderrText, stdoutText));
         }
         return false;
     }
