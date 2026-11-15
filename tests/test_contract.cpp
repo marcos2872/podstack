@@ -4,14 +4,14 @@
 #include "podman/transport/UnixHttpClient.h"
 
 #include <QCoreApplication>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QTemporaryDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <atomic>
@@ -26,6 +26,7 @@ private slots:
     void pingListAndLifecycle();
     void libpodNativeList();
     void createContainer();
+    void containerExtraMethods();
     void execLogsAndEvents();
     void files();
     void catalog();
@@ -74,10 +75,8 @@ void ContractTest::pingListAndLifecycle()
     QCOMPARE(containers.first().health, QStringLiteral("healthy"));
     QCOMPARE(containers.first().ports.size(), 1);
 
-    QVERIFY2(client.startContainer(QStringLiteral("abc123"), &error),
-             qPrintable(error.message));
-    QVERIFY2(client.stopContainer(QStringLiteral("abc123"), 5, &error),
-             qPrintable(error.message));
+    QVERIFY2(client.startContainer(QStringLiteral("abc123"), &error), qPrintable(error.message));
+    QVERIFY2(client.stopContainer(QStringLiteral("abc123"), 5, &error), qPrintable(error.message));
     QVERIFY2(client.restartContainer(QStringLiteral("abc123"), 5, &error),
              qPrintable(error.message));
     QVERIFY2(client.removeContainer(QStringLiteral("abc123"), true, true, &error),
@@ -152,6 +151,47 @@ void ContractTest::createContainer()
     QVERIFY(body.value(QStringLiteral("privileged")).toBool());
 }
 
+void ContractTest::containerExtraMethods()
+{
+    MockPodmanServer server;
+    PodStack::PodmanClient client(server.socketPath());
+    PodStack::Error error;
+
+    QVERIFY(client.imageExists(QStringLiteral("docker.io/library/alpine:3.20"), &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(!client.imageExists(QStringLiteral("missing:tag"), &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+
+    const QJsonObject top = client.containerTop(QStringLiteral("abc123"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(top.value(QStringLiteral("titles")).toArray().size(), 2);
+    QCOMPARE(top.value(QStringLiteral("processes")).toArray().size(), 1);
+
+    const QJsonArray changes = client.containerChanges(QStringLiteral("abc123"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(changes.size(), 1);
+    QCOMPARE(changes.first().toObject().value(QStringLiteral("path")).toString(),
+             QStringLiteral("/etc"));
+    QCOMPARE(changes.first().toObject().value(QStringLiteral("kind")).toInt(), 0);
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString exportPath = dir.filePath(QStringLiteral("container.tar"));
+    QVERIFY(client.exportContainer(QStringLiteral("abc123"), exportPath, &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(QFileInfo(exportPath).size() > 0);
+
+    const QString imageId =
+        client.commitContainer(QStringLiteral("abc123"), QStringLiteral("local/commit"),
+                               QStringLiteral("v1"), QString(), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(imageId, QStringLiteral("imgcommit123"));
+
+    // Referência vazia é recusada antes de chamar o engine.
+    QVERIFY(client.commitContainer(QStringLiteral("abc123"), {}, {}, {}, &error).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
 void ContractTest::execLogsAndEvents()
 {
     MockPodmanServer server;
@@ -160,8 +200,7 @@ void ContractTest::execLogsAndEvents()
 
     PodStack::ExecResult exec;
     QVERIFY2(client.execOnce(QStringLiteral("abc123"),
-                             {QStringLiteral("/bin/echo"), QStringLiteral("hello")}, &exec,
-                             &error),
+                             {QStringLiteral("/bin/echo"), QStringLiteral("hello")}, &exec, &error),
              qPrintable(error.message));
     QVERIFY(exec.output.contains("mock-exec-output"));
     QCOMPARE(exec.exitCode, 0);
@@ -263,12 +302,12 @@ void ContractTest::files()
     QVERIFY(foundFile);
     QVERIFY(foundDirectory);
 
-    const QString destination = QDir::tempPath()
-                                + QStringLiteral("/podstack-file-%1.txt")
-                                      .arg(QCoreApplication::applicationPid());
+    const QString destination =
+        QDir::tempPath() +
+        QStringLiteral("/podstack-file-%1.txt").arg(QCoreApplication::applicationPid());
     QFile::remove(destination);
-    QVERIFY2(client.downloadFile(QStringLiteral("abc123"), QStringLiteral("/file.txt"),
-                                 destination, &error),
+    QVERIFY2(client.downloadFile(QStringLiteral("abc123"), QStringLiteral("/file.txt"), destination,
+                                 &error),
              qPrintable(error.message));
 
     QFile file(destination);
@@ -281,17 +320,17 @@ void ContractTest::files()
                                  destination, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 
-    const QString uploadSource = QDir::tempPath()
-                                 + QStringLiteral("/podstack-upload-%1.txt")
-                                       .arg(QCoreApplication::applicationPid());
+    const QString uploadSource =
+        QDir::tempPath() +
+        QStringLiteral("/podstack-upload-%1.txt").arg(QCoreApplication::applicationPid());
     QFile uploadFile(uploadSource);
     QVERIFY(uploadFile.open(QIODevice::WriteOnly));
     uploadFile.write("upload-content");
     uploadFile.close();
 
-    QVERIFY2(client.uploadFile(QStringLiteral("abc123"), QStringLiteral("/tmp"),
-                               uploadSource, &error),
-             qPrintable(error.message));
+    QVERIFY2(
+        client.uploadFile(QStringLiteral("abc123"), QStringLiteral("/tmp"), uploadSource, &error),
+        qPrintable(error.message));
     QVERIFY(server.lastBody().contains("upload-content"));
     QFile::remove(uploadSource);
 
@@ -309,16 +348,14 @@ void ContractTest::catalog()
     const QVector<PodStack::ImageInfo> images = client.listImages(false, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(images.size(), 2);
-    QCOMPARE(images.first().repoTags.first(),
-             QStringLiteral("docker.io/library/alpine:3.20"));
+    QCOMPARE(images.first().repoTags.first(), QStringLiteral("docker.io/library/alpine:3.20"));
     QVERIFY(!images.first().dangling);
     QVERIFY(images.at(1).dangling);
     QCOMPARE(images.first().size, 7000000);
 
     const QJsonObject image = client.inspectImage(QStringLiteral("img1234567890"), &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
-    QCOMPARE(image.value(QStringLiteral("Digest")).toString(),
-             QStringLiteral("sha256:deadbeef"));
+    QCOMPARE(image.value(QStringLiteral("Digest")).toString(), QStringLiteral("sha256:deadbeef"));
 
     const QVector<PodStack::ImageHistoryEntry> history =
         client.imageHistory(QStringLiteral("img1234567890"), &error);
@@ -349,16 +386,15 @@ void ContractTest::catalog()
     QVERIFY(pullLines.size() >= 3);
 
     QVERIFY(!client.pullImage(
-        QStringLiteral("fail"), {},
-        [](const QByteArray &) { return true; }, nullptr, &error));
+        QStringLiteral("fail"), {}, [](const QByteArray &) { return true; }, nullptr, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_ENGINE_ERROR"));
 
     QVERIFY(client.imageHistory(QStringLiteral("missing"), &error).isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 
     PodStack::ExecResult execResult;
-    QVERIFY(!client.execOnce(QStringLiteral("missing"), {QStringLiteral("true")},
-                             &execResult, &error));
+    QVERIFY(
+        !client.execOnce(QStringLiteral("missing"), {QStringLiteral("true")}, &execResult, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 
     QVERIFY2(client.tagImage(QStringLiteral("img1234567890"), QStringLiteral("repo"),
@@ -388,8 +424,7 @@ void ContractTest::catalog()
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(createdVolume.value(QStringLiteral("Name")).toString(), QStringLiteral("vol2"));
 
-    QVERIFY2(client.removeVolume(QStringLiteral("vol1"), false, &error),
-             qPrintable(error.message));
+    QVERIFY2(client.removeVolume(QStringLiteral("vol1"), false, &error), qPrintable(error.message));
     qint64 volumeReclaimed = 0;
     QVERIFY2(client.pruneVolumes(&volumeReclaimed, &error), qPrintable(error.message));
     QCOMPARE(volumeReclaimed, 456);
@@ -411,9 +446,9 @@ void ContractTest::catalog()
     QCOMPARE(cloned.readAll(), QByteArrayLiteral("hello"));
     cloned.close();
 
-    const QString archivePath = QDir::tempPath()
-                                + QStringLiteral("/podstack-volume-%1.tar.zst")
-                                      .arg(QCoreApplication::applicationPid());
+    const QString archivePath =
+        QDir::tempPath() +
+        QStringLiteral("/podstack-volume-%1.tar.zst").arg(QCoreApplication::applicationPid());
     QFile::remove(archivePath);
     QVERIFY2(client.exportVolume(QStringLiteral("vol1"), archivePath, &error),
              qPrintable(error.message));
@@ -451,18 +486,16 @@ void ContractTest::catalog()
     QCOMPARE(networks.first().subnet, QStringLiteral("10.89.0.0/24"));
     QCOMPARE(networks.first().containers, 1);
 
-    const QJsonObject network =
-        client.createNetwork(QStringLiteral("mock-net"), QStringLiteral("bridge"),
-                             QStringLiteral("10.90.0.0/24"), QStringLiteral("10.90.0.1"),
-                             false, {}, &error);
+    const QJsonObject network = client.createNetwork(
+        QStringLiteral("mock-net"), QStringLiteral("bridge"), QStringLiteral("10.90.0.0/24"),
+        QStringLiteral("10.90.0.1"), false, {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(network.value(QStringLiteral("name")).toString(), QStringLiteral("mock-net"));
 
     QVERIFY2(client.connectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"),
                                    {QStringLiteral("api")}, &error),
              qPrintable(error.message));
-    QVERIFY2(client.disconnectNetwork(QStringLiteral("mock-net"),
-                                      QStringLiteral("abc123"), &error),
+    QVERIFY2(client.disconnectNetwork(QStringLiteral("mock-net"), QStringLiteral("abc123"), &error),
              qPrintable(error.message));
     QVERIFY2(client.removeNetwork(QStringLiteral("mock-net"), false, &error),
              qPrintable(error.message));
@@ -473,22 +506,19 @@ void ContractTest::catalog()
     QCOMPARE(pods.first().name, QStringLiteral("demo-pod"));
     QCOMPARE(pods.first().containers, 2);
 
-    const QJsonObject pod =
-        client.createPod(QStringLiteral("demo-pod"), {}, &error);
+    const QJsonObject pod = client.createPod(QStringLiteral("demo-pod"), {}, &error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
     QCOMPARE(pod.value(QStringLiteral("Id")).toString(), QStringLiteral("pod123"));
     QVERIFY2(client.podAction(QStringLiteral("pod123"), QStringLiteral("start"), &error),
              qPrintable(error.message));
-    QVERIFY2(client.removePod(QStringLiteral("pod123"), true, &error),
-             qPrintable(error.message));
+    QVERIFY2(client.removePod(QStringLiteral("pod123"), true, &error), qPrintable(error.message));
 
     QVERIFY(!client.podAction(QStringLiteral("pod123"), QStringLiteral("invalid"), &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
     const QJsonObject df = client.systemDf(&error);
     QVERIFY2(error.isEmpty(), qPrintable(error.message));
-    QCOMPARE(static_cast<qint64>(df.value(QStringLiteral("ImagesSize")).toDouble()),
-             7001000);
+    QCOMPARE(static_cast<qint64>(df.value(QStringLiteral("ImagesSize")).toDouble()), 7001000);
 
     QDir(sourceDir).removeRecursively();
     QDir(destinationDir).removeRecursively();
@@ -511,7 +541,8 @@ void ContractTest::buildContext()
     QString imageId;
     QVERIFY2(client.buildImage(
                  context.path(), QStringLiteral("Dockerfile"),
-                 QStringLiteral("localhost/podstack-test:latest"), {}, QStringLiteral("linux/amd64"),
+                 QStringLiteral("localhost/podstack-test:latest"), {},
+                 QStringLiteral("linux/amd64"),
                  [&lines](const QByteArray &line) {
                      lines.append(QString::fromUtf8(line));
                      return true;
@@ -521,22 +552,21 @@ void ContractTest::buildContext()
     QCOMPARE(imageId, QStringLiteral("sha256:built123"));
     QVERIFY(lines.size() >= 2);
 
-    QVERIFY(!client.buildImage(QStringLiteral("/nonexistent-context"),
-                               QStringLiteral("Dockerfile"),
-                               QStringLiteral("localhost/podstack-test:latest"), {}, {},
-                               [](const QByteArray &) { return true; }, nullptr, &imageId,
-                               &error));
+    QVERIFY(!client.buildImage(
+        QStringLiteral("/nonexistent-context"), QStringLiteral("Dockerfile"),
+        QStringLiteral("localhost/podstack-test:latest"), {}, {},
+        [](const QByteArray &) { return true; }, nullptr, &imageId, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
-    QVERIFY(!client.buildImage(context.path(), QStringLiteral("Missing.Dockerfile"),
-                               QStringLiteral("localhost/podstack-test:latest"), {}, {},
-                               [](const QByteArray &) { return true; }, nullptr, &imageId,
-                               &error));
+    QVERIFY(!client.buildImage(
+        context.path(), QStringLiteral("Missing.Dockerfile"),
+        QStringLiteral("localhost/podstack-test:latest"), {}, {},
+        [](const QByteArray &) { return true; }, nullptr, &imageId, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
-    QVERIFY(!client.buildImage(context.path(), QStringLiteral("Dockerfile"), {}, {}, {},
-                               [](const QByteArray &) { return true; }, nullptr, &imageId,
-                               &error));
+    QVERIFY(!client.buildImage(
+        context.path(), QStringLiteral("Dockerfile"), {}, {}, {},
+        [](const QByteArray &) { return true; }, nullptr, &imageId, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
@@ -696,12 +726,13 @@ void ContractTest::catalogErrors()
     QVERIFY(client.inspectImage(QStringLiteral("missing"), &error).isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 
-    QVERIFY(!client.pullImage(QString(), {}, [](const QByteArray &) { return true; },
-                              nullptr, &error));
+    QVERIFY(
+        !client.pullImage(QString(), {}, [](const QByteArray &) { return true; }, nullptr, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
-    QVERIFY(!client.pushImage(QStringLiteral("img"), QString(),
-                              [](const QByteArray &) { return true; }, nullptr, &error));
+    QVERIFY(!client.pushImage(
+        QStringLiteral("img"), QString(), [](const QByteArray &) { return true; }, nullptr,
+        &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
     QVERIFY(!client.exportImage(QStringLiteral("img"), QString(), &error));
@@ -723,8 +754,7 @@ void ContractTest::catalogErrors()
     QVERIFY(!client.cloneVolume(QStringLiteral("missing"), QStringLiteral("x"), &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 
-    const QString archive = QDir::tempPath()
-                            + QStringLiteral("/podstack-err-volume.tar.zst");
+    const QString archive = QDir::tempPath() + QStringLiteral("/podstack-err-volume.tar.zst");
     QVERIFY(!client.exportVolume(QStringLiteral("missing"), archive, &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
 
@@ -742,12 +772,13 @@ void ContractTest::catalogErrors()
     QVERIFY(!client.importHostPath(QString(), QString(), &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 
-    QVERIFY(!client.importHostPath(QStringLiteral("vol1"),
-                                   QStringLiteral("/nonexistent/dir"), &error));
+    QVERIFY(
+        !client.importHostPath(QStringLiteral("vol1"), QStringLiteral("/nonexistent/dir"), &error));
     QCOMPARE(error.code, QStringLiteral("PODSTACK_IO_ERROR"));
 
-    QVERIFY(client.createNetwork(QString(), QStringLiteral("bridge"), QString(), QString(),
-                                 false, {}, &error)
+    QVERIFY(client
+                .createNetwork(QString(), QStringLiteral("bridge"), QString(), QString(), false, {},
+                               &error)
                 .isEmpty());
     QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 

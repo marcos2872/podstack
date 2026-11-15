@@ -105,6 +105,21 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params, con
     if (method == QStringLiteral("containers.duplicate")) {
         return containerDuplicate(params, error);
     }
+    if (method == QStringLiteral("containers.get")) {
+        return containerGet(params, error);
+    }
+    if (method == QStringLiteral("containers.top")) {
+        return containerTop(params, error);
+    }
+    if (method == QStringLiteral("containers.changes")) {
+        return containerChanges(params, error);
+    }
+    if (method == QStringLiteral("containers.export")) {
+        return containerExport(params, error);
+    }
+    if (method == QStringLiteral("containers.commit")) {
+        return containerCommit(params, error);
+    }
     if (method == QStringLiteral("containers.files.list")) {
         return containerFilesList(params, error);
     }

@@ -68,6 +68,11 @@ private:
     QJsonObject containerCreate(const QJsonObject &params, Error *error);
     QJsonObject containerExposeLan(const QJsonObject &params, Error *error);
     QJsonObject containerDuplicate(const QJsonObject &params, Error *error);
+    QJsonObject containerGet(const QJsonObject &params, Error *error);
+    QJsonObject containerTop(const QJsonObject &params, Error *error);
+    QJsonObject containerChanges(const QJsonObject &params, Error *error);
+    QJsonObject containerExport(const QJsonObject &params, Error *error);
+    QJsonObject containerCommit(const QJsonObject &params, Error *error);
     QJsonObject containerFilesList(const QJsonObject &params, Error *error);
     QJsonObject containerFilesDownload(const QJsonObject &params, Error *error);
     QJsonObject containerFilesUpload(const QJsonObject &params, Error *error);

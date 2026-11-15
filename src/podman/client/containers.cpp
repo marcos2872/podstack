@@ -404,4 +404,178 @@ QString PodmanClient::createContainer(const ContainerCreateSpec &spec, Error *er
     return id;
 }
 
+bool PodmanClient::imageExists(const QString &reference, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (reference.isEmpty()) {
+        return false;
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("GET"), path(QStringLiteral("/images/%1/json").arg(encodeId(reference))));
+    if (response.status == 200) {
+        return true;
+    }
+    if (response.status == 404) {
+        return false;
+    }
+    if (error) {
+        *error = errorFromResponse(response, QStringLiteral("Falha ao consultar a imagem."));
+    }
+    return false;
+}
+
+QJsonObject PodmanClient::containerTop(const QString &id, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return {};
+    }
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("GET"), path(QStringLiteral("/containers/%1/top").arg(encodeId(id))));
+    if (response.status != 200) {
+        if (error) {
+            *error = errorFromResponse(response, QStringLiteral("Falha ao listar os processos."));
+        }
+        return {};
+    }
+    const QJsonObject object = QJsonDocument::fromJson(response.body).object();
+    QJsonArray titles = object.value(QStringLiteral("Titles")).toArray();
+    if (titles.isEmpty()) {
+        titles = object.value(QStringLiteral("titles")).toArray();
+    }
+    QJsonArray processes = object.value(QStringLiteral("Processes")).toArray();
+    if (processes.isEmpty()) {
+        processes = object.value(QStringLiteral("processes")).toArray();
+    }
+    return QJsonObject{{QStringLiteral("titles"), titles},
+                       {QStringLiteral("processes"), processes}};
+}
+
+QJsonArray PodmanClient::containerChanges(const QString &id, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return {};
+    }
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("GET"), path(QStringLiteral("/containers/%1/changes").arg(encodeId(id))));
+    if (response.status != 200) {
+        if (error) {
+            *error = errorFromResponse(response, QStringLiteral("Falha ao listar as alterações."));
+        }
+        return {};
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(response.body);
+    const QJsonArray array = document.isArray()
+                                 ? document.array()
+                                 : document.object().value(QStringLiteral("changes")).toArray();
+    QJsonArray result;
+    for (const QJsonValue &value : array) {
+        const QJsonObject entry = value.toObject();
+        result.append(QJsonObject{
+            {QStringLiteral("path"), entry.value(QStringLiteral("Path"))
+                                         .toString(entry.value(QStringLiteral("path")).toString())},
+            {QStringLiteral("kind"), entry.value(QStringLiteral("Kind"))
+                                         .toInt(entry.value(QStringLiteral("kind")).toInt())}});
+    }
+    return result;
+}
+
+bool PodmanClient::exportContainer(const QString &id, const QString &destination, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return false;
+    }
+    if (destination.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o arquivo de destino."));
+        }
+        return false;
+    }
+
+    const HttpResponse response = m_http.request(
+        QByteArrayLiteral("GET"), path(QStringLiteral("/containers/%1/export").arg(encodeId(id))),
+        {}, {}, 600000);
+    if (response.status != 200) {
+        if (error) {
+            *error = errorFromResponse(response, QStringLiteral("Falha ao exportar o container."));
+        }
+        return false;
+    }
+
+    QFile file(destination);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_IO_ERROR"),
+                                 QStringLiteral("Não foi possível gravar o arquivo."),
+                                 file.errorString());
+        }
+        return false;
+    }
+    file.write(response.body);
+    file.close();
+    return true;
+}
+
+QString PodmanClient::commitContainer(const QString &id, const QString &repo, const QString &tag,
+                                      const QString &message, Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (!ensureVersion(error)) {
+        return {};
+    }
+    const QString trimmedRepo = repo.trimmed();
+    if (trimmedRepo.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o repositório da imagem."));
+        }
+        return {};
+    }
+
+    QStringList query{QStringLiteral("repo=") + encodeId(trimmedRepo)};
+    if (!tag.trimmed().isEmpty()) {
+        query.append(QStringLiteral("tag=") + encodeId(tag.trimmed()));
+    }
+    if (!message.isEmpty()) {
+        query.append(QStringLiteral("comment=") + encodeId(message));
+    }
+
+    const HttpResponse response =
+        m_http.request(QByteArrayLiteral("POST"),
+                       path(QStringLiteral("/containers/%1/commit?%2")
+                                .arg(encodeId(id), query.join(QLatin1Char('&')))),
+                       {}, {}, 120000);
+    if (response.status != 201 && response.status != 200) {
+        if (error) {
+            *error = errorFromResponse(response, QStringLiteral("Falha ao criar a imagem."));
+        }
+        return {};
+    }
+    const QJsonObject object = QJsonDocument::fromJson(response.body).object();
+    const QString imageId =
+        object.value(QStringLiteral("Id")).toString(object.value(QStringLiteral("id")).toString());
+    if (imageId.isEmpty() && error) {
+        *error = Error::make(QStringLiteral("PODSTACK_INVALID_RESPONSE"),
+                             QStringLiteral("O Podman não retornou o ID da imagem."));
+    }
+    return imageId;
+}
+
 } // namespace PodStack

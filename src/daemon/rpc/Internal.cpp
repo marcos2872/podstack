@@ -170,6 +170,108 @@ bool checkMachineConsoleFile(const QString &directory, bool *exists, Error *erro
     return true;
 }
 
+namespace {
+
+bool hasTraversal(const QString &path)
+{
+    const QStringList parts = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    return parts.contains(QStringLiteral(".."));
+}
+
+} // namespace
+
+bool validateContainerName(const QString &name, QString *error)
+{
+    if (name.isEmpty()) {
+        return true;
+    }
+    static const QRegularExpression pattern(QStringLiteral("^[a-zA-Z0-9][a-zA-Z0-9_.-]*$"));
+    if (!pattern.match(name).hasMatch() || name.size() > 255) {
+        if (error) {
+            *error = QStringLiteral(
+                "Nome inválido. Use letras, números, ponto, hífen ou sublinhado, começando por "
+                "letra ou número (até 255 caracteres).");
+        }
+        return false;
+    }
+    return true;
+}
+
+QString suggestContainerName(const QString &name, const QStringList &taken)
+{
+    const QString base = name.isEmpty() ? QStringLiteral("container") : name;
+    for (int suffix = 2; suffix < 1000; ++suffix) {
+        const QString candidate = QStringLiteral("%1-%2").arg(base).arg(suffix);
+        if (!taken.contains(candidate)) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
+bool validatePortMappings(const QVector<PortMapping> &ports, QString *error)
+{
+    QSet<QString> seen;
+    for (const PortMapping &port : ports) {
+        if (port.hostPort < 1 || port.hostPort > 65535) {
+            if (error) {
+                *error =
+                    QStringLiteral("Porta do host inválida: %1 (use 1–65535).").arg(port.hostPort);
+            }
+            return false;
+        }
+        if (port.containerPort < 1 || port.containerPort > 65535) {
+            if (error) {
+                *error = QStringLiteral("Porta do container inválida: %1 (use 1–65535).")
+                             .arg(port.containerPort);
+            }
+            return false;
+        }
+        const QString key = QStringLiteral("%1/%2").arg(port.hostPort).arg(port.protocol);
+        if (seen.contains(key)) {
+            if (error) {
+                *error = QStringLiteral("A porta %1/%2 está repetida.")
+                             .arg(port.hostPort)
+                             .arg(port.protocol);
+            }
+            return false;
+        }
+        seen.insert(key);
+    }
+    return true;
+}
+
+bool validateMounts(const QVector<MountMapping> &mounts, QString *error)
+{
+    for (const MountMapping &mount : mounts) {
+        if (!mount.source.startsWith(QLatin1Char('/')) || hasTraversal(mount.source)) {
+            if (error) {
+                *error =
+                    QStringLiteral("Origem do volume inválida: “%1”. Use um caminho absoluto, sem "
+                                   "“..”.")
+                        .arg(mount.source);
+            }
+            return false;
+        }
+        if (!mount.destination.startsWith(QLatin1Char('/')) || hasTraversal(mount.destination)) {
+            if (error) {
+                *error =
+                    QStringLiteral("Destino do volume inválido: “%1”. Use um caminho absoluto, sem "
+                                   "“..”.")
+                        .arg(mount.destination);
+            }
+            return false;
+        }
+        if (!QFileInfo::exists(mount.source)) {
+            if (error) {
+                *error = QStringLiteral("O caminho “%1” não existe no host.").arg(mount.source);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
 Error helperRequiredError()
 {
     return Error::make(

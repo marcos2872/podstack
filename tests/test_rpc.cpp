@@ -38,6 +38,8 @@ private slots:
     void systemReportRedactsSettings();
     void proxyEnvironment();
     void exposeLan();
+    void containerCreateValidation();
+    void containerExtraMethods();
     void subscriptions();
     void subscriptionsCancelOnDisconnect();
     void catalog();
@@ -776,6 +778,165 @@ void RpcTest::exposeLan()
     error = {};
     (void) client.call(QStringLiteral("containers.exposeLan"), exposeParams, &error);
     QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+}
+
+void RpcTest::containerCreateValidation()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    const auto create = [&](const QJsonObject &params) {
+        error = {};
+        return client.call(QStringLiteral("containers.create"), params, &error);
+    };
+
+    // Imagem ausente: a GUI oferece o pull em vez de criar.
+    QJsonObject missingImage{{QStringLiteral("image"), QStringLiteral("missing:tag")}};
+    QVERIFY(create(missingImage).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_IMAGE_NOT_FOUND"));
+    QCOMPARE(error.detail, QStringLiteral("missing:tag"));
+
+    // Nome fora do padrão do Podman.
+    QVERIFY(create({{QStringLiteral("image"), QStringLiteral("alpine:3.20")},
+                    {QStringLiteral("name"), QStringLiteral("nome com espaço")}})
+                .isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+
+    // Porta fora da faixa e porta repetida.
+    const auto portParams = [](int hostPort) {
+        return QJsonObject{
+            {QStringLiteral("image"), QStringLiteral("alpine:3.20")},
+            {QStringLiteral("ports"),
+             QJsonArray{QJsonObject{{QStringLiteral("hostPort"), hostPort},
+                                    {QStringLiteral("containerPort"), 80},
+                                    {QStringLiteral("protocol"), QStringLiteral("tcp")}}}}};
+    };
+    QVERIFY(create(portParams(70000)).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY(error.message.contains(QStringLiteral("1–65535")));
+
+    QJsonObject duplicated = portParams(8080);
+    QJsonArray duplicatedPorts = duplicated.value(QStringLiteral("ports")).toArray();
+    duplicatedPorts.append(duplicatedPorts.first());
+    duplicated.insert(QStringLiteral("ports"), duplicatedPorts);
+    QVERIFY(create(duplicated).isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY(error.message.contains(QStringLiteral("repetida")));
+
+    // Mount inexistente no host.
+    QVERIFY(create({{QStringLiteral("image"), QStringLiteral("alpine:3.20")},
+                    {QStringLiteral("mounts"),
+                     QJsonArray{QJsonObject{
+                         {QStringLiteral("source"), QStringLiteral("/tmp/podstack-nao-existe-%1")
+                                                        .arg(QCoreApplication::applicationPid())},
+                         {QStringLiteral("destination"), QStringLiteral("/mnt")}}}}})
+                .isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+    QVERIFY(error.message.contains(QStringLiteral("não existe")));
+
+    // Conflito de nome com sugestão (o mock lista "demo").
+    QVERIFY(create({{QStringLiteral("image"), QStringLiteral("alpine:3.20")},
+                    {QStringLiteral("name"), QStringLiteral("demo")}})
+                .isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_CONFLICT"));
+    QVERIFY2(error.remediation.contains(QStringLiteral("demo-2")), qPrintable(error.remediation));
+
+    // Criação válida com os campos novos: o corpo enviado ao Podman precisa
+    // refletir restart, limites, rede, labels e read-only.
+    const int createsBefore = m_mock.createCount();
+    const QJsonObject created = create(
+        {{QStringLiteral("image"), QStringLiteral("alpine:3.20")},
+         {QStringLiteral("name"), QStringLiteral("novo-spec")},
+         {QStringLiteral("restartPolicy"), QStringLiteral("on-failure")},
+         {QStringLiteral("restartTries"), 2},
+         {QStringLiteral("cpus"), 0.5},
+         {QStringLiteral("memoryMb"), 128},
+         {QStringLiteral("network"), QStringLiteral("podman")},
+         {QStringLiteral("readOnly"), true},
+         {QStringLiteral("labels"), QJsonObject{{QStringLiteral("time"), QStringLiteral("dev")}}}});
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(created.value(QStringLiteral("id")).toString(), QStringLiteral("created123"));
+    QCOMPARE(m_mock.createCount(), createsBefore + 1);
+
+    const QJsonObject body = QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    QCOMPARE(body.value(QStringLiteral("restart_policy")).toString(), QStringLiteral("on-failure"));
+    QCOMPARE(body.value(QStringLiteral("restart_tries")).toInt(), 2);
+    QCOMPARE(body.value(QStringLiteral("read_only_filesystem")).toBool(), true);
+    QVERIFY(body.value(QStringLiteral("networks")).toObject().contains(QStringLiteral("podman")));
+    QCOMPARE(
+        body.value(QStringLiteral("labels")).toObject().value(QStringLiteral("time")).toString(),
+        QStringLiteral("dev"));
+    QCOMPARE(body.value(QStringLiteral("resource_limits"))
+                 .toObject()
+                 .value(QStringLiteral("cpu"))
+                 .toObject()
+                 .value(QStringLiteral("quota"))
+                 .toDouble(),
+             50000.0);
+
+    // Política de restart desconhecida.
+    QVERIFY(create({{QStringLiteral("image"), QStringLiteral("alpine:3.20")},
+                    {QStringLiteral("restartPolicy"), QStringLiteral("sometimes")}})
+                .isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
+}
+
+void RpcTest::containerExtraMethods()
+{
+    PodStack::RpcClient client(m_controlSocket);
+    PodStack::Error error;
+
+    QJsonObject result =
+        client.call(QStringLiteral("containers.get"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("demo")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("id")).toString(), QStringLiteral("abc123"));
+    QCOMPARE(result.value(QStringLiteral("name")).toString(), QStringLiteral("demo"));
+
+    result = client.call(QStringLiteral("containers.get"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("nao-existe")}}, &error);
+    QVERIFY(result.isEmpty());
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_NOT_FOUND"));
+
+    result = client.call(QStringLiteral("containers.top"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("abc123")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("titles")).toArray().size(), 2);
+    QCOMPARE(result.value(QStringLiteral("processes")).toArray().size(), 1);
+
+    result = client.call(QStringLiteral("containers.changes"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("abc123")}}, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("changes")).toArray().size(), 1);
+    QCOMPARE(result.value(QStringLiteral("changes"))
+                 .toArray()
+                 .first()
+                 .toObject()
+                 .value(QStringLiteral("path"))
+                 .toString(),
+             QStringLiteral("/etc"));
+
+    const QString exportPath = m_testDataDir + QStringLiteral("/container-export.tar");
+    QFile::remove(exportPath);
+    result = client.call(QStringLiteral("containers.export"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("abc123")},
+                                     {QStringLiteral("path"), exportPath}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QVERIFY(QFileInfo::exists(exportPath));
+    QVERIFY(result.value(QStringLiteral("size")).toDouble() > 0);
+
+    result = client.call(QStringLiteral("containers.commit"),
+                         QJsonObject{{QStringLiteral("id"), QStringLiteral("abc123")},
+                                     {QStringLiteral("repo"), QStringLiteral("local/commit")},
+                                     {QStringLiteral("tag"), QStringLiteral("v1")}},
+                         &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error.message));
+    QCOMPARE(result.value(QStringLiteral("imageId")).toString(), QStringLiteral("imgcommit123"));
+
+    // Método documentado precisa existir de fato.
+    client.call(QStringLiteral("containers.changes"), {}, &error);
+    QCOMPARE(error.code, QStringLiteral("PODSTACK_INVALID_PARAMS"));
 }
 
 void RpcTest::subscriptions()

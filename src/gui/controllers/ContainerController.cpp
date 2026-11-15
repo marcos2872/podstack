@@ -108,6 +108,7 @@ QVariantList ContainerController::parseItems(const QJsonArray &items) const
         item.insert(QStringLiteral("image"), object.value(QStringLiteral("image")).toString());
         item.insert(QStringLiteral("health"), object.value(QStringLiteral("health")).toString());
         item.insert(QStringLiteral("status"), object.value(QStringLiteral("status")).toString());
+        item.insert(QStringLiteral("created"), object.value(QStringLiteral("created")).toString());
 
         QVariantMap labels;
         const QJsonObject labelObject = object.value(QStringLiteral("labels")).toObject();
@@ -154,14 +155,23 @@ void ContainerController::removeContainer(const QString &id, bool force, bool vo
 void ContainerController::createContainer(const QVariantMap &spec, bool start)
 {
     QJsonObject params;
-    params.insert(QStringLiteral("image"), spec.value(QStringLiteral("image")).toString());
-    params.insert(QStringLiteral("name"), spec.value(QStringLiteral("name")).toString());
+    params.insert(QStringLiteral("image"),
+                  spec.value(QStringLiteral("image")).toString().trimmed());
+    params.insert(QStringLiteral("name"), spec.value(QStringLiteral("name")).toString().trimmed());
     params.insert(QStringLiteral("command"), spec.value(QStringLiteral("command")).toString());
     params.insert(QStringLiteral("workDir"), spec.value(QStringLiteral("workDir")).toString());
     params.insert(QStringLiteral("user"), spec.value(QStringLiteral("user")).toString());
     params.insert(QStringLiteral("remove"), spec.value(QStringLiteral("remove")).toBool());
     params.insert(QStringLiteral("init"), spec.value(QStringLiteral("init")).toBool());
     params.insert(QStringLiteral("privileged"), spec.value(QStringLiteral("privileged")).toBool());
+    params.insert(QStringLiteral("readOnly"), spec.value(QStringLiteral("readOnly")).toBool());
+    params.insert(QStringLiteral("restartPolicy"),
+                  spec.value(QStringLiteral("restartPolicy")).toString());
+    params.insert(QStringLiteral("restartTries"),
+                  spec.value(QStringLiteral("restartTries")).toInt());
+    params.insert(QStringLiteral("cpus"), spec.value(QStringLiteral("cpus")).toDouble());
+    params.insert(QStringLiteral("memoryMb"), spec.value(QStringLiteral("memoryMb")).toInt());
+    params.insert(QStringLiteral("network"), spec.value(QStringLiteral("network")).toString());
     const bool exposeLan = spec.value(QStringLiteral("exposeLan")).toBool();
     params.insert(QStringLiteral("exposeLan"), exposeLan);
     params.insert(QStringLiteral("start"), start);
@@ -172,43 +182,70 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         envText.split(QRegularExpression(QStringLiteral("[,\\n]")), Qt::SkipEmptyParts);
     for (const QString &line : envLines) {
         const int equals = line.indexOf(QLatin1Char('='));
-        if (equals > 0) {
-            env.insert(line.left(equals).trimmed(), line.mid(equals + 1).trimmed());
+        if (equals <= 0) {
+            setLastError(QStringLiteral("Variável de ambiente inválida: “%1” (use CHAVE=valor).")
+                             .arg(line.trimmed()));
+            return;
         }
+        env.insert(line.left(equals).trimmed(), line.mid(equals + 1).trimmed());
     }
     params.insert(QStringLiteral("env"), env);
+
+    QJsonObject labels;
+    const QString labelsText = spec.value(QStringLiteral("labelsText")).toString();
+    const QStringList labelLines =
+        labelsText.split(QRegularExpression(QStringLiteral("[,\\n]")), Qt::SkipEmptyParts);
+    for (const QString &line : labelLines) {
+        const int equals = line.indexOf(QLatin1Char('='));
+        if (equals <= 0) {
+            setLastError(
+                QStringLiteral("Label inválida: “%1” (use chave=valor).").arg(line.trimmed()));
+            return;
+        }
+        labels.insert(line.left(equals).trimmed(), line.mid(equals + 1).trimmed());
+    }
+    params.insert(QStringLiteral("labels"), labels);
 
     QJsonArray ports;
     const QString portsText = spec.value(QStringLiteral("portsText")).toString();
     const QStringList portItems =
         portsText.split(QRegularExpression(QStringLiteral("[,\\n]")), Qt::SkipEmptyParts);
-    for (const QString &item : portItems) {
-        const QStringList parts = item.trimmed().split(QLatin1Char(':'));
-        if (parts.size() < 2) {
-            continue;
+    for (const QString &raw : portItems) {
+        const QString item = raw.trimmed();
+        const QStringList parts = item.split(QLatin1Char(':'));
+        if (parts.size() < 2 || parts.size() > 3) {
+            setLastError(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
+            return;
         }
         QString containerPart = parts.last();
         QString protocol = QStringLiteral("tcp");
         const int slash = containerPart.indexOf(QLatin1Char('/'));
         if (slash > 0) {
-            protocol = containerPart.mid(slash + 1);
+            protocol = containerPart.mid(slash + 1).toLower();
             containerPart = containerPart.left(slash);
         }
-        const int containerPort = containerPart.toInt();
-        if (containerPort <= 0) {
-            continue;
+        bool containerOk = false;
+        bool hostOk = false;
+        const int containerPort = containerPart.toInt(&containerOk);
+        const int hostPort = parts.at(parts.size() == 2 ? 0 : 1).toInt(&hostOk);
+        if (!containerOk || !hostOk || containerPort <= 0 || hostPort <= 0) {
+            setLastError(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
+            return;
         }
         QJsonObject port;
         port.insert(QStringLiteral("containerPort"), containerPort);
         port.insert(QStringLiteral("protocol"), protocol);
-        if (parts.size() == 2) {
-            port.insert(QStringLiteral("hostPort"), parts.at(0).toInt());
-            port.insert(QStringLiteral("hostIp"),
-                        exposeLan ? QStringLiteral("0.0.0.0") : QStringLiteral("127.0.0.1"));
+        port.insert(QStringLiteral("hostPort"), hostPort);
+        if (parts.size() == 3) {
+            const QString hostIp = parts.at(0).trimmed();
+            if (hostIp.isEmpty()) {
+                setLastError(QStringLiteral("IP inválido em “%1”.").arg(item));
+                return;
+            }
+            port.insert(QStringLiteral("hostIp"), exposeLan ? QStringLiteral("0.0.0.0") : hostIp);
         } else {
             port.insert(QStringLiteral("hostIp"),
-                        exposeLan ? QStringLiteral("0.0.0.0") : parts.at(0));
-            port.insert(QStringLiteral("hostPort"), parts.at(1).toInt());
+                        exposeLan ? QStringLiteral("0.0.0.0") : QStringLiteral("127.0.0.1"));
         }
         ports.append(port);
     }
@@ -216,16 +253,29 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
 
     QJsonArray mounts;
     const QString mountsText = spec.value(QStringLiteral("mountsText")).toString();
-    for (const QString &line : mountsText.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
-        const QStringList parts = line.trimmed().split(QLatin1Char(':'));
-        if (parts.size() < 2 || parts.at(0).isEmpty() || parts.at(1).isEmpty()) {
-            continue;
+    // Vírgula e quebra de linha separam mounts; o placeholder da UI usa vírgula.
+    const QStringList mountItems =
+        mountsText.split(QRegularExpression(QStringLiteral("[,\\n]")), Qt::SkipEmptyParts);
+    for (const QString &raw : mountItems) {
+        const QString item = raw.trimmed();
+        const QStringList parts = item.split(QLatin1Char(':'));
+        if (parts.size() < 2 || parts.size() > 3) {
+            setLastError(
+                QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
+            return;
+        }
+        const QString source = parts.at(0).trimmed();
+        const QString destination = parts.at(1).trimmed();
+        if (source.isEmpty() || destination.isEmpty()) {
+            setLastError(
+                QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
+            return;
         }
         QJsonObject mount;
-        mount.insert(QStringLiteral("source"), parts.at(0));
-        mount.insert(QStringLiteral("destination"), parts.at(1));
+        mount.insert(QStringLiteral("source"), source);
+        mount.insert(QStringLiteral("destination"), destination);
         mount.insert(QStringLiteral("readOnly"),
-                     parts.size() >= 3 && parts.at(2) == QStringLiteral("ro"));
+                     parts.size() == 3 && parts.at(2).trimmed() == QStringLiteral("ro"));
         mounts.append(mount);
     }
     params.insert(QStringLiteral("mounts"), mounts);
@@ -292,8 +342,13 @@ void ContainerController::batchIds(const QStringList &ids, const QString &action
             QJsonObject lastError;
             for (const QString &id : ids) {
                 Error error;
-                client.call(QStringLiteral("containers.") + action,
-                            QJsonObject{{QStringLiteral("id"), id}}, &error);
+                QJsonObject params{{QStringLiteral("id"), id}};
+                if (action == QStringLiteral("remove")) {
+                    // Remoção em lote é confirmada na UI; sem `force` um
+                    // container em execução faria o lote falhar inteiro.
+                    params.insert(QStringLiteral("force"), true);
+                }
+                client.call(QStringLiteral("containers.") + action, params, &error);
                 if (!error.isEmpty()) {
                     ++failed;
                     lastError = error.toJson();
@@ -440,8 +495,49 @@ void ContainerController::unsubscribeStats()
 void ContainerController::onActionFinished(const QString &method, const QJsonObject &params,
                                            const QJsonObject &result)
 {
+    const auto setCode = [this](const QString &code) {
+        if (m_lastErrorCode == code) {
+            return;
+        }
+        m_lastErrorCode = code;
+        emit lastErrorCodeChanged();
+    };
+
+    // O lote devolve `count`/`failed` (o `error` do resultado é o último erro
+    // por item, não uma falha do método): trata antes do caminho genérico.
+    if (method == QStringLiteral("containers.batch")) {
+        const int count = result.value(QStringLiteral("count")).toInt();
+        const int failed = result.value(QStringLiteral("failed")).toInt();
+        if (failed > 0) {
+            const QString detail = result.value(QStringLiteral("error"))
+                                       .toObject()
+                                       .value(QStringLiteral("message"))
+                                       .toString();
+            const QString message =
+                QStringLiteral("%1 de %2 containers falharam.%3")
+                    .arg(failed)
+                    .arg(count)
+                    .arg(detail.isEmpty() ? QString() : QLatin1Char(' ') + detail);
+            setCode(QStringLiteral("PODSTACK_BATCH_PARTIAL"));
+            setLastError(message);
+            emit actionFailed(method, m_lastErrorCode, message);
+        } else {
+            setCode({});
+            clearLastError();
+        }
+        refresh();
+        emit catalogDirty();
+        return;
+    }
+
+    const QJsonObject errorObject = result.value(QStringLiteral("__error")).isObject()
+                                        ? result.value(QStringLiteral("__error")).toObject()
+                                        : result.value(QStringLiteral("error")).toObject();
+    setCode(errorObject.value(QStringLiteral("code")).toString());
+
     ControllerBase::onActionFinished(method, params, result);
     if (isErrorResult(result)) {
+        emit actionFailed(method, m_lastErrorCode, errorMessage(result));
         return;
     }
     refresh();

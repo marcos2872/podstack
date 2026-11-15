@@ -13,6 +13,7 @@ namespace PodStack {
 class ContainerController : public CatalogController {
     Q_OBJECT
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
+    Q_PROPERTY(QString lastErrorCode READ lastErrorCode NOTIFY lastErrorCodeChanged)
     Q_PROPERTY(QVariantList files READ files NOTIFY filesChanged)
     Q_PROPERTY(QString filesPath READ filesPath NOTIFY filesChanged)
     Q_PROPERTY(QStringList logLines READ logLines NOTIFY logsChanged)
@@ -25,6 +26,8 @@ public:
 
     QVariantList files() const { return m_files; }
     bool loading() const { return m_loading; }
+    /// Código estável do último erro de ação (ex.: `PODSTACK_IMAGE_NOT_FOUND`).
+    QString lastErrorCode() const { return m_lastErrorCode; }
     QString filesPath() const { return m_filesPath; }
     QStringList logLines() const { return m_logLines; }
     QVariantMap stats() const { return m_stats; }
@@ -56,6 +59,7 @@ public:
 signals:
     void filesChanged();
     void loadingChanged();
+    void lastErrorCodeChanged();
     void logsChanged();
     void statsChanged();
     void connectionChanged(bool connected, const QString &error);
@@ -63,6 +67,10 @@ signals:
     /// Emitido logo depois de `containers.create` para a página selecionar e
     /// abrir o container recém-criado.
     void containerCreated(const QString &id);
+    /// Emitido quando uma ação falha, com o código estável e a mensagem pronta
+    /// para a UI (inclui a remediação). A criação usa isso para manter o
+    /// diálogo aberto e oferecer o pull quando falta a imagem.
+    void actionFailed(const QString &method, const QString &code, const QString &message);
     /// Emitido depois de uma ação bem-sucedida para o hub recarregar catálogos.
     void catalogDirty();
 
@@ -78,6 +86,7 @@ private:
     QString m_filesPath = QStringLiteral("/");
     QStringList m_logLines;
     bool m_loading = false;
+    QString m_lastErrorCode;
     QVariantMap m_stats;
     QVariantList m_cpuHistory;
     QVariantList m_memHistory;

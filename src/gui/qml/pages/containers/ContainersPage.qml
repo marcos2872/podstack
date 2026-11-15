@@ -40,6 +40,36 @@ Item {
     onFilterTextChanged: rebuild()
     onFilterChanged: rebuild()
 
+    function shortId(item) {
+        if (!item || !item.id) {
+            return ""
+        }
+        return String(item.id).substring(0, 12)
+    }
+
+    // FR-CON-001: idade do container a partir do `created` do engine.
+    function ageText(item) {
+        if (!item || !item.created) {
+            return ""
+        }
+        const created = Date.parse(item.created)
+        if (isNaN(created)) {
+            return ""
+        }
+        const minutes = Math.max(0, Math.floor((Date.now() - created) / 60000))
+        if (minutes < 1) {
+            return qsTr("agora")
+        }
+        if (minutes < 60) {
+            return qsTr("%1 min").arg(minutes)
+        }
+        const hours = Math.floor(minutes / 60)
+        if (hours < 24) {
+            return qsTr("%1 h").arg(hours)
+        }
+        return qsTr("%1 d").arg(Math.floor(hours / 24))
+    }
+
     function portsText(item) {
         if (!item || !item.ports) {
             return ""
@@ -79,8 +109,9 @@ Item {
                 continue
             }
             if (needle.length > 0) {
-                const haystack = (item.name + " " + item.image + " " + portsText(item)
-                                  + " " + (item.status || "")).toLowerCase()
+                const haystack = (item.name + " " + item.image + " " + item.id + " "
+                                  + (item.project || "") + " " + (item.service || "") + " "
+                                  + portsText(item) + " " + (item.status || "")).toLowerCase()
                 if (haystack.indexOf(needle) < 0) {
                     continue
                 }
@@ -219,12 +250,21 @@ Item {
         createPorts.text = ""
         createEnv.text = ""
         createMounts.text = ""
+        createLabels.text = ""
         createWorkDir.text = ""
         createUser.text = ""
+        createCpus.text = ""
+        createMemory.text = ""
+        createNetwork.currentIndex = 0
+        createRestart.currentIndex = 0
         createRemove.checked = false
         createInit.checked = false
         createPrivileged.checked = false
+        createReadOnly.checked = false
         createExposeLan.checked = false
+        pendingSpec = ({})
+        createError = ""
+        createMissingImage = ""
         createDialog.open()
     }
 
@@ -442,7 +482,7 @@ Item {
                             iconName: "trash"
                             size: "sm"
                             Accessible.name: qsTr("Remover")
-                            onClicked: backend.containers.batchIds(Object.keys(containersPage.selectedIds), "remove")
+                            onClicked: batchRemoveDialog.open()
                         }
                     }
 
@@ -568,6 +608,12 @@ Item {
                                         }
 
                                         AppBadge {
+                                            visible: (modelData.project || "").length > 0
+                                            text: modelData.project
+                                            tone: "accent"
+                                        }
+
+                                        AppBadge {
                                             visible: modelData.health === "healthy"
                                             text: qsTr("healthy")
                                             tone: "success"
@@ -589,6 +635,10 @@ Item {
                                     Text {
                                         Layout.fillWidth: true
                                         text: modelData.image
+                                              + (containersPage.shortId(modelData).length > 0
+                                                 ? "  ·  " + containersPage.shortId(modelData) : "")
+                                              + (containersPage.ageText(modelData).length > 0
+                                                 ? "  ·  " + containersPage.ageText(modelData) : "")
                                               + (containersPage.portsText(modelData).length > 0
                                                  ? "  ·  " + containersPage.portsText(modelData) : "")
                                         color: Theme.textTertiary
@@ -745,11 +795,80 @@ Item {
         }
     }
 
+    // Criação: mantém o diálogo aberto enquanto o daemon responde, mostra o
+    // erro no próprio formulário e oferece o pull quando falta a imagem.
+    property var pendingSpec: ({})
+    property string createError: ""
+    property string createMissingImage: ""
+    readonly property bool creating: backend.containers.actionActive
+
+    readonly property var networkOptions: {
+        var options = [qsTr("Padrão")]
+        var items = backend.networks.items || []
+        for (var i = 0; i < items.length; ++i) {
+            var name = items[i].name || ""
+            if (name.length > 0 && name !== "podman") {
+                options.push(name)
+            }
+        }
+        return options
+    }
+
+    readonly property var restartOptions: [
+        { label: qsTr("Padrão do engine"), value: "" },
+        { label: qsTr("Nunca (no)"), value: "no" },
+        { label: qsTr("Sempre (always)"), value: "always" },
+        { label: qsTr("Se não parado manualmente (unless-stopped)"), value: "unless-stopped" },
+        { label: qsTr("Em caso de falha (on-failure)"), value: "on-failure" }
+    ]
+    readonly property var restartLabels: {
+        var labels = []
+        for (var i = 0; i < restartOptions.length; ++i) {
+            labels.push(restartOptions[i].label)
+        }
+        return labels
+    }
+
+    Connections {
+        target: backend.containers
+        function onActionFailed(method, code, message) {
+            if (method !== "containers.create" || !createDialog.opened) {
+                return
+            }
+            createError = message
+            if (code === "PODSTACK_IMAGE_NOT_FOUND") {
+                createMissingImage = createImage.text.trim()
+            }
+        }
+        function onContainerCreated(id) {
+            if (createDialog.opened) {
+                createDialog.close()
+            }
+        }
+    }
+
+    Connections {
+        target: backend.images
+        function onPullCompleted(ok, reference, error) {
+            if (!createDialog.opened || createMissingImage.length === 0
+                    || reference !== createMissingImage) {
+                return
+            }
+            if (!ok) {
+                createError = error
+                return
+            }
+            createMissingImage = ""
+            createError = ""
+            backend.containers.createContainer(pendingSpec, true)
+        }
+    }
+
     AppModal {
-        id: createDialog
-        title: qsTr("Novo container")
+        id: batchRemoveDialog
+        title: qsTr("Remover containers?")
         modal: true
-        width: 640
+        width: 440
         anchors.centerIn: parent
         background: Rectangle {
             color: Theme.bgSurface
@@ -757,92 +876,225 @@ Item {
             border.width: 1
             border.color: Theme.border
         }
+        contentItem: Text {
+            Layout.fillWidth: true
+            text: qsTr("%1 container(s) serão removidos permanentemente.").arg(containersPage.selectedCount)
+            color: Theme.textPrimary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontBody
+            wrapMode: Text.WordWrap
+        }
+        footer: AppFooter {
+            Item { Layout.fillWidth: true }
+            AppButton {
+                text: qsTr("Cancelar")
+                variant: "secondary"
+                onClicked: batchRemoveDialog.close()
+            }
+            AppButton {
+                text: qsTr("Remover")
+                variant: "danger"
+                onClicked: {
+                    backend.containers.batchIds(Object.keys(containersPage.selectedIds), "remove")
+                    batchRemoveDialog.close()
+                }
+            }
+        }
+    }
+
+    AppModal {
+        id: createDialog
+        title: qsTr("Novo container")
+        modal: true
+        width: 720
+        anchors.centerIn: parent
+        background: Rectangle {
+            color: Theme.bgSurface
+            radius: Theme.radiusLg
+            border.width: 1
+            border.color: Theme.border
+        }
+        onOpened: {
+            createError = ""
+            createMissingImage = ""
+        }
         contentItem: ColumnLayout {
-            spacing: 8
-            GridLayout {
-                columns: 2
+            spacing: 10
+
+            ScrollView {
                 Layout.fillWidth: true
-                columnSpacing: 10
-                rowSpacing: 6
+                Layout.preferredHeight: Math.min(createForm.implicitHeight, 430)
+                clip: true
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
-                Text { text: qsTr("Imagem"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
-                AppInput {
-                    id: createImage
-                    Layout.fillWidth: true
-                    placeholderText: "nginx:alpine"
-                }
+                ColumnLayout {
+                    id: createForm
+                    width: parent.width - 16
+                    spacing: 8
 
-                Text { text: qsTr("Nome"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
-                AppInput {
-                    id: createName
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("opcional")
-                }
+                    GridLayout {
+                        columns: 2
+                        Layout.fillWidth: true
+                        columnSpacing: 10
+                        rowSpacing: 6
 
-                Text { text: qsTr("Comando"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
-                AppInput {
-                    id: createCommand
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("opcional")
-                }
+                        Text { text: qsTr("Imagem *"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createImage
+                            Layout.fillWidth: true
+                            placeholderText: "nginx:alpine"
+                        }
 
-                Text { text: qsTr("Portas"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
-                AppInput {
-                    id: createPorts
-                    Layout.fillWidth: true
-                    placeholderText: "8080:80, 127.0.0.1:8081:81"
-                }
+                        Text { text: qsTr("Nome"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createName
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("opcional")
+                        }
 
-                Text { text: qsTr("Env"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
-                AppInput {
-                    id: createEnv
-                    Layout.fillWidth: true
-                    placeholderText: "A=B, C=D"
-                }
+                        Text { text: qsTr("Comando"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createCommand
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("opcional, sem shell (use sh -c \"...\")")
+                        }
 
-                Text { text: qsTr("Volumes"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
-                AppInput {
-                    id: createMounts
-                    Layout.fillWidth: true
-                    placeholderText: "/host:/container, /tmp:/mnt"
-                }
+                        Text { text: qsTr("Portas"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createPorts
+                            Layout.fillWidth: true
+                            placeholderText: "8080:80, 127.0.0.1:8081:81"
+                        }
 
-                Text { text: qsTr("Workdir"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
-                AppInput {
-                    id: createWorkDir
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("opcional")
-                }
+                        Text { text: qsTr("Env"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createEnv
+                            Layout.fillWidth: true
+                            placeholderText: "A=B, C=D"
+                        }
 
-                Text { text: qsTr("Usuário"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
-                AppInput {
-                    id: createUser
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("opcional (uid:gid)")
+                        Text { text: qsTr("Volumes"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createMounts
+                            Layout.fillWidth: true
+                            placeholderText: "/host:/container, /tmp:/mnt:ro"
+                        }
+
+                        Text { text: qsTr("Labels"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createLabels
+                            Layout.fillWidth: true
+                            placeholderText: "chave=valor, outra=valor"
+                        }
+
+                        Text { text: qsTr("Workdir"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createWorkDir
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("opcional")
+                        }
+
+                        Text { text: qsTr("Usuário"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createUser
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("opcional (uid:gid)")
+                        }
+
+                        Text { text: qsTr("Rede"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppSelect {
+                            id: createNetwork
+                            Layout.fillWidth: true
+                            model: containersPage.networkOptions
+                            currentIndex: 0
+                        }
+
+                        Text { text: qsTr("Restart"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppSelect {
+                            id: createRestart
+                            Layout.fillWidth: true
+                            model: containersPage.restartLabels
+                            currentIndex: 0
+                        }
+
+                        Text { text: qsTr("CPUs"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createCpus
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("opcional (1.5 = 1,5 CPU)")
+                            validator: DoubleValidator { bottom: 0; top: 1024; decimals: 3 }
+                        }
+
+                        Text { text: qsTr("Memória (MB)"); color: Theme.textSecondary; font.family: Theme.fontFamily; font.pixelSize: Theme.fontMeta }
+                        AppInput {
+                            id: createMemory
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("opcional")
+                            validator: IntValidator { bottom: 0; top: 1048576 }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        AppCheck { id: createRemove; text: qsTr("Remover ao parar") }
+                        AppCheck { id: createInit; text: qsTr("Init") }
+                        AppCheck { id: createPrivileged; text: qsTr("Privileged") }
+                        AppCheck { id: createReadOnly; text: qsTr("Read-only") }
+                        Item { Layout.fillWidth: true }
+                    }
+
+                    AppCheck {
+                        id: createExposeLan
+                        text: qsTr("Expor portas na LAN")
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: createExposeLan.checked
+                        text: qsTr("Abre as portas publicadas no firewall (firewalld/ufw) e permite acesso de outros dispositivos da rede. Só portas publicadas são afetadas. O acesso é revertido com \u201cFechar LAN\u201d no inspector.")
+                        color: Theme.textTertiary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMicro
+                        wrapMode: Text.WordWrap
+                    }
                 }
+            }
+
+            // Erro do create fica no formulário; o diálogo não fecha e os
+            // campos digitados continuam lá.
+            Text {
+                Layout.fillWidth: true
+                visible: createError.length > 0
+                text: createError
+                color: Theme.danger
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                wrapMode: Text.WordWrap
             }
 
             RowLayout {
                 Layout.fillWidth: true
-                AppCheck { id: createRemove; text: qsTr("Remover ao parar") }
-                AppCheck { id: createInit; text: qsTr("Init") }
-                AppCheck { id: createPrivileged; text: qsTr("Privileged") }
-                Item { Layout.fillWidth: true }
-            }
+                visible: createMissingImage.length > 0
+                spacing: 8
 
-            AppCheck {
-                id: createExposeLan
-                text: qsTr("Expor portas na LAN")
-            }
-
-            Text {
-                Layout.fillWidth: true
-                visible: createExposeLan.checked
-                text: qsTr("Abre as portas publicadas no firewall (firewalld/ufw) e permite acesso de outros dispositivos da rede. Só portas publicadas são afetadas. O acesso é revertido com \u201cFechar LAN\u201d no inspector.")
-                color: Theme.textTertiary
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontMicro
-                wrapMode: Text.WordWrap
+                AppButton {
+                    text: backend.images.pullActive ? qsTr("Baixando…") : qsTr("Baixar imagem")
+                    variant: "secondary"
+                    size: "sm"
+                    enabled: !backend.images.pullActive
+                    onClicked: backend.images.pullImage(createMissingImage)
+                }
+                AppSpinner {
+                    visible: backend.images.pullActive
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: backend.images.pullStatus
+                    color: Theme.textTertiary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontMicro
+                    elide: Text.ElideRight
+                }
             }
         }
         footer: AppFooter {
@@ -850,27 +1102,44 @@ Item {
             AppButton {
                 text: qsTr("Cancelar")
                 variant: "secondary"
-                onClicked: createDialog.close()
+                onClicked: {
+                    if (backend.images.pullActive) {
+                        backend.images.cancelPull()
+                    }
+                    createDialog.close()
+                }
             }
             AppButton {
-                text: qsTr("Criar e iniciar")
+                text: containersPage.creating ? qsTr("Criando…") : qsTr("Criar e iniciar")
                 variant: "primary"
+                enabled: createImage.text.trim().length > 0 && !containersPage.creating
                 onClicked: {
-                    backend.containers.createContainer({
+                    createError = ""
+                    createMissingImage = ""
+                    var restartIndex = createRestart.currentIndex
+                    var networkIndex = createNetwork.currentIndex
+                    containersPage.pendingSpec = {
                         image: createImage.text,
                         name: createName.text,
                         command: createCommand.text,
                         portsText: createPorts.text,
                         envText: createEnv.text,
                         mountsText: createMounts.text,
+                        labelsText: createLabels.text,
                         workDir: createWorkDir.text,
                         user: createUser.text,
+                        network: networkIndex > 0 ? containersPage.networkOptions[networkIndex] : "",
+                        restartPolicy: restartIndex >= 0 && restartIndex < containersPage.restartOptions.length
+                                        ? containersPage.restartOptions[restartIndex].value : "",
+                        cpus: parseFloat(createCpus.text) || 0,
+                        memoryMb: parseInt(createMemory.text, 10) || 0,
                         remove: createRemove.checked,
                         init: createInit.checked,
                         privileged: createPrivileged.checked,
+                        readOnly: createReadOnly.checked,
                         exposeLan: createExposeLan.checked
-                    }, true)
-                    createDialog.close()
+                    }
+                    backend.containers.createContainer(containersPage.pendingSpec, true)
                 }
             }
         }
