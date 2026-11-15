@@ -12,6 +12,15 @@ if [ "${PODSTACK_SKIP_BUILD:-0}" != "1" ]; then
     cmake --build --preset dev
 fi
 
+# Refactors que movem arquivos de QML podem deixar o espelho de build
+# obsoleto. Em builds de dev o Qt carrega o espelho, não o qrc: sem esta
+# checagem a UI testada é a antiga e o "bug" investigado não existe mais.
+if [ -f "$BUILD_DIR/PodStack/src/gui/qml/Main.qml" ] && [ ! -f "src/gui/qml/Main.qml" ]; then
+    echo "erro: espelho de QML obsoleto em $BUILD_DIR/PodStack (layout antigo)." >&2
+    echo "      rode: rm -rf $BUILD_DIR && cmake --preset dev" >&2
+    exit 1
+fi
+
 SOCKET="${PODSTACK_CONTROL_SOCKET:-${XDG_RUNTIME_DIR:-/tmp}/podstack/control.sock}"
 export PODSTACK_CONTROL_SOCKET="$SOCKET"
 
