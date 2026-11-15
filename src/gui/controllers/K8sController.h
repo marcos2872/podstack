@@ -26,6 +26,8 @@ class K8sController : public ControllerBase {
     Q_PROPERTY(bool portForwardActive READ portForwardActive NOTIFY forwardChanged)
     Q_PROPERTY(QString portForwardId READ portForwardId NOTIFY forwardChanged)
     Q_PROPERTY(QString portForwardError READ portForwardError NOTIFY forwardChanged)
+    /// "127.0.0.1:8080 → 80" do forward **efetivo** (não dos campos editáveis).
+    Q_PROPERTY(QString portForwardSummary READ portForwardSummary NOTIFY forwardChanged)
     Q_PROPERTY(bool jobActive READ jobActive NOTIFY jobChanged)
     Q_PROPERTY(QString jobStage READ jobStage NOTIFY jobChanged)
     Q_PROPERTY(int jobProgress READ jobProgress NOTIFY jobChanged)
@@ -46,6 +48,7 @@ public:
     bool portForwardActive() const { return m_portForwardActive; }
     QString portForwardId() const { return m_portForwardId; }
     QString portForwardError() const { return m_portForwardError; }
+    QString portForwardSummary() const { return m_portForwardSummary; }
     bool jobActive() const { return m_jobActive; }
     QString jobStage() const { return m_jobStage; }
     int jobProgress() const { return m_jobProgress; }
@@ -65,6 +68,8 @@ public:
                                       int localPort, int remotePort,
                                       const QString &resource = QStringLiteral("pod"));
     Q_INVOKABLE void stopPortForward();
+    /// Cancela o job de cluster em andamento (`k8s.cancel`).
+    Q_INVOKABLE void cancelJob();
     Q_INVOKABLE void enable();
     Q_INVOKABLE void disable(bool force = false);
     Q_INVOKABLE void reset();
@@ -92,10 +97,14 @@ private:
     bool m_portForwardActive = false;
     QString m_portForwardId;
     QString m_portForwardError;
+    QString m_portForwardSummary;
+    int m_forwardLocalRequested = 0;
+    int m_forwardRemoteRequested = 0;
     bool m_jobActive = false;
     QString m_jobStage;
     int m_jobProgress = 0;
     QString m_jobError;
+    QString m_jobId;
 
     QFutureWatcher<QJsonObject> m_statusWatcher;
     QFutureWatcher<QJsonObject> m_podsWatcher;

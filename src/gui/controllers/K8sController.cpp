@@ -28,8 +28,17 @@ K8sController::K8sController(QObject *parent) : ControllerBase(parent)
         m_jobProgress = event.value(QStringLiteral("progress")).toInt();
         emit jobChanged();
     });
+    connect(&m_jobStream, &StreamClient::subscriptionReady, this,
+            [this](const QJsonObject &result) {
+                const QString jobId = result.value(QStringLiteral("jobId")).toString();
+                if (!jobId.isEmpty()) {
+                    m_jobId = jobId;
+                    emit jobChanged();
+                }
+            });
     connect(&m_jobStream, &StreamClient::k8sJobFinished, this, [this](const QJsonObject &result) {
         m_jobActive = false;
+        m_jobId.clear();
         const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
         if (!errorObject.isEmpty()) {
             m_jobError = errorObject.value(QStringLiteral("message")).toString();
@@ -48,6 +57,7 @@ K8sController::K8sController(QObject *parent) : ControllerBase(parent)
     });
     connect(&m_jobStream, &StreamClient::error, this, [this](const QString &message) {
         m_jobActive = false;
+        m_jobId.clear();
         m_jobError = message;
         emit jobChanged();
     });
@@ -138,16 +148,46 @@ K8sController::K8sController(QObject *parent) : ControllerBase(parent)
                                      .toString();
             m_portForwardActive = false;
             m_portForwardId.clear();
+            m_portForwardSummary.clear();
         } else {
             m_portForwardId = result.value(QStringLiteral("id")).toString();
             m_portForwardActive = !m_portForwardId.isEmpty();
             m_portForwardError.clear();
+            m_portForwardSummary =
+                m_portForwardActive
+                    ? QStringLiteral("127.0.0.1:%1 → %2")
+                          .arg(m_forwardLocalRequested)
+                          .arg(m_forwardRemoteRequested)
+                    : QString();
         }
         emit forwardChanged();
     });
 
     m_timer.setInterval(2000);
     connect(&m_timer, &QTimer::timeout, this, &K8sController::refresh);
+}
+
+void K8sController::cancelJob()
+{
+    if (!m_jobActive) {
+        return;
+    }
+    if (m_jobId.isEmpty()) {
+        m_jobError = QStringLiteral("Aguarde o job começar para cancelar.");
+        emit jobChanged();
+        return;
+    }
+    const QString jobId = m_jobId;
+    callRpc(QStringLiteral("k8s.cancel"), QJsonObject{{QStringLiteral("jobId"), jobId}},
+            [this](const QJsonObject &result) {
+                if (isErrorResult(result)) {
+                    m_jobError = errorMessage(result);
+                } else {
+                    m_jobStage = QStringLiteral("cancelling");
+                    m_jobError.clear();
+                }
+                emit jobChanged();
+            });
 }
 
 void K8sController::refreshStatus()
@@ -254,6 +294,8 @@ void K8sController::startPortForward(const QString &namespaceName, const QString
         return;
     }
     m_portForwardError.clear();
+    m_forwardLocalRequested = localPort;
+    m_forwardRemoteRequested = remotePort;
     m_forwardWatcher.setFuture(
         QtConcurrent::run([namespaceName, name, localPort, remotePort, resource] {
             RpcClient client;
@@ -275,6 +317,7 @@ void K8sController::stopPortForward()
     const QString id = m_portForwardId;
     m_portForwardActive = false;
     m_portForwardId.clear();
+    m_portForwardSummary.clear();
     emit forwardChanged();
     if (id.isEmpty()) {
         return;
@@ -305,6 +348,7 @@ void K8sController::enable()
     m_jobStage = QStringLiteral("starting");
     m_jobProgress = 0;
     m_jobError.clear();
+    m_jobId.clear();
     emit jobChanged();
     m_jobStream.startK8sJob(QStringLiteral("k8s.enable"), QJsonObject{});
 }
@@ -315,6 +359,7 @@ void K8sController::disable(bool force)
     m_jobStage = QStringLiteral("disabling");
     m_jobProgress = 0;
     m_jobError.clear();
+    m_jobId.clear();
     emit jobChanged();
     m_jobStream.startK8sJob(QStringLiteral("k8s.disable"),
                             QJsonObject{{QStringLiteral("force"), force}});
@@ -326,6 +371,7 @@ void K8sController::reset()
     m_jobStage = QStringLiteral("resetting");
     m_jobProgress = 0;
     m_jobError.clear();
+    m_jobId.clear();
     emit jobChanged();
     m_jobStream.startK8sJob(QStringLiteral("k8s.reset"), QJsonObject{});
 }

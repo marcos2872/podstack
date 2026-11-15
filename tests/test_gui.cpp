@@ -56,6 +56,7 @@ private slots:
     void backendKubernetes();
     void backendKubernetesEnabledError();
     void backendKubernetesDisableJob();
+    void backendKubernetesEdges();
     void backendControllerEdges();
     void backendMachines();
     void backendMachineStats();
@@ -792,6 +793,22 @@ void GuiTest::backendKubernetesDisableJob()
     k8s->reset();
     QTRY_VERIFY_WITH_TIMEOUT(!k8s->jobActive(), 5000);
     QCOMPARE(k8s->state(), QStringLiteral("disabled"));
+}
+
+void GuiTest::backendKubernetesEdges()
+{
+    PodStack::Backend backend;
+    auto *k8s = backend.k8s();
+
+    // Sem job ativo, cancelar é no-op: não pode prender o painel nem mentir.
+    k8s->cancelJob();
+    QVERIFY(k8s->jobError().isEmpty());
+    QVERIFY(!k8s->jobActive());
+
+    // O resumo do port-forward só existe com um forward ativo.
+    QVERIFY(k8s->portForwardSummary().isEmpty());
+    k8s->stopPortForward();
+    QVERIFY(k8s->portForwardSummary().isEmpty());
 }
 
 void GuiTest::backendRefreshUpdatesCatalog()
