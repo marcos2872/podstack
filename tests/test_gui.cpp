@@ -547,7 +547,6 @@ void GuiTest::backendKubernetes()
     k8s->deleteService(QStringLiteral("prod"), QStringLiteral("web"));
 }
 
-
 void GuiTest::backendControllerEdges()
 {
     PodStack::Backend backend;
