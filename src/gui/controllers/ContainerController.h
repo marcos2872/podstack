@@ -90,6 +90,9 @@ private:
     QString m_filesPath = QStringLiteral("/");
     QStringList m_logLines;
     bool m_loading = false;
+    /// Descarta resposta de uma leitura antiga de `containers.list` quando uma
+    /// mais nova já está em voo (eventos e ações disparam refresh concorrentes).
+    quint64 m_refreshGeneration = 0;
     QString m_lastErrorCode;
     QVariantMap m_stats;
     QVariantList m_cpuHistory;

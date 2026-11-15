@@ -31,6 +31,10 @@ protected:
 
 private:
     QVariantList m_items;
+    /// Cada refresh ganha uma geração; a resposta de uma leitura antiga é
+    /// descartada para não sobrescrever um retrato mais novo (eventos e ação
+    /// disparam refresh concorrentes, cada um em sua thread/socket).
+    quint64 m_refreshGeneration = 0;
 };
 
 } // namespace PodStack

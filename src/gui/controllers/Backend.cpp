@@ -341,6 +341,11 @@ QString Backend::version() const
 void Backend::refresh()
 {
     m_containers.refresh();
+    // Container mudou (evento, ação ou botão Atualizar): o catálogo depende
+    // dele — Compose, volumes e imagens mudam de estado. Antes só a lista de
+    // containers era relida, então subir uma stack por fora deixava a página
+    // Compose vazia até sair e voltar.
+    refreshCatalog();
 }
 
 void Backend::refreshCatalog()

@@ -76,11 +76,16 @@ void ContainerController::refresh()
         m_loading = true;
         emit loadingChanged();
     }
+    const quint64 generation = ++m_refreshGeneration;
     // Timeout curto: um daemon travado precisa aparecer como erro em segundos,
     // não deixar a lista vazia por 30 s como se não houvesse containers.
     callRpc(
         listMethod(), listParams(),
-        [this](const QJsonObject &result) {
+        [this, generation](const QJsonObject &result) {
+            if (generation != m_refreshGeneration) {
+                // Leitura atrasada: a mais nova é quem fecha o loading.
+                return;
+            }
             m_loading = false;
             emit loadingChanged();
             if (isErrorResult(result)) {

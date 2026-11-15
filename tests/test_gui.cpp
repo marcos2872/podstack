@@ -52,6 +52,7 @@ private slots:
     void backendContainerDetail();
     void backendContainerDetailRace();
     void backendCatalog();
+    void backendRefreshUpdatesCatalog();
     void backendKubernetes();
     void backendKubernetesEnabledError();
     void backendKubernetesDisableJob();
@@ -779,6 +780,27 @@ void GuiTest::backendKubernetesDisableJob()
     k8s->reset();
     QTRY_VERIFY_WITH_TIMEOUT(!k8s->jobActive(), 5000);
     QCOMPARE(k8s->state(), QStringLiteral("disabled"));
+}
+
+void GuiTest::backendRefreshUpdatesCatalog()
+{
+    PodStack::Backend backend;
+    auto *compose = backend.compose();
+    QSignalSpy composeSpy(compose, &PodStack::ComposeController::itemsChanged);
+    QSignalSpy imagesSpy(backend.images(), &PodStack::ImageController::itemsChanged);
+
+    // Espera o boot terminar, então mede só o refresh explícito.
+    QTRY_VERIFY_WITH_TIMEOUT(compose->items().size() >= 1, 5000);
+    composeSpy.clear();
+    imagesSpy.clear();
+
+    // Um evento/refresh de containers precisa atualizar o catálogo: subir uma
+    // stack por fora deixava o Compose vazio até sair e voltar para a página.
+    backend.refresh();
+
+    QTRY_VERIFY_WITH_TIMEOUT(composeSpy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(imagesSpy.count() > 0, 5000);
+    QCOMPARE(compose->items().size(), 1);
 }
 
 void GuiTest::backendCatalog()
