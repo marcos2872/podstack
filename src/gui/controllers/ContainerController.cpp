@@ -159,6 +159,14 @@ void ContainerController::removeContainer(const QString &id, bool force, bool vo
 
 void ContainerController::createContainer(const QVariantMap &spec, bool start)
 {
+    // Validação local também precisa chegar ao diálogo: antes ela só ia para
+    // `lastError` (rodapé do inspetor) e clicar em Criar com porta/env inválido
+    // não mostrava nada no formulário.
+    const auto fail = [this](const QString &message) {
+        ControllerBase::setLastError(message);
+        emit actionFailed(QStringLiteral("containers.create"),
+                          QStringLiteral("PODSTACK_INVALID_PARAMS"), message);
+    };
     QJsonObject params;
     params.insert(QStringLiteral("image"),
                   spec.value(QStringLiteral("image")).toString().trimmed());
@@ -188,7 +196,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
     for (const QString &line : envLines) {
         const int equals = line.indexOf(QLatin1Char('='));
         if (equals <= 0) {
-            setLastError(QStringLiteral("Variável de ambiente inválida: “%1” (use CHAVE=valor).")
+            fail(QStringLiteral("Variável de ambiente inválida: “%1” (use CHAVE=valor).")
                              .arg(line.trimmed()));
             return;
         }
@@ -203,7 +211,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
     for (const QString &line : labelLines) {
         const int equals = line.indexOf(QLatin1Char('='));
         if (equals <= 0) {
-            setLastError(
+            fail(
                 QStringLiteral("Label inválida: “%1” (use chave=valor).").arg(line.trimmed()));
             return;
         }
@@ -219,7 +227,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         const QString item = raw.trimmed();
         const QStringList parts = item.split(QLatin1Char(':'));
         if (parts.size() < 2 || parts.size() > 3) {
-            setLastError(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
+            fail(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
             return;
         }
         QString containerPart = parts.last();
@@ -234,7 +242,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         const int containerPort = containerPart.toInt(&containerOk);
         const int hostPort = parts.at(parts.size() == 2 ? 0 : 1).toInt(&hostOk);
         if (!containerOk || !hostOk || containerPort <= 0 || hostPort <= 0) {
-            setLastError(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
+            fail(QStringLiteral("Porta inválida: “%1” (use host:container).").arg(item));
             return;
         }
         QJsonObject port;
@@ -244,7 +252,7 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         if (parts.size() == 3) {
             const QString hostIp = parts.at(0).trimmed();
             if (hostIp.isEmpty()) {
-                setLastError(QStringLiteral("IP inválido em “%1”.").arg(item));
+                fail(QStringLiteral("IP inválido em “%1”.").arg(item));
                 return;
             }
             port.insert(QStringLiteral("hostIp"), exposeLan ? QStringLiteral("0.0.0.0") : hostIp);
@@ -265,14 +273,14 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
         const QString item = raw.trimmed();
         const QStringList parts = item.split(QLatin1Char(':'));
         if (parts.size() < 2 || parts.size() > 3) {
-            setLastError(
+            fail(
                 QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
             return;
         }
         const QString source = parts.at(0).trimmed();
         const QString destination = parts.at(1).trimmed();
         if (source.isEmpty() || destination.isEmpty()) {
-            setLastError(
+            fail(
                 QStringLiteral("Volume inválido: “%1” (use host:container[:ro]).").arg(item));
             return;
         }
@@ -545,6 +553,15 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
         const QString id = result.value(QStringLiteral("id")).toString();
         if (!id.isEmpty()) {
             emit containerCreated(id);
+        }
+    }
+    if (method == QStringLiteral("containers.files.upload")) {
+        // A listagem não recarregava sozinha: o arquivo enviado só aparecia no
+        // próximo clique em Atualizar.
+        const QString id = params.value(QStringLiteral("id")).toString();
+        const QString path = params.value(QStringLiteral("path")).toString();
+        if (!id.isEmpty() && !path.isEmpty()) {
+            listFiles(id, path);
         }
     }
     emit actionCompleted(method, targetId, true);

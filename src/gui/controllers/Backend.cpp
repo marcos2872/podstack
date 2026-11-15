@@ -223,10 +223,11 @@ Backend::Backend(QObject *parent) : QObject(parent)
     connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onCatalogFinished);
     // Confirmação de sucesso no toast: um único ponto para todas as áreas.
-    // Containers ficam de fora: os eventos do engine já viram toast.
-    ControllerBase *const settledControllers[] = {&m_images,   &m_volumes, &m_networks,
+    // `containers.*` só tem entradas para arquivos — start/stop/remove já são
+    // anunciados pelos eventos do engine.
+    ControllerBase *const settledControllers[] = {&m_images,   &m_volumes,  &m_networks,
                                                   &m_pods,     &m_machines, &m_compose,
-                                                  &m_builds};
+                                                  &m_builds,   &m_containers};
     for (ControllerBase *controller : settledControllers) {
         connect(controller, &ControllerBase::actionSettled, this,
                 [this](const QString &method, bool ok, const QString &) {
@@ -390,6 +391,8 @@ QString Backend::successText(const QString &method)
         {QStringLiteral("compose.restart"), QStringLiteral("Projeto reiniciado")},
         {QStringLiteral("compose.stop"), QStringLiteral("Projeto parado")},
         {QStringLiteral("compose.start"), QStringLiteral("Projeto iniciado")},
+        {QStringLiteral("containers.files.download"), QStringLiteral("Arquivo baixado")},
+        {QStringLiteral("containers.files.upload"), QStringLiteral("Arquivo enviado")},
     };
     return texts.value(method);
 }

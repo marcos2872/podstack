@@ -70,6 +70,7 @@ private slots:
     void backendOperations();
     void backendBatchActions();
     void backendBatchPartial();
+    void backendCreateValidationReports();
     void backendComposeErrorDetail();
     void backendRejectDuplicateAction();
     void feedbackQueue();
@@ -1716,6 +1717,27 @@ void GuiTest::backendBatchPartial()
     // O banner da página usa o invokable para dispensar o erro.
     volumes->dismissError();
     QVERIFY(volumes->lastError().isEmpty());
+}
+
+void GuiTest::backendCreateValidationReports()
+{
+    PodStack::Backend backend;
+    auto *containers = backend.containers();
+    QSignalSpy failedSpy(containers, &PodStack::ContainerController::actionFailed);
+
+    QVariantMap spec;
+    spec.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    spec.insert(QStringLiteral("name"), QStringLiteral("valid-name"));
+    spec.insert(QStringLiteral("envText"), QStringLiteral("SEMIGUAL"));
+
+    // A validação local precisa chegar ao diálogo (antes só ia para o rodapé
+    // do inspetor e o formulário não mostrava nada).
+    containers->createContainer(spec, false);
+
+    QCOMPARE(failedSpy.count(), 1);
+    QCOMPARE(failedSpy.first().at(0).toString(), QStringLiteral("containers.create"));
+    QVERIFY(!containers->lastError().isEmpty());
+    QVERIFY(!containers->actionActive());
 }
 
 void GuiTest::backendComposeErrorDetail()

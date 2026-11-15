@@ -37,7 +37,10 @@ Item {
         { key: "stopped", label: qsTr("Parados"), count: stoppedCount }
     ]
 
-    onFilterTextChanged: rebuild()
+    onFilterTextChanged: {
+        selectionCleared = false
+        rebuild()
+    }
     onFilterChanged: rebuild()
 
     function shortId(item) {
@@ -139,7 +142,7 @@ Item {
         }
         containerList.currentIndex = index
         currentId = index >= 0 ? next[index].id : ""
-        if (index >= 0 && !selectedIds[currentId]) {
+        if (index >= 0 && !selectionCleared && !selectedIds[currentId]) {
             selectOnly(index)
         }
         pruneSelection()
@@ -233,9 +236,14 @@ Item {
         selectedIds = next
     }
 
+    /// O usuário limpou a seleção de propósito: o próximo refresh não pode
+    /// re-selecionar o container atual (era o "Esc não funciona").
+    property bool selectionCleared: false
+
     function clearSelection() {
         selectedIds = {}
         anchorIndex = -1
+        selectionCleared = true
     }
 
     /// Ação em andamento **neste** container (start/stop/restart/remove…).
@@ -511,12 +519,14 @@ Item {
 
                         Keys.onUpPressed: {
                             if (currentIndex > 0) {
+                                containersPage.selectionCleared = false
                                 currentIndex -= 1
                                 containersPage.selectOnly(currentIndex)
                             }
                         }
                         Keys.onDownPressed: {
                             if (currentIndex + 1 < containersPage.visibleItems.length) {
+                                containersPage.selectionCleared = false
                                 currentIndex += 1
                                 containersPage.selectOnly(currentIndex)
                             }
@@ -565,6 +575,7 @@ Item {
                                 anchors.fill: parent
                                 onClicked: function(mouse) {
                                     containerList.forceActiveFocus()
+                                    containersPage.selectionCleared = false
                                     containerList.currentIndex = index
                                     containersPage.currentId = modelData.id
                                     if (mouse.modifiers & Qt.ControlModifier) {
