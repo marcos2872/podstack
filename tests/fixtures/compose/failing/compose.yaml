@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Compose que passa na validação e falha no build: usa o Dockerfile de
+# `tests/fixtures/docker/failing` (RUN exit 1). Testa erro em tempo de execução,
+# com o log do build e a mensagem do provider (#77, #80).
+#
+#   podstack compose up -f tests/fixtures/compose/failing/compose.yaml
+#
+# Esperado na GUI: o diálogo permanece aberto com o erro; o log do projeto
+# mostra a linha "erro proposital: arquivo de configuração ausente".
+
+name: podstack-fixture-failing
+
+services:
+  app:
+    build:
+      context: ../../docker/failing
+      dockerfile: Dockerfile
+    image: local/fixture-compose-failing:1
+    container_name: podstack-fixture-failing-app

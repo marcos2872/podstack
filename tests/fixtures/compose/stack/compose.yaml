@@ -7,6 +7,8 @@
 #   podstack compose up -f tests/fixtures/compose/stack/compose.yaml -d
 #   podstack compose down -f tests/fixtures/compose/stack/compose.yaml
 #
+# A porta publicada é 18081 de propósito: 18080/18443 são o proxy do PodStack.
+#
 # Na GUI: Compose → Up neste diretório; abra o log do web; Down e confira que
 # o volume local/fixture-cache-data é preservado (o aviso do diálogo diz isso).
 
@@ -17,7 +19,7 @@ services:
     image: nginx:alpine
     container_name: podstack-fixture-web
     ports:
-      - "18080:80"
+      - "18081:80"
     depends_on:
       cache:
         condition: service_healthy
