@@ -66,7 +66,12 @@ jobs:
         continue-on-error: true
         run: |
           qmllint --version
-          qmllint $(find src/gui/qml -name '*.qml')
+          qmllint $(find src/gui -name '*.qml')
+
+      # Runtime: carrega todas as páginas e falha em warning de QML. Cobre o
+      # que o qmllint não vê (context property `backend`).
+      - name: Smoke de QML
+        run: scripts/qml-smoke.sh build/coverage/podstack-gui
 
       - name: Testes
         run: ctest --preset coverage --output-on-failure

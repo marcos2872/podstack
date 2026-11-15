@@ -164,6 +164,7 @@ PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
 - `clang-format --dry-run --Werror` e `clang-tidy`.
 - Testes relevantes passando (unit + integração).
 - `qmllint` para QML.
+- `scripts/qml-smoke.sh` (carrega todas as páginas em offscreen e falha em warning de QML) quando mexer em QML.
 - Evidência anexada no relatório final.
 
 ---
