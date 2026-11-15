@@ -1,9 +1,11 @@
 #include "core/rpc/StreamClient.h"
 
 #include "core/config/Paths.h"
+#include "core/rpc/DaemonBootstrap.h"
 
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QTimer>
 
 namespace PodStack {
 
@@ -318,6 +320,8 @@ void StreamClient::stop(bool sendUnsubscribe)
     m_pending = {};
     m_pendingSend = false;
     m_buffer.clear();
+    m_bootstrapRetried = false;
+    ++m_generation;
     m_socket.abort();
 }
 
@@ -328,6 +332,27 @@ void StreamClient::connectSocket()
     m_socket.connectToServer(Paths::controlSocket(), QIODevice::ReadWrite);
     if (m_socket.state() == QLocalSocket::ConnectedState) {
         onConnected();
+        return;
+    }
+    if (m_socket.state() == QLocalSocket::ConnectingState) {
+        return;
+    }
+    // Falha imediata: o daemon não está escutando. Dispara o bootstrap do
+    // socket (no pool, sem bloquear a thread da UI) e tenta reconectar uma vez.
+    if (!m_bootstrapRetried && m_pendingSend) {
+        m_bootstrapRetried = true;
+        DaemonBootstrap::ensureRunningAsync();
+        const quint64 generation = m_generation;
+        QTimer::singleShot(1200, this, [this, generation] {
+            if (generation != m_generation || !m_pendingSend || m_pending.isEmpty()) {
+                return;
+            }
+            m_socket.abort();
+            m_socket.connectToServer(Paths::controlSocket(), QIODevice::ReadWrite);
+            if (m_socket.state() == QLocalSocket::ConnectedState) {
+                onConnected();
+            }
+        });
     }
 }
 

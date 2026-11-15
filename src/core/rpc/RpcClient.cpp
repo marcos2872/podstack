@@ -1,37 +1,16 @@
 #include "core/rpc/RpcClient.h"
 
 #include "core/config/Paths.h"
+#include "core/rpc/DaemonBootstrap.h"
 
 #include <QElapsedTimer>
-#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QLocalSocket>
-#include <QProcess>
 
 #include <utility>
 
 namespace PodStack {
-namespace {
-
-bool daemonUnitInstalled()
-{
-    return QFileInfo::exists(QStringLiteral("/usr/lib/systemd/user/podstack.socket")) ||
-           QFileInfo::exists(QStringLiteral("/usr/share/systemd/user/podstack.socket"));
-}
-
-void tryStartDaemonSocket()
-{
-    QProcess process;
-    process.start(QStringLiteral("systemctl"),
-                  {QStringLiteral("--user"), QStringLiteral("daemon-reload")});
-    (void) process.waitForFinished(3000);
-    process.start(QStringLiteral("systemctl"), {QStringLiteral("--user"), QStringLiteral("start"),
-                                                QStringLiteral("podstack.socket")});
-    (void) process.waitForFinished(3000);
-}
-
-} // namespace
 
 RpcClient::RpcClient(QString socketPath)
     : m_socketPath(socketPath.isEmpty() ? Paths::controlSocket() : std::move(socketPath))
@@ -48,26 +27,26 @@ QJsonObject RpcClient::call(const QString &method, const QJsonObject &params, Er
     QLocalSocket socket;
     socket.connectToServer(m_socketPath, QIODevice::ReadWrite);
     bool connected = socket.waitForConnected(timeoutMs);
-    if (!connected && qEnvironmentVariableIsEmpty("PODSTACK_CONTROL_SOCKET") &&
-        daemonUnitInstalled()) {
-        // Primeira conexão depois de instalar/atualizar o RPM: a unit pode
-        // ainda não ter sido carregada pelo user manager. Ativa uma vez.
-        static bool autostartAttempted = false;
-        if (!autostartAttempted) {
-            autostartAttempted = true;
-            tryStartDaemonSocket();
-        }
+    if (!connected) {
+        // Primeira conexão depois de instalar/atualizar o pacote: a unit pode
+        // ainda não ter sido carregada pelo user manager (ou o socket está
+        // parado). O bootstrap roda no máximo uma vez a cada 5 s.
         socket.abort();
-        socket.connectToServer(m_socketPath, QIODevice::ReadWrite);
-        connected = socket.waitForConnected(timeoutMs);
+        const DaemonBootstrap::Status status =
+            DaemonBootstrap::ensureRunningThrottled(m_socketPath, nullptr);
+        if (status == DaemonBootstrap::Status::Started ||
+            status == DaemonBootstrap::Status::AlreadyRunning) {
+            socket.connectToServer(m_socketPath, QIODevice::ReadWrite);
+            connected = socket.waitForConnected(timeoutMs);
+        }
     }
     if (!connected) {
         if (error) {
-            *error = Error::make(
-                QStringLiteral("PODSTACK_DAEMON_UNAVAILABLE"),
-                QStringLiteral("Não foi possível conectar ao podstackd."),
-                socket.errorString(),
-                QStringLiteral("Inicie com: systemctl --user start podstack.socket"));
+            *error =
+                Error::make(QStringLiteral("PODSTACK_DAEMON_UNAVAILABLE"),
+                            QStringLiteral("O PodStack não conseguiu ativar o podstack.socket."),
+                            socket.errorString(),
+                            QStringLiteral("Rode: %1").arg(DaemonBootstrap::manualRemedy()));
         }
         return {};
     }
