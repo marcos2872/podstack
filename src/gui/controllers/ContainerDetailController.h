@@ -68,6 +68,7 @@ private:
     QJsonObject m_detailJson;
     QString m_error;
     bool m_loading = false;
+    QString m_loadingId;
     QString m_pendingId;
 
     QVariantMap m_stats;

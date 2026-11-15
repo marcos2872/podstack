@@ -50,6 +50,7 @@ private slots:
     void backendCreateMissingImage();
     void backendStreams();
     void backendContainerDetail();
+    void backendContainerDetailRace();
     void backendCatalog();
     void backendKubernetes();
     void backendKubernetesEnabledError();
@@ -605,6 +606,29 @@ void GuiTest::backendContainerDetail()
 
     detail->lifecycle(QStringLiteral("invalid"), QStringLiteral("abc123"));
     QVERIFY(!detail->lastError().isEmpty());
+}
+
+void GuiTest::backendContainerDetailRace()
+{
+    PodStack::Backend backend;
+    auto *detail = backend.containerDetail();
+
+    // Dois cliques rápidos: só o último alvo pode aparecer. "first123" não
+    // existe (volta erro); "abc123" existe. Sem a guarda de corrida, a
+    // resposta atrasada do primeiro inspect sobrescreve o segundo.
+    detail->load(QStringLiteral("first123"));
+    detail->load(QStringLiteral("abc123"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!detail->loading(), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(detail->detail().value(QStringLiteral("Id")).toString(),
+                              QStringLiteral("abc123"), 5000);
+    QVERIFY2(detail->error().isEmpty(), qPrintable(detail->error()));
+
+    // O mesmo alvo em sequência não deve trocar o conteúdo exibido.
+    detail->load(QStringLiteral("abc123"));
+    QTRY_VERIFY_WITH_TIMEOUT(!detail->loading(), 5000);
+    QCOMPARE(detail->detail().value(QStringLiteral("Id")).toString(),
+             QStringLiteral("abc123"));
 }
 
 void GuiTest::backendKubernetes()
