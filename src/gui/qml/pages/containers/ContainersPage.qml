@@ -720,84 +720,34 @@ Item {
                             }
                         }
 
-                        // Estado vazio / carregando / erro
-                        ColumnLayout {
-                            anchors.centerIn: parent
-                            width: parent.width - 48
-                            visible: containerList.count === 0
-                            spacing: 10
-
-                            // Carregando: não confundir com engine vazio.
-                            AppSpinner {
-                                Layout.alignment: Qt.AlignHCenter
-                                visible: backend.containers.loading && backend.connected
-                            }
-
-                            AppIcon {
-                                Layout.alignment: Qt.AlignHCenter
-                                visible: !backend.containers.loading || !backend.connected
-                                name: backend.connected ? "containers" : "alert"
-                                size: 24
-                                color: Theme.textTertiary
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                visible: backend.containers.loading && backend.connected
-                                text: qsTr("Carregando containers…")
-                                color: Theme.textSecondary
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontBody
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                visible: !backend.containers.loading && backend.connected
-                                text: qsTr("Nenhum container encontrado.\nCrie um pelo botão “Novo container”.")
-                                color: Theme.textSecondary
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontBody
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                visible: !backend.connected
-                                text: backend.error.length > 0
-                                      ? backend.error
-                                      : qsTr("O podstackd não está acessível.")
-                                color: Theme.textSecondary
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontBody
-                                wrapMode: Text.WordWrap
-                            }
-
-                            RowLayout {
-                                Layout.alignment: Qt.AlignHCenter
-                                visible: !backend.connected
-                                spacing: 8
-
-                                AppButton {
-                                    text: qsTr("Tentar novamente")
-                                    size: "sm"
-                                    variant: "secondary"
-                                    enabled: !backend.containers.loading
-                                    onClicked: backend.refresh()
-                                }
-
-                                AppButton {
-                                    text: backend.serviceActivating
-                                          ? qsTr("Reiniciando…")
-                                          : qsTr("Reiniciar daemon")
-                                    size: "sm"
-                                    variant: "primary"
-                                    enabled: !backend.serviceActivating
-                                    onClicked: backend.restartDaemonService()
-                                }
+                        // Estado vazio / carregando / erro / filtro sem resultado
+                        AppScreenState {
+                            anchors.fill: parent
+                            state: !backend.connected ? "error"
+                                 : backend.containers.loading ? "loading"
+                                 : containersPage.visibleItems.length > 0 ? "ready"
+                                 : (containersPage.filterText.length > 0
+                                    || containersPage.filter !== "all") ? "filteredEmpty"
+                                 : "empty"
+                            iconName: "containers"
+                            emptyTitle: qsTr("Nenhum container encontrado.")
+                            emptyHint: qsTr("Crie um pelo botão “Novo container”.")
+                            filteredHint: qsTr("Ajuste a busca ou volte para todos.")
+                            errorText: backend.error.length > 0
+                                       ? backend.error
+                                       : qsTr("O podstackd não está acessível.")
+                            retrying: backend.containers.loading
+                            extraActionText: !backend.connected
+                                             ? (backend.serviceActivating
+                                                ? qsTr("Reiniciando…")
+                                                : qsTr("Reiniciar daemon"))
+                                             : ""
+                            extraActionBusy: backend.serviceActivating
+                            onRetryRequested: backend.refresh()
+                            onExtraActionClicked: backend.restartDaemonService()
+                            onClearFilterRequested: {
+                                containersPage.filterText = ""
+                                containersPage.filter = "all"
                             }
                         }
                     }

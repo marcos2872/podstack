@@ -136,6 +136,13 @@ ColumnLayout {
         emptyIcon: "pods"
             emptyText: qsTr("Nenhum pod.\nCrie um pod para agrupar containers.")
         items: backend.pods.items
+        screenState: backend.pods.loading ? "loading"
+                     : backend.pods.items.length > 0 ? "ready"
+                     : backend.pods.lastError.length > 0 ? "error" : "empty"
+        errorText: backend.pods.lastError
+        retrying: backend.pods.loading
+        onRetryRequested: backend.pods.refresh()
+
         selection: podSelection
         idKey: "id"
         columns: [

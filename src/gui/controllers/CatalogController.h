@@ -12,16 +12,20 @@ namespace PodStack {
 class CatalogController : public ControllerBase {
     Q_OBJECT
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
+    /// Leitura da lista em andamento (para o estado "carregando" da página).
+    Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
 
 public:
     explicit CatalogController(QObject *parent = nullptr);
 
     QVariantList items() const { return m_items; }
+    bool loading() const { return m_loading; }
 
     Q_INVOKABLE virtual void refresh();
 
 signals:
     void itemsChanged();
+    void loadingChanged();
 
 protected:
     virtual QString listMethod() const = 0;
@@ -31,6 +35,7 @@ protected:
 
 private:
     QVariantList m_items;
+    bool m_loading = false;
     /// Cada refresh ganha uma geração; a resposta de uma leitura antiga é
     /// descartada para não sobrescrever um retrato mais novo (eventos e ação
     /// disparam refresh concorrentes, cada um em sua thread/socket).

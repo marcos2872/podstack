@@ -284,6 +284,11 @@ ColumnLayout {
             id: machineCatalog
 
             items: backend.machines.items
+            screenState: backend.machines.items.length > 0 ? "ready"
+                         : backend.machines.lastError.length > 0 ? "error" : "empty"
+            errorText: backend.machines.lastError
+            onRetryRequested: backend.machines.refresh()
+
             selection: machineSelection
 
             onActivated: function(index) {

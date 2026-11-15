@@ -124,6 +124,13 @@ ColumnLayout {
         emptyIcon: "volumes"
             emptyText: qsTr("Nenhum volume.\nCrie um volume para persistir dados.")
         items: backend.volumes.items
+        screenState: backend.volumes.loading ? "loading"
+                     : backend.volumes.items.length > 0 ? "ready"
+                     : backend.volumes.lastError.length > 0 ? "error" : "empty"
+        errorText: backend.volumes.lastError
+        retrying: backend.volumes.loading
+        onRetryRequested: backend.volumes.refresh()
+
         selection: volumeSelection
         idKey: "name"
         columns: [

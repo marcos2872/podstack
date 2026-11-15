@@ -173,6 +173,13 @@ ColumnLayout {
             emptyText: qsTr("Nenhum projeto Compose em execução.\n"
                             + "Use a CLI: podstack compose up <diretório>.")
             items: backend.compose.items
+            screenState: backend.compose.loading ? "loading"
+                         : backend.compose.items.length > 0 ? "ready"
+                         : backend.compose.lastError.length > 0 ? "error" : "empty"
+            errorText: backend.compose.lastError
+            retrying: backend.compose.loading
+            onRetryRequested: backend.compose.refresh()
+
             selection: composeSelection
             idKey: "workingDir"
             columns: [

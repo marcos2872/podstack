@@ -165,6 +165,13 @@ ColumnLayout {
         emptyIcon: "images"
             emptyText: qsTr("Nenhuma imagem.\nUse Pull para baixar uma imagem.")
         items: backend.images.items
+        screenState: backend.images.loading ? "loading"
+                     : backend.images.items.length > 0 ? "ready"
+                     : backend.images.lastError.length > 0 ? "error" : "empty"
+        errorText: backend.images.lastError
+        retrying: backend.images.loading
+        onRetryRequested: backend.images.refresh()
+
         selection: imageSelection
         idKey: "id"
         columns: [

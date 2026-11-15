@@ -12,6 +12,7 @@ qt_add_qml_module(podstack_qml_design
     QML_FILES
         Theme.qml
         primitives/AppButton.qml
+        primitives/AppText.qml
         primitives/AppIcon.qml
         primitives/AppBadge.qml
         primitives/AppModal.qml
@@ -39,6 +40,7 @@ qt_add_qml_module(podstack_qml_design
         patterns/SelectionState.qml
         patterns/AppEmptyState.qml
         patterns/AppErrorBanner.qml
+        patterns/AppScreenState.qml
         patterns/AppStatCard.qml
         patterns/AppSection.qml
 )

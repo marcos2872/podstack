@@ -12,6 +12,7 @@ TestCase {
     Component { id: modalComponent; AppModal { title: "Título" } }
     Component { id: tabsComponent; AppTabs { model: ["A", "B"] } }
     Component { id: confirmComponent; AppConfirmDialog { message: "Remover?" } }
+    Component { id: screenStateComponent; AppScreenState { } }
 
     function test_themeTokens() {
         compare(Theme.radius, 10)
@@ -56,6 +57,18 @@ TestCase {
         compare(tabs.currentIndex, 0)
         tabs.activated(1)
         compare(tabs.currentIndex, 0) // o consumidor decide o índice
+    }
+
+    function test_screenState() {
+        const view = createTemporaryObject(screenStateComponent, null)
+        verify(view !== null)
+        compare(view.state, "ready")
+        compare(view.retrying, false)
+        // `visible` efetivo depende de janela/pai; o contrato é o estado.
+        view.state = "error"
+        compare(view.state, "error")
+        view.state = "filteredEmpty"
+        compare(view.state, "filteredEmpty")
     }
 
     function test_confirmDialog() {

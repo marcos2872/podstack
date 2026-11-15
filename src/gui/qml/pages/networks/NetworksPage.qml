@@ -105,6 +105,13 @@ ColumnLayout {
         emptyIcon: "networks"
             emptyText: qsTr("Nenhuma rede.\nCrie uma rede bridge para isolar containers.")
         items: backend.networks.items
+        screenState: backend.networks.loading ? "loading"
+                     : backend.networks.items.length > 0 ? "ready"
+                     : backend.networks.lastError.length > 0 ? "error" : "empty"
+        errorText: backend.networks.lastError
+        retrying: backend.networks.loading
+        onRetryRequested: backend.networks.refresh()
+
         selection: networkSelection
         idKey: "name"
         columns: [
