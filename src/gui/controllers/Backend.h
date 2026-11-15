@@ -181,6 +181,7 @@ private:
     QString m_error;
     QString m_lastError;
     QStringList m_logLines;
+    QString m_lastDownloadDir;
     K8sController m_k8s;
     MachineController m_machines;
     MachineDetailController m_machineDetail;

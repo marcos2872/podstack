@@ -555,6 +555,12 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
             emit containerCreated(id);
         }
     }
+    if (method == QStringLiteral("containers.files.download")) {
+        const QString path = params.value(QStringLiteral("destination")).toString();
+        if (!path.isEmpty()) {
+            emit fileDownloaded(path);
+        }
+    }
     if (method == QStringLiteral("containers.files.upload")) {
         // A listagem não recarregava sozinha: o arquivo enviado só aparecia no
         // próximo clique em Atualizar.

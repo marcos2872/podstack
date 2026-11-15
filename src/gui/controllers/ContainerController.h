@@ -75,6 +75,8 @@ signals:
     /// alvo. A UI usa para fechar o diálogo e reconciliar **só** o recurso
     /// afetado, em vez de reagir a qualquer ação do app.
     void actionCompleted(const QString &method, const QString &id, bool ok);
+    /// Caminho local onde o download foi gravado (para toast + "Abrir pasta").
+    void fileDownloaded(const QString &path);
     /// Emitido depois de uma ação bem-sucedida para o hub recarregar catálogos.
     void catalogDirty();
 

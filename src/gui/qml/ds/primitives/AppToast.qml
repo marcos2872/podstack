@@ -9,6 +9,9 @@ Rectangle {
     property string message: ""
     /// info | success | warning | error
     property string severity: "info"
+    property string actionText: ""
+
+    signal actionClicked()
 
     readonly property color tone: {
         if (severity === "success") {
@@ -62,6 +65,14 @@ Rectangle {
             elide: Text.ElideRight
             Layout.preferredWidth: Math.min(implicitWidth, 500)
             Layout.alignment: Qt.AlignVCenter
+        }
+
+        AppButton {
+            visible: toast.actionText.length > 0
+            text: toast.actionText
+            variant: "ghost"
+            size: "sm"
+            onClicked: toast.actionClicked()
         }
     }
 }

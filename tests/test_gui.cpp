@@ -1803,6 +1803,17 @@ void GuiTest::feedbackQueue()
     QVERIFY(QDir().mkpath(projectDir));
     backend.compose()->composeUp(projectDir);
     QTRY_COMPARE_WITH_TIMEOUT(feedback->message(), QStringLiteral("Projeto no ar"), 8000);
+
+    // Aviso com ação: o toast chama triggerAction() e o Backend usa o payload.
+    QSignalSpy actionSpy(feedback, &PodStack::Feedback::actionTriggered);
+    feedback->dismiss();
+    feedback->show(QStringLiteral("baixado"), QStringLiteral("success"), 1000,
+                   QStringLiteral("Abrir pasta"));
+    QTRY_COMPARE_WITH_TIMEOUT(feedback->actionText(), QStringLiteral("Abrir pasta"), 3000);
+    feedback->triggerAction();
+    QCOMPARE(actionSpy.count(), 1);
+    QCOMPARE(actionSpy.first().at(0).toString(), QStringLiteral("baixado"));
+    QVERIFY(!feedback->active());
 }
 
 void GuiTest::backendTheme()

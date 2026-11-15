@@ -746,6 +746,8 @@ Rectangle {
     AppToast {
         message: backend.feedback.message
         severity: backend.feedback.severity
+        actionText: backend.feedback.actionText
+        onActionClicked: backend.feedback.triggerAction()
     }
 
     Connections {

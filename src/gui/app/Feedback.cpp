@@ -13,7 +13,8 @@ Feedback::Feedback(QObject *parent) : QObject(parent)
     connect(&m_timer, &QTimer::timeout, this, [this] { finish(); });
 }
 
-void Feedback::show(const QString &message, const QString &severity, int durationMs)
+void Feedback::show(const QString &message, const QString &severity, int durationMs,
+                    const QString &actionText)
 {
     if (message.trimmed().isEmpty()) {
         return;
@@ -26,6 +27,7 @@ void Feedback::show(const QString &message, const QString &severity, int duratio
     Notice notice;
     notice.message = message;
     notice.severity = severity;
+    notice.actionText = actionText;
     notice.durationMs = qBound(1000, durationMs, 15000);
 
     if (m_message.isEmpty()) {
@@ -44,10 +46,21 @@ void Feedback::dismiss()
     finish();
 }
 
+void Feedback::triggerAction()
+{
+    const QString message = m_message;
+    if (message.isEmpty() || m_actionText.isEmpty()) {
+        return;
+    }
+    emit actionTriggered(message);
+    dismiss();
+}
+
 void Feedback::present(const Notice &notice)
 {
     m_message = notice.message;
     m_severity = notice.severity;
+    m_actionText = notice.actionText;
     m_timer.start(notice.durationMs);
     emit currentChanged();
 }
@@ -56,6 +69,7 @@ void Feedback::finish()
 {
     m_message.clear();
     m_severity.clear();
+    m_actionText.clear();
     emit currentChanged();
     if (m_queue.isEmpty()) {
         return;

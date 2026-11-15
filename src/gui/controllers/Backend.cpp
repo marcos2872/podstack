@@ -219,6 +219,18 @@ Backend::Backend(QObject *parent) : QObject(parent)
             [this](const QString &id) { emit containerCreated(id); });
     connect(&m_containers, &ContainerController::terminalRequested, this,
             &Backend::terminalRequested);
+    connect(&m_containers, &ContainerController::fileDownloaded, this,
+            [this](const QString &path) {
+                m_lastDownloadDir = QFileInfo(path).absolutePath();
+                m_feedback.show(tr("Arquivo baixado em %1").arg(m_lastDownloadDir),
+                                QStringLiteral("success"), 6000, tr("Abrir pasta"));
+            });
+    connect(&m_feedback, &Feedback::actionTriggered, this, [this](const QString &message) {
+        // O toast de download é o único com ação; abre a pasta de destino.
+        if (message.startsWith(tr("Arquivo baixado")) && !m_lastDownloadDir.isEmpty()) {
+            openPath(m_lastDownloadDir);
+        }
+    });
     connect(&m_machines, &MachineController::terminalRequested, this, &Backend::terminalRequested);
     connect(&m_catalogWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onCatalogFinished);
@@ -391,7 +403,6 @@ QString Backend::successText(const QString &method)
         {QStringLiteral("compose.restart"), QStringLiteral("Projeto reiniciado")},
         {QStringLiteral("compose.stop"), QStringLiteral("Projeto parado")},
         {QStringLiteral("compose.start"), QStringLiteral("Projeto iniciado")},
-        {QStringLiteral("containers.files.download"), QStringLiteral("Arquivo baixado")},
         {QStringLiteral("containers.files.upload"), QStringLiteral("Arquivo enviado")},
     };
     return texts.value(method);
