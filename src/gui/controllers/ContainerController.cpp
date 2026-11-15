@@ -527,8 +527,11 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
         }
         refresh();
         emit catalogDirty();
+        emit actionCompleted(method, QString(), failed == 0);
         return;
     }
+
+    const QString targetId = params.value(QStringLiteral("id")).toString();
 
     const QJsonObject errorObject = result.value(QStringLiteral("__error")).isObject()
                                         ? result.value(QStringLiteral("__error")).toObject()
@@ -538,6 +541,7 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
     ControllerBase::onActionFinished(method, params, result);
     if (isErrorResult(result)) {
         emit actionFailed(method, m_lastErrorCode, errorMessage(result));
+        emit actionCompleted(method, targetId, false);
         return;
     }
     refresh();
@@ -548,6 +552,7 @@ void ContainerController::onActionFinished(const QString &method, const QJsonObj
             emit containerCreated(id);
         }
     }
+    emit actionCompleted(method, targetId, true);
 }
 
 } // namespace PodStack

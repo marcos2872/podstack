@@ -130,7 +130,7 @@ MachineController::MachineController(QObject *parent) : ControllerBase(parent)
                 const QJsonObject errorObject = result.value(QStringLiteral("error")).toObject();
                 const QString code = errorObject.value(QStringLiteral("code")).toString();
                 m_machineCreateActive = false;
-                m_machineCreateProgress = 100;
+                m_machineCreateProgress = 0;
                 m_machineCreateError.clear();
                 if (!errorObject.isEmpty() && code != QStringLiteral("PODSTACK_CANCELLED")) {
                     m_machineCreateStage = QStringLiteral("error");
@@ -175,6 +175,9 @@ void MachineController::onActionFinished(const QString &method, const QJsonObjec
 {
     ControllerBase::onActionFinished(method, params, result);
     if (isErrorResult(result)) {
+        // Portas, recursos, snapshots, serial e USB usam esta conclusão para
+        // sair do estado "aplicando"; antes o sinal só saía em create/export.
+        emit actionFinished(false, errorMessage(result));
         return;
     }
     refresh();
@@ -185,6 +188,7 @@ void MachineController::onActionFinished(const QString &method, const QJsonObjec
     if (!id.isEmpty() && method.startsWith(QStringLiteral("machines.snapshots."))) {
         refreshSnapshots(id);
     }
+    emit actionFinished(true, {});
 }
 
 void MachineController::batch(const QStringList &ids, const QString &action, bool force)

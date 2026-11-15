@@ -71,6 +71,10 @@ signals:
     /// para a UI (inclui a remediação). A criação usa isso para manter o
     /// diálogo aberto e oferecer o pull quando falta a imagem.
     void actionFailed(const QString &method, const QString &code, const QString &message);
+    /// Emitido ao fim de toda ação (sucesso ou falha), com o método e o id do
+    /// alvo. A UI usa para fechar o diálogo e reconciliar **só** o recurso
+    /// afetado, em vez de reagir a qualquer ação do app.
+    void actionCompleted(const QString &method, const QString &id, bool ok);
     /// Emitido depois de uma ação bem-sucedida para o hub recarregar catálogos.
     void catalogDirty();
 

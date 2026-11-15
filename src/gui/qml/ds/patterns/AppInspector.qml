@@ -43,9 +43,12 @@ Rectangle {
     }
 
     Connections {
-        target: backend
-        function onActionFinished(ok) {
-            if (!inspector.lanPending) {
+        target: backend.containers
+        function onActionCompleted(method, id, ok) {
+            if (!inspector.lanPending || method !== "containers.exposeLan") {
+                return
+            }
+            if (inspector.lanPendingId !== "" && id !== inspector.lanPendingId) {
                 return
             }
             inspector.lanPending = false

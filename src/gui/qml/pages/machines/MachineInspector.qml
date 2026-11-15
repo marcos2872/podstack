@@ -266,7 +266,7 @@ Rectangle {
                 size: "sm"
                 enabled: root.machineId.length > 0 && root.machineState !== "running"
                          && root.machineState !== "starting"
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                          && backend.machines.createActive === false
                 onClicked: backend.machines.lifecycle("start", root.machineId)
             }
@@ -277,7 +277,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && (root.machineState === "running"
                              || root.machineState === "starting")
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                          && backend.machines.createActive === false
                 onClicked: backend.machines.lifecycle("stop", root.machineId, false)
             }
@@ -290,7 +290,7 @@ Rectangle {
                 iconName: "terminal"
                 size: "sm"
                 enabled: root.machineId.length > 0 && root.machineState === "running"
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                 onClicked: root.expandRequested(root.machineId, root.terminalTabIndex)
             }
 
@@ -310,7 +310,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                          && backend.machines.createActive === false
                 onClicked: backend.machines.lifecycle("restart", root.machineId)
             }
@@ -351,7 +351,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                 onClicked: root.portsRequested(root.machineId)
                 Accessible.name: qsTr("Gerenciar portas encaminhadas da machine")
             }
@@ -363,7 +363,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                 onClicked: root.serialRequested(root.machineId)
                 Accessible.name: qsTr("Gerenciar portas seriais da machine")
             }
@@ -375,7 +375,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                 onClicked: root.usbRequested(root.machineId)
                 Accessible.name: qsTr("Gerenciar dispositivos USB da machine")
             }
@@ -388,7 +388,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                 onClicked: backend.machines.setAudio(root.machineId,
                                                    !(root.machine
                                                      && root.machine.audioEnabled))
@@ -404,7 +404,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                 onClicked: root.snapshotsRequested(root.machineId)
                 Accessible.name: qsTr("Gerenciar snapshots do disco da machine")
             }
@@ -415,7 +415,7 @@ Rectangle {
                 enabled: root.machineId.length > 0
                          && root.machineState !== "provisioning"
                          && root.machineState !== "deleting"
-                         && backend.actionActive === false
+                         && backend.machines.actionActive === false
                 onClicked: root.resourcesRequested(root.machineId)
             }
 
@@ -423,7 +423,7 @@ Rectangle {
                 text: qsTr("Excluir")
                 variant: "danger"
                 size: "sm"
-                enabled: root.machineId.length > 0 && backend.actionActive === false
+                enabled: root.machineId.length > 0 && backend.machines.actionActive === false
                          && backend.machines.createActive === false
                 onClicked: root.deleteRequested(root.machineId)
             }

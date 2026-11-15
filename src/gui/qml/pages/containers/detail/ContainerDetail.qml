@@ -280,10 +280,13 @@ Rectangle {
     }
 
     Connections {
-        target: backend
+        target: backend.containers
 
-        function onActionFinished(ok) {
-            if (root.removePending) {
+        function onActionCompleted(method, id, ok) {
+            if (id !== root.containerId) {
+                return
+            }
+            if (root.removePending && method === "containers.remove") {
                 root.removePending = false
                 if (ok) {
                     root.close()
@@ -291,6 +294,12 @@ Rectangle {
                 return
             }
             if (!root.reloadPending) {
+                return
+            }
+            const lifecycle = method === "containers.start" || method === "containers.stop"
+                    || method === "containers.restart" || method === "containers.pause"
+                    || method === "containers.unpause" || method === "containers.kill"
+            if (!lifecycle) {
                 return
             }
             root.reloadPending = false
@@ -373,7 +382,7 @@ Rectangle {
                     iconName: "play"
                     variant: "primary"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
+                    enabled: root.containerId.length > 0 && !backend.containers.actionActive
                     onClicked: root.lifecycle("start")
                     Accessible.name: qsTr("Iniciar container")
                 }
@@ -383,7 +392,7 @@ Rectangle {
                     text: root.compact ? "" : qsTr("Parar")
                     iconName: "stop"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
+                    enabled: root.containerId.length > 0 && !backend.containers.actionActive
                     onClicked: root.lifecycle("stop")
                     Accessible.name: qsTr("Parar container")
                 }
@@ -392,7 +401,7 @@ Rectangle {
                     text: root.compact ? "" : qsTr("Reiniciar")
                     iconName: "rotate"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
+                    enabled: root.containerId.length > 0 && !backend.containers.actionActive
                     onClicked: root.lifecycle("restart")
                     Accessible.name: qsTr("Reiniciar container")
                 }
@@ -402,7 +411,7 @@ Rectangle {
                     iconName: "trash"
                     variant: "danger"
                     size: "sm"
-                    enabled: root.containerId.length > 0 && !backend.containers.items.actionActive
+                    enabled: root.containerId.length > 0 && !backend.containers.actionActive
                     onClicked: removeDialog.open()
                     Accessible.name: qsTr("Remover container")
                 }
@@ -439,7 +448,7 @@ Rectangle {
             Layout.rightMargin: 20
             Layout.topMargin: 8
             Layout.preferredHeight: visible ? 36 : 0
-            visible: backend.containerDetail.detail.error.length > 0
+            visible: backend.containerDetail.error.length > 0
             radius: Theme.radiusSm
             color: Theme.dangerSoft
             border.width: 1
@@ -459,7 +468,7 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
-                    text: backend.containerDetail.detail.error
+                    text: backend.containerDetail.error
                     color: Theme.danger
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontMeta

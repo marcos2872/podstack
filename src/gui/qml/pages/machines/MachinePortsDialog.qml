@@ -117,7 +117,7 @@ AppModal {
     }
 
     Connections {
-        target: backend
+        target: backend.machines
 
         function onActionFinished(ok, message) {
             if (!root.actionPending || !root.opened) {
@@ -127,7 +127,7 @@ AppModal {
             if (ok) {
                 root.close()
             } else {
-                portsError.text = message.length > 0 ? message : backend.lastError
+                portsError.text = message.length > 0 ? message : backend.machines.lastError
             }
         }
     }
