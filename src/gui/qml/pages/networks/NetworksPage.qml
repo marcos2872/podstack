@@ -65,7 +65,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.networks.batchNetworks(networkSelection.ids(), false)
+            onClicked: batchRemoveDialog.open()
             Accessible.name: qsTr("Remover redes selecionadas")
         }
 
@@ -295,5 +295,15 @@ ColumnLayout {
                 backend.networks.removeNetwork(backend.networks.items[networksList.currentRow].name, false)
             }
         }
+    }
+
+    AppConfirmDialog {
+        id: batchRemoveDialog
+        title: qsTr("Remover redes selecionadas")
+        message: qsTr("%1 rede(s) serão removidas. Containers conectados perdem o vínculo.")
+                     .arg(networkSelection.count)
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: backend.networks.batchNetworks(networkSelection.ids(), false)
     }
 }

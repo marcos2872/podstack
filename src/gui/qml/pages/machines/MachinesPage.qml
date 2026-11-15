@@ -257,7 +257,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.machines.batch(machineSelection.ids(), "delete", true)
+            onClicked: batchRemoveDialog.open()
         }
 
         AppButton {
@@ -410,5 +410,15 @@ ColumnLayout {
         backend.machines.refresh()
         backend.machines.refreshDistros()
         syncSelection()
+    }
+
+    AppConfirmDialog {
+        id: batchRemoveDialog
+        title: qsTr("Remover machines selecionadas")
+        message: qsTr("%1 machine(s) serão removidas com os discos. As que estiverem rodando serão encerradas à força.")
+                     .arg(machineSelection.count)
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: backend.machines.batch(machineSelection.ids(), "delete", true)
     }
 }

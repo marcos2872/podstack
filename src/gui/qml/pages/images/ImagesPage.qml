@@ -125,7 +125,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.images.batchImages(imageSelection.ids(), false)
+            onClicked: batchRemoveDialog.open()
             Accessible.name: qsTr("Remover imagens selecionadas")
         }
 
@@ -455,5 +455,15 @@ ColumnLayout {
                 }
             }
         }
+    }
+
+    AppConfirmDialog {
+        id: batchRemoveDialog
+        title: qsTr("Remover imagens selecionadas")
+        message: qsTr("%1 imagem(ns) serão removidas. Containers que as usam podem impedir a remoção.")
+                     .arg(imageSelection.count)
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: backend.images.batchImages(imageSelection.ids(), false)
     }
 }

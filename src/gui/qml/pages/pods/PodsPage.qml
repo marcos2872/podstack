@@ -63,7 +63,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.pods.batchPods(podSelection.ids(), "remove", true)
+            onClicked: batchRemoveDialog.open()
         }
 
         AppButton {
@@ -185,5 +185,15 @@ ColumnLayout {
                 backend.pods.removePod(backend.pods.items[podsList.currentRow].id, true)
             }
         }
+    }
+
+    AppConfirmDialog {
+        id: batchRemoveDialog
+        title: qsTr("Remover pods selecionados")
+        message: qsTr("%1 pod(s) serão removidos à força, junto com os containers.")
+                     .arg(podSelection.count)
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: backend.pods.batchPods(podSelection.ids(), "remove", true)
     }
 }

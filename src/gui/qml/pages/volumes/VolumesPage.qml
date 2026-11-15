@@ -84,7 +84,7 @@ ColumnLayout {
             text: qsTr("Remover")
             variant: "danger"
             iconName: "trash"
-            onClicked: backend.volumes.batchVolumes(volumeSelection.ids(), false)
+            onClicked: batchRemoveDialog.open()
             Accessible.name: qsTr("Remover volumes selecionados")
         }
 
@@ -396,5 +396,15 @@ ColumnLayout {
         }
         onOpened: backend.refreshDiskUsage()
         onAccepted: backend.volumes.pruneVolumes()
+    }
+
+    AppConfirmDialog {
+        id: batchRemoveDialog
+        title: qsTr("Remover volumes selecionados")
+        message: qsTr("%1 volume(s) serão removidos com os dados. Esta ação não pode ser desfeita.")
+                     .arg(volumeSelection.count)
+        confirmText: qsTr("Remover")
+        destructive: true
+        onConfirmed: backend.volumes.batchVolumes(volumeSelection.ids(), false)
     }
 }
