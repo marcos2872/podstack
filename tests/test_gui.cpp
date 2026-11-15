@@ -51,6 +51,7 @@ private slots:
     void backendKubernetes();
     void backendKubernetesEnabledError();
     void backendKubernetesDisableJob();
+    void backendControllerEdges();
     void backendMachines();
     void backendMachineStats();
     void backendMachineConsole();
@@ -544,6 +545,87 @@ void GuiTest::backendKubernetes()
     k8s->stopPortForward();
     k8s->deletePod(QStringLiteral("prod"), QStringLiteral("web"));
     k8s->deleteService(QStringLiteral("prod"), QStringLiteral("web"));
+}
+
+
+void GuiTest::backendControllerEdges()
+{
+    PodStack::Backend backend;
+
+    // Validações e early-returns dos controllers (não batem no daemon).
+    backend.machines()->cancelCreate();
+    backend.machines()->resetCreateState();
+    backend.machines()->create({});
+    backend.machines()->archivePath(QString());
+    backend.machines()->exportTo(QString(), QString());
+    backend.machines()->importFrom(QString());
+    backend.machines()->setPorts(QString(), {});
+    backend.machines()->setAudio(QString(), true);
+    backend.machines()->refreshSnapshots(QString());
+    backend.machines()->createSnapshot(QString(), QString());
+    backend.machines()->restoreSnapshot(QString(), QString());
+    backend.machines()->removeSnapshot(QString(), QString());
+    backend.machines()->openSsh(QString());
+    backend.machines()->attachSerialPort(QString(), QString());
+    backend.machines()->detachSerialPort(QString(), QString());
+    backend.machines()->refreshSerialPorts(QString());
+    backend.machines()->attachUsbDevice(QString(), 0, 0);
+    backend.machines()->detachUsbDevice(QString(), 0, 0);
+    backend.machines()->refreshUsbDevices(QString());
+    backend.machines()->lifecycle(QString(), QString());
+    backend.machines()->remove(QString(), false);
+    backend.machines()->rename(QString(), QString());
+    backend.machines()->clone(QString(), QString());
+    backend.machines()->batch({}, QStringLiteral("start"));
+
+    backend.containers()->listFiles(QString(), QStringLiteral("/"));
+    backend.containers()->downloadFile(QString(), QString());
+    backend.containers()->uploadFile(QString(), QString(), QString());
+    backend.containers()->clearLogs();
+    backend.containers()->unsubscribeLogs();
+    backend.containers()->unsubscribeStats();
+    backend.containers()->subscribeLogs(QString(), 0, false);
+    backend.containers()->subscribeStats(QString());
+    backend.containers()->batchIds({}, QStringLiteral("start"));
+
+    backend.containerDetail()->startLogs(QString(), 0, false);
+    backend.containerDetail()->startStats(QString());
+    backend.containerDetail()->remove(QString(), false);
+    backend.containerDetail()->copyInspect();
+
+    backend.images()->cancelPull();
+    backend.images()->refresh();
+    backend.images()->batchImages({}, false);
+
+    backend.compose()->unsubscribeComposeLogs();
+    backend.compose()->batchCompose({}, QStringLiteral("bogus"));
+
+    backend.builds()->cancelBuild();
+    backend.builds()->batchBuilds({});
+    backend.builds()->refresh();
+
+    backend.volumes()->batchVolumes({}, false);
+    backend.networks()->batchNetworks({}, false);
+    backend.pods()->batchPods({}, QStringLiteral("bogus"));
+
+    backend.k8s()->startLogs(QString(), QString());
+    backend.k8s()->stopLogs();
+    backend.k8s()->clearLogs();
+    backend.k8s()->deletePod(QString(), QString());
+    backend.k8s()->deleteService(QString(), QString());
+    backend.k8s()->stopPortForward();
+
+    backend.settings()->resetSetting(QString());
+    backend.settings()->refresh();
+
+    backend.system()->loadLogs(QString(), QString(), 0);
+    backend.system()->clearLogs();
+
+    backend.updates()->loadState();
+    backend.updates()->clearState();
+    backend.updates()->check(false);
+
+    QTest::qWait(100);
 }
 
 void GuiTest::backendKubernetesEnabledError()
