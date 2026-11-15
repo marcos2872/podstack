@@ -33,13 +33,17 @@ protected:
     virtual QVariantList parseItems(const QJsonArray &items) const = 0;
     void setItems(const QVariantList &items);
 
-private:
-    QVariantList m_items;
+    /// Estado de leitura compartilhado com os controllers derivados que
+    /// reimplementam `refresh()` (o de containers fecha o `loading` só na
+    /// resposta mais nova).
     bool m_loading = false;
     /// Cada refresh ganha uma geração; a resposta de uma leitura antiga é
     /// descartada para não sobrescrever um retrato mais novo (eventos e ação
     /// disparam refresh concorrentes, cada um em sua thread/socket).
     quint64 m_refreshGeneration = 0;
+
+private:
+    QVariantList m_items;
 };
 
 } // namespace PodStack

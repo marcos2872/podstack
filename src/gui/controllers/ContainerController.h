@@ -12,7 +12,6 @@ namespace PodStack {
 
 class ContainerController : public CatalogController {
     Q_OBJECT
-    Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(QString lastErrorCode READ lastErrorCode NOTIFY lastErrorCodeChanged)
     Q_PROPERTY(QVariantList files READ files NOTIFY filesChanged)
     Q_PROPERTY(QString filesPath READ filesPath NOTIFY filesChanged)
@@ -25,7 +24,6 @@ public:
     explicit ContainerController(QObject *parent = nullptr);
 
     QVariantList files() const { return m_files; }
-    bool loading() const { return m_loading; }
     /// Código estável do último erro de ação (ex.: `PODSTACK_IMAGE_NOT_FOUND`).
     QString lastErrorCode() const { return m_lastErrorCode; }
     QString filesPath() const { return m_filesPath; }
@@ -58,7 +56,6 @@ public:
 
 signals:
     void filesChanged();
-    void loadingChanged();
     void lastErrorCodeChanged();
     void logsChanged();
     void statsChanged();
@@ -91,10 +88,6 @@ private:
     QVariantList m_files;
     QString m_filesPath = QStringLiteral("/");
     QStringList m_logLines;
-    bool m_loading = false;
-    /// Descarta resposta de uma leitura antiga de `containers.list` quando uma
-    /// mais nova já está em voo (eventos e ações disparam refresh concorrentes).
-    quint64 m_refreshGeneration = 0;
     QString m_lastErrorCode;
     QVariantMap m_stats;
     QVariantList m_cpuHistory;
