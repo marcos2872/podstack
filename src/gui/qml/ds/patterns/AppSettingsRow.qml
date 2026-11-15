@@ -170,6 +170,12 @@ Rectangle {
                 text: qsTr("Ativado")
                 checked: root.currentValue === true
                 Layout.fillWidth: true
+                // Alternar já salva: antes o valor só ia ao daemon pelo botão
+                // "Salvar" e fechar o diálogo descartava a mudança.
+                onToggled: {
+                    root.error = ""
+                    root.saveRequested(root.settingKey, boolField.checked)
+                }
             }
 
             AppSelect {

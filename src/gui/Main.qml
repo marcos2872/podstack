@@ -452,8 +452,13 @@ Rectangle {
                         variant: "ghost"
                         iconName: Theme.dark ? "sun" : "moon"
                         onClicked: {
-                            Theme.dark = !Theme.dark
-                            backend.settings.saveTheme(Theme.dark ? "dark" : "light")
+                            // Ciclo system → dark → light: antes o primeiro
+                            // clique gravava dark/light e o app deixava de
+                            // seguir o tema do desktop para sempre.
+                            const current = backend.settings.values["app.theme"] || "system"
+                            const next = current === "system" ? "dark"
+                                       : current === "dark" ? "light" : "system"
+                            backend.settings.setSetting("app.theme", next)
                         }
                         Accessible.name: qsTr("Alternar tema")
                     }

@@ -45,22 +45,32 @@ QString filePath()
 
 bool isEnabled()
 {
-    return QFile::exists(filePath());
+    // O arquivo pode existir sem ser nosso (outro app com o mesmo caminho).
+    // Checar só a existência fazia o settings dizer "ligado" sem autostart.
+    return isOwnFile();
 }
 
 bool setEnabled(bool enabled, QString *error)
 {
     if (!enabled) {
-        if (isEnabled() && !isOwnFile()) {
+        if (!isOwnFile()) {
             return true; // não remove um autostart que não é nosso
         }
-        if (isEnabled() && !QFile::remove(filePath())) {
+        if (!QFile::remove(filePath())) {
             if (error) {
                 *error = QStringLiteral("Não foi possível remover %1.").arg(filePath());
             }
             return false;
         }
         return true;
+    }
+
+    if (QFile::exists(filePath()) && !isOwnFile()) {
+        if (error) {
+            *error = QStringLiteral("Já existe um autostart de outro aplicativo em %1.")
+                         .arg(filePath());
+        }
+        return false;
     }
 
     const QString directory = QFileInfo(filePath()).absolutePath();
