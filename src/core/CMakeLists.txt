@@ -11,6 +11,7 @@ add_library(podstack_core STATIC
     logging/LogRotation.cpp
     logging/LogWriter.cpp
     logging/Redaction.cpp
+    rpc/DaemonBootstrap.cpp
     rpc/RpcClient.cpp
     rpc/RpcStream.cpp
     rpc/StreamClient.cpp

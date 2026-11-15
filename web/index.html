@@ -430,7 +430,7 @@ usuário, SQLite e, opcionalmente, Caddy.</p>
 <ol class="steps">
 <li><strong>Confira o Podman</strong>: <code>podman --version</code> e <code>podman info</code> devem funcionar sem <code>sudo</code>. Se o socket rootless não estiver ativo, use <code>systemctl --user enable --now podman.socket</code>.</li>
 <li><strong>Instale o pacote</strong>: Fedora: <code>sudo dnf install ./podstack-0.1.4-1.fc44.x86_64.rpm</code>; Ubuntu 24.04–26.04: <code>sudo apt install ./podstack_0.1.4_amd64.deb</code>. O <code>podstack-helper</code> já faz parte do pacote e é habilitado pelo <code>postinst</code>.</li>
-<li><strong>Inicie o socket de usuário</strong>: <code>systemctl --user daemon-reload</code> e <code>systemctl --user start podstack.socket</code>. O daemon sobe sob demanda na primeira conexão.</li>
+<li><strong>Inicie o socket de usuário</strong>: normalmente nada a fazer — a instalação já ativa o <code>podstack.socket</code> para quem está logado e o app reativa sozinho. Se precisar, rode <code>systemctl --user daemon-reload</code> e <code>systemctl --user start podstack.socket</code>. O daemon sobe sob demanda na primeira conexão.</li>
 <li><strong>Valide</strong>: <code>podstack status</code> deve mostrar <code>estado: ok</code> e <code>engine: running</code>; <code>podstack doctor</code> deve terminar com exit 0.</li>
 <li><strong>Abra a GUI</strong> pelo menu <strong>PodStack</strong> ou com <code>podstack-gui</code> e conclua o assistente de configuração.</li>
 </ol><pre data-lang="bash" tabindex="0"><code># verificação mínima

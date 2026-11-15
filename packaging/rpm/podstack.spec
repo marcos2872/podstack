@@ -168,9 +168,14 @@ systemctl enable podstack-helper.service >/dev/null 2>&1 || :
 # para carregar a allowlist e o código novos.
 systemctl restart podstack-helper.service >/dev/null 2>&1 || :
 log_update "rpm %post: helper reiniciado"
+# `enable` só cria o symlink; um user manager já em execução não sobe a unit
+# sozinho. O start por uid é o que deixa o socket ativo sem passo manual.
+# Start em socket ativo é no-op, então é seguro no upgrade.
 for uid in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u); do
     systemctl --machine "user@${uid}.service" --user daemon-reload >/dev/null 2>&1 || :
     systemctl --machine "user@${uid}.service" --user unmask --runtime \
+        podstack.socket >/dev/null 2>&1 || :
+    systemctl --machine "user@${uid}.service" --user start \
         podstack.socket >/dev/null 2>&1 || :
 done
 
@@ -224,6 +229,10 @@ for uid in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' |
                 "'systemctl --user unmask --runtime podstack.socket'." >&2
         fi
     fi
+    # O %pre parou o socket no upgrade; religa para o app continuar/voltar a
+    # funcionar ao fim da transação.
+    systemctl --machine "user@${uid}.service" --user start \
+        podstack.socket >/dev/null 2>&1 || :
 done
 if ! systemctl is-active --quiet podstack-helper.service 2>/dev/null; then
     systemctl start podstack-helper.service >/dev/null 2>&1 || :
@@ -279,6 +288,8 @@ fi
 - Secure assisted update with signed manifest, transient unit and resume.
 - JSONL logs with 7-day retention, root logs and scoped GetLogs.
 - QEMU/virtiofsd in user scopes; GUI update/logs surfaces.
+- Start podstack.socket for logged-in users in %post/%posttrans and unify the
+  client-side daemon bootstrap (GUI, CLI, streams and doctor).
 
 * Thu Nov 12 2026 PodStack contributors <dev@podstack.dev> - 0.1.3-1
 - Detect Ubuntu OVMF paths and use distro package names in the setup.

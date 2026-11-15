@@ -908,8 +908,10 @@ O pacote novo resolve o incidente 0.1.2→0.1.3 antes do unpack:
    **trap de limpeza** desfaz a máscara runtime, religa o helper dos uids já tocados e aborta o
    upgrade. O runner `podstack update --install --runner` nunca é encerrado.
 3. O `postinst`/`%post` faz `daemon-reload`, `systemctl --global enable podstack.socket`,
-   `unmask --runtime` por usuário (com retry e remediação) e **`restart podstack-helper.service`**.
-   A GUI/daemon de usuário não são iniciados pelo root; o usuário reabre ou o runner religa.
+   `unmask --runtime` por usuário (com retry e remediação), **`start podstack.socket`** por usuário
+   logado (no-op em socket ativo) e **`restart podstack-helper.service`**. O `%posttrans` repete o
+   `start`, para o socket parado no `%pre` voltar ativo ao fim do upgrade. A GUI/daemon de usuário
+   não são iniciados pelo root; o serviço sobe por ativação do socket.
 4. No Debian, `postrm` trata `abort-upgrade`/`abort-install` restaurando helper e socket. No RPM, a
    ordem é `%pre` novo → `%preun` antigo → remoção → `%post` novo → `%posttrans` novo; o
    `%posttrans` restaura socket/helper por usuário, faz health check (`is-active` + versão) e só

@@ -101,6 +101,10 @@ qt_add_executable(test_logging test_logging.cpp)
 target_link_libraries(test_logging PRIVATE podstack_core Qt6::Test)
 add_test(NAME logging COMMAND test_logging)
 
+qt_add_executable(test_daemon_bootstrap test_daemon_bootstrap.cpp)
+target_link_libraries(test_daemon_bootstrap PRIVATE podstack_core Qt6::Test)
+add_test(NAME daemon_bootstrap COMMAND test_daemon_bootstrap)
+
 qt_add_executable(test_update_service test_update_service.cpp
     ${CMAKE_SOURCE_DIR}/src/helper/updates/UpdateService.cpp)
 target_link_libraries(test_update_service PRIVATE podstack_core Qt6::Test)

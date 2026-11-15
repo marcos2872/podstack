@@ -80,6 +80,8 @@ private:
     QJsonObject m_pending;
     QJsonObject m_lastResult;
     bool m_pendingSend = false;
+    bool m_bootstrapRetried = false;
+    quint64 m_generation = 0;
 };
 
 } // namespace PodStack

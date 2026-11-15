@@ -52,8 +52,9 @@ Se você configurou um repositório do PodStack, o pacote pode ser instalado por
 sudo dnf install podstack
 ```
 
-O `%post` do pacote habilita `podstack.socket` globalmente para os usuários. O daemon continua
-subindo sob demanda, na primeira conexão da GUI ou do CLI.
+O `%post` do pacote habilita **e inicia** `podstack.socket` para os usuários com sessão aberta (a
+instalação não falha se não houver sessão detectável). O daemon continua subindo sob demanda, na
+primeira conexão da GUI ou do CLI.
 
 Para gerar o RPM a partir do código:
 
@@ -90,8 +91,8 @@ sudo apt install ./podstack_0.1.4_amd64.deb
 ```
 
 O pacote inclui o binário, as units do helper e os dados do terminal em
-`/usr/share/podstack/qtermwidget6`. O `postinst` habilita `podstack.socket` por usuário e o
-`podstack-helper.service`; o daemon sobe sob demanda na primeira conexão da GUI/CLI.
+`/usr/share/podstack/qtermwidget6`. O `postinst` habilita **e inicia** `podstack.socket` por usuário
+e o `podstack-helper.service`; o daemon sobe sob demanda na primeira conexão da GUI/CLI.
 
 ## 4. Build a partir do código
 
@@ -144,7 +145,10 @@ O CLI do build fica em `build/dev/podstack`:
 
 ## 5. Primeiro start
 
-Depois da instalação, recarregue as units de usuário e inicie o socket:
+Normalmente não é preciso fazer nada. A instalação habilita **e inicia** o `podstack.socket` para
+os usuários com sessão aberta, e a GUI/CLI reativam o socket no primeiro start caso ele esteja
+parado (o `podstack.service` sobe por ativação do socket). Se o app não abrir ou `podstack status`
+falhar, rode o fallback manual:
 
 ```bash
 systemctl --user daemon-reload
@@ -153,8 +157,13 @@ systemctl --user status podstack.socket
 ```
 
 O estado esperado é `active (listening)`. O `podstack.service` não é habilitado para iniciar no
-boot; ele é ativado na primeira conexão ao socket e permanece ativo até o fim da sessão. Para
-confirmar que o daemon responde:
+boot; ele é ativado na primeira conexão ao socket e permanece ativo até o fim da sessão.
+
+> Instalação sem sessão detectável (container, `--installroot`, automação sem login): a instalação
+> não falha. O socket é ativado no próximo login, e o botão **Ativar serviço** do banner de erro da
+> GUI (ou `podstack doctor`) faz a remediação sem terminal.
+
+Para confirmar que o daemon responde:
 
 ```bash
 podstack status
@@ -259,8 +268,9 @@ sessão gráfica), a autorização falha; rode o setup a partir do desktop.
 | Diagnóstico rápido | `podstack doctor` | checks `[ok]`; exit 0 |
 | Validação do setup | `podstack setup --validate` | `Validação OK.`; exit 0 |
 
-`podstack doctor` verifica o socket do daemon e o socket do Podman. Se algum check falhar, ele mostra
-a ação sugerida e retorna exit 1. Se o daemon não responder, o CLI retorna exit 7; erros de engine
+`podstack doctor` verifica o socket do daemon (no cliente, então funciona com o socket parado) e o
+socket do Podman. Se algum check falhar, ele mostra a ação sugerida e retorna exit 1. Se o daemon não
+responder nem depois da tentativa de ativação, o CLI retorna exit 7; erros de engine
 `PODSTACK_ENGINE_UNAVAILABLE` também usam exit 7.
 
 ## 9. Desinstalar

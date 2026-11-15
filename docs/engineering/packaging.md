@@ -122,11 +122,41 @@ processos de cgroup nem substitui o scope.
 ### 3.3 Habilitação
 
 ```bash
-# no %post do RPM
+# no %post/%posttrans do RPM e no postinst do DEB
 systemctl --global enable podstack.socket
+for uid in $(loginctl list-sessions --no-legend | awk '{print $2}' | sort -u); do
+    systemctl --machine "user@${uid}.service" --user daemon-reload
+    systemctl --machine "user@${uid}.service" --user unmask --runtime podstack.socket
+    systemctl --machine "user@${uid}.service" --user start podstack.socket
+done
 ```
 
 O daemon sobe sob demanda na primeira conexão da GUI/CLI.
+
+**Por que o `start` é obrigatório no pacote:** `systemctl --global enable` só cria o symlink em
+`/etc/systemd/user/sockets.target.wants/`. Um user manager **já em execução** não inicia a unit
+apenas porque o symlink apareceu, então quem estava logado na instalação ficaria sem socket até um
+`systemctl --user start` manual. O `start` por uid resolve isso; em socket ativo ele é no-op, então
+roda também no upgrade (o `%pre` para o socket e o `%post`/`%posttrans` religa).
+
+Limites aceitos:
+
+- O `%post` roda como root, sem `XDG_RUNTIME_DIR` do usuário; `systemctl --machine user@UID.service`
+  depende do logind e do user manager vivo. Em container, `--installroot` ou CI sem sessão, o
+  caminho é o próximo login (que ativa pelo `--global enable`). A instalação nunca falha por isso
+  (`|| :`).
+- O pacote nunca escreve em `~/.config/systemd/user` de outro usuário nem usa `su - user -c`
+  (menor privilégio).
+- Unit mascarada de propósito pelo usuário continua mascarada: o `start` falha em silêncio.
+- Flatpak/AppImage não têm unit de sistema; o socket em `$XDG_RUNTIME_DIR` é gerenciado pelo app.
+
+**Bootstrap no cliente (`src/core/rpc/DaemonBootstrap.cpp`):** cobre o que o pacote não alcança.
+`RpcClient`, `RpcStream` e `StreamClient` chamam `ensureRunning()` quando a conexão falha
+(`daemon-reload` + `start`, duas tentativas, 5 s por comando, no máximo uma tentativa a cada 5 s).
+`StreamClient` roda no pool global para não bloquear a thread da UI. O erro final é acionável:
+*"O PodStack não conseguiu ativar o podstack.socket. Rode: systemctl --user start podstack.socket"*,
+e a GUI mostra o botão **Ativar serviço** no banner. `PODSTACK_CONTROL_SOCKET` desliga o bootstrap
+(socket de desenvolvimento) e `PODSTACK_SYSTEMCTL`/`PODSTACK_USER_UNIT_DIR` existem para os testes.
 
 ---
 

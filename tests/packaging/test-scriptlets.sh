@@ -275,6 +275,9 @@ expect_log "systemctl --global enable podstack.socket"
 expect_log "systemctl restart podstack-helper.service"
 expect_log "systemctl --machine user@1000.service --user unmask --runtime podstack.socket"
 expect_log "systemctl --machine user@1001.service --user unmask --runtime podstack.socket"
+# O socket precisa ficar ativo sem passo manual (issue #65).
+expect_log "systemctl --machine user@1000.service --user start podstack.socket"
+expect_log "systemctl --machine user@1001.service --user start podstack.socket"
 
 # --- Debian: postinst falha alto quando não consegue religar o helper ------
 reset_state
@@ -289,6 +292,8 @@ reset_state
 run_script "$repo/packaging/deb/postrm" abort-upgrade || fail "postrm abort-upgrade falhou"
 expect_log "systemctl restart podstack-helper.service"
 expect_log "systemctl --machine user@1000.service --user unmask --runtime podstack.socket"
+# A versão antiga volta a funcionar ao fim do aborto, sem start manual.
+expect_log "systemctl --machine user@1000.service --user start podstack.socket"
 
 # --- Debian: prerm remove encerra o app e desabilita o helper --------------
 reset_state
@@ -338,6 +343,7 @@ echo inactive >"$state/helper"
 run_script /bin/sh "$post_script" 1 || fail "%post do RPM falhou"
 expect_log "systemctl restart podstack-helper.service"
 expect_log "systemctl --machine user@1000.service --user unmask --runtime podstack.socket"
+expect_log "systemctl --machine user@1000.service --user start podstack.socket"
 
 reset_state
 echo inactive >"$state/helper"
@@ -345,6 +351,8 @@ run_script /bin/sh "$posttrans_script" || fail "%posttrans do RPM falhou"
 expect_log "systemctl restart podstack-helper.service"
 expect_log "systemctl --machine user@1001.service --user unmask --runtime podstack.socket"
 expect_log "is-active --quiet podstack-helper.service"
+# Upgrade com o app aberto: o socket parado no %pre volta ativo aqui.
+expect_log "systemctl --machine user@1001.service --user start podstack.socket"
 
 reset_state
 echo inactive >"$state/helper"

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Instalação · PodStack 0.1.4</title>
-  <meta name="description" content="Instale o PodStack no Fedora ou Ubuntu, configure o daemon de usuário e conclua o setup em 7 etapas.">
+  <meta name="description" content="Instale o PodStack no Fedora ou Ubuntu, deixe o daemon de usuário subir sozinho e conclua o setup em 7 etapas.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css">
@@ -377,7 +377,7 @@
     <main class="page dx-page" id="conteudo"><nav class="breadcrumb" aria-label="Trilha de navegação"><a href="index.html">Documentação</a><span class="sep" aria-hidden="true">›</span><span>Começar</span><span class="sep" aria-hidden="true">›</span><span aria-current="page">Instalação</span></nav>
 
 <h1>Instalação</h1>
-<p class="lede">Do pacote ao primeiro container: instale o PodStack no Fedora ou Ubuntu, inicie o daemon de usuário e conclua o setup em 7 etapas.</p>
+<p class="lede">Do pacote ao primeiro container: instale o PodStack no Fedora ou Ubuntu, deixe o daemon de usuário subir sozinho e conclua o setup em 7 etapas.</p>
 <div class="page-meta"><span class="badge badge-accent">PodStack 0.1.4</span><span>Fedora 43/44 · Ubuntu 24.04–26.04</span></div>
 
 <div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Rootless por padrão</p><p>O daemon roda com o seu usuário e o socket de controle fica em <code>$XDG_RUNTIME_DIR/podstack/control.sock</code>, com diretório <code>0700</code> e socket <code>0600</code>. Ações de sistema passam pelo <code>podstack-helper</code> com polkit e allowlist. O Docker não é removido por padrão.</p></div></div>
@@ -458,22 +458,23 @@ podman info</code></pre>
 
 # com um repositório configurado
 sudo dnf install podstack</code></pre>
-<p>Ajuste <code>fc44</code> e <code>x86_64</code> para a release e a arquitetura do seu Fedora. O <code>%post</code> habilita <code>podstack.socket</code> globalmente; o daemon sobe sob demanda na primeira conexão.</p>
+<p>Ajuste <code>fc44</code> e <code>x86_64</code> para a release e a arquitetura do seu Fedora. O <code>%post</code> habilita <strong>e inicia</strong> <code>podstack.socket</code> para os usuários com sessão aberta; o daemon sobe sob demanda na primeira conexão. Sem sessão detectável (container, <code>--installroot</code>), a instalação não falha e o socket é ativado no próximo login.</p>
 <h3 id="ubuntu-deb">Ubuntu (DEB)</h3>
 <pre data-lang="bash" tabindex="0"><code>sudo apt install ./podstack_0.1.4_amd64.deb</code></pre>
-<p>O <code>postinst</code> habilita <code>podstack.socket</code> por usuário e o <code>podstack-helper.service</code>. O qtermwidget 2.0.0 vai embutido no binário.</p>
+<p>O <code>postinst</code> habilita <strong>e inicia</strong> <code>podstack.socket</code> por usuário e o <code>podstack-helper.service</code>. O qtermwidget 2.0.0 vai embutido no binário.</p>
 <h3 id="build-do-fonte">Build a partir do código</h3>
 <p>Para testar uma versão local, o caminho é <code>cmake --preset dev</code>, <code>cmake --build --preset dev</code> e <code>./scripts/dev.sh</code>. O guia completo, com as dependências de Fedora e Ubuntu, está em <a href="https://github.com/marcos2872/podstack/blob/main/docs/user/install.md" target="_blank" rel="noopener noreferrer">docs/user/install.md</a>.</p>
 
 <h2 id="primeiro-start">Primeiro start</h2>
-<p>Depois da instalação, recarregue as units de usuário e inicie o socket:</p>
+<p>Normalmente não é preciso fazer nada: a instalação habilita <strong>e inicia</strong> o <code>podstack.socket</code> para os usuários com sessão aberta, e a GUI/CLI reativam o socket no primeiro start caso ele esteja parado — o <code>podstack.service</code> sobe por ativação do socket. Se o app não abrir ou <code>podstack status</code> falhar, use o fallback manual:</p>
 <pre data-lang="bash" tabindex="0"><code>systemctl --user daemon-reload
 systemctl --user start podstack.socket
 systemctl --user status podstack.socket</code></pre>
 <p>O estado esperado é <code>active (listening)</code>. O <code>podstack.service</code> não é habilitado no boot; ele é ativado na primeira conexão ao socket e permanece ativo até o fim da sessão.</p>
+<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Sem terminal</p><p>Com o banner de erro da GUI aberto, o botão <strong>Ativar serviço</strong> faz a mesma ativação; <code>podstack doctor</code> também tenta reativar o socket e mostra a remediação.</p></div></div>
 <pre data-lang="bash" tabindex="0"><code>podstack status
 podstack doctor</code></pre>
-<p><code>podstack status</code> deve mostrar <code>estado: ok</code> e <code>engine: running</code>; <code>podstack doctor</code> termina com exit 0 quando os checks passam.</p>
+<p><code>podstack status</code> deve mostrar <code>estado: ok</code> e <code>engine: running</code>; <code>podstack doctor</code> termina com exit 0 quando os checks passam (e exit 7 quando o daemon segue indisponível).</p>
 
 <h2 id="setup">Setup em 7 etapas</h2>
 <p>Na primeira execução, a GUI abre o assistente e mantém a tela principal bloqueada enquanto os checks obrigatórios não passam. As etapas são:</p>

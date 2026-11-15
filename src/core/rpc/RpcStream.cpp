@@ -1,6 +1,7 @@
 #include "core/rpc/RpcStream.h"
 
 #include "core/config/Paths.h"
+#include "core/rpc/DaemonBootstrap.h"
 
 #include <QElapsedTimer>
 #include <QJsonDocument>
@@ -48,13 +49,26 @@ bool RpcStream::run(const QString &method, const QJsonObject &params, const Even
 
     QLocalSocket socket;
     socket.connectToServer(m_socketPath, QIODevice::ReadWrite);
-    if (!socket.waitForConnected(30000)) {
+    bool connected = socket.waitForConnected(30000);
+    if (!connected) {
+        // Streams também reativam o socket: o daemon pode estar parado logo
+        // depois de uma instalação ou de um upgrade.
+        socket.abort();
+        const DaemonBootstrap::Status status =
+            DaemonBootstrap::ensureRunningThrottled(m_socketPath, nullptr);
+        if (status == DaemonBootstrap::Status::Started ||
+            status == DaemonBootstrap::Status::AlreadyRunning) {
+            socket.connectToServer(m_socketPath, QIODevice::ReadWrite);
+            connected = socket.waitForConnected(30000);
+        }
+    }
+    if (!connected) {
         if (error) {
-            *error = Error::make(
-                QStringLiteral("PODSTACK_DAEMON_UNAVAILABLE"),
-                QStringLiteral("Não foi possível conectar ao podstackd."),
-                socket.errorString(),
-                QStringLiteral("Inicie com: systemctl --user start podstack.socket"));
+            *error =
+                Error::make(QStringLiteral("PODSTACK_DAEMON_UNAVAILABLE"),
+                            QStringLiteral("O PodStack não conseguiu ativar o podstack.socket."),
+                            socket.errorString(),
+                            QStringLiteral("Rode: %1").arg(DaemonBootstrap::manualRemedy()));
         }
         return false;
     }
