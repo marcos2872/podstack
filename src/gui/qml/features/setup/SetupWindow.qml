@@ -29,7 +29,7 @@ Item {
 
     // O overlay só fecha sozinho quando o setup foi concluído; reconfigurar
     // abre via Settings e pode ser fechado pelo X.
-    visible: manuallyOpen || !backend.setup.completed
+    visible: manuallyOpen || (backend.setup.loaded && !backend.setup.completed)
 
     function checkFor(id) {
         for (let index = 0; index < checks.length; ++index) {

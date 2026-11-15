@@ -148,7 +148,7 @@ void SetupController::applyStatus(const QJsonObject &status)
     m_summary = status.value(QStringLiteral("summary")).toObject().toVariantMap();
     const QJsonObject active = status.value(QStringLiteral("activeJob")).toObject();
     applyJob(active);
-    if (!active.isEmpty() && !m_jobActive) {
+    if (!active.isEmpty() && m_jobActive) {
         const QString jobId = active.value(QStringLiteral("jobId")).toString();
         if (!jobId.isEmpty()) {
             m_stream.subscribeSetup(jobId);
