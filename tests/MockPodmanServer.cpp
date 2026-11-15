@@ -159,6 +159,18 @@ int MockPodmanServer::createCount() const
     return m_createCount;
 }
 
+int MockPodmanServer::requestCount(const QString &path) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    int total = 0;
+    for (auto it = m_requestCounts.constBegin(); it != m_requestCounts.constEnd(); ++it) {
+        if (it.key() == path || it.key().endsWith(path)) {
+            total += it.value();
+        }
+    }
+    return total;
+}
+
 void MockPodmanServer::setNativeContainers(bool enabled)
 {
     m_nativeContainers.store(enabled);
@@ -225,6 +237,7 @@ void MockPodmanServer::handleClient(int clientFd)
         m_lastMethod = method;
         m_lastPath = path;
         m_lastBody = body;
+        ++m_requestCounts[pathOnly];
         if (method == QStringLiteral("POST") &&
             pathOnly.endsWith(QStringLiteral("/containers/create"))) {
             m_lastCreateBody = body;

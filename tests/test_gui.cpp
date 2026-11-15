@@ -70,6 +70,7 @@ private slots:
     void backendBatchActions();
     void backendBatchPartial();
     void backendComposeErrorDetail();
+    void backendRejectDuplicateAction();
     void backendTheme();
     void backendSettings();
     void backendProxy();
@@ -1714,6 +1715,23 @@ void GuiTest::backendComposeErrorDetail()
     const QString error = compose->lastError();
     QVERIFY2(error.contains(QStringLiteral("bind: address already in use")), qPrintable(error));
     QVERIFY2(!error.contains(QStringLiteral("Emulate Docker CLI")), qPrintable(error));
+}
+
+void GuiTest::backendRejectDuplicateAction()
+{
+    PodStack::Backend backend;
+    auto *containers = backend.containers();
+    const QString path = QStringLiteral("/libpod/containers/abc123/start");
+    const int before = m_mock.requestCount(path);
+
+    // Duplo clique no mesmo item: a segunda chamada não pode empilhar outra
+    // ação igual (antes ela rodava de novo depois).
+    containers->lifecycle(QStringLiteral("start"), QStringLiteral("abc123"));
+    containers->lifecycle(QStringLiteral("start"), QStringLiteral("abc123"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QCOMPARE(m_mock.requestCount(path), before + 1);
+    QVERIFY(containers->runningTargets().isEmpty());
 }
 
 void GuiTest::backendTheme()

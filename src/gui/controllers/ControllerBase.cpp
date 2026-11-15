@@ -32,6 +32,37 @@ void ControllerBase::clearLastError()
     emit lastErrorChanged();
 }
 
+QString ControllerBase::actionTarget(const QJsonObject &params)
+{
+    static const char *const keys[] = {"id", "name", "projectPath", "jobId"};
+    for (const char *key : keys) {
+        const QString value = params.value(QLatin1StringView(key)).toString();
+        if (!value.isEmpty()) {
+            return value;
+        }
+    }
+    return {};
+}
+
+bool ControllerBase::isRunning(const QString &target) const
+{
+    return m_runningTargets.contains(target);
+}
+
+bool ControllerBase::hasPending(const QString &method, const QString &target) const
+{
+    if (m_actionActive && m_currentAction.method == method
+        && actionTarget(m_currentAction.params) == target) {
+        return true;
+    }
+    for (const PendingAction &pending : m_actionQueue) {
+        if (pending.method == method && actionTarget(pending.params) == target) {
+            return true;
+        }
+    }
+    return false;
+}
+
 QString ControllerBase::errorMessage(const QJsonObject &result)
 {
     const QJsonObject error = result.value(QStringLiteral("__error")).isObject()
@@ -115,6 +146,11 @@ void ControllerBase::runAction(const QString &method, const QJsonObject &params,
     action.params = params;
     action.timeoutMs = timeoutMs;
     if (m_actionActive) {
+        const QString target = actionTarget(params);
+        if (!target.isEmpty() && hasPending(method, target)) {
+            // Duplo clique no mesmo item: não empilha a mesma ação.
+            return;
+        }
         m_actionQueue.enqueue(action);
         return;
     }
@@ -132,6 +168,7 @@ void ControllerBase::runJob(const QString &label, const QJsonObject &params, Job
     action.timeoutMs = timeoutMs;
     action.job = std::move(job);
     if (m_actionActive) {
+        // Jobs de lote não têm um alvo único; a fila continua valendo.
         m_actionQueue.enqueue(action);
         return;
     }
@@ -144,7 +181,12 @@ void ControllerBase::runJob(const QString &label, const QJsonObject &params, Job
 void ControllerBase::startAction(const PendingAction &action, Callback done)
 {
     m_currentAction = action;
-    auto finish = [this, action, done = std::move(done)](const QJsonObject &result) {
+    const QString target = actionTarget(action.params);
+    if (!target.isEmpty()) {
+        m_runningTargets.insert(target, action.method);
+        emit runningTargetsChanged();
+    }
+    auto finish = [this, action, target, done = std::move(done)](const QJsonObject &result) {
         onActionFinished(action.method, action.params, result);
         if (done) {
             done(result);
@@ -152,6 +194,10 @@ void ControllerBase::startAction(const PendingAction &action, Callback done)
         const QString summary = batchSummary(result);
         emit actionSettled(action.method, summary.isEmpty() && !isErrorResult(result),
                            isErrorResult(result) ? errorMessage(result) : summary);
+        if (!target.isEmpty() && m_runningTargets.value(target).toString() == action.method) {
+            m_runningTargets.remove(target);
+            emit runningTargetsChanged();
+        }
         if (!m_actionQueue.isEmpty()) {
             const PendingAction next = m_actionQueue.dequeue();
             startAction(next, {});
