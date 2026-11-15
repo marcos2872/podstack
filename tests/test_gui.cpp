@@ -46,6 +46,7 @@ private slots:
     void backendActions();
     void backendExposeLan();
     void backendCreateSpec();
+    void backendContainersSignal();
     void backendCreateMissingImage();
     void backendStreams();
     void backendContainerDetail();
@@ -424,6 +425,23 @@ void GuiTest::backendExposeLan()
     QCOMPARE(mappings.size(), 1);
     QCOMPARE(mappings.first().toObject().value(QStringLiteral("host_ip")).toString(),
              QStringLiteral("127.0.0.1"));
+}
+
+void GuiTest::backendContainersSignal()
+{
+    // O `Main.qml` só recebe a lista pelo sinal `containersChanged`; ele sumiu
+    // no refactor dos controllers e a página ficou sempre em "0 containers".
+    PodStack::Backend backend;
+    QSignalSpy spy(&backend, &PodStack::Backend::containersChanged);
+
+    backend.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
+
+    const QVariantList items = spy.last().first().toList();
+    QVERIFY(!items.isEmpty());
+    QCOMPARE(items.first().toMap().value(QStringLiteral("name")).toString(),
+             QStringLiteral("demo"));
+    QCOMPARE(backend.containerItems().size(), items.size());
 }
 
 void GuiTest::backendCreateSpec()
