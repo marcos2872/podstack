@@ -94,7 +94,7 @@
 | `start docker` / `stop docker` / `restart docker` | `engine start/stop/restart` (alias `docker`) | — | Podman socket/engine |
 | `start k8s` / `stop k8s` / `restart k8s` / `delete k8s` | `kube start/stop/restart/disable` | — | Cluster local |
 | `status` | `status` | `--format` | Exit 0/1/2 |
-| `doctor` | `doctor` | `--fix`, `--quiet` | Checks Linux; o socket do daemon é checado no **cliente** (tenta ativar e mostra a remediação), exit **7** se continuar indisponível |
+| `doctor` | `doctor` | `--fix`, `--quiet` | Checks Linux; o socket do daemon é checado no **cliente** (tenta ativar, exige resposta real e mostra a remediação com `restart`), exit **7** se continuar indisponível |
 | `reset` | `reset` | `--yes` | Dados Docker + machines |
 | `update` | `update` | `--check`, `--install`, `--yes`, `--json`, `--channel stable\|beta`; `--runner`/`--manifest`/`--resume`/`--clear-state` internos | Verifica o manifesto assinado; `--check` exit **3** se houver versão nova; `--install` baixa/valida e instala pelo helper; exit 0/1/2/6/8/9 (sem 3) |
 | `version` | `version` | `--format` | |
@@ -124,7 +124,7 @@
 
 | Docker/OrbStack | `podstack` | Flags | Notas |
 |---|---|---|---|
-| `docker ps` | `ps` | `--all`, `--running`, `--stopped`, `--format`, `--quiet` | Lista e filtra por estado |
+| `docker ps` | `ps` | `--all`, `--running`, `--stopped`, `--format`, `--quiet` | Lista e filtra por estado; `--stopped` = tudo que não está em execução |
 | `docker pause` / `unpause` | `pause` / `unpause` | — | Ciclo de vida |
 | `docker kill` | `kill` | `--signal` | Sinal opcional (ex.: `SIGTERM`) |
 | `docker checkpoint` | `checkpoint` | `--leave-running`, `--tcp-established`, `--json` | CRIU via Libpod; rootless depende do CRIU/configuração do host |

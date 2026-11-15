@@ -471,7 +471,7 @@ sudo dnf install podstack</code></pre>
 systemctl --user start podstack.socket
 systemctl --user status podstack.socket</code></pre>
 <p>O estado esperado é <code>active (listening)</code>. O <code>podstack.service</code> não é habilitado no boot; ele é ativado na primeira conexão ao socket e permanece ativo até o fim da sessão.</p>
-<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Sem terminal</p><p>Com o banner de erro da GUI aberto, o botão <strong>Ativar serviço</strong> faz a mesma ativação; <code>podstack doctor</code> também tenta reativar o socket e mostra a remediação.</p></div></div>
+<div class="callout note" role="note"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><div class="callout-body"><p class="callout-title">Sem terminal</p><p>Com o banner de erro da GUI aberto, o botão <strong>Reiniciar daemon</strong> faz a ativação (e derruba um processo travado); <code>podstack doctor</code> também tenta reativar o socket e mostra a remediação.</p></div></div>
 <pre data-lang="bash" tabindex="0"><code>podstack status
 podstack doctor</code></pre>
 <p><code>podstack status</code> deve mostrar <code>estado: ok</code> e <code>engine: running</code>; <code>podstack doctor</code> termina com exit 0 quando os checks passam (e exit 7 quando o daemon segue indisponível).</p>

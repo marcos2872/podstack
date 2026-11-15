@@ -45,6 +45,9 @@ private slots:
     void backendError();
     void backendActions();
     void backendExposeLan();
+    void backendCreateSpec();
+    void backendContainersSignal();
+    void backendCreateMissingImage();
     void backendStreams();
     void backendContainerDetail();
     void backendCatalog();
@@ -125,9 +128,8 @@ void GuiTest::initTestCase()
         mockCompose.close();
     }
 
-    m_testDataDir = QDir::tempPath()
-                    + QStringLiteral("/podstack-gui-data-%1")
-                          .arg(QCoreApplication::applicationPid());
+    m_testDataDir = QDir::tempPath() +
+                    QStringLiteral("/podstack-gui-data-%1").arg(QCoreApplication::applicationPid());
     QDir(m_testDataDir).removeRecursively();
     QDir().mkpath(m_testDataDir);
     QDir().mkpath(m_testDataDir + QStringLiteral("/config"));
@@ -136,57 +138,58 @@ void GuiTest::initTestCase()
     m_fakeProvider = m_testDataDir + QStringLiteral("/compose-provider.sh");
     QFile provider(m_fakeProvider);
     QVERIFY(provider.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    provider.write("#!/bin/sh\ncase \"$*\" in *fail*) echo \"fake failure\" >&2; exit 1;; esac\necho \"fake compose $@\"\nexit 0\n");
+    provider.write("#!/bin/sh\ncase \"$*\" in *fail*) echo \"fake failure\" >&2; exit 1;; "
+                   "esac\necho \"fake compose $@\"\nexit 0\n");
     provider.close();
-    QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                    | QFileDevice::ExeOwner));
+    QVERIFY(provider.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                    QFileDevice::ExeOwner));
 
     m_fakePodman = m_testDataDir + QStringLiteral("/podman-fake.sh");
     QFile podman(m_fakePodman);
     QVERIFY(podman.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    const QString fakePodman =
-        QStringLiteral("#!/bin/sh\n"
-                       "echo \"$@\" >> \"%1\"\n"
-                       "if [ \"$1\" = \"build\" ]; then\n"
-                       "  echo \"line one\"\n"
-                       "  echo \"line two\"\n"
-                       "fi\n"
-                       "exit 0\n")
-            .arg(m_testDataDir + QStringLiteral("/podman-args.log"));
+    const QString fakePodman = QStringLiteral("#!/bin/sh\n"
+                                              "echo \"$@\" >> \"%1\"\n"
+                                              "if [ \"$1\" = \"build\" ]; then\n"
+                                              "  echo \"line one\"\n"
+                                              "  echo \"line two\"\n"
+                                              "fi\n"
+                                              "exit 0\n")
+                                   .arg(m_testDataDir + QStringLiteral("/podman-args.log"));
     podman.write(fakePodman.toUtf8());
     podman.close();
-    QVERIFY(podman.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                  | QFileDevice::ExeOwner));
+    QVERIFY(podman.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner));
 
     m_fakeSsh = m_testDataDir + QStringLiteral("/ssh-fake.sh");
     QFile ssh(m_fakeSsh);
     QVERIFY(ssh.open(QIODevice::WriteOnly | QIODevice::Truncate));
     const QString fakeSsh =
-        QStringLiteral("#!/bin/sh\n"
-                       "echo \"$@\" >> \"%1\"\n"
-                       "case \"$*\" in\n"
-                       "  *\"ls -la --time-style=long-iso\"*)\n"
-                       "    echo \"total 4\"\n"
-                       "    echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
-                       "    echo \"-rw-r--r-- 1 podstack podstack 12 2026-11-09 10:05 gui.txt\"\n"
-                       "    exit 0;;\n"
-                       "esac\n"
-                       "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
-                       "echo \"__PODSTACK_MEM__\"\n"
-                       "echo \"MemTotal:        2097152 kB\"\n"
-                       "echo \"MemAvailable:    1048576 kB\"\n"
-                       "echo \"__PODSTACK_NET__\"\n"
-                       "echo \"  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\"\n"
-                       "echo \"__PODSTACK_DISK__\"\n"
-                       "echo \"   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\"\n"
-                       "echo \"__PODSTACK_DF__\"\n"
-                       "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
-                       "echo \"/dev/vda1    10000000000  2500000000  7500000000      25% /\"\n")
+        QStringLiteral(
+            "#!/bin/sh\n"
+            "echo \"$@\" >> \"%1\"\n"
+            "case \"$*\" in\n"
+            "  *\"ls -la --time-style=long-iso\"*)\n"
+            "    echo \"total 4\"\n"
+            "    echo \"drwxr-xr-x 2 podstack podstack 4096 2026-11-09 10:00 docs\"\n"
+            "    echo \"-rw-r--r-- 1 podstack podstack 12 2026-11-09 10:05 gui.txt\"\n"
+            "    exit 0;;\n"
+            "esac\n"
+            "echo \"cpu  100 0 100 800 0 0 0 0\"\n"
+            "echo \"__PODSTACK_MEM__\"\n"
+            "echo \"MemTotal:        2097152 kB\"\n"
+            "echo \"MemAvailable:    1048576 kB\"\n"
+            "echo \"__PODSTACK_NET__\"\n"
+            "echo \"  eth0: 1000 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\"\n"
+            "echo \"__PODSTACK_DISK__\"\n"
+            "echo \"   8 0 vda 100 0 200 0 50 0 400 0 0 0 0 0 0 0 0 0 0\"\n"
+            "echo \"__PODSTACK_DF__\"\n"
+            "echo \"Filesystem     1B-blocks        Used   Available Capacity Mounted on\"\n"
+            "echo \"/dev/vda1    10000000000  2500000000  7500000000      25% /\"\n")
             .arg(m_testDataDir + QStringLiteral("/ssh-args.log"));
     ssh.write(fakeSsh.toUtf8());
     ssh.close();
-    QVERIFY(ssh.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                               | QFileDevice::ExeOwner));
+    QVERIFY(ssh.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                               QFileDevice::ExeOwner));
 
     const QString downloadDir = m_testDataDir + QStringLiteral("/Downloads");
     QVERIFY(QDir().mkpath(downloadDir));
@@ -207,12 +210,12 @@ void GuiTest::initTestCase()
                   .arg(downloadDir)
                   .toUtf8());
     scp.close();
-    QVERIFY(scp.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                               | QFileDevice::ExeOwner));
+    QVERIFY(scp.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                               QFileDevice::ExeOwner));
 
-    m_controlSocket = QDir::tempPath()
-                      + QStringLiteral("/podstack-gui-%1.sock")
-                            .arg(QCoreApplication::applicationPid());
+    m_controlSocket =
+        QDir::tempPath() +
+        QStringLiteral("/podstack-gui-%1.sock").arg(QCoreApplication::applicationPid());
     QFile::remove(m_controlSocket);
 
     const QString daemonPath =
@@ -308,9 +311,9 @@ void GuiTest::backendSuccess()
 void GuiTest::backendError()
 {
     const QByteArray previous = qgetenv("PODSTACK_CONTROL_SOCKET");
-    const QString missing = QDir::tempPath()
-                            + QStringLiteral("/podstack-gui-missing-%1.sock")
-                                  .arg(QCoreApplication::applicationPid());
+    const QString missing =
+        QDir::tempPath() +
+        QStringLiteral("/podstack-gui-missing-%1.sock").arg(QCoreApplication::applicationPid());
     QFile::remove(missing);
     qputenv("PODSTACK_CONTROL_SOCKET", missing.toUtf8());
 
@@ -424,6 +427,88 @@ void GuiTest::backendExposeLan()
              QStringLiteral("127.0.0.1"));
 }
 
+void GuiTest::backendContainersSignal()
+{
+    // O `Main.qml` só recebe a lista pelo sinal `containersChanged`; ele sumiu
+    // no refactor dos controllers e a página ficou sempre em "0 containers".
+    PodStack::Backend backend;
+    QSignalSpy spy(&backend, &PodStack::Backend::containersChanged);
+
+    backend.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 5000);
+
+    const QVariantList items = spy.last().first().toList();
+    QVERIFY(!items.isEmpty());
+    QCOMPARE(items.first().toMap().value(QStringLiteral("name")).toString(),
+             QStringLiteral("demo"));
+    QCOMPARE(backend.containerItems().size(), items.size());
+}
+
+void GuiTest::backendCreateSpec()
+{
+    PodStack::Backend backend;
+    auto *containers = backend.containers();
+
+    QVariantMap spec;
+    spec.insert(QStringLiteral("image"), QStringLiteral("alpine:3.20"));
+    spec.insert(QStringLiteral("name"), QStringLiteral("spec"));
+    // Antes o parser só quebrava por \n: a vírgula do placeholder gerava um
+    // único mount com destino inválido.
+    spec.insert(QStringLiteral("mountsText"), QStringLiteral("/tmp:/mnt, /tmp:/mnt2:ro"));
+    spec.insert(QStringLiteral("labelsText"), QStringLiteral("a=1, b=2"));
+    spec.insert(QStringLiteral("restartPolicy"), QStringLiteral("on-failure"));
+    spec.insert(QStringLiteral("restartTries"), 3);
+    spec.insert(QStringLiteral("cpus"), 1.5);
+    spec.insert(QStringLiteral("memoryMb"), 256);
+    spec.insert(QStringLiteral("readOnly"), true);
+
+    const int createsBefore = m_mock.createCount();
+    containers->createContainer(spec, true);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+    QVERIFY2(containers->lastError().isEmpty(), qPrintable(containers->lastError()));
+    QCOMPARE(m_mock.createCount(), createsBefore + 1);
+
+    const QJsonObject body = QJsonDocument::fromJson(m_mock.lastCreateBody()).object();
+    const QJsonArray mounts = body.value(QStringLiteral("mounts")).toArray();
+    QCOMPARE(mounts.size(), 2);
+    QCOMPARE(mounts.at(1).toObject().value(QStringLiteral("options")).toArray().last().toString(),
+             QStringLiteral("ro"));
+    QCOMPARE(body.value(QStringLiteral("labels")).toObject().value(QStringLiteral("a")).toString(),
+             QStringLiteral("1"));
+    QCOMPARE(body.value(QStringLiteral("restart_policy")).toString(), QStringLiteral("on-failure"));
+    QCOMPARE(body.value(QStringLiteral("restart_tries")).toInt(), 3);
+    QCOMPARE(body.value(QStringLiteral("read_only_filesystem")).toBool(), true);
+
+    const QJsonObject limits = body.value(QStringLiteral("resource_limits")).toObject();
+    QCOMPARE(
+        limits.value(QStringLiteral("memory")).toObject().value(QStringLiteral("limit")).toDouble(),
+        256.0 * 1024 * 1024);
+    QCOMPARE(
+        limits.value(QStringLiteral("cpu")).toObject().value(QStringLiteral("quota")).toDouble(),
+        150000.0);
+}
+
+void GuiTest::backendCreateMissingImage()
+{
+    PodStack::Backend backend;
+    auto *containers = backend.containers();
+    QSignalSpy failed(containers, &PodStack::ContainerController::actionFailed);
+
+    QVariantMap spec;
+    spec.insert(QStringLiteral("image"), QStringLiteral("missing:tag"));
+    spec.insert(QStringLiteral("name"), QStringLiteral("sem-imagem"));
+
+    const int createsBefore = m_mock.createCount();
+    containers->createContainer(spec, true);
+    QTRY_VERIFY_WITH_TIMEOUT(!containers->actionActive(), 5000);
+
+    QCOMPARE(failed.count(), 1);
+    QCOMPARE(containers->lastErrorCode(), QStringLiteral("PODSTACK_IMAGE_NOT_FOUND"));
+    QVERIFY(!containers->lastError().isEmpty());
+    // O container nem chega a ser criado no engine.
+    QCOMPARE(m_mock.createCount(), createsBefore);
+}
+
 void GuiTest::backendStreams()
 {
     PodStack::Backend backend;
@@ -473,8 +558,7 @@ void GuiTest::backendContainerDetail()
     QCOMPARE(mounts.size(), 2);
     QCOMPARE(mounts.first().toMap().value(QStringLiteral("Destination")).toString(),
              QStringLiteral("/mnt"));
-    QCOMPARE(mounts.at(1).toMap().value(QStringLiteral("Name")).toString(),
-             QStringLiteral("data"));
+    QCOMPARE(mounts.at(1).toMap().value(QStringLiteral("Name")).toString(), QStringLiteral("data"));
 
     const QVariantMap networks = data.value(QStringLiteral("NetworkSettings"))
                                      .toMap()
@@ -673,7 +757,8 @@ void GuiTest::backendKubernetesDisableJob()
 }
 
 void GuiTest::backendCatalog()
-{    PodStack::Backend backend;
+{
+    PodStack::Backend backend;
     QSignalSpy imagesSpy(backend.images(), &PodStack::ImageController::itemsChanged);
     QSignalSpy volumesSpy(backend.volumes(), &PodStack::VolumeController::itemsChanged);
     QSignalSpy networksSpy(backend.networks(), &PodStack::NetworkController::itemsChanged);
@@ -693,16 +778,10 @@ void GuiTest::backendCatalog()
     const QVariantMap preview = backend.prunePreview();
     QVERIFY(preview.contains(QStringLiteral("images")));
     QVERIFY(preview.contains(QStringLiteral("volumes")));
-    QCOMPARE(preview.value(QStringLiteral("images"))
-                 .toMap()
-                 .value(QStringLiteral("count"))
-                 .toInt(),
+    QCOMPARE(preview.value(QStringLiteral("images")).toMap().value(QStringLiteral("count")).toInt(),
              1);
-    QCOMPARE(preview.value(QStringLiteral("volumes"))
-                 .toMap()
-                 .value(QStringLiteral("count"))
-                 .toInt(),
-             1);
+    QCOMPARE(
+        preview.value(QStringLiteral("volumes")).toMap().value(QStringLiteral("count")).toInt(), 1);
     QVERIFY(preview.value(QStringLiteral("totalReclaimableBytes")).toDouble() > 0);
 
     const int diskCount = diskSpy.count();
@@ -783,9 +862,9 @@ void GuiTest::backendCatalog()
     QTRY_VERIFY_WITH_TIMEOUT(
         !backend.pods()->actionActive() && backend.pods()->lastError().isEmpty(), 5000);
 
-    const QString uploadPath = QDir::tempPath()
-                               + QStringLiteral("/podstack-gui-upload-%1.txt")
-                                     .arg(QCoreApplication::applicationPid());
+    const QString uploadPath =
+        QDir::tempPath() +
+        QStringLiteral("/podstack-gui-upload-%1.txt").arg(QCoreApplication::applicationPid());
     QFile uploadFile(uploadPath);
     QVERIFY(uploadFile.open(QIODevice::WriteOnly));
     uploadFile.write("gui-upload");
@@ -892,8 +971,7 @@ void GuiTest::backendMachines()
     meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
     meta.updatedAt = meta.createdAt;
 
-    const QString machineDir =
-        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    const QString machineDir = m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
     QVERIFY(QDir().mkpath(machineDir));
     meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
     QFile keyFile(meta.sshKeyPath);
@@ -912,8 +990,7 @@ void GuiTest::backendMachines()
     QTRY_COMPARE_WITH_TIMEOUT(backend.machines()->items().size(), 1, 5000);
     const QVariantMap item = backend.machines()->items().first().toMap();
     QCOMPARE(item.value(QStringLiteral("name")).toString(), QStringLiteral("gui-logs"));
-    QCOMPARE(item.value(QStringLiteral("distroLabel")).toString(),
-             QStringLiteral("debian:12"));
+    QCOMPARE(item.value(QStringLiteral("distroLabel")).toString(), QStringLiteral("debian:12"));
     QCOMPARE(item.value(QStringLiteral("ssh")).toString(),
              QStringLiteral("podstack@127.0.0.1:32222"));
 
@@ -988,8 +1065,7 @@ void GuiTest::backendMachineStats()
     meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
     meta.updatedAt = meta.createdAt;
 
-    const QString machineDir =
-        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    const QString machineDir = m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
     QVERIFY(QDir().mkpath(machineDir));
     meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
     QFile keyFile(meta.sshKeyPath);
@@ -1062,8 +1138,7 @@ void GuiTest::backendMachineConsole()
     meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
     meta.updatedAt = meta.createdAt;
 
-    const QString machineDir =
-        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    const QString machineDir = m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
     QVERIFY(QDir().mkpath(machineDir));
     QVERIFY2(store.upsert(meta, &storeError), qPrintable(storeError.message));
 
@@ -1156,8 +1231,7 @@ void GuiTest::backendMachineFiles()
     meta.createdAt = QStringLiteral("2026-01-01T00:00:00.000Z");
     meta.updatedAt = meta.createdAt;
 
-    const QString machineDir =
-        m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
+    const QString machineDir = m_testDataDir + QStringLiteral("/data/podstack/machines/") + meta.id;
     QVERIFY(QDir().mkpath(machineDir));
     meta.sshKeyPath = machineDir + QStringLiteral("/id_ed25519");
     QFile keyFile(meta.sshKeyPath);
@@ -1192,8 +1266,7 @@ void GuiTest::backendMachineFiles()
     QTRY_VERIFY_WITH_TIMEOUT(!backend.machineDetail()->filesBusy(), 5000);
     QVERIFY2(backend.machineDetail()->filesError().isEmpty(),
              qPrintable(backend.machineDetail()->filesError()));
-    const QString downloadDir =
-        QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    const QString downloadDir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     QVERIFY2(downloadDir.startsWith(m_testDataDir), qPrintable(downloadDir));
     const QString downloaded = downloadDir + QStringLiteral("/gui.txt");
     QVERIFY(QFileInfo::exists(downloaded));
@@ -1228,8 +1301,8 @@ void GuiTest::backendTerminal()
     QCOMPARE(request.at(0).toString(), QStringLiteral("abc123"));
     QCOMPARE(request.at(1).toString(), QStringLiteral("podman"));
     QCOMPARE(request.at(2).toStringList(),
-             QStringList({QStringLiteral("exec"), QStringLiteral("-it"),
-                          QStringLiteral("abc123"), QStringLiteral("/bin/sh")}));
+             QStringList({QStringLiteral("exec"), QStringLiteral("-it"), QStringLiteral("abc123"),
+                          QStringLiteral("/bin/sh")}));
 
     backend.containers()->openTerminal(QString());
     QCOMPARE(terminalSpy.count(), 0);
@@ -1285,18 +1358,17 @@ void GuiTest::backendM3()
     QFile::remove(m_testDataDir + QStringLiteral("/podman-args.log"));
     QVariantMap multiSpec = spec;
     multiSpec.insert(QStringLiteral("tag"), QStringLiteral("localhost/mock:multi"));
-    multiSpec.insert(QStringLiteral("platforms"),
-                     QStringLiteral("linux/amd64,linux/arm64"));
+    multiSpec.insert(QStringLiteral("platforms"), QStringLiteral("linux/amd64,linux/arm64"));
     backend.builds()->startBuild(multiSpec);
     QTRY_VERIFY_WITH_TIMEOUT(
         !backend.builds()->buildActive() && backend.builds()->items().size() >= 2, 5000);
     bool foundPlatforms = false;
     for (const QVariant &value : backend.builds()->items()) {
         const QVariantMap build = value.toMap();
-        if (build.value(QStringLiteral("imageRef")).toString()
-            == QStringLiteral("localhost/mock:multi")) {
-            foundPlatforms = build.value(QStringLiteral("platforms")).toString()
-                             == QStringLiteral("linux/amd64, linux/arm64");
+        if (build.value(QStringLiteral("imageRef")).toString() ==
+            QStringLiteral("localhost/mock:multi")) {
+            foundPlatforms = build.value(QStringLiteral("platforms")).toString() ==
+                             QStringLiteral("linux/amd64, linux/arm64");
             break;
         }
     }
@@ -1305,8 +1377,7 @@ void GuiTest::backendM3()
     QVERIFY(argsFile.open(QIODevice::ReadOnly));
     const QString args = QString::fromUtf8(argsFile.readAll());
     argsFile.close();
-    QVERIFY2(args.contains(QStringLiteral("--platform linux/amd64,linux/arm64")),
-             qPrintable(args));
+    QVERIFY2(args.contains(QStringLiteral("--platform linux/amd64,linux/arm64")), qPrintable(args));
 
     QTRY_VERIFY_WITH_TIMEOUT(eventsSpy.count() > 0, 5000);
     QVERIFY(backend.eventMessage().contains(QStringLiteral("start")));
@@ -1838,8 +1909,8 @@ void GuiTest::guiStartsAndQuits()
 
     const QString runtimeDir = m_testDataDir + QStringLiteral("/runtime");
     QDir().mkpath(runtimeDir);
-    QFile::setPermissions(runtimeDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                         | QFileDevice::ExeOwner);
+    QFile::setPermissions(runtimeDir,
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
     const QString guiPath =
         QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("podstack-gui"));
 

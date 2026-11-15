@@ -214,4 +214,4 @@ done
 - [`../.github/workflows/pages.yml`](../../.github/workflows/pages.yml) — pipeline de publicação.
 - [`packaging.md`](packaging.md) — empacotamento de binários (RPM/DEB/Flatpak), que é independente do site.
 - [`branding.md`](branding.md) — paleta, marca e assets usados pelo site.
-- [`tasks.md`](../sdd/tasks.md) — backlog; publicação do site não pertence a nenhum marco M0–M8.
+- A publicação do site não pertence a nenhum marco M0–M8.

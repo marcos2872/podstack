@@ -58,9 +58,20 @@ struct ContainerCreateSpec {
     QMap<QString, QString> labels;
     QString workDir;
     QString user;
+    /// `no`, `always`, `unless-stopped` ou `on-failure`; vazio = padrão do engine.
+    QString restartPolicy;
+    /// Tentativas do `on-failure` (0 = padrão do Podman).
+    int restartTries = 0;
+    /// CPU em milésimos (1500 = 1,5 CPU); 0 = sem limite.
+    int cpusMilli = 0;
+    /// Memória em bytes; 0 = sem limite.
+    qint64 memoryBytes = 0;
+    /// Rede do Podman; vazio = rede padrão.
+    QString network;
     bool remove = false;
     bool init = false;
     bool privileged = false;
+    bool readOnly = false;
 
     QJsonObject toJson() const;
 };
@@ -163,24 +174,34 @@ public:
     bool killContainer(const QString &id, const QString &signal, Error *error = nullptr);
     bool renameContainer(const QString &id, const QString &name, Error *error = nullptr);
     QJsonObject inspectContainer(const QString &id, Error *error = nullptr);
+    /// `true` quando a imagem referenciada existe localmente.
+    bool imageExists(const QString &reference, Error *error = nullptr);
+    /// Processos do container (`containers/top`).
+    QJsonObject containerTop(const QString &id, Error *error = nullptr);
+    /// Alterações no filesystem (`containers/changes`).
+    QJsonArray containerChanges(const QString &id, Error *error = nullptr);
+    /// Exporta o filesystem do container em tar para `destination`.
+    bool exportContainer(const QString &id, const QString &destination, Error *error = nullptr);
+    /// Cria uma imagem a partir do container; devolve o ID da imagem.
+    QString commitContainer(const QString &id, const QString &repo, const QString &tag,
+                            const QString &message, Error *error = nullptr);
     QString createContainer(const ContainerCreateSpec &spec, Error *error = nullptr);
     QVector<FileEntry> listFiles(const QString &id, const QString &path, Error *error = nullptr);
     bool downloadFile(const QString &id, const QString &path, const QString &destination,
                       Error *error = nullptr);
     bool uploadFile(const QString &id, const QString &path, const QString &sourcePath,
                     Error *error = nullptr);
-    bool buildImage(const QString &contextPath, const QString &dockerfile,
-                    const QString &tag, const QMap<QString, QString> &buildArgs,
-                    const QString &platform,
-                    const std::function<bool(const QByteArray &)> &onLine,
-                    std::atomic_bool *cancel, QString *imageId, Error *error = nullptr);
+    bool buildImage(const QString &contextPath, const QString &dockerfile, const QString &tag,
+                    const QMap<QString, QString> &buildArgs, const QString &platform,
+                    const std::function<bool(const QByteArray &)> &onLine, std::atomic_bool *cancel,
+                    QString *imageId, Error *error = nullptr);
 
     bool execOnce(const QString &id, const QStringList &cmd, ExecResult *result,
                   Error *error = nullptr);
 
     bool streamLogs(const QString &id, int tail, bool follow,
-                    const std::function<bool(const QByteArray &)> &onData,
-                    std::atomic_bool *cancel, Error *error = nullptr);
+                    const std::function<bool(const QByteArray &)> &onData, std::atomic_bool *cancel,
+                    Error *error = nullptr);
 
     bool streamStats(const QString &id, int intervalSeconds,
                      const std::function<bool(const QByteArray &)> &onLine,
@@ -197,11 +218,11 @@ public:
     QJsonObject inspectImage(const QString &id, Error *error = nullptr);
     QVector<ImageHistoryEntry> imageHistory(const QString &id, Error *error = nullptr);
     bool pullImage(const QString &reference, const QString &platform,
-                   const std::function<bool(const QByteArray &)> &onLine,
-                   std::atomic_bool *cancel, Error *error = nullptr);
+                   const std::function<bool(const QByteArray &)> &onLine, std::atomic_bool *cancel,
+                   Error *error = nullptr);
     bool pushImage(const QString &id, const QString &destination,
-                   const std::function<bool(const QByteArray &)> &onLine,
-                   std::atomic_bool *cancel, Error *error = nullptr);
+                   const std::function<bool(const QByteArray &)> &onLine, std::atomic_bool *cancel,
+                   Error *error = nullptr);
     bool tagImage(const QString &id, const QString &repo, const QString &tag,
                   Error *error = nullptr);
     bool untagImage(const QString &id, const QString &repo, const QString &tag,
@@ -223,19 +244,17 @@ public:
     bool exportVolume(const QString &name, const QString &destination, Error *error = nullptr);
     bool importVolume(const QString &name, const QString &source, bool force,
                       Error *error = nullptr);
-    bool importHostPath(const QString &name, const QString &sourcePath,
-                        Error *error = nullptr);
+    bool importHostPath(const QString &name, const QString &sourcePath, Error *error = nullptr);
 
     // Redes
     QVector<NetworkInfo> listNetworks(Error *error = nullptr);
-    QJsonObject createNetwork(const QString &name, const QString &driver,
-                              const QString &subnet, const QString &gateway, bool ipv6,
+    QJsonObject createNetwork(const QString &name, const QString &driver, const QString &subnet,
+                              const QString &gateway, bool ipv6,
                               const QMap<QString, QString> &labels, Error *error = nullptr);
     bool removeNetwork(const QString &name, bool force, Error *error = nullptr);
-    bool connectNetwork(const QString &name, const QString &containerId,
-                        const QStringList &aliases, Error *error = nullptr);
-    bool disconnectNetwork(const QString &name, const QString &containerId,
-                           Error *error = nullptr);
+    bool connectNetwork(const QString &name, const QString &containerId, const QStringList &aliases,
+                        Error *error = nullptr);
+    bool disconnectNetwork(const QString &name, const QString &containerId, Error *error = nullptr);
 
     // Pods
     QVector<PodInfo> listPods(Error *error = nullptr);

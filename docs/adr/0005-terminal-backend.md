@@ -5,7 +5,7 @@
 | Status | **Aceito** (2026-11-08) |
 | Data | 2026-11-08 |
 | Decisores | Produto, Arquitetura |
-| Relacionados | `PRD.md` (Q1 resolvida), `plan.md`, `ui-map.md`, `LICENSE` |
+| Relacionados | [`ui-map.md`](../engineering/ui-map.md), [`LICENSE`](../../LICENSE) |
 
 ## Contexto
 

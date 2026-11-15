@@ -191,6 +191,8 @@ Backend::Backend(QObject *parent) : QObject(parent)
             &Backend::onActionFinished);
     connect(&m_serviceWatcher, &QFutureWatcher<int>::finished, this,
             &Backend::onServiceActivationFinished);
+    connect(&m_helloWatcher, &QFutureWatcher<QJsonObject>::finished, this,
+            &Backend::onHelloFinished);
     connect(&m_containers, &ContainerController::connectionChanged, this,
             [this](bool connected, const QString &error) {
                 if (connected) {
@@ -200,6 +202,7 @@ Backend::Backend(QObject *parent) : QObject(parent)
                     m_connected = true;
                     m_error.clear();
                     emit stateChanged();
+                    refreshDaemonInfo();
                     return;
                 }
                 if (!m_connected && m_error == error) {
@@ -210,6 +213,10 @@ Backend::Backend(QObject *parent) : QObject(parent)
                 emit stateChanged();
             });
     connect(&m_containers, &ContainerController::catalogDirty, this, &Backend::refreshCatalog);
+    connect(&m_containers, &ContainerController::itemsChanged, this,
+            [this] { emit containersChanged(m_containers.items()); });
+    connect(&m_containers, &ContainerController::containerCreated, this,
+            [this](const QString &id) { emit containerCreated(id); });
     connect(&m_containers, &ContainerController::terminalRequested, this,
             &Backend::terminalRequested);
     connect(&m_machines, &MachineController::terminalRequested, this, &Backend::terminalRequested);
@@ -323,6 +330,7 @@ Backend::Backend(QObject *parent) : QObject(parent)
     QTimer::singleShot(0, this, &Backend::refreshCatalog);
     QTimer::singleShot(0, this, [this] { m_machines.refresh(); });
     QTimer::singleShot(0, this, [this] { m_settings.refresh(); });
+    QTimer::singleShot(0, this, [this] { refreshDaemonInfo(); });
 }
 
 QString Backend::version() const
@@ -351,15 +359,17 @@ void Backend::refreshDiskUsage()
     refreshSection(QStringLiteral("df"));
 }
 
-void Backend::activateDaemonService()
+void Backend::restartDaemonService()
 {
     if (m_serviceActivating) {
         return;
     }
     m_serviceActivating = true;
     emit serviceActivationChanged();
+    // `restart` derruba um daemon travado (o `start` não resolve quando o
+    // socket aceita conexões e o processo não responde).
     m_serviceWatcher.setFuture(
-        QtConcurrent::run([] { return static_cast<int>(DaemonBootstrap::ensureRunning()); }));
+        QtConcurrent::run([] { return static_cast<int>(DaemonBootstrap::restart()); }));
 }
 
 void Backend::onServiceActivationFinished()
@@ -368,15 +378,59 @@ void Backend::onServiceActivationFinished()
     emit serviceActivationChanged();
     const auto status = static_cast<DaemonBootstrap::Status>(m_serviceWatcher.result());
     if (status == DaemonBootstrap::Status::NotInstalled) {
-        m_lastError = QStringLiteral("A unit podstack.socket não está instalada.");
+        m_lastError = QStringLiteral("A unit podstack.service não está instalada. Rode: %1")
+                          .arg(DaemonBootstrap::manualRemedy());
         emit lastErrorChanged();
     } else if (status == DaemonBootstrap::Status::Failed) {
-        m_lastError = QStringLiteral("Não foi possível ativar o podstack.socket. Rode: %1")
+        m_lastError = QStringLiteral("Não foi possível reiniciar o daemon. Rode: %1")
                           .arg(DaemonBootstrap::manualRemedy());
         emit lastErrorChanged();
     }
     refresh();
+    refreshDaemonInfo();
     m_eventsStream.subscribeEvents();
+}
+
+void Backend::refreshDaemonInfo()
+{
+    if (m_helloWatcher.isRunning()) {
+        return;
+    }
+    m_helloWatcher.setFuture(QtConcurrent::run([] {
+        RpcClient client;
+        Error error;
+        const QJsonObject result = client.call(QStringLiteral("system.hello"), {}, &error, 5000);
+        if (!error.isEmpty()) {
+            return QJsonObject{{QStringLiteral("__error"), error.toJson()}};
+        }
+        return result;
+    }));
+}
+
+void Backend::onHelloFinished()
+{
+    const QJsonObject result = m_helloWatcher.result();
+    if (result.contains(QStringLiteral("__error"))) {
+        return;
+    }
+
+    const QString daemonVersion = result.value(QStringLiteral("daemonVersion")).toString();
+    const int apiVersion = result.value(QStringLiteral("apiVersion")).toInt();
+    QString mismatch;
+    if (apiVersion > 1) {
+        mismatch = QStringLiteral("O daemon usa a API %1 e esta versão da GUI fala a API 1.")
+                       .arg(apiVersion);
+    } else if (!daemonVersion.isEmpty() && daemonVersion != QStringLiteral(PODSTACK_VERSION)) {
+        mismatch = QStringLiteral("GUI %1 e daemon %2 — reinicie o daemon para alinhar.")
+                       .arg(QStringLiteral(PODSTACK_VERSION), daemonVersion);
+    }
+
+    if (m_daemonVersion == daemonVersion && m_daemonMismatch == mismatch) {
+        return;
+    }
+    m_daemonVersion = daemonVersion;
+    m_daemonMismatch = mismatch;
+    emit daemonInfoChanged();
 }
 
 void Backend::refreshSection(const QString &section)

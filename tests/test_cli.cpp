@@ -2378,7 +2378,7 @@ void CliTest::errorPaths()
     result = run({QStringLiteral("doctor")}, offline);
     QCOMPARE(result.code, 7);
     QVERIFY(result.out.contains(QStringLiteral("[fail] daemon.socket")));
-    QVERIFY(result.out.contains(QStringLiteral("systemctl --user start podstack.socket")));
+    QVERIFY(result.out.contains(QStringLiteral("systemctl --user restart podstack.service")));
     QCOMPARE(run({QStringLiteral("build")}, environment(m_controlSocket)).code, 2);
     QCOMPARE(run({QStringLiteral("builds"), QStringLiteral("rm")},
                  environment(m_controlSocket)).code, 2);

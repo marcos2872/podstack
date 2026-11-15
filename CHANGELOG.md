@@ -5,6 +5,40 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+### Corrigido
+
+- **Lista de containers vazia:** a página não recebia os itens porque o
+  `containersChanged` do `Backend` foi perdido no refactor dos controllers. Agora a
+  lista é entregue, mantém o último retrato em falha transitória e distingue
+  *carregando*, *vazio* e *daemon inacessível*.
+- **Daemon zumbi:** as subscriptions (eventos, logs, stats) são canceladas quando o
+  cliente desconecta e no shutdown. Antes, cada GUI fechada deixava um thread preso no
+  stream do Podman, o `SIGTERM` ficava pendurado e o socket continuava aceitando
+  conexões sem responder.
+- **Diagnóstico do socket:** o bootstrap e o `podstack doctor` exigem resposta real do
+  daemon (`system.hello`), não apenas conexão; o remédio passa a ser
+  `systemctl --user restart podstack.service` (o `start` não resolve um processo travado).
+- **Aviso de versão:** a GUI compara `system.hello` com a própria versão e avisa quando
+  GUI e daemon divergem (antes a lista ficava vazia sem explicação).
+
+### Adicionado
+
+- **Criação conforme a spec:** validação de nome (RFC 1123 + conflito com sugestão),
+  portas 1–65535 e sem repetição, mounts existentes/sem `..` e imagem obrigatoriamente
+  local — com oferta de **Baixar imagem** e nova tentativa automática no diálogo.
+- **Campos novos no "Novo container":** `read-only`, restart policy, CPUs, memória (MB),
+  rede, labels, além de `remover ao parar`, init e privileged. O diálogo não fecha em
+  erro, mostra a causa nele e seleciona o container criado ao concluir.
+- **Volumes por vírgula** no diálogo (antes só quebra de linha) e `[:ro]`.
+- **Métodos documentados que faltavam:** `containers.get`, `containers.top`,
+  `containers.changes`, `containers.export` e `containers.commit`; `containers.list`
+  passa a honrar `filter`, `limit` e `offset`.
+- **Listagem:** ID curto, idade e projeto Compose na linha e no inspector; busca por ID.
+- **Remoção em lote** com confirmação e `force` (antes removia sem perguntar e falhava
+  em containers em execução).
+
 ## [0.1.4] - 2026-11-13
 
 ### Adicionado

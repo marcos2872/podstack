@@ -54,7 +54,7 @@ struct CommandResult {
     QString error;
 };
 
-CommandResult runSystemctl(const QStringList &arguments)
+CommandResult runSystemctl(const QStringList &arguments, int timeoutMs = kCommandTimeoutMs)
 {
     CommandResult result;
     QProcess process;
@@ -64,7 +64,7 @@ CommandResult runSystemctl(const QStringList &arguments)
         result.error = process.errorString();
         return result;
     }
-    if (!process.waitForFinished(kCommandTimeoutMs)) {
+    if (!process.waitForFinished(timeoutMs)) {
         process.kill();
         process.waitForFinished(1000);
         result.error = QStringLiteral("tempo esgotado");
@@ -92,14 +92,54 @@ bool connectable(const QString &socketPath, int timeoutMs)
     return connected;
 }
 
+/// Fala o mínimo de JSON-RPC para saber se o daemon está vivo. Um socket que
+/// aceita conexão mas não responde (processo travado no shutdown, por
+/// exemplo) é indistinguível de um daemon saudável só pelo `connect()`.
+bool responsive(const QString &socketPath, int timeoutMs)
+{
+    QLocalSocket socket;
+    socket.connectToServer(socketPath, QIODevice::ReadWrite);
+    if (!socket.waitForConnected(timeoutMs)) {
+        socket.abort();
+        return false;
+    }
+
+    const QByteArray payload = QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"system.hello\",\"params\":{}}\n");
+    if (socket.write(payload) != payload.size() || !socket.waitForBytesWritten(timeoutMs)) {
+        socket.abort();
+        return false;
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+    QByteArray buffer;
+    while (true) {
+        const int remaining = timeoutMs - static_cast<int>(timer.elapsed());
+        if (remaining <= 0) {
+            break;
+        }
+        if (!socket.waitForReadyRead(remaining)) {
+            break;
+        }
+        buffer.append(socket.readAll());
+        if (buffer.contains('\n')) {
+            socket.abort();
+            return true;
+        }
+    }
+    socket.abort();
+    return false;
+}
+
 /// O systemd cria o listening socket de forma assíncrona: depois do `start`
-/// é preciso aguardar, não tentar uma única vez.
-bool waitForConnectable(const QString &socketPath, int timeoutMs)
+/// é preciso aguardar o daemon responder, não tentar uma única vez.
+bool waitForResponsive(const QString &socketPath, int timeoutMs)
 {
     QElapsedTimer timer;
     timer.start();
     while (true) {
-        if (connectable(socketPath, 200)) {
+        if (responsive(socketPath, 200)) {
             return true;
         }
         if (timer.elapsed() >= timeoutMs) {
@@ -152,6 +192,7 @@ Probe probe(const QString &socketPath, int timeoutMs)
     const QString path = resolvedSocketPath(socketPath);
     result.socketExists = QFileInfo::exists(path);
     result.connectable = connectable(path, timeoutMs);
+    result.responds = result.connectable && responsive(path, timeoutMs);
     return result;
 }
 
@@ -168,7 +209,7 @@ Status ensureRunning(const QString &socketPath, QString *detail)
     }
 
     const QString path = resolvedSocketPath(socketPath);
-    if (connectable(path, 500)) {
+    if (responsive(path, 700)) {
         return Status::AlreadyRunning;
     }
 
@@ -192,16 +233,58 @@ Status ensureRunning(const QString &socketPath, QString *detail)
                              << start.exitCode << "):" << start.error;
             continue;
         }
-        if (waitForConnectable(path, 2000)) {
+        if (waitForResponsive(path, 2000)) {
             return Status::Started;
         }
         lastFailure = QStringLiteral("o socket não respondeu depois do start");
-        qCWarning(lcRpc) << "podstack.socket iniciado, mas" << path << "não aceita conexões";
+        qCWarning(lcRpc) << "podstack.socket iniciado, mas" << path << "não responde";
     }
 
     if (detail) {
         *detail = std::move(lastFailure);
     }
+    return Status::Failed;
+}
+
+Status restart(const QString &socketPath, QString *detail)
+{
+    if (detail) {
+        detail->clear();
+    }
+    if (!bootstrapAllowed()) {
+        return Status::CustomSocket;
+    }
+    if (!unitInstalled()) {
+        return Status::NotInstalled;
+    }
+
+    const CommandResult reload =
+        runSystemctl({QStringLiteral("--user"), QStringLiteral("daemon-reload")});
+    if (!reload.ok) {
+        qCWarning(lcRpc) << "systemctl --user daemon-reload falhou:" << reload.error;
+    }
+
+    // Timeout maior: o stop de um daemon travado pode esperar o TimeoutStopSec
+    // da unit (20 s) antes do SIGKILL.
+    const CommandResult stopped = runSystemctl(
+        {QStringLiteral("--user"), QStringLiteral("restart"), QStringLiteral("podstack.service")},
+        30000);
+    if (!stopped.ok) {
+        if (detail) {
+            *detail = stopped.error;
+        }
+        qCWarning(lcRpc) << "systemctl --user restart podstack.service falhou:" << stopped.error;
+        return Status::Failed;
+    }
+
+    const QString path = resolvedSocketPath(socketPath);
+    if (waitForResponsive(path, 5000)) {
+        return Status::Started;
+    }
+    if (detail) {
+        *detail = QStringLiteral("o daemon não respondeu depois do restart");
+    }
+    qCWarning(lcRpc) << "podstack.service reiniciado, mas" << path << "não responde";
     return Status::Failed;
 }
 
@@ -249,7 +332,9 @@ void ensureRunningAsync(const QString &socketPath)
 
 QString manualRemedy()
 {
-    return QStringLiteral("systemctl --user start podstack.socket");
+    // `restart` também ativa o socket parado; é o único remédio que resolve
+    // um daemon que aceita conexões mas não responde.
+    return QStringLiteral("systemctl --user restart podstack.service");
 }
 
 } // namespace PodStack::DaemonBootstrap

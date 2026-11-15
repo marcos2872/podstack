@@ -50,6 +50,7 @@ class Backend : public QObject {
     Q_PROPERTY(PodStack::PodController *pods READ pods CONSTANT)
     Q_PROPERTY(bool connected READ connected NOTIFY stateChanged)
     Q_PROPERTY(QString error READ error NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList containerItems READ containerItems NOTIFY containersChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(bool actionActive READ actionActive NOTIFY actionStateChanged)
@@ -58,6 +59,8 @@ class Backend : public QObject {
     Q_PROPERTY(QString eventMessage READ eventMessage NOTIFY eventsChanged)
     Q_PROPERTY(QString eventKind READ eventKind NOTIFY eventsChanged)
     Q_PROPERTY(bool serviceActivating READ serviceActivating NOTIFY serviceActivationChanged)
+    Q_PROPERTY(QString daemonVersion READ daemonVersion NOTIFY daemonInfoChanged)
+    Q_PROPERTY(QString daemonMismatch READ daemonMismatch NOTIFY daemonInfoChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -79,6 +82,7 @@ public:
     PodController *pods() { return &m_pods; }
     bool connected() const { return m_connected; }
     QString error() const { return m_error; }
+    QVariantList containerItems() const { return m_containers.items(); }
     QString lastError() const { return m_lastError; }
     QString version() const;
     bool actionActive() const { return m_actionActive; }
@@ -87,12 +91,15 @@ public:
     QString eventMessage() const { return m_eventMessage; }
     QString eventKind() const { return m_eventKind; }
     bool serviceActivating() const { return m_serviceActivating; }
+    QString daemonVersion() const { return m_daemonVersion; }
+    QString daemonMismatch() const { return m_daemonMismatch; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshCatalog();
     Q_INVOKABLE void refreshDiskUsage();
-    /// Tenta ativar o podstack.socket em background (botão "Ativar serviço").
-    Q_INVOKABLE void activateDaemonService();
+    /// Reinicia o podstack.service em background (botão "Reiniciar daemon").
+    /// Um daemon travado aceita conexões mas não responde; `start` não resolve.
+    Q_INVOKABLE void restartDaemonService();
     Q_INVOKABLE void openPath(const QString &path);
     Q_INVOKABLE QString choosePath(const QString &mode, const QString &title,
                                    const QString &filter = QString(),
@@ -101,13 +108,19 @@ public:
 signals:
     void actionStateChanged();
     void stateChanged();
+    /// Lista de containers para a página. Existia antes do refactor dos
+    /// controllers e o `Main.qml` continuava escutando: sem o sinal, a página
+    /// nunca recebia os itens e mostrava "0 containers".
+    void containersChanged(const QVariantList &items);
     void lastErrorChanged();
     void serviceActivationChanged();
+    void daemonInfoChanged();
     void actionFinished(bool ok, const QString &error);
     void diskUsageChanged();
     void prunePreviewChanged();
     void eventsChanged();
     void containerEvent(const QVariantMap &event);
+    void containerCreated(const QString &id);
     void terminalRequested(const QString &title, const QString &program, const QStringList &args);
 
 private:
@@ -123,6 +136,8 @@ private:
     void onSystemLogsFinished();
     void onDiskFinished();
     void onServiceActivationFinished();
+    void refreshDaemonInfo();
+    void onHelloFinished();
     void applySetupStatus(const QJsonObject &status);
     void applySetupJob(const QJsonObject &job);
     void runSetupRequest(const QString &method, const QJsonObject &params);
@@ -143,7 +158,10 @@ private:
     QFutureWatcher<QJsonObject> m_actionWatcher;
     QFutureWatcher<QJsonObject> m_catalogWatcher;
     QFutureWatcher<int> m_serviceWatcher;
+    QFutureWatcher<QJsonObject> m_helloWatcher;
     bool m_serviceActivating = false;
+    QString m_daemonVersion;
+    QString m_daemonMismatch;
     QString m_catalogSection;
     QStringList m_catalogQueue;
     StreamClient m_eventsStream;

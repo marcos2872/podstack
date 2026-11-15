@@ -2,50 +2,33 @@
 
 **PodStack** é uma alternativa Linux ao OrbStack: um app desktop para gerenciar containers, imagens, volumes, redes, builds, Compose, máquinas Linux (VMs), Kubernetes e domínios locais sobre o **Podman Engine** nativo.
 
-> **Status:** estado por marco em [`roadmap.md`](sdd/roadmap.md); tarefas e pendências em [`tasks.md`](sdd/tasks.md).
-> **UI Concept:** POC navegável em [`../poc/ui/`](../poc/ui/README.md) — referência visual para o redesign; **não** é o app.
 > **Licença:** GPL-3.0-or-later.
-> **Baseline funcional:** OrbStack 2.2.5 (build 21124), analisado estaticamente. Ver [`reference/orbstack-2.2.5.md`](reference/orbstack-2.2.5.md).
 > **Nome/branding:** PodStack é um projeto independente, sem afiliação com a Orbital Labs. Nenhum asset, ícone ou código proprietário do OrbStack é reutilizado.
 
 ## Estrutura de `docs/`
 
-| Diretório | Conteúdo | Papel |
-|---|---|---|
-| [`sdd/`](sdd/) | Núcleo SDD: constituição, PRD, spec, plan, roadmap, tasks, testing | fonte de verdade |
-| [`engineering/`](engineering/) | Referência técnica derivada: arquitetura, data model, RPC, UI, segurança, settings, CLI, empacotamento, web, marca | derivada |
-| [`specs/`](specs/) | Deltas SDD por feature (`spec.md`, `plan.md`, `tasks.md`), propostos ou já promovidos | proposta/registro |
-| [`adr/`](adr/) | Decisões arquiteturais | decisão |
-| [`reference/`](reference/) | Material de referência do OrbStack 2.2.5 | referência |
-| [`user/`](user/) | Documentação de usuário | derivada |
-
-**Promoção de delta:** um diretório em `specs/<NNN>-<nome>/` é revisado e, quando aprovado, seu conteúdo é promovido para `sdd/spec.md`, `sdd/plan.md` e `sdd/tasks.md`; o diretório permanece como registro da proposta. Enquanto estiver em `specs/`, o delta **não** é fonte de verdade.
+| Diretório | Conteúdo |
+|---|---|
+| [`engineering/`](engineering/) | Referência técnica: arquitetura, data model, RPC, UI, segurança, settings, CLI, empacotamento, web e marca |
+| [`adr/`](adr/) | Decisões arquiteturais (contexto, decisão, alternativas e consequências) |
+| [`user/`](user/) | Documentação de usuário: instalação, primeiros passos, CLI e solução de problemas |
 
 ## Como ler
 
-O projeto segue **SDD (Spec-Driven Development)**: a especificação é a fonte de verdade; código e testes são derivados dela.
+O comportamento do produto é descrito pelos documentos de engenharia e pelos ADRs. Para uma mudança de código, comece pela documentação da área tocada.
 
-| Ordem | Documento | Pergunta que responde |
-|---|---|---|
-| 1 | [`constitution.md`](sdd/constitution.md) | Quais princípios inegociáveis guiam o projeto? |
-| 2 | [`PRD.md`](sdd/PRD.md) | O que vamos construir, para quem, por quê e com quais critérios? |
-| 3 | [`spec.md`](sdd/spec.md) | Como cada funcionalidade se comporta, em detalhe? |
-| 4 | [`plan.md`](sdd/plan.md) | Como vamos construir tecnicamente? |
-| 5 | [`tasks.md`](sdd/tasks.md) | Quais tarefas executáveis levam aos marcos? |
-| 6 | [`testing.md`](sdd/testing.md) | Como provamos que está correto? |
-
-### Mapeamento SDD (Spec Kit)
-
-| Etapa do Spec Kit | Artefato neste repositório |
+| Pergunta | Documento |
 |---|---|
-| `/speckit.constitution` | [`constitution.md`](sdd/constitution.md) |
-| `/speckit.specify` | [`PRD.md`](sdd/PRD.md) + [`spec.md`](sdd/spec.md) |
-| `/speckit.plan` | [`plan.md`](sdd/plan.md) + [`architecture.md`](engineering/architecture.md) |
-| `/speckit.tasks` | [`tasks.md`](sdd/tasks.md) |
-| `/speckit.implement` | `src/` (a criar no M0) |
-| `/speckit.analyze` | [`testing.md`](sdd/testing.md) + checklist do PRD §14 |
-
-Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem depender do CLI `specify`. Deltas de feature usam o mesmo trio em [`specs/<NNN>-<nome>/`](specs/) (ver [`specs/002-update-seguro-logs-debug/`](specs/002-update-seguro-logs-debug/)).
+| Como o app é dividido e como os fluxos conversam? | [`engineering/architecture.md`](engineering/architecture.md) |
+| Qual é o contrato JSON-RPC do daemon? | [`engineering/api-rpc.md`](engineering/api-rpc.md) |
+| Quais telas, componentes e atalhos existem? | [`engineering/ui-map.md`](engineering/ui-map.md) |
+| Quais chaves de settings existem, com que default? | [`engineering/settings.md`](engineering/settings.md) |
+| Qual é o modelo de ameaças, privilégios e segredos? | [`engineering/security.md`](engineering/security.md) |
+| Como o app é empacotado (RPM/DEB)? | [`engineering/packaging.md`](engineering/packaging.md) |
+| Como o CLI se compara ao `orb`/`docker`? | [`engineering/cli-parity.md`](engineering/cli-parity.md) |
+| Quais entidades e estados são persistidos? | [`engineering/data-model.md`](engineering/data-model.md) |
+| Como o site público é gerado e publicado? | [`engineering/web.md`](engineering/web.md) |
+| Como usar o app no dia a dia? | [`user/README.md`](user/README.md) |
 
 ## Documentos de engenharia
 
@@ -61,8 +44,6 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 | [`security.md`](engineering/security.md) | Modelo de ameaças, privilégios, helper, polkit e segredos |
 | [`packaging.md`](engineering/packaging.md) | RPM, systemd, polkit, SELinux, AppImage e avaliação de Flatpak |
 | [`web.md`](engineering/web.md) | Site público em GitHub Pages: estrutura de `web/`, publicação, gatilhos e rollback |
-| [`roadmap.md`](sdd/roadmap.md) | Marcos M0–M8, entregáveis e critérios de saída |
-| [UI Concept (POC)](../poc/ui/README.md) | Referência visual navegável (HTML/CSS/JS) para o redesign; **não** é o app |
 
 ## Decisões arquiteturais (ADRs)
 
@@ -79,15 +60,6 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 | [`adr/0009-tray-sni-lifecycle.md`](adr/0009-tray-sni-lifecycle.md) | Bandeja SNI (`QSystemTrayIcon`), fechar-para-bandeja e instância única |
 | [`adr/0010-deb-ubuntu-qtermwidget-vendorizado.md`](adr/0010-deb-ubuntu-qtermwidget-vendorizado.md) | DEB do Ubuntu 24.04 com QTermWidget vendorizado |
 | [`adr/0012-update-logging.md`](adr/0012-update-logging.md) | Atualização segura (scripts + runner/helper) e logs de debug com retenção de 7 dias |
-
-## Referência
-
-- [`reference/orbstack-2.2.5.md`](reference/orbstack-2.2.5.md) — inventário funcional, UI, CLI e chaves extraídos do DMG 2.2.5.
-- [`reference/orbstack-2.2.5-official-notes.md`](reference/orbstack-2.2.5-official-notes.md) — correções e detalhes da documentação oficial (abas reais, settings, CLI).
-- `reference/cli-tree.json` — árvore completa do CLI (51 nós, flags).
-- [`reference/cli-tree.md`](reference/cli-tree.md) — versão legível da árvore.
-- `reference/swift-files.txt` — 29 arquivos de tela/modelo Swift identificados.
-- `reference/settings-keys.txt` — chaves de settings observadas.
 
 ## Assets e marca
 
@@ -107,8 +79,8 @@ Os artefatos foram escritos diretamente em Markdown, no formato do Spec Kit, sem
 
 ## Convenções
 
-- Requisitos funcionais: `FR-<DOMÍNIO>-<NNN>` (ex.: `FR-CON-003`).
-- Requisitos não funcionais: `NFR-<ÁREA>-<NNN>`.
-- Tarefas: `T<marco>-<NN>` (ex.: `T1-04`).
-- Prioridade: **P0** (v1 obrigatório), **P1** (v1 desejável / v1.x), **P2** (pós-v1).
-- Toda mudança de escopo volta para `PRD.md` e `spec.md` antes de virar código.
+- Uso do CLI: `podstack <domínio> <ação>`; flags e exit codes em [`engineering/cli-parity.md`](engineering/cli-parity.md) e [`user/cli.md`](user/cli.md).
+- Método RPC novo: documentar em [`engineering/api-rpc.md`](engineering/api-rpc.md) antes de implementar.
+- Chave de setting nova: documentar em [`engineering/settings.md`](engineering/settings.md) (tipo, default, validação, restart).
+- Tela/componente QML: documentar em [`engineering/ui-map.md`](engineering/ui-map.md).
+- Decisão arquitetural: ADR em `docs/adr/` (contexto, decisão, alternativas, consequências).

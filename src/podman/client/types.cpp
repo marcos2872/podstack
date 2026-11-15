@@ -194,6 +194,38 @@ QJsonObject ContainerCreateSpec::toJson() const
     if (!user.isEmpty()) {
         object.insert(QStringLiteral("user"), user);
     }
+    if (!restartPolicy.isEmpty()) {
+        object.insert(QStringLiteral("restart_policy"), restartPolicy);
+        if (restartPolicy == QStringLiteral("on-failure") && restartTries > 0) {
+            object.insert(QStringLiteral("restart_tries"), restartTries);
+        }
+    }
+    if (!network.isEmpty()) {
+        // O Podman recusa `networks` sem modo bridge explícito
+        // ("networks and static ip/mac address can only be used with Bridge mode").
+        object.insert(QStringLiteral("netns"),
+                      QJsonObject{{QStringLiteral("nsmode"), QStringLiteral("bridge")}});
+        object.insert(QStringLiteral("networks"), QJsonObject{{network, QJsonObject{}}});
+    }
+    if (cpusMilli > 0 || memoryBytes > 0) {
+        QJsonObject limits;
+        if (cpusMilli > 0) {
+            constexpr int kPeriodMicros = 100000;
+            // `--cpus 1.5` equivale a quota de 150 ms por período de 100 ms.
+            const qint64 quota = static_cast<qint64>(cpusMilli) * kPeriodMicros / 1000;
+            limits.insert(QStringLiteral("cpu"),
+                          QJsonObject{{QStringLiteral("quota"), quota},
+                                      {QStringLiteral("period"), kPeriodMicros}});
+        }
+        if (memoryBytes > 0) {
+            limits.insert(QStringLiteral("memory"),
+                          QJsonObject{{QStringLiteral("limit"), memoryBytes}});
+        }
+        object.insert(QStringLiteral("resource_limits"), limits);
+    }
+    if (readOnly) {
+        object.insert(QStringLiteral("read_only_filesystem"), true);
+    }
     if (remove) {
         object.insert(QStringLiteral("remove"), true);
     }

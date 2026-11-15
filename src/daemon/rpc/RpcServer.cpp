@@ -23,9 +23,7 @@ constexpr int kInvalidRequest = -32600;
 constexpr int kInternalError = -32603;
 } // namespace
 
-RpcServer::RpcServer(Daemon *daemon, QObject *parent)
-    : QObject(parent)
-    , m_daemon(daemon)
+RpcServer::RpcServer(Daemon *daemon, QObject *parent) : QObject(parent), m_daemon(daemon)
 {
     connect(&m_server, &QLocalServer::newConnection, this, &RpcServer::onNewConnection);
 }
@@ -42,6 +40,12 @@ RpcServer::~RpcServer()
         socket->disconnectFromServer();
     }
     m_buffers.clear();
+    m_connections.clear();
+}
+
+void RpcServer::close()
+{
+    m_server.close();
 }
 
 bool RpcServer::systemdListenFd(qintptr *descriptor)
@@ -128,6 +132,7 @@ void RpcServer::onNewConnection()
         connect(socket, &QLocalSocket::readyRead, this, &RpcServer::onReadyRead);
         connect(socket, &QLocalSocket::disconnected, this, &RpcServer::onDisconnected);
         m_buffers.insert(socket, {});
+        m_connections.insert(socket, m_nextConnection++);
         qCInfo(lcRpc) << "cliente conectado";
     }
 }
@@ -172,6 +177,13 @@ void RpcServer::onDisconnected()
         return;
     }
     m_buffers.remove(socket);
+    const quint64 connectionId = m_connections.take(socket);
+    // Sem isso, um stream infinito (eventos/logs/stats) continua rodando numa
+    // thread do pool depois que a GUI fecha, até esgotar o pool e travar o
+    // daemon. O cancelamento interrompe o curl mesmo com o stream ocioso.
+    if (m_daemon) {
+        m_daemon->cancelSubscriptionsForConnection(connectionId);
+    }
     socket->deleteLater();
     qCInfo(lcRpc) << "cliente desconectado";
 }
@@ -179,10 +191,10 @@ void RpcServer::onDisconnected()
 bool RpcServer::authenticate(QLocalSocket *socket) const
 {
 #ifdef Q_OS_LINUX
-    struct ucred credentials {};
+    struct ucred credentials{};
     socklen_t length = sizeof(credentials);
-    if (getsockopt(static_cast<int>(socket->socketDescriptor()), SOL_SOCKET, SO_PEERCRED, &credentials, &length)
-        != 0) {
+    if (getsockopt(static_cast<int>(socket->socketDescriptor()), SOL_SOCKET, SO_PEERCRED,
+                   &credentials, &length) != 0) {
         return false;
     }
     return credentials.uid == ::getuid();
@@ -227,6 +239,7 @@ void RpcServer::handleLine(QLocalSocket *socket, const QByteArray &line)
     }
 
     QPointer<QLocalSocket> guard(socket);
+    const quint64 connectionId = m_connections.value(socket);
     const Daemon::Notify notify = [this, guard](const QString &notificationMethod,
                                                 const QJsonObject &notificationParams) {
         if (!guard) {
@@ -249,9 +262,9 @@ void RpcServer::handleLine(QLocalSocket *socket, const QByteArray &line)
             Qt::QueuedConnection);
     };
 
-    (void)QtConcurrent::run([this, guard, id, method, params, notify] {
+    (void) QtConcurrent::run([this, guard, id, method, params, notify, connectionId] {
         Error error;
-        const QJsonObject result = m_daemon->handle(method, params, notify, &error);
+        const QJsonObject result = m_daemon->handle(method, params, notify, &error, connectionId);
 
         QJsonObject response;
         response.insert(QStringLiteral("jsonrpc"), QStringLiteral("2.0"));

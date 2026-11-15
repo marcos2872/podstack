@@ -1,7 +1,7 @@
 # Documentação de usuário — PodStack 0.1.4
 
 Guias para instalar, configurar e usar o PodStack 0.1.4 em um Linux desktop. A documentação
-técnica (PRD, spec, arquitetura, ADRs e contrato RPC) continua em [`../README.md`](../README.md);
+técnica (arquitetura, ADRs e contrato RPC) continua em [`../README.md`](../README.md);
 para desenvolver ou contribuir, leia o [`AGENTS.md`](../../AGENTS.md).
 
 ## Guias

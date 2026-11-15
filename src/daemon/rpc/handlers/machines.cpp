@@ -125,6 +125,8 @@ QJsonObject Daemon::machineClone(const QJsonObject &params, const Notify &notify
     }
 
     auto subscription = std::make_shared<Subscription>();
+    // Job: continua mesmo se o cliente que acompanha o progresso cair.
+    subscription->cancelOnDisconnect = false;
     const QString subscriptionId = createSubscription(subscription);
     {
         std::lock_guard<std::mutex> lock(m_machineJobsMutex);
@@ -292,6 +294,8 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
     }
 
     auto subscription = std::make_shared<Subscription>();
+    // Job: continua mesmo se o cliente que acompanha o progresso cair.
+    subscription->cancelOnDisconnect = false;
     const QString subscriptionId = createSubscription(subscription);
     {
         std::lock_guard<std::mutex> lock(m_machineJobsMutex);
@@ -412,6 +416,8 @@ QJsonObject Daemon::machineExport(const QJsonObject &params, const Notify &notif
     }
 
     auto subscription = std::make_shared<Subscription>();
+    // Job: continua mesmo se o cliente que acompanha o progresso cair.
+    subscription->cancelOnDisconnect = false;
     const QString subscriptionId = createSubscription(subscription);
     {
         std::lock_guard<std::mutex> lock(m_machineJobsMutex);
@@ -595,6 +601,8 @@ QJsonObject Daemon::machineImport(const QJsonObject &params, const Notify &notif
     }
 
     auto subscription = std::make_shared<Subscription>();
+    // Job: continua mesmo se o cliente que acompanha o progresso cair.
+    subscription->cancelOnDisconnect = false;
     const QString subscriptionId = createSubscription(subscription);
     {
         std::lock_guard<std::mutex> lock(m_machineJobsMutex);

@@ -12,51 +12,49 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** **M4 validado em VM real e M5 concluído no código** (machines QEMU/KVM: criar/listar/logs/stats, ciclo de vida e reconciliação de órfãos, SSH/arquivos, mounts virtiofs, export/import `.tar.zst`, clone/rename/default, CPU/memória/disco com restart, port forwarding, SSH agent forwarding, modo isolado, console serial e snapshots) sobre o M3 (Compose por labels + provider, logs por serviço/agregados, builds via Libpod com histórico SQLite, eventos globais em toasts), o M2 (imagens/volumes/redes/pods) e o M1 (containers, logs, stats, files, terminal, batch, health, rootful). **Pré-M5 mergeado** (PR #12): multi-seleção em containers, imagens, volumes, redes, pods, machines, Compose e builds; testes QML reais (`Main.qml`, `ContainerDetail.qml`, `MachineDetail.qml`); `clang-format`/`clang-tidy` bloqueantes no CI; correções de settings, inspector, virtiofsd e startup. **Onboarding/setup implementado** (`SetupManager`, `SetupWindow` com 7 etapas, `setup.*`, `podstack setup` e `podstack-helper` com polkit/allowlist); a validação de instalação limpa segue pendente (T7-07/T7-14). **Bandeja implementada** (`TrayController` SNI, fechar-para-bandeja, menu de containers por projeto Compose, Activity Monitor, configurações, autostart, notificações de falha/OOM/unhealthy e instância única). **15 testes**; cobertura **~80%** com gate bloqueante de **80%** (ver `docs/sdd/testing.md`). Settings completos (T7-01) concluídos. Pendências: Supabase (T3-09, adiada) e itens de T7-03/T7-05 que dependem do M5/updates. **M5 concluído:** **T5-01** (VM k3s + instalação), **T5-02** (kubeconfig isolado, contexto, `podstack kube info/env` e `kubectl get nodes` no host), **T5-03** (Pods/Services via RPC + página Kubernetes com refresh de 2 s), **T5-04** (logs por container do pod com streaming SSH) e **T5-05** (delete de Pod/Service + port-forward), **T5-06** (enable/disable/reset com confirmação e CLI) e **T5-07** (TLS SANs + port-forward de Service com exposição LAN; NodePort/LB nativos ficam para T6) e **T5-08** (troca explícita de contexto; automática por projeto depende de definição) implementadas. M5 concluído no código. **M6 iniciado:** T6-01 (`*.localhost` + `HttpProxy` em loopback na `network.httpPort`, 404 HTML, sem root/`/etc/hosts`), T6-02 (página de índice em `http://localhost:<porta>/`, 404 com a lista de serviços), T6-03 (detecção concorrente da porta HTTP com cache por container/digest), T6-04 (`DnsServer` em 127.0.0.1:5353 + helper `InstallDnsZone`/`RemoveDnsZone` com drop-in do resolved e polkit), T6-05 (helper `BindPorts`/`UnbindPorts` com unidades systemd `systemd-socket-proxyd` para :80/:443), T6-06 (Caddy com CA interna e HTTPS on-demand para `*.localhost`/`*.podstack.local`), T6-07 (helper `TrustCa`/`UntrustCa` com fingerprint SHA-256 e `update-ca-trust`), T6-08 (labels `dev.podstack.domains/http-port/https-port` + mount/opt-out da CA nos containers) e T6-09 (exposição LAN opt-in no `HttpProxy`/Caddy); a T6-10 fica documentada como limitação rootless e o **M6 está concluído no código**. **M7 concluído no código (2026-11-11):** settings (86 chaves), tema/escala, tray com Machines/Kubernetes e “Verificar atualizações”, notificações (falha/OOM/unhealthy/update/disco), updates assinados (Ed25519/minisign, `podstack update --check`, exit 3), report redigido, setup/onboarding, coexistência e remoção opt-in do Docker (`setup.dockerImpact`), restauração de geometria/seção/abas e atalhos/acessibilidade de teclado. **M8 concluído no código (2026-11-11):** T8-01 (USB passthrough), T8-02 (serial), T8-03 (áudio PipeWire), T8-04 (X11 + cloud-init), T8-05 (i18n en-US da UI principal), T8-06 (RPM/DEB/Flatpak), T8-07 (snapshots já na T4-16), T8-08 (CRIU checkpoint/restore) e T8-09 (emulação binfmt/FEX). Pendências transversais seguem em TX-07/08/09. Próximas tarefas em [`docs/sdd/tasks.md`](docs/sdd/tasks.md).
+**Status atual:** containers, imagens, volumes, redes, pods, Compose, builds, machines QEMU/KVM (ciclo de vida, SSH/arquivos, virtiofs, export/import, clone/rename/default, CPU/memória/disco, port forwarding, SSH agent, modo isolado, console serial e snapshots), Kubernetes (k3s em VM dedicada), domínios `*.localhost`/`*.podstack.local` com HTTPS, bandeja SNI, settings, updates assinados, onboarding/setup e logging de debug estão implementados. **15 testes**, cobertura **~80%** com gate bloqueante de **80%**. Histórico em [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
-## 2. Leia antes de agir
+## 2. Antes de agir
 
-A especificação é a fonte de verdade (ver [`docs/sdd/constitution.md`](docs/sdd/constitution.md), princípio 1).
+A documentação de engenharia descreve o contrato atual; os ADRs registram o porquê das decisões. Para a área que você vai mexer, leia o documento correspondente:
 
-| Ordem | Documento | Por quê |
-|---|---|---|
-| 1 | [`docs/sdd/constitution.md`](docs/sdd/constitution.md) | Princípios inegociáveis |
-| 2 | [`docs/sdd/PRD.md`](docs/sdd/PRD.md) | Escopo, requisitos e critérios de aceite |
-| 3 | [`docs/sdd/spec.md`](docs/sdd/spec.md) | Comportamento detalhado |
-| 4 | [`docs/sdd/plan.md`](docs/sdd/plan.md) | Stack e decisões técnicas |
-| 5 | [`docs/sdd/tasks.md`](docs/sdd/tasks.md) | Tarefa atual, dependências e definição de pronto |
-| 6 | [`docs/engineering/architecture.md`](docs/engineering/architecture.md) | Componentes, fluxos e concorrência |
-| 7 | [`docs/sdd/testing.md`](docs/sdd/testing.md) | Como provar que funciona |
+| Área | Documento |
+|---|---|
+| Componentes, fluxos, concorrência | [`docs/engineering/architecture.md`](docs/engineering/architecture.md) |
+| Contrato JSON-RPC | [`docs/engineering/api-rpc.md`](docs/engineering/api-rpc.md) |
+| Telas, componentes, atalhos | [`docs/engineering/ui-map.md`](docs/engineering/ui-map.md) |
+| Settings | [`docs/engineering/settings.md`](docs/engineering/settings.md) |
+| Segurança e helper | [`docs/engineering/security.md`](docs/engineering/security.md) |
+| Persistência | [`docs/engineering/data-model.md`](docs/engineering/data-model.md) |
+| CLI e paridade | [`docs/engineering/cli-parity.md`](docs/engineering/cli-parity.md) |
+| Empacotamento | [`docs/engineering/packaging.md`](docs/engineering/packaging.md) |
+| Marca | [`docs/engineering/branding.md`](docs/engineering/branding.md) |
+| Site público | [`docs/engineering/web.md`](docs/engineering/web.md) |
 
-Para a área que você vai mexer, leia também:
+ADRs por área:
 
-- Containers/Podman: [`docs/engineering/api-rpc.md`](docs/engineering/api-rpc.md), [`docs/adr/0002-libpod-libcurl.md`](docs/adr/0002-libpod-libcurl.md)
+- Containers/Podman: [`docs/adr/0002-libpod-libcurl.md`](docs/adr/0002-libpod-libcurl.md)
 - Machines: [`docs/adr/0003-machines-qemu-kvm.md`](docs/adr/0003-machines-qemu-kvm.md)
-- UI/QML: [`docs/engineering/ui-map.md`](docs/engineering/ui-map.md), [`docs/engineering/branding.md`](docs/engineering/branding.md)
-- CLI: [`docs/engineering/cli-parity.md`](docs/engineering/cli-parity.md)
-- Settings: [`docs/engineering/settings.md`](docs/engineering/settings.md)
-- Segurança/helper: [`docs/engineering/security.md`](docs/engineering/security.md)
 - Domínios/HTTPS: [`docs/adr/0004-domains-localhost-helper.md`](docs/adr/0004-domains-localhost-helper.md)
 - Compose: [`docs/adr/0007-compose-provider.md`](docs/adr/0007-compose-provider.md)
-- Empacotamento: [`docs/engineering/packaging.md`](docs/engineering/packaging.md), [`docs/adr/0006-rpm-first.md`](docs/adr/0006-rpm-first.md)
-- Planejamento: [`docs/sdd/roadmap.md`](docs/sdd/roadmap.md)
+- Empacotamento: [`docs/adr/0006-rpm-first.md`](docs/adr/0006-rpm-first.md)
 
 ---
 
 ## 3. Regras inegociáveis
 
-1. **Spec antes de código.** Nenhuma funcionalidade sem `FR-*`/`NFR-*` e critério de aceite. Divergência → atualize a spec ou o código, nunca ignore.
+1. **Contrato documentado.** Mudança de comportamento, RPC, settings, CLI ou UI atualiza o documento de engenharia correspondente **no mesmo PR**. Sem requisito claro, abra/consulte a issue antes de implementar.
 2. **Clean-room.** Proibido copiar código, assets, ícones, sons, textos longos ou layout pixel-a-pixel do OrbStack. Use apenas comportamento documentado publicamente. "OrbStack" é marca registrada; o produto é **PodStack**.
 3. **Podman é o engine.** Não reimplemente runtime, rede ou storage. Containers rodam nativos; VM só para machines e K8s.
 4. **Rootless por padrão.** Rootful é opt-in explícito, com aviso. Nada de setuid no app.
 5. **Menor privilégio.** Helper só com API declarativa allowlisted; socket `0600` + `SO_PEERCRED`; nunca TCP.
 6. **Sem segredos em log.** Redaction obrigatória; nunca logar tokens, senhas, chaves ou `Authorization`.
 7. **Nada de trabalho pesado na UI.** Streams/jobs em worker threads; UI nunca bloqueia > 16 ms.
-8. **Toda mudança atualiza a doc afetada** (spec/plan/api/settings/ADR).
-9. **Toda tarefa termina com evidência** de teste/lint (ver [`docs/sdd/testing.md`](docs/sdd/testing.md)).
-10. **Sem escopo extra.** Não refatore, renomeie ou "melhore" o que a tarefa não pediu.
+8. **Toda mudança de comportamento atualiza a doc afetada** (architecture/api-rpc/settings/ui-map/cli-parity/ADR).
+9. **Toda mudança termina com evidência** de teste/lint.
+10. **Sem escopo extra.** Não refatore, renomeie ou "melhore" o que a mudança não pediu.
 
 ---
 
@@ -68,6 +66,7 @@ Para a área que você vai mexer, leia também:
 ├── AGENTS.md                 # este arquivo
 ├── LICENSE                   # GPL-3.0-or-later
 ├── NOTICE                    # aviso de copyright/licença
+├── CHANGELOG.md              # histórico de versões
 ├── assets/                   # marca aprovada (cápsula + camadas)
 │   ├── podstack-logo.svg
 │   ├── podstack-capsule.svg
@@ -81,17 +80,9 @@ Para a área que você vai mexer, leia também:
 │   ├── og-image.png
 │   ├── png/
 │   └── logo.md
-├── docs/                     # especificação, engenharia, specs de feature, ADRs
+├── docs/                     # engenharia, ADRs e documentação de usuário
 │   ├── README.md             # índice e convenções
-│   ├── sdd/                  # núcleo SDD (documentos canônicos)
-│   │   ├── constitution.md
-│   │   ├── PRD.md
-│   │   ├── spec.md
-│   │   ├── plan.md
-│   │   ├── roadmap.md
-│   │   ├── tasks.md
-│   │   └── testing.md
-│   ├── engineering/          # referência técnica derivada
+│   ├── engineering/          # referência técnica
 │   │   ├── architecture.md
 │   │   ├── data-model.md
 │   │   ├── api-rpc.md
@@ -102,9 +93,7 @@ Para a área que você vai mexer, leia também:
 │   │   ├── packaging.md
 │   │   ├── web.md
 │   │   └── branding.md
-│   ├── specs/                # deltas SDD por feature (spec/plan/tasks)
 │   ├── adr/
-│   ├── reference/
 │   └── user/
 ├── CMakeLists.txt
 ├── CMakePresets.json
@@ -124,25 +113,25 @@ Para a área que você vai mexer, leia também:
 
 ## 5. Fluxo de trabalho
 
-1. **Escolha uma tarefa** em [`docs/sdd/tasks.md`](docs/sdd/tasks.md): menor ID disponível do marco atual, respeitando `Dep`.
-2. **Leia o contexto**: PRD (requisito), spec (fluxo), plan/architecture (desenho), ADR da área.
-3. **Planeje** em voz alta (ou com `planner`): arquivos, abordagem, testes, riscos.
-4. **Implemente** o menor incremento que satisfaz o critério de aceite.
+1. **Contexto**: leia a issue (ou abra uma) e o documento de engenharia/ADR da área.
+2. **Planeje** em voz alta (ou com `planner`): arquivos, abordagem, testes, riscos.
+3. **Branch**: trabalhe fora de `main` (ela é protegida); um assunto por branch.
+4. **Implemente** o menor incremento que resolve o problema.
 5. **Teste**: unitário + integração quando aplicável; rode `clang-format`/`clang-tidy`/`qmllint`.
 6. **Atualize a doc** se o comportamento/contrato mudou.
 7. **Registre evidência**: comando, resultado, cobertura, screenshot/log.
-8. **Só então** marque `[x]` na tarefa e prossiga.
+8. **PR** descreve o problema, a solução, os testes executados e os riscos.
 
 **Nunca:**
 
 - Começar pelo polimento visual antes do comportamento.
-- Adicionar dependência sem justificar e atualizar `plan.md`.
+- Adicionar dependência sem justificar e documentar em `docs/engineering/packaging.md`.
 - Alterar contrato RPC sem versionar e atualizar `api-rpc.md`.
 - Alterar settings sem atualizar `settings.md` e os defaults.
 
 ---
 
-## 6. Build e testes (previstos para o M0)
+## 6. Build e testes
 
 Ambiente de referência: **Fedora 43/44** (Podman ≥ 5.8, Qt ≥ 6.10) e **Ubuntu 24.04+**
 (Podman ≥ 4.9, Qt ≥ 6.4; o DEB usa o qtermwidget 2.0.0 vendorizado), `/dev/kvm` para machines.
@@ -168,8 +157,6 @@ PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
 ```
 
 `PODSTACK_CONTROL_SOCKET` permite usar um socket de dev isolado do daemon do sistema.
-
-> O M0 já entrega `CMakeLists.txt` e os binários em `build/dev/`.
 
 **Verificação mínima por mudança:**
 
@@ -212,19 +199,18 @@ PODSTACK_SKIP_BUILD=1 ./scripts/dev.sh
 
 - Classes `PascalCase`; métodos `camelCase`; membros `m_`; constantes `kPascalCase`.
 - Arquivos `.h`/`.cpp` com o mesmo nome da classe.
-- IDs de requisitos/tarefas conforme [`docs/README.md`](docs/README.md).
 
 ---
 
 ## 8. Convenções de documentação
 
-- Requisito novo → `FR-<DOMÍNIO>-<NNN>` no PRD **e** fluxo na spec.
 - Decisão arquitetural → ADR em `docs/adr/` (contexto, decisão, alternativas, consequências).
 - Novo método RPC → `docs/engineering/api-rpc.md` + versão da API se incompatível.
 - Nova chave de setting → `docs/engineering/settings.md` (tipo/default/validação/restart) + schema.
-- Comando/flags de CLI → `docs/engineering/cli-parity.md`.
+- Comando/flags de CLI → `docs/engineering/cli-parity.md` e `docs/user/cli.md`.
 - Tela/componente QML → `docs/engineering/ui-map.md`.
 - Mudança de marca → `docs/engineering/branding.md`.
+- Mudança no site → `docs/engineering/web.md` + `scripts/web_build.py --check`.
 
 **Não crie documentos paralelos**; edite o existente.
 
@@ -270,52 +256,52 @@ Detalhes em [`docs/engineering/security.md`](docs/engineering/security.md).
 - Um commit por mudança lógica; mensagem explica o **porquê**.
 - Nunca commitar `.env`, segredos, chaves ou o DMG analisado.
 - Nunca `git push --force` em branch compartilhada.
-- PR descreve requisito(s) atendido(s), testes executados e riscos.
+- `main` é protegida: tudo entra por PR com CI verde.
+- PR descreve problema, solução, testes executados e riscos.
 
 ---
 
-## 12. Decisões abertas e resolvidas
+## 12. Decisões ratificadas
 
-| ID | Decisão | Impacto | Onde |
-|---|---|---|---|
-| Q1 | **Resolvida:** licença **GPL-3.0-or-later**; terminal **QTermWidget** (GPL-2.0-or-later, compatível) | — | [`docs/sdd/PRD.md`](docs/sdd/PRD.md) §13, [`docs/adr/0005-terminal-backend.md`](docs/adr/0005-terminal-backend.md) |
-| Q2 | **Resolvida:** k3s em VM dedicada; kind fora do v1 | — | PRD §13 |
-| Q3 | **Resolvida:** Flatpak não no v1; reavaliar sob demanda | — | PRD §13 |
-| Q4 | **Resolvida:** rootful suportado como opt-in explícito | — | PRD §13 |
-| Q5 | **Resolvida:** `*.podstack.local` via helper; `*.localhost` é o padrão | — | PRD §13 |
-| Q6 | **Resolvida:** telemetria opt-in por categoria, off por padrão | — | PRD §13 |
-| Q7 | **Resolvida:** pt-BR e en-US, extensível depois | — | PRD §13 |
-| Q8 | **Resolvida:** Docker e Podman coexistem; a remoção do Docker é opt-in | — | PRD §13, ADR-0008 |
-| Q9 | **Resolvida:** onboarding/setup em 7 etapas, não destrutivo, via helper allowlisted | — | PRD §13, spec §2.6 |
-| Q10 | **Resolvida:** Pods do Podman no grupo Engine; Kubernetes só para k3s | — | PRD §13, ui-map §3 |
+| ID | Decisão | Onde |
+|---|---|---|
+| Q1 | Licença **GPL-3.0-or-later**; terminal **QTermWidget** (GPL-2.0-or-later, compatível) | [`ADR-0005`](docs/adr/0005-terminal-backend.md) |
+| Q2 | k3s em VM dedicada; kind fora do v1 | [`ADR-0003`](docs/adr/0003-machines-qemu-kvm.md), [architecture](docs/engineering/architecture.md) |
+| Q3 | Flatpak não no v1; reavaliar sob demanda | [`packaging.md`](docs/engineering/packaging.md) |
+| Q4 | rootful suportado como opt-in explícito | [`security.md`](docs/engineering/security.md), [`settings.md`](docs/engineering/settings.md) |
+| Q5 | `*.podstack.local` via helper; `*.localhost` é o padrão | [`ADR-0004`](docs/adr/0004-domains-localhost-helper.md) |
+| Q6 | telemetria opt-in por categoria, off por padrão | [`settings.md`](docs/engineering/settings.md) |
+| Q7 | pt-BR e en-US, extensível depois | [`ui-map.md`](docs/engineering/ui-map.md) |
+| Q8 | Docker e Podman coexistem; remoção do Docker é opt-in | [`ADR-0008`](docs/adr/0008-docker-coexistence-setup.md) |
+| Q9 | onboarding/setup em 7 etapas, não destrutivo, via helper allowlisted | [`ADR-0008`](docs/adr/0008-docker-coexistence-setup.md), [`ui-map.md`](docs/engineering/ui-map.md) |
+| Q10 | Pods do Podman no grupo Engine; Kubernetes só para k3s | [`ui-map.md`](docs/engineering/ui-map.md) |
 
-**Decisões acima ratificadas em 2026-11-08.** Novas decisões: registre a proposta e peça confirmação.
+**Decisões acima ratificadas em 2026-11-08.** Novas decisões: registre um ADR e peça confirmação.
 
 ---
 
 ## 13. Definição de pronto (DoD)
 
-Uma tarefa só está concluída quando:
+Uma mudança só está concluída quando:
 
-- [ ] Critério de aceite da tarefa atendido e verificado.
+- [ ] O problema/requisito da issue está resolvido e verificado.
 - [ ] Código compila sem warnings novos; formatação/lint aplicados.
 - [ ] Teste automatizado cobre o comportamento (ou justificativa explícita).
 - [ ] Documentação afetada atualizada.
 - [ ] Nenhum segredo em log; permissões corretas.
-- [ ] Evidência (comando + resultado) registrada.
-- [ ] `[x]` marcado em [`docs/sdd/tasks.md`](docs/sdd/tasks.md) somente após tudo acima.
+- [ ] Evidência (comando + resultado) registrada no PR.
 
 ---
 
 ## 14. Índice completo da documentação
 
-**Núcleo SDD:** [`docs/README.md`](docs/README.md) · [`docs/sdd/constitution.md`](docs/sdd/constitution.md) · [`docs/sdd/PRD.md`](docs/sdd/PRD.md) · [`docs/sdd/spec.md`](docs/sdd/spec.md) · [`docs/sdd/plan.md`](docs/sdd/plan.md) · [`docs/sdd/tasks.md`](docs/sdd/tasks.md) · [`docs/sdd/testing.md`](docs/sdd/testing.md)
+**Índice:** [`docs/README.md`](docs/README.md)
 
-**Engenharia:** [`docs/engineering/architecture.md`](docs/engineering/architecture.md) · [`docs/engineering/data-model.md`](docs/engineering/data-model.md) · [`docs/engineering/api-rpc.md`](docs/engineering/api-rpc.md) · [`docs/engineering/ui-map.md`](docs/engineering/ui-map.md) · [`docs/engineering/branding.md`](docs/engineering/branding.md) · [`docs/engineering/cli-parity.md`](docs/engineering/cli-parity.md) · [`docs/engineering/settings.md`](docs/engineering/settings.md) · [`docs/engineering/security.md`](docs/engineering/security.md) · [`docs/engineering/packaging.md`](docs/engineering/packaging.md) · [`docs/sdd/roadmap.md`](docs/sdd/roadmap.md)
+**Engenharia:** [`architecture.md`](docs/engineering/architecture.md) · [`data-model.md`](docs/engineering/data-model.md) · [`api-rpc.md`](docs/engineering/api-rpc.md) · [`ui-map.md`](docs/engineering/ui-map.md) · [`branding.md`](docs/engineering/branding.md) · [`cli-parity.md`](docs/engineering/cli-parity.md) · [`settings.md`](docs/engineering/settings.md) · [`security.md`](docs/engineering/security.md) · [`packaging.md`](docs/engineering/packaging.md) · [`web.md`](docs/engineering/web.md)
 
-**ADRs:** [`0001`](docs/adr/0001-daemon-json-rpc.md) · [`0002`](docs/adr/0002-libpod-libcurl.md) · [`0003`](docs/adr/0003-machines-qemu-kvm.md) · [`0004`](docs/adr/0004-domains-localhost-helper.md) · [`0005`](docs/adr/0005-terminal-backend.md) · [`0006`](docs/adr/0006-rpm-first.md) · [`0007`](docs/adr/0007-compose-provider.md) · [`0008`](docs/adr/0008-docker-coexistence-setup.md) · [`0009`](docs/adr/0009-tray-sni-lifecycle.md) · [`0012`](docs/adr/0012-update-logging.md)
+**Usuário:** [`user/README.md`](docs/user/README.md) · [`install.md`](docs/user/install.md) · [`quickstart.md`](docs/user/quickstart.md) · [`cli.md`](docs/user/cli.md) · [`troubleshooting.md`](docs/user/troubleshooting.md)
 
-**Referência OrbStack:** [`análise do DMG`](docs/reference/orbstack-2.2.5.md) · [`notas oficiais`](docs/reference/orbstack-2.2.5-official-notes.md) · [`árvore do CLI`](docs/reference/cli-tree.json) · [`árvore legível`](docs/reference/cli-tree.md) · [`arquivos Swift`](docs/reference/swift-files.txt) · [`settings keys`](docs/reference/settings-keys.txt)
+**ADRs:** [`0001`](docs/adr/0001-daemon-json-rpc.md) · [`0002`](docs/adr/0002-libpod-libcurl.md) · [`0003`](docs/adr/0003-machines-qemu-kvm.md) · [`0004`](docs/adr/0004-domains-localhost-helper.md) · [`0005`](docs/adr/0005-terminal-backend.md) · [`0006`](docs/adr/0006-rpm-first.md) · [`0007`](docs/adr/0007-compose-provider.md) · [`0008`](docs/adr/0008-docker-coexistence-setup.md) · [`0009`](docs/adr/0009-tray-sni-lifecycle.md) · [`0010`](docs/adr/0010-deb-ubuntu-qtermwidget-vendorizado.md) · [`0012`](docs/adr/0012-update-logging.md)
 
 **Assets:** [`podstack-logo.svg`](assets/podstack-logo.svg) · [`podstack-capsule.svg`](assets/podstack-capsule.svg) · [`podstack-layers.svg`](assets/podstack-layers.svg) · [`podstack-capsule-small.svg`](assets/podstack-capsule-small.svg) · [`podstack-icon.svg`](assets/podstack-icon.svg) · [`png/`](assets/png) · [`favicon.ico`](assets/favicon.ico) · [`og-image.png`](assets/og-image.png) · [`conceitos`](assets/podstack_logo_concepts.svg) · [`racional`](assets/logo.md)
 
@@ -325,10 +311,8 @@ Uma tarefa só está concluída quando:
 
 Se você é um agente começando agora:
 
-1. Leia os 5 primeiros documentos da §2.
-2. Abra [`docs/sdd/tasks.md`](docs/sdd/tasks.md) e localize o primeiro `T0-*` não concluído.
-3. Verifique se o ambiente tem as dependências da §6; se não, peça confirmação antes de instalar.
-4. Implemente **apenas** essa tarefa, com teste e evidência.
-5. Atualize a doc e marque a tarefa.
-
-**Não comece pelo M1 antes do M0 estar verde.**
+1. Leia a issue (ou os documentos de engenharia da área) e este arquivo.
+2. Verifique se o ambiente tem as dependências da §6; se não, peça confirmação antes de instalar.
+3. Rode `cmake --preset dev && cmake --build --preset dev && ctest --preset dev` para confirmar a base verde.
+4. Implemente **apenas** o escopo pedido, com teste e evidência.
+5. Atualize a doc afetada e abra o PR.

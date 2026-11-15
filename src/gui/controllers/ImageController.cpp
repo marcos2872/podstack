@@ -29,6 +29,8 @@ ImageController::ImageController(QObject *parent) : CatalogController(parent)
                 if (ok) {
                     refresh();
                 }
+                emit pullCompleted(ok, m_pullReference, ok ? QString() : error);
+                m_pullReference.clear();
             });
     connect(&m_pullStream, &StreamClient::error, this, [this](const QString &message) {
         m_pullActive = false;
@@ -68,6 +70,7 @@ void ImageController::pullImage(const QString &reference, const QString &platfor
         return;
     }
     m_pullActive = true;
+    m_pullReference = reference;
     m_pullStatus = QStringLiteral("Iniciando pull de %1...").arg(reference);
     emit pullStateChanged();
     m_pullStream.pullImage(reference, platform);

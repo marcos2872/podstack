@@ -153,10 +153,17 @@ Limites aceitos:
 **Bootstrap no cliente (`src/core/rpc/DaemonBootstrap.cpp`):** cobre o que o pacote não alcança.
 `RpcClient`, `RpcStream` e `StreamClient` chamam `ensureRunning()` quando a conexão falha
 (`daemon-reload` + `start`, duas tentativas, 5 s por comando, no máximo uma tentativa a cada 5 s).
-`StreamClient` roda no pool global para não bloquear a thread da UI. O erro final é acionável:
-*"O PodStack não conseguiu ativar o podstack.socket. Rode: systemctl --user start podstack.socket"*,
-e a GUI mostra o botão **Ativar serviço** no banner. `PODSTACK_CONTROL_SOCKET` desliga o bootstrap
-(socket de desenvolvimento) e `PODSTACK_SYSTEMCTL`/`PODSTACK_USER_UNIT_DIR` existem para os testes.
+A ativação só é considerada bem-sucedida quando o daemon **responde** a `system.hello` — um socket
+que aceita conexões e não processa nada (processo travado) é reprovado. `StreamClient` roda no pool
+global para não bloquear a thread da UI. O erro final é acionável:
+*"O PodStack não conseguiu ativar o podstack.socket. Rode: systemctl --user restart podstack.service"*,
+e a GUI mostra o botão **Reiniciar daemon** no banner (o `restart` derruba um daemon travado; o
+`start` não resolve esse caso). `PODSTACK_CONTROL_SOCKET` desliga o bootstrap (socket de
+desenvolvimento) e `PODSTACK_SYSTEMCTL`/`PODSTACK_USER_UNIT_DIR` existem para os testes.
+
+No shutdown o daemon cancela as subscriptions ativas (eventos/logs/stats) e aguarda o pool com
+prazo de 3 s; sem isso um stream infinito do Podman mantinha o processo vivo e o socket aceitando
+conexões sem resposta.
 
 ---
 

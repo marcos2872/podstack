@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLocalServer>
+#include <QLocalSocket>
 #include <QStringList>
 #include <QTemporaryDir>
 #include <QTest>
@@ -14,27 +15,31 @@
 
 namespace {
 
-/// Cria o socket de controle só depois que o `systemctl` fake sinaliza o
-/// start. Sem isso o probe acharia o socket ativo e o start nunca rodaria.
-class DeferredSocketListener : public QThread {
+/// Servidor de controle falso. Responde ao `system.hello` como o daemon real
+/// — a menos que `startOnMarker` ainda não tenha visto o marcador, simulando
+/// um daemon que aceita conexão mas não processa nada (zumbi).
+class FakeControlServer : public QThread {
 public:
-    DeferredSocketListener(QString socketPath, QString marker)
-        : m_socketPath(std::move(socketPath)), m_marker(std::move(marker))
+    FakeControlServer(QString socketPath, QString marker, bool startOnMarker, bool respond,
+                      bool gateOnMarker)
+        : m_socketPath(std::move(socketPath)), m_marker(std::move(marker)),
+          m_startOnMarker(startOnMarker), m_respond(respond), m_gateOnMarker(gateOnMarker)
     {
     }
 
     void stop()
     {
         requestInterruption();
-        quit();
         wait(3000);
     }
 
 protected:
     void run() override
     {
-        while (!isInterruptionRequested() && !QFileInfo::exists(m_marker)) {
-            QThread::msleep(5);
+        if (m_startOnMarker) {
+            while (!isInterruptionRequested() && !QFileInfo::exists(m_marker)) {
+                QThread::msleep(5);
+            }
         }
         if (isInterruptionRequested()) {
             return;
@@ -44,12 +49,33 @@ protected:
         if (!server.listen(m_socketPath)) {
             return;
         }
-        exec();
+
+        while (!isInterruptionRequested()) {
+            if (!server.waitForNewConnection(50)) {
+                continue;
+            }
+            while (QLocalSocket *socket = server.nextPendingConnection()) {
+                socket->waitForReadyRead(500);
+                socket->readAll();
+                const bool gated = m_gateOnMarker && !QFileInfo::exists(m_marker);
+                if (m_respond && !gated) {
+                    socket->write("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"apiVersion\":1}}\n");
+                    socket->waitForBytesWritten(200);
+                }
+                socket->disconnectFromServer();
+                delete socket;
+            }
+        }
+        server.close();
+        QLocalServer::removeServer(m_socketPath);
     }
 
 private:
     QString m_socketPath;
     QString m_marker;
+    bool m_startOnMarker = false;
+    bool m_respond = true;
+    bool m_gateOnMarker = false;
 };
 
 } // namespace
@@ -61,6 +87,8 @@ private slots:
     void initTestCase();
     void unitInstalledFollowsSearchPaths();
     void startsStoppedSocket();
+    void reportsHungDaemon();
+    void restartRecoversHungDaemon();
     void retriesAndReportsFailure();
     void skipsWhenUnitIsMissing();
     void skipsWithCustomSocket();
@@ -181,7 +209,7 @@ void DaemonBootstrapTest::startsStoppedSocket()
     QVERIFY(!script.isEmpty());
     qputenv("PODSTACK_SYSTEMCTL", script.toUtf8());
 
-    DeferredSocketListener listener(m_socketPath, m_markerPath);
+    FakeControlServer listener(m_socketPath, m_markerPath, true, true, false);
     listener.start();
 
     QString detail;
@@ -195,6 +223,77 @@ void DaemonBootstrapTest::startsStoppedSocket()
     const QStringList lines = invocations(m_logPath);
     QCOMPARE(countInvocations(lines, QStringLiteral("--user daemon-reload")), 1);
     QCOMPARE(countInvocations(lines, QStringLiteral("--user start podstack.socket")), 1);
+}
+
+void DaemonBootstrapTest::reportsHungDaemon()
+{
+    QFile::remove(m_socketPath);
+    QFile::remove(m_logPath);
+    QFile::remove(m_markerPath);
+    writeUnit();
+    const QString script =
+        writeScript(QStringLiteral("systemctl-hung.sh"), QStringLiteral("#!/bin/sh\n"
+                                                                        "echo \"$@\" >> '%1'\n"
+                                                                        "exit 0\n")
+                                                             .arg(m_logPath));
+    QVERIFY(!script.isEmpty());
+    qputenv("PODSTACK_SYSTEMCTL", script.toUtf8());
+
+    // Aceita conexões e nunca responde: é o daemon travado que fazia a GUI
+    // mostrar "0 containers" com o engine cheio.
+    FakeControlServer listener(m_socketPath, {}, false, false, false);
+    listener.start();
+    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(m_socketPath), 3000);
+
+    const auto probe = PodStack::DaemonBootstrap::probe({}, 300);
+    QVERIFY2(probe.connectable, "o socket deveria aceitar conexão");
+    QVERIFY2(!probe.responds, "socket mudo não pode ser reportado como saudável");
+
+    QString detail;
+    const auto status = PodStack::DaemonBootstrap::ensureRunning({}, &detail);
+    listener.stop();
+
+    QCOMPARE(static_cast<int>(status), static_cast<int>(PodStack::DaemonBootstrap::Status::Failed));
+    QVERIFY(detail.contains(QStringLiteral("não respondeu")));
+    QVERIFY(PodStack::DaemonBootstrap::manualRemedy().contains(
+        QStringLiteral("systemctl --user restart podstack.service")));
+}
+
+void DaemonBootstrapTest::restartRecoversHungDaemon()
+{
+    QFile::remove(m_socketPath);
+    QFile::remove(m_logPath);
+    QFile::remove(m_markerPath);
+    writeUnit();
+    const QString script =
+        writeScript(QStringLiteral("systemctl-restart.sh"),
+                    QStringLiteral("#!/bin/sh\n"
+                                   "echo \"$@\" >> '%1'\n"
+                                   "case \"$*\" in\n"
+                                   "  *\"--user restart podstack.service\"*) : > '%2' ;;\n"
+                                   "esac\n"
+                                   "exit 0\n")
+                        .arg(m_logPath, m_markerPath));
+    QVERIFY(!script.isEmpty());
+    qputenv("PODSTACK_SYSTEMCTL", script.toUtf8());
+
+    // Silencioso até o restart; depois responde — como um daemon que voltou.
+    FakeControlServer listener(m_socketPath, m_markerPath, false, true, true);
+    listener.start();
+    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(m_socketPath), 3000);
+
+    QVERIFY(!PodStack::DaemonBootstrap::probe({}, 300).responds);
+
+    QString detail;
+    const auto status = PodStack::DaemonBootstrap::restart({}, &detail);
+    listener.stop();
+
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::Status::Started));
+    QVERIFY2(detail.isEmpty(), qPrintable(detail));
+    QCOMPARE(
+        countInvocations(invocations(m_logPath), QStringLiteral("--user restart podstack.service")),
+        1);
 }
 
 void DaemonBootstrapTest::retriesAndReportsFailure()
@@ -222,7 +321,7 @@ void DaemonBootstrapTest::retriesAndReportsFailure()
     QCOMPARE(static_cast<int>(status), static_cast<int>(PodStack::DaemonBootstrap::Status::Failed));
     QVERIFY(detail.contains(QStringLiteral("Unit not found")));
     QVERIFY(PodStack::DaemonBootstrap::manualRemedy().contains(
-        QStringLiteral("systemctl --user start podstack.socket")));
+        QStringLiteral("systemctl --user restart podstack.service")));
 
     // Duas tentativas: o retry com backoff precisa aparecer no log do fake.
     const QStringList lines = invocations(m_logPath);

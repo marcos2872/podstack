@@ -28,6 +28,17 @@ qint64 consoleTailBytes(const QJsonObject &params);
 bool checkMachineConsoleFile(const QString &directory, bool *exists, Error *error);
 Error helperRequiredError();
 
+/// Valida o nome do container no mesmo formato do Podman (letra/dígito
+/// inicial, depois letras, dígitos, `_`, `.` e `-`, até 255). Vazio é válido
+/// (o engine gera um nome).
+bool validateContainerName(const QString &name, QString *error);
+/// Nome livre a partir de `name` (sufixo `-2`, `-3`, ...) quando há conflito.
+QString suggestContainerName(const QString &name, const QStringList &taken);
+/// Portas 1–65535 e sem `hostPort`+protocolo repetido.
+bool validatePortMappings(const QVector<PortMapping> &ports, QString *error);
+/// Mounts: origem absoluta e existente, destino absoluto, sem `..`.
+bool validateMounts(const QVector<MountMapping> &mounts, QString *error);
+
 bool readMachineConsoleTail(const QString &path, qint64 tailBytes, QByteArray *data,
                             qint64 *endOffset, Error *error);
 bool readMachineConsoleChunk(const QString &path, qint64 offset, qint64 maxBytes, QByteArray *data,

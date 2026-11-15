@@ -347,7 +347,7 @@ int commandDoctor()
     // responde e o check antigo (dentro de system.doctor) nunca executava.
     const QString socketPath = PodStack::Paths::controlSocket();
     PodStack::DaemonBootstrap::Probe probe = PodStack::DaemonBootstrap::probe(socketPath);
-    if (!probe.connectable) {
+    if (!probe.responds) {
         const PodStack::DaemonBootstrap::Status status =
             PodStack::DaemonBootstrap::ensureRunning(socketPath);
         if (status == PodStack::DaemonBootstrap::Status::Started ||
@@ -356,9 +356,13 @@ int commandDoctor()
         }
     }
 
-    out() << (probe.connectable ? "[ok]   " : "[fail] ") << "daemon.socket - " << socketPath
+    out() << (probe.responds ? "[ok]   " : "[fail] ") << "daemon.socket - " << socketPath
           << (probe.socketExists ? "" : " (ausente)") << '\n';
-    if (!probe.connectable) {
+    if (!probe.responds) {
+        if (probe.connectable) {
+            out() << "       o socket aceita conexões mas o daemon não responde "
+                     "(processo travado)\n";
+        }
         if (probe.unitInstalled) {
             out() << "       ação: " << PodStack::DaemonBootstrap::manualRemedy() << '\n';
         } else {

@@ -1,6 +1,6 @@
 # Branding e assets — PodStack
 
-> Identidade visual própria, alinhada ao princípio 7 da [constituição](../sdd/constitution.md): sem copiar a linguagem visual do OrbStack (esferas/órbitas), a baleia do Docker ou o roxo/lilás do Podman.
+> Identidade visual própria, sem copiar a linguagem visual do OrbStack (esferas/órbitas), a baleia do Docker ou o roxo/lilás do Podman.
 >
 > **Status (2026-11-08):** direção **aprovada** — **Cápsula** como símbolo principal e **Camadas** como símbolo secundário. O **Monograma P** não foi aprovado e não deve ser usado.
 >

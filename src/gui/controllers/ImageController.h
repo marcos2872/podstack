@@ -31,6 +31,9 @@ public:
 
 signals:
     void pullStateChanged();
+    /// Emitido ao terminar um pull (sucesso ou erro), com a referência pedida.
+    /// A página de containers usa isso para repetir a criação que faltava imagem.
+    void pullCompleted(bool ok, const QString &reference, const QString &error);
     void pruneFinished();
 
 protected:
@@ -42,6 +45,7 @@ protected:
 private:
     bool m_pullActive = false;
     QString m_pullStatus;
+    QString m_pullReference;
     StreamClient m_pullStream;
 };
 

@@ -135,6 +135,16 @@ Rectangle {
                 elide: Text.ElideRight
             }
 
+            Text {
+                Layout.fillWidth: true
+                visible: inspector.selected && (inspector.selected.id || "").length > 0
+                text: inspector.selected ? String(inspector.selected.id).substring(0, 12) : ""
+                color: Theme.textTertiary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontMicro
+                elide: Text.ElideRight
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 6
@@ -326,6 +336,35 @@ Rectangle {
                                 color: Theme.textPrimary
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontMeta
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: Math.max(0, infoScroll.availableWidth - 28)
+                            spacing: 2
+
+                            Text {
+                                text: qsTr("PROJETO")
+                                color: Theme.textTertiary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMicro
+                                font.weight: Font.DemiBold
+                                font.capitalization: Font.AllUppercase
+                                font.letterSpacing: 0.8
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: inspector.selected && (inspector.selected.project || "").length > 0
+                                      ? inspector.selected.project
+                                            + ((inspector.selected.service || "").length > 0
+                                               ? " / " + inspector.selected.service : "")
+                                      : "—"
+                                color: Theme.textPrimary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMeta
+                                elide: Text.ElideRight
                             }
                         }
 

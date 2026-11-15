@@ -19,7 +19,11 @@ enum class Status {
 struct Probe {
     bool unitInstalled = false;
     bool socketExists = false;
+    /// O socket aceita conexão (pode ser um daemon travado).
     bool connectable = false;
+    /// O daemon respondeu ao `system.hello` dentro do prazo. Um socket que
+    /// aceita conexões mas não responde é um daemon zumbi e falha aqui.
+    bool responds = false;
 };
 
 /// Caminhos de unit reconhecidos, na ordem de busca. Inclui
@@ -30,13 +34,19 @@ QStringList unitSearchPaths();
 bool unitInstalled();
 
 /// Inspeciona a unit e o socket. Conectar ao socket ativo dispara a ativação
-/// do `podstack.service` pelo systemd, como qualquer conexão do app.
+/// do `podstack.service` pelo systemd, como qualquer conexão do app. `responds`
+/// só é verdadeiro se o daemon responder ao `system.hello`.
 Probe probe(const QString &socketPath = {}, int timeoutMs = 250);
 
-/// Garante que o `podstack.socket` esteja ativo e aceitando conexões.
+/// Garante que o `podstack.socket` esteja ativo e **respondendo**.
 /// Bloqueante: use em worker threads, CLI ou no daemon. Máximo de duas
 /// tentativas (com 300 ms de intervalo) e 5 s por comando do systemctl.
 Status ensureRunning(const QString &socketPath = {}, QString *detail = nullptr);
+
+/// Reinicia o `podstack.service` (`systemctl --user restart`) e espera o
+/// daemon responder. É o remédio para um daemon travado, que aceita conexões
+/// mas não processa requisições. Bloqueante (pode levar ~30 s).
+Status restart(const QString &socketPath = {}, QString *detail = nullptr);
 
 /// Como ensureRunning(), mas no máximo uma tentativa síncrona a cada 5 s no
 /// processo — evita vários systemctl simultâneos vindos de RpcClient/RpcStream.

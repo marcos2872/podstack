@@ -62,12 +62,77 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
     spec.remove = params.value(QStringLiteral("remove")).toBool(false);
     spec.init = params.value(QStringLiteral("init")).toBool(false);
     spec.privileged = params.value(QStringLiteral("privileged")).toBool(false);
+    spec.readOnly = params.value(QStringLiteral("readOnly")).toBool(false);
+    spec.restartPolicy =
+        params.value(QStringLiteral("restartPolicy")).toString().trimmed().toLower();
+    spec.restartTries = params.value(QStringLiteral("restartTries")).toInt(0);
+    spec.network = params.value(QStringLiteral("network")).toString().trimmed();
+    spec.cpusMilli = qRound(params.value(QStringLiteral("cpus")).toDouble(0.0) * 1000.0);
+    const qint64 memoryMb = params.value(QStringLiteral("memoryMb")).toInteger(0);
+    if (memoryMb > 0) {
+        spec.memoryBytes = memoryMb * 1024 * 1024;
+    }
     const bool exposeLan = params.value(QStringLiteral("exposeLan")).toBool(false);
 
     if (spec.image.isEmpty()) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
                                  QStringLiteral("Informe a imagem do container."));
+        }
+        return {};
+    }
+
+    QString nameError;
+    if (!validateContainerName(spec.name, &nameError)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"), nameError);
+        }
+        return {};
+    }
+
+    static const QStringList kRestartPolicies = {QStringLiteral("no"), QStringLiteral("always"),
+                                                 QStringLiteral("unless-stopped"),
+                                                 QStringLiteral("on-failure")};
+    if (!spec.restartPolicy.isEmpty() && !kRestartPolicies.contains(spec.restartPolicy)) {
+        if (error) {
+            *error =
+                Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                            QStringLiteral("Política de restart inválida: “%1” (use no, always, "
+                                           "unless-stopped ou on-failure).")
+                                .arg(spec.restartPolicy));
+        }
+        return {};
+    }
+    if (spec.cpusMilli < 0 || spec.cpusMilli > 1000 * 1024) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Limite de CPU inválido (use até 1024)."));
+        }
+        return {};
+    }
+    if (memoryMb < 0 || memoryMb > 1024LL * 1024) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Limite de memória inválido (use MB, até 1 TiB)."));
+        }
+        return {};
+    }
+
+    // A imagem precisa existir localmente; o pull é uma ação explícita da UI
+    // (spec §3.1: "se ausente, oferecer pull").
+    Error imageError;
+    if (!m_podman.imageExists(spec.image, &imageError)) {
+        if (!imageError.isEmpty()) {
+            if (error) {
+                *error = std::move(imageError);
+            }
+            return {};
+        }
+        if (error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_IMAGE_NOT_FOUND"),
+                QStringLiteral("A imagem “%1” não está disponível localmente.").arg(spec.image),
+                spec.image, QStringLiteral("Baixe a imagem e tente de novo."));
         }
         return {};
     }
@@ -119,6 +184,14 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
         }
     }
 
+    QString portsError;
+    if (!validatePortMappings(spec.ports, &portsError)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"), portsError);
+        }
+        return {};
+    }
+
     if (exposeLan) {
         if (publishedByProtocol.isEmpty()) {
             if (error) {
@@ -157,6 +230,43 @@ QJsonObject Daemon::containerCreate(const QJsonObject &params, Error *error)
         mapping.readOnly = mount.value(QStringLiteral("readOnly")).toBool(false);
         if (!mapping.source.isEmpty() && !mapping.destination.isEmpty()) {
             spec.mounts.append(mapping);
+        }
+    }
+
+    QString mountsError;
+    if (!validateMounts(spec.mounts, &mountsError)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"), mountsError);
+        }
+        return {};
+    }
+
+    // Conflito de nome: o engine devolveria um erro genérico; aqui a sugestão
+    // fica na remediação para a GUI/CLI mostrarem direto.
+    if (!spec.name.isEmpty()) {
+        Error listError;
+        const QVector<ContainerInfo> existing = m_podman.listContainers(true, &listError);
+        if (!listError.isEmpty()) {
+            if (error) {
+                *error = std::move(listError);
+            }
+            return {};
+        }
+        QStringList taken;
+        for (const ContainerInfo &container : existing) {
+            taken.append(container.name);
+        }
+        if (taken.contains(spec.name)) {
+            const QString suggestion = suggestContainerName(spec.name, taken);
+            if (error) {
+                *error = Error::make(
+                    QStringLiteral("PODSTACK_CONFLICT"),
+                    QStringLiteral("Já existe um container chamado “%1”.").arg(spec.name),
+                    spec.name,
+                    suggestion.isEmpty() ? QStringLiteral("Escolha outro nome.")
+                                         : QStringLiteral("Tente o nome “%1”.").arg(suggestion));
+            }
+            return {};
         }
     }
 
@@ -246,6 +356,39 @@ QJsonObject Daemon::containerDuplicate(const QJsonObject &params, Error *error)
     if (spec.name.isEmpty()) {
         spec.name = id.left(12) + QStringLiteral("-copy");
     }
+
+    QString nameError;
+    if (!validateContainerName(spec.name, &nameError)) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"), nameError);
+        }
+        return {};
+    }
+    // O nome padrão (`<id>-copy`) também pode colidir com uma duplicata anterior.
+    Error existingError;
+    const QVector<ContainerInfo> existing = m_podman.listContainers(true, &existingError);
+    if (!existingError.isEmpty()) {
+        if (error) {
+            *error = std::move(existingError);
+        }
+        return {};
+    }
+    QStringList taken;
+    for (const ContainerInfo &container : existing) {
+        taken.append(container.name);
+    }
+    if (taken.contains(spec.name)) {
+        const QString suggestion = suggestContainerName(spec.name, taken);
+        if (error) {
+            *error = Error::make(
+                QStringLiteral("PODSTACK_CONFLICT"),
+                QStringLiteral("Já existe um container chamado “%1”.").arg(spec.name), spec.name,
+                suggestion.isEmpty() ? QStringLiteral("Escolha outro nome.")
+                                     : QStringLiteral("Tente o nome “%1”.").arg(suggestion));
+        }
+        return {};
+    }
+
     spec.workDir = config.value(QStringLiteral("WorkingDir")).toString();
     spec.user = config.value(QStringLiteral("User")).toString();
 
@@ -571,12 +714,15 @@ QJsonObject Daemon::containersList(const QJsonObject &params, Error *error)
 {
     const bool all = params.value(QStringLiteral("all")).toBool(false);
     const QString state = params.value(QStringLiteral("state")).toString();
+    const QString filter = params.value(QStringLiteral("filter")).toString().trimmed();
+    const int limit = qMax(0, params.value(QStringLiteral("limit")).toInt(0));
+    const int offset = qMax(0, params.value(QStringLiteral("offset")).toInt(0));
     const QVector<ContainerInfo> containers = m_podman.listContainers(all, error);
     if (error && !error->isEmpty()) {
         return {};
     }
 
-    QJsonArray items;
+    QJsonArray matched;
     for (const ContainerInfo &container : containers) {
         if (!state.isEmpty() && state != QStringLiteral("all")) {
             if (state == QStringLiteral("running") &&
@@ -586,19 +732,146 @@ QJsonObject Daemon::containersList(const QJsonObject &params, Error *error)
             if (state == QStringLiteral("paused") && container.state != QStringLiteral("paused")) {
                 continue;
             }
-            if (state == QStringLiteral("stopped") && container.state != QStringLiteral("exited") &&
-                container.state != QStringLiteral("created") &&
-                container.state != QStringLiteral("dead") &&
-                container.state != QStringLiteral("stopped")) {
+            if (state == QStringLiteral("stopped") &&
+                container.state == QStringLiteral("running")) {
                 continue;
             }
         }
-        items.append(container.toJson());
+        if (!filter.isEmpty()) {
+            const QString haystack = (container.name + QLatin1Char(' ') + container.image +
+                                      QLatin1Char(' ') + container.id)
+                                         .toLower();
+            if (!haystack.contains(filter.toLower())) {
+                continue;
+            }
+        }
+        matched.append(container.toJson());
+    }
+
+    const int total = matched.size();
+    QJsonArray items;
+    for (int index = offset; index < total; ++index) {
+        if (limit > 0 && items.size() >= limit) {
+            break;
+        }
+        items.append(matched.at(index));
     }
 
     QJsonObject result;
     result.insert(QStringLiteral("items"), items);
-    result.insert(QStringLiteral("total"), items.size());
+    result.insert(QStringLiteral("total"), total);
+    return result;
+}
+
+QJsonObject Daemon::containerGet(const QJsonObject &params, Error *error)
+{
+    const QString id = requireId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+
+    Error listError;
+    const QVector<ContainerInfo> containers = m_podman.listContainers(true, &listError);
+    if (!listError.isEmpty()) {
+        if (error) {
+            *error = std::move(listError);
+        }
+        return {};
+    }
+    for (const ContainerInfo &container : containers) {
+        if (container.id == id || container.name == id || container.id.startsWith(id)) {
+            return container.toJson();
+        }
+    }
+    if (error) {
+        *error = Error::make(QStringLiteral("PODSTACK_NOT_FOUND"),
+                             QStringLiteral("Container “%1” não encontrado.").arg(id));
+    }
+    return {};
+}
+
+QJsonObject Daemon::containerTop(const QJsonObject &params, Error *error)
+{
+    const QString id = requireId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const QJsonObject top = m_podman.containerTop(id, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), id);
+    result.insert(QStringLiteral("titles"), top.value(QStringLiteral("titles")));
+    result.insert(QStringLiteral("processes"), top.value(QStringLiteral("processes")));
+    return result;
+}
+
+QJsonObject Daemon::containerChanges(const QJsonObject &params, Error *error)
+{
+    const QString id = requireId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const QJsonArray changes = m_podman.containerChanges(id, error);
+    if (error && !error->isEmpty()) {
+        return {};
+    }
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), id);
+    result.insert(QStringLiteral("changes"), changes);
+    return result;
+}
+
+QJsonObject Daemon::containerExport(const QJsonObject &params, Error *error)
+{
+    const QString id = requireId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const QString path = params.value(QStringLiteral("path")).toString();
+    if (path.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o arquivo de destino."));
+        }
+        return {};
+    }
+    if (!m_podman.exportContainer(id, path, error)) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), id);
+    result.insert(QStringLiteral("path"), path);
+    result.insert(QStringLiteral("size"), static_cast<double>(QFileInfo(path).size()));
+    return result;
+}
+
+QJsonObject Daemon::containerCommit(const QJsonObject &params, Error *error)
+{
+    const QString id = requireId(params, error);
+    if (id.isEmpty()) {
+        return {};
+    }
+    const QString repo = params.value(QStringLiteral("repo")).toString().trimmed();
+    if (repo.isEmpty()) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
+                                 QStringLiteral("Informe o repositório da imagem."));
+        }
+        return {};
+    }
+    const QString imageId =
+        m_podman.commitContainer(id, repo, params.value(QStringLiteral("tag")).toString(),
+                                 params.value(QStringLiteral("message")).toString(), error);
+    if (imageId.isEmpty()) {
+        return {};
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), id);
+    result.insert(QStringLiteral("imageId"), imageId);
     return result;
 }
 
