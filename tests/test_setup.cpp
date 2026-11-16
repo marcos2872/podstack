@@ -2,6 +2,7 @@
 #include "core/config/Config.h"
 #include "core/config/Paths.h"
 #include "core/helper/DbusUtils.h"
+#include "daemon/Pools.h"
 #include "daemon/docker/DockerInventory.h"
 #include "daemon/setup/SetupManager.h"
 #include "helper/HelperService.h"
@@ -237,6 +238,7 @@ void SetupTest::cleanupTestCase()
     // Os jobs do SetupManager rodam em QtConcurrent; espere antes de destruir
     // o manager/processo para não deixar uma thread usando o objeto.
     QThreadPool::globalInstance()->waitForDone(20000);
+    PodStack::backgroundPool()->waitForDone(20000);
     QDir(PodStack::Paths::configDir()).removeRecursively();
     QStandardPaths::setTestModeEnabled(false);
 }
@@ -1015,6 +1017,7 @@ void SetupTest::setupRunsSocketJob()
     QVERIFY(lastPayload.value(QStringLiteral("checks")).toArray().size() >= 9);
     QVERIFY(manager.activeJob().isEmpty());
     QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+    QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
 }
 
 void SetupTest::setupTracksActiveJob()
@@ -1055,6 +1058,7 @@ void SetupTest::setupTracksActiveJob()
                 QStringLiteral("failed"),
         20000);
     QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+    QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
 }
 
 void SetupTest::setupCompletesOnboarding()
@@ -1210,6 +1214,7 @@ void SetupTest::setupApplyJobs()
         QVERIFY(!started.value(QStringLiteral("jobId")).toString().isEmpty());
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         const QString state = manager.jobStatus(started.value(QStringLiteral("jobId")).toString())
                                   .value(QStringLiteral("state"))
                                   .toString();
@@ -1233,6 +1238,7 @@ void SetupTest::setupApplyJobs()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         const QJsonObject status =
             manager.jobStatus(started.value(QStringLiteral("jobId")).toString());
         QCOMPARE(status.value(QStringLiteral("state")).toString(), QStringLiteral("failed"));
@@ -1262,6 +1268,7 @@ void SetupTest::setupApplyJobs()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QVERIFY(manager.calls.contains(QStringLiteral("InstallPackages:caddy")));
     }
 
@@ -1280,6 +1287,7 @@ void SetupTest::setupApplyJobs()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         const QString state = manager.jobStatus(started.value(QStringLiteral("jobId")).toString())
                                   .value(QStringLiteral("state"))
                                   .toString();
@@ -1318,6 +1326,7 @@ void SetupTest::setupApplyFailures()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QCOMPARE(manager.jobStatus(started.value(QStringLiteral("jobId")).toString())
                      .value(QStringLiteral("state"))
                      .toString(),
@@ -1339,6 +1348,7 @@ void SetupTest::setupApplyFailures()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QVERIFY(manager.calls.contains(QStringLiteral("InstallPackages:podman")));
     }
 
@@ -1358,6 +1368,7 @@ void SetupTest::setupApplyFailures()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QVERIFY(manager.calls.isEmpty());
     }
 
@@ -1386,6 +1397,7 @@ void SetupTest::setupApplyFailures()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         const QJsonObject status =
             manager.jobStatus(started.value(QStringLiteral("jobId")).toString());
         QCOMPARE(status.value(QStringLiteral("state")).toString(), QStringLiteral("failed"));
@@ -1463,6 +1475,7 @@ void SetupTest::qemuPackagesForPackageManagers()
         QVERIFY(!started.value(QStringLiteral("jobId")).toString().isEmpty());
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QVERIFY(setup.calls.contains(QStringLiteral("InstallPackages:") +
                                      expected.join(QLatin1Char(','))));
         QFile::remove(bin.filePath(manager));

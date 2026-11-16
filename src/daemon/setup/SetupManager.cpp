@@ -6,6 +6,7 @@
 #include "core/config/Paths.h"
 #include "core/logging/Logging.h"
 #include "core/setup/SetupPolicy.h"
+#include "daemon/Pools.h"
 #include "daemon/docker/DockerInventory.h"
 
 #include <QFileInfo>
@@ -571,7 +572,8 @@ QJsonObject SetupManager::apply(const QJsonObject &params, const Notify &notify,
 
     auto job = createJob(action, notify);
     const QJsonObject &options = params;
-    (void)QtConcurrent::run([this, job, options] { runJob(job, options); });
+    (void) QtConcurrent::run(PodStack::backgroundPool(),
+                             [this, job, options] { runJob(job, options); });
 
     QJsonObject result;
     result.insert(QStringLiteral("jobId"), job->id);
@@ -607,7 +609,8 @@ QJsonObject SetupManager::removeDocker(const QJsonObject &params, const Notify &
 
     auto job = createJob(QStringLiteral("remove-docker"), notify);
     const QJsonObject &options = params;
-    (void)QtConcurrent::run([this, job, options] { runJob(job, options); });
+    (void) QtConcurrent::run(PodStack::backgroundPool(),
+                             [this, job, options] { runJob(job, options); });
 
     QJsonObject result;
     result.insert(QStringLiteral("jobId"), job->id);

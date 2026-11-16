@@ -101,6 +101,10 @@ qt_add_executable(test_logging test_logging.cpp)
 target_link_libraries(test_logging PRIVATE podstack_core Qt6::Test)
 add_test(NAME logging COMMAND test_logging)
 
+qt_add_executable(test_pools test_pools.cpp)
+target_link_libraries(test_pools PRIVATE podstack_core Qt6::Concurrent Qt6::Test)
+add_test(NAME pools COMMAND test_pools)
+
 qt_add_executable(test_daemon_bootstrap test_daemon_bootstrap.cpp)
 target_link_libraries(test_daemon_bootstrap PRIVATE podstack_core Qt6::Test)
 add_test(NAME daemon_bootstrap COMMAND test_daemon_bootstrap)
@@ -132,6 +136,11 @@ add_test(NAME setup COMMAND test_setup)
 add_test(NAME package_scriptlets
     COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-scriptlets.sh ${CMAKE_SOURCE_DIR})
 set_tests_properties(package_scriptlets PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_test(NAME package_units
+    COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-units.sh ${CMAKE_SOURCE_DIR})
+set_tests_properties(package_units PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_test(NAME update_exec

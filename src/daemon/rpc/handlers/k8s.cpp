@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "daemon/Pools.h"
 #include "daemon/rpc/handlers/Common.h"
 
 using namespace PodStack::DaemonInternal;
@@ -76,7 +77,8 @@ QJsonObject Daemon::k8sDisable(const QJsonObject &params, const Notify &notify, 
         m_k8sSubscriptions.insert(jobId, subscriptionId);
     }
 
-    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, force, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, jobId, subscriptionId, subscription,
+                                                          force, notify] {
         const auto progress = [jobId, notify](const QString &stage, int value) {
             if (!notify) {
                 return;
@@ -187,7 +189,8 @@ QJsonObject Daemon::k8sEnable(const QJsonObject &params, const Notify &notify, E
         m_k8sSubscriptions.insert(jobId, subscriptionId);
     }
 
-    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, request, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, jobId, subscriptionId, subscription,
+                                                          request, notify] {
         const auto progress = [jobId, notify](const QString &stage, int value) {
             if (!notify) {
                 return;
@@ -286,6 +289,7 @@ QJsonObject Daemon::k8sPortForwardStart(const QJsonObject &params, const Notify 
     }
 
     (void) QtConcurrent::run(
+        PodStack::backgroundPool(),
         [this, id, resource, ns, pod, localPort, remotePort, exposeLan, subscription, notify] {
             const auto onLine = [&notify, &id](const QString &line) {
                 QJsonObject payload;
@@ -399,6 +403,7 @@ QJsonObject Daemon::subscribeK8sLogs(const QJsonObject &params, const Notify &no
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
     (void) QtConcurrent::run(
+        PodStack::backgroundPool(),
         [this, ns, pod, container, tail, subscriptionId, subscription, notify] {
             const auto onLine = [&notify, &ns, &pod, &container](const QString &line) {
                 QJsonObject payload;

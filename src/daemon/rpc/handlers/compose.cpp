@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "daemon/Pools.h"
 #include "daemon/rpc/handlers/Common.h"
 
 using namespace PodStack::DaemonInternal;
@@ -109,6 +110,7 @@ QJsonObject Daemon::subscribeComposeLogs(const QJsonObject &params, const Notify
         const QString containerId = target.first;
         const QString service = target.second;
         (void) QtConcurrent::run(
+            PodStack::backgroundPool(),
             [this, project, service, containerId, subscriptionId, subscription, remaining, notify] {
                 QByteArray buffer;
                 Error streamError;

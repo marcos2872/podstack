@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "daemon/Pools.h"
 #include "daemon/rpc/handlers/Common.h"
 
 using namespace PodStack::DaemonInternal;
@@ -118,7 +119,8 @@ QJsonObject Daemon::imagePull(const QJsonObject &params, const Notify &notify, E
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void) QtConcurrent::run([this, reference, platform, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, reference, platform, subscriptionId,
+                                                          subscription, notify] {
         Error streamError;
         const auto onLine = [&](const QByteArray &line) {
             const QJsonDocument document = QJsonDocument::fromJson(line);
@@ -170,7 +172,8 @@ QJsonObject Daemon::imagePush(const QJsonObject &params, const Notify &notify, E
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void) QtConcurrent::run([this, id, destination, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, id, destination, subscriptionId,
+                                                          subscription, notify] {
         Error streamError;
         const auto onLine = [&](const QByteArray &line) {
             const QJsonDocument document = QJsonDocument::fromJson(line);

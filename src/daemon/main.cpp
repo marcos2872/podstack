@@ -2,6 +2,7 @@
 #include "core/config/Paths.h"
 #include "core/logging/Logging.h"
 #include "daemon/Daemon.h"
+#include "daemon/Pools.h"
 #include "daemon/domains/CaddyProxy.h"
 #include "daemon/domains/DnsServer.h"
 #include "daemon/domains/HttpProxy.h"
@@ -138,9 +139,14 @@ int main(int argc, char *argv[])
     // restart de machine em andamento). Espera antes de destruir os objetos,
     // mas com prazo: um worker preso não pode impedir o encerramento.
     // `waitForDone(int)` em vez de `QDeadlineTimer`: o Qt 6.4 do DEB ainda não
-    // tem a sobrecarga com deadline.
-    if (!QThreadPool::globalInstance()->waitForDone(3000)) {
-        qCWarning(lcRpc) << "workers ainda ativos no shutdown; encerrando mesmo assim";
+    // tem a sobrecarga com deadline. Os dois pools são independentes; streams
+    // longos vivem no backgroundPool e handlers curtos no rpcPool.
+    if (!PodStack::rpcPool()->waitForDone(3000)) {
+        qCWarning(lcRpc) << "handlers RPC ainda ativos no shutdown; encerrando mesmo assim";
+    }
+    if (!PodStack::backgroundPool()->waitForDone(3000)) {
+        qCWarning(lcRpc)
+            << "tarefas de background ainda ativas no shutdown; encerrando mesmo assim";
     }
     return exitCode;
 }
