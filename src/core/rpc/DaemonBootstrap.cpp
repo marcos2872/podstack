@@ -330,6 +330,54 @@ void ensureRunningAsync(const QString &socketPath)
     }));
 }
 
+EngineStatus ensureEngineRunning(const QString &podmanSocketPath, bool enabled, QString *detail)
+{
+    if (detail) {
+        detail->clear();
+    }
+    if (podmanSocketPath.isEmpty()) {
+        if (detail) {
+            *detail = QStringLiteral("caminho do socket do Podman vazio");
+        }
+        return EngineStatus::Failed;
+    }
+    if (QFileInfo::exists(podmanSocketPath)) {
+        return EngineStatus::AlreadyRunning;
+    }
+    if (!enabled) {
+        if (detail) {
+            *detail = QStringLiteral("engine.autoStart desativado");
+        }
+        return EngineStatus::Disabled;
+    }
+
+    const CommandResult start = runSystemctl(
+        {QStringLiteral("--user"), QStringLiteral("start"), QStringLiteral("podman.socket")});
+    if (!start.ok) {
+        if (detail) {
+            *detail = start.error;
+        }
+        qCWarning(lcRpc) << "systemctl --user start podman.socket falhou:" << start.error;
+        return EngineStatus::Failed;
+    }
+
+    // O systemd cria o socket de forma assíncrona; espera curta para o ping do
+    // Podman não falhar logo após o start.
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 2000) {
+        if (QFileInfo::exists(podmanSocketPath)) {
+            return EngineStatus::Started;
+        }
+        QThread::msleep(50);
+    }
+    if (detail) {
+        *detail = QStringLiteral("podman.socket iniciado, mas o socket não apareceu");
+    }
+    qCWarning(lcRpc) << "podman.socket iniciado, mas" << podmanSocketPath << "não apareceu";
+    return EngineStatus::Failed;
+}
+
 QString manualRemedy()
 {
     // `restart` também ativa o socket parado; é o único remédio que resolve

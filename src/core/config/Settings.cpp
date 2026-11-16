@@ -523,7 +523,6 @@ const QVector<SettingDef> &definitions()
             QStringLiteral("app.waitForContainerStop"),
             QStringLiteral("app.confirmDestructive"),
             QStringLiteral("engine.socketPath"),
-            QStringLiteral("engine.autoStart"),
             QStringLiteral("engine.restartOnConfigChange"),
             QStringLiteral("docker.exposePortsToLan"),
             QStringLiteral("docker.enableContainerdImageStore"),

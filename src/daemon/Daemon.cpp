@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "daemon/Daemon.h"
+#include "core/config/Config.h"
+#include "core/config/Paths.h"
 #include "core/logging/Logging.h"
+#include "core/rpc/DaemonBootstrap.h"
 #include "daemon/rpc/Internal.h"
+
+#include <QStandardPaths>
 
 using namespace PodStack::DaemonInternal;
 
@@ -59,6 +64,9 @@ QJsonObject Daemon::handle(const QString &method, const QJsonObject &params, con
     }
     if (method == QStringLiteral("system.disk")) {
         return systemDisk();
+    }
+    if (method == QStringLiteral("system.engineStart")) {
+        return systemEngineStart(error);
     }
     if (method == QStringLiteral("system.emulation")) {
         return systemEmulation();
@@ -551,25 +559,53 @@ QString Daemon::requireMachineId(const QJsonObject &params, Error *error) const
 
 Daemon::Daemon() : m_podman(selectedPodmanSocket()), m_compose(&m_podman), m_k8s(&m_machines)
 {
-    Error error;
-    if (!m_podman.ping(&error)) {
-        qCWarning(lcPodman) << "Podman indisponível:" << error.message << error.detail;
-    } else {
-        qCInfo(lcPodman) << "Podman conectado; API" << m_podman.apiVersion() << "modo"
-                         << engineMode();
-    }
-
+    // O store de builds é local e rápido; abrir no ctor garante que nenhum RPC
+    // de build chegue sem schema. Ping/reconcile pertencem a startBackground().
     Error storeError;
     if (!m_buildStore.open(&storeError)) {
         qCWarning(lcPodman) << "Histórico de builds indisponível:" << storeError.message
                             << storeError.detail;
     }
 
+    // Reconciliar é local e rápido, e precisa acontecer antes de qualquer RPC
+    // de machine para não competir com um create concorrente.
     Error machineError;
     m_machines.reconcile(&machineError);
     if (!machineError.isEmpty()) {
         qCWarning(lcRpc) << "Reconciliação de machines incompleta:" << machineError.code
                          << machineError.message << machineError.detail;
+    }
+}
+
+void Daemon::startBackground()
+{
+    if (m_backgroundStarted.exchange(true)) {
+        return;
+    }
+
+    // `engine.autoStart` (default) garante o podman.socket rootless ao abrir o
+    // app. É uma operação de systemd do usuário, sem helper/polkit. No modo
+    // rootful o socket é do sistema e exige configuração administrativa.
+    const Config config = Config::load();
+    if (engineMode() == QStringLiteral("rootless") &&
+        config.get(QStringLiteral("engine.autoStart")).toBool(true) &&
+        !QStandardPaths::findExecutable(QStringLiteral("podman")).isEmpty()) {
+        QString engineDetail;
+        const DaemonBootstrap::EngineStatus engineStatus =
+            DaemonBootstrap::ensureEngineRunning(Paths::podmanSocket(), true, &engineDetail);
+        if (engineStatus == DaemonBootstrap::EngineStatus::Started) {
+            qCInfo(lcPodman) << "podman.socket ativado por engine.autoStart";
+        } else if (engineStatus == DaemonBootstrap::EngineStatus::Failed) {
+            qCWarning(lcPodman) << "Não foi possível ativar o podman.socket:" << engineDetail;
+        }
+    }
+
+    Error error;
+    if (!m_podman.ping(&error)) {
+        qCWarning(lcPodman) << "Podman indisponível:" << error.message << error.detail;
+    } else {
+        qCInfo(lcPodman) << "Podman conectado; API" << m_podman.apiVersion() << "modo"
+                         << engineMode();
     }
 }
 

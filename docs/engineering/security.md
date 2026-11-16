@@ -140,7 +140,7 @@ container em `127.0.0.1`.
 
 - A detecção do setup é **read-only** (`podman --version`, `podman info`, socket, `/dev/kvm`, binários); não altera o sistema.
 - Instalar/atualizar Podman, instalar QEMU/KVM/componentes e remover Docker passam pelo helper allowlisted; **nunca** `sudo`/shell na GUI.
-- Remover o Docker é **opt-in**: exige `confirm: true`, lista containers/imagens/redes/volumes afetados e avisa que não há migração automática. O padrão é coexistência (`dockerPolicy: keep`).
+- Remover o Docker é **opt-in**: exige `confirm: true`, lista containers/imagens/redes/volumes afetados e avisa que não há migração automática. O padrão é coexistência (`dockerPolicy: keep`). A consulta de pacotes instalados é distro-aware (`rpm`, `dpkg-query` ou `pacman`); se a ferramenta não existir, o helper retorna erro em vez de reportar "nada instalado".
 - `DOCKER_HOST` apontando para o socket do Podman é uma configuração do usuário, não uma operação privilegiada; não confundir com remoção.
 - Logs do setup não incluem tokens/senhas; a auditoria registra uid, método, parâmetros allowlisted e resultado.
 
@@ -232,7 +232,7 @@ encerra a janela da instância já em execução.
 - `*.podstack.local` via helper: drop-in gerenciado, reversível, com backup.
 - Não usar mDNS/Avahi por padrão (conflito na LAN e spoofing).
 - HTTPS: CA local com chave protegida; certificados on-the-fly; remoção fácil.
-- Containers recebem a CA apenas se opt-in; documentar implicações.
+- Containers recebem a CA por padrão (opt-out com label `dev.podstack.ca=false`), montada read-only nos dois anchors: `/etc/pki/ca-trust/source/anchors/podstack-local-ca.crt` (Fedora/RHEL) e `/usr/local/share/ca-certificates/podstack-local-ca.crt` (Debian/Ubuntu). A imagem precisa rodar `update-ca-trust`/`update-ca-certificates` para regenerar o bundle; o PodStack não executa comandos no container.
 
 ### 7.1 Modo isolado de machines (T4-14)
 

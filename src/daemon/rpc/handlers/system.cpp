@@ -1,9 +1,49 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "daemon/rpc/handlers/Common.h"
 
+#include "core/rpc/DaemonBootstrap.h"
+
 using namespace PodStack::DaemonInternal;
 
 namespace PodStack {
+
+QJsonObject Daemon::systemEngineStart(Error *error)
+{
+    if (error) {
+        *error = {};
+    }
+    if (engineMode() != QStringLiteral("rootless")) {
+        if (error) {
+            *error =
+                Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                            QStringLiteral("O modo rootful usa o podman.socket do sistema."),
+                            Paths::podmanSocket(),
+                            QStringLiteral("Habilite o socket rootful: sudo systemctl enable --now "
+                                           "podman.socket"));
+        }
+        return {};
+    }
+
+    QString detail;
+    const DaemonBootstrap::EngineStatus status =
+        DaemonBootstrap::ensureEngineRunning(Paths::podmanSocket(), true, &detail);
+    if (status == DaemonBootstrap::EngineStatus::Failed) {
+        if (error) {
+            *error =
+                Error::make(QStringLiteral("PODSTACK_ENGINE_UNAVAILABLE"),
+                            QStringLiteral("Não foi possível iniciar o podman.socket."), detail,
+                            QStringLiteral("Rode: systemctl --user start podman.socket"));
+        }
+        return {};
+    }
+
+    Error pingError;
+    (void) m_podman.ping(&pingError);
+    QJsonObject result;
+    result.insert(QStringLiteral("started"), status == DaemonBootstrap::EngineStatus::Started);
+    result.insert(QStringLiteral("socket"), Paths::podmanSocket());
+    return result;
+}
 
 QJsonObject Daemon::systemDf(const QJsonObject &params, Error *error)
 {

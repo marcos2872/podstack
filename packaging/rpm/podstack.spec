@@ -30,6 +30,9 @@ Requires:       qtermwidget
 Requires:       qt6-qtsvg
 Requires:       openssh-clients
 Requires:       polkit
+# Provider Compose; o app também detecta docker-compose e o plugin do
+# docker-compose-v2 (Ubuntu/Debian) fora do PATH.
+Recommends:     podman-compose
 Requires(post): policycoreutils
 Requires(postun): policycoreutils
 Requires(pre):  procps-ng

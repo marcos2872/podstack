@@ -72,7 +72,10 @@ private:
 
     static QVariantMap result(bool ok, const QString &message);
     static QVariantMap updateFailure(const Error &error);
-    static QStringList installedPackages(const QStringList &packages);
+    /// Consulta distro-aware (rpm/dpkg-query/pacman). Retorna false e preenche
+    /// `error` se a ferramenta não existir ou falhar; pacote ausente não é erro.
+    static bool installedPackages(const QStringList &packages, QStringList *installed,
+                                  QString *error);
 
     std::unique_ptr<UpdateService> m_updateService;
 };

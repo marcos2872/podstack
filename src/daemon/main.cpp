@@ -13,6 +13,8 @@
 #include <QCoreApplication>
 #include <QSocketNotifier>
 #include <QThreadPool>
+#include <QTimer>
+#include <QtConcurrent>
 
 #include <csignal>
 #include <memory>
@@ -102,18 +104,6 @@ int main(int argc, char *argv[])
 
     std::unique_ptr<PodStack::CaddyProxy> caddyProxy;
     const int httpsPort = config.get(QStringLiteral("network.httpsPort")).toInt(18443);
-    if (httpProxy && config.get(QStringLiteral("network.https")).toBool(false) && httpsPort >= 1 &&
-        httpsPort <= 65535) {
-        caddyProxy = std::make_unique<PodStack::CaddyProxy>();
-        caddyProxy->setExposeLan(exposeLan);
-        PodStack::Error caddyError;
-        if (!caddyProxy->start(static_cast<quint16>(httpsPort), static_cast<quint16>(httpPort),
-                               &caddyError)) {
-            qCWarning(lcRpc) << "HTTPS de *.localhost/*.podstack.local indisponível:"
-                             << caddyError.message << caddyError.detail;
-            caddyProxy.reset();
-        }
-    }
 
     std::unique_ptr<PodStack::DnsServer> dnsServer;
     if (config.get(QStringLiteral("network.bridge")).toBool(true)) {
@@ -127,6 +117,30 @@ int main(int argc, char *argv[])
     }
 
     qInfo("podstackd %s pronto", PODSTACK_VERSION);
+
+    // O socket já está escutando e os handlers podem rodar antes do ping do
+    // Podman (até 30 s) e do start do Caddy (alguns segundos). Adiar o
+    // trabalho lento evita o falso "daemon indisponível" no primeiro request.
+    QTimer::singleShot(0, &app, [&daemon] {
+        QtConcurrent::run(PodStack::backgroundPool(), [&daemon] { daemon.startBackground(); });
+    });
+    QTimer::singleShot(
+        500, &app, [&httpProxy, &caddyProxy, config, exposeLan, httpPort, httpsPort] {
+            if (!httpProxy || !config.get(QStringLiteral("network.https")).toBool(false) ||
+                httpsPort < 1 || httpsPort > 65535) {
+                return;
+            }
+            caddyProxy = std::make_unique<PodStack::CaddyProxy>();
+            caddyProxy->setExposeLan(exposeLan);
+            PodStack::Error caddyError;
+            if (!caddyProxy->start(static_cast<quint16>(httpsPort), static_cast<quint16>(httpPort),
+                                   &caddyError)) {
+                qCWarning(lcRpc) << "HTTPS de *.localhost/*.podstack.local indisponível:"
+                                 << caddyError.message << caddyError.detail;
+                caddyProxy.reset();
+            }
+        });
+
     // Shutdown determinístico: sem cancelar as subscriptions, um stream
     // infinito do Podman (eventos/logs/stats) mantém o pool vivo e o daemon
     // nunca termina — fica um socket que aceita conexões e não responde.

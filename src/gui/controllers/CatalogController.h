@@ -37,6 +37,10 @@ protected:
     /// reimplementam `refresh()` (o de containers fecha o `loading` só na
     /// resposta mais nova).
     bool m_loading = false;
+    /// Um refresh pedido durante uma leitura é coalescido: só dispara uma nova
+    /// chamada quando a resposta atual chega. Sem isso, eventos frequentes
+    /// empilhavam RPCs obsoletos (cada um ocupando um handler do daemon).
+    bool m_refreshPending = false;
     /// Cada refresh ganha uma geração; a resposta de uma leitura antiga é
     /// descartada para não sobrescrever um retrato mais novo (eventos e ação
     /// disparam refresh concorrentes, cada um em sua thread/socket).

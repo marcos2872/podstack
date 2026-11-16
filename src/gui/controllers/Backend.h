@@ -52,6 +52,7 @@ class Backend : public QObject {
     Q_PROPERTY(PodStack::NetworkController *networks READ networks CONSTANT)
     Q_PROPERTY(PodStack::PodController *pods READ pods CONSTANT)
     Q_PROPERTY(bool connected READ connected NOTIFY stateChanged)
+    Q_PROPERTY(bool daemonReachable READ daemonReachable NOTIFY stateChanged)
     Q_PROPERTY(QString error READ error NOTIFY stateChanged)
     Q_PROPERTY(QVariantList containerItems READ containerItems NOTIFY containersChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
@@ -85,6 +86,7 @@ public:
     NetworkController *networks() { return &m_networks; }
     PodController *pods() { return &m_pods; }
     bool connected() const { return m_connected; }
+    bool daemonReachable() const { return m_daemonReachable; }
     QString error() const { return m_error; }
     QVariantList containerItems() const { return m_containers.items(); }
     QString lastError() const { return m_lastError; }
@@ -104,6 +106,8 @@ public:
     /// Reinicia o podstack.service em background (botão "Reiniciar daemon").
     /// Um daemon travado aceita conexões mas não responde; `start` não resolve.
     Q_INVOKABLE void restartDaemonService();
+    /// Ativa o podman.socket rootless sem reiniciar o daemon (engine parado).
+    Q_INVOKABLE void startEngine();
     Q_INVOKABLE void openPath(const QString &path);
     Q_INVOKABLE QString choosePath(const QString &mode, const QString &title,
                                    const QString &filter = QString(),
@@ -178,6 +182,7 @@ private:
     QList<PendingAction> m_actionQueue;
     bool m_actionActive = false;
     bool m_connected = false;
+    bool m_daemonReachable = true;
     QString m_error;
     QString m_lastError;
     QStringList m_logLines;

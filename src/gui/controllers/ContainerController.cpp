@@ -72,10 +72,12 @@ ContainerController::ContainerController(QObject *parent) : CatalogController(pa
 
 void ContainerController::refresh()
 {
-    if (!m_loading) {
-        m_loading = true;
-        emit loadingChanged();
+    if (m_loading) {
+        m_refreshPending = true;
+        return;
     }
+    m_loading = true;
+    emit loadingChanged();
     const quint64 generation = ++m_refreshGeneration;
     // Timeout curto: um daemon travado precisa aparecer como erro em segundos,
     // não deixar a lista vazia por 30 s como se não houvesse containers.
@@ -91,11 +93,20 @@ void ContainerController::refresh()
             if (isErrorResult(result)) {
                 // Mantém o último retrato: um erro transitório não pode
                 // apagar a lista e fingir que o engine está vazio.
-                emit connectionChanged(false, errorMessage(result));
-                return;
+                const QJsonObject errorObject =
+                    result.value(QStringLiteral("__error")).isObject()
+                        ? result.value(QStringLiteral("__error")).toObject()
+                        : result.value(QStringLiteral("error")).toObject();
+                emit connectionChanged(false, errorMessage(result),
+                                       errorObject.value(QStringLiteral("code")).toString());
+            } else {
+                setItems(parseItems(result.value(QStringLiteral("items")).toArray()));
+                emit connectionChanged(true, {}, {});
             }
-            setItems(parseItems(result.value(QStringLiteral("items")).toArray()));
-            emit connectionChanged(true, {});
+            if (m_refreshPending) {
+                m_refreshPending = false;
+                refresh();
+            }
         },
         8000);
 }

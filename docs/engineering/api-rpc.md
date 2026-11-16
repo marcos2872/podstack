@@ -105,6 +105,7 @@ interface Subscription { subscriptionId: string }
 | Método | Params | Result |
 |---|---|---|
 | `system.disk` | `{}` | `{checkedAt, thresholdPercent, low, filesystems:[{path, kind, totalBytes, freeBytes, availableBytes, usedPercent}], errors:[]}` |
+| `system.engineStart` | `{}` | `{started, socket}` — ativa o `podman.socket` rootless (`systemctl --user start`) e refaz o ping; no modo rootful retorna `PODSTACK_UNSUPPORTED` com a remediação administrativa |
 | `system.emulation` | `{}` | `{hostArch, handlers:[{name,interpreter,enabled}], foreignEmulation}` |
 | `system.hello` | `{client, version, api}` | `{apiVersion, daemonVersion, podman:{version,api,socket,rootless}}` |
 | `system.status` | `{}` | `{state, engine, daemonVersion, podman:{apiVersion, socket, mode}, error?}` — `state` é `ok`/`error`, `engine` é `running`/`unavailable`; `error` só existe quando o ping falha |
