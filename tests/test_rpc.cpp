@@ -2753,13 +2753,21 @@ void RpcTest::composeProviderFallback()
 
     const QByteArray previousPath = qgetenv("PATH");
     const QByteArray previousProvider = qgetenv("PODSTACK_COMPOSE_PROVIDER");
+    const QByteArray previousPlugin = qgetenv("PODSTACK_DOCKER_COMPOSE_PLUGIN");
     qunsetenv("PODSTACK_COMPOSE_PROVIDER");
-    const auto restore = qScopeGuard([previousPath, previousProvider] {
+    // Presente e vazio: a detecção não vasculha plugins do host no teste.
+    qputenv("PODSTACK_DOCKER_COMPOSE_PLUGIN", QByteArray());
+    const auto restore = qScopeGuard([previousPath, previousProvider, previousPlugin] {
         qputenv("PATH", previousPath);
         if (previousProvider.isEmpty()) {
             qunsetenv("PODSTACK_COMPOSE_PROVIDER");
         } else {
             qputenv("PODSTACK_COMPOSE_PROVIDER", previousProvider);
+        }
+        if (previousPlugin.isEmpty()) {
+            qunsetenv("PODSTACK_DOCKER_COMPOSE_PLUGIN");
+        } else {
+            qputenv("PODSTACK_DOCKER_COMPOSE_PLUGIN", previousPlugin);
         }
     });
 
@@ -2804,7 +2812,29 @@ void RpcTest::composeProviderFallback()
 
     QTemporaryDir emptyBin;
     QVERIFY(emptyBin.isValid());
+
+    // podman-compose standalone (caminho comum no Debian/Ubuntu).
+    QTemporaryDir podmanComposeBin;
+    QVERIFY(podmanComposeBin.isValid());
+    QVERIFY(writeScript(podmanComposeBin.filePath(QStringLiteral("podman-compose"))));
+    qputenv("PATH", podmanComposeBin.path().toUtf8());
+    PodStack::ComposeManager podmanComposeManager(&client);
+    error = {};
+    QCOMPARE(podmanComposeManager.provider(&error),
+             podmanComposeBin.filePath(QStringLiteral("podman-compose")));
+
+    // docker-compose-v2 do Ubuntu 24.04: plugin fora do PATH.
+    QTemporaryDir pluginDir;
+    QVERIFY(pluginDir.isValid());
+    const QString pluginPath = pluginDir.filePath(QStringLiteral("docker-compose"));
+    QVERIFY(writeScript(pluginPath));
+    qputenv("PODSTACK_DOCKER_COMPOSE_PLUGIN", pluginPath.toUtf8());
     qputenv("PATH", emptyBin.path().toUtf8());
+    PodStack::ComposeManager pluginManager(&client);
+    error = {};
+    QCOMPARE(pluginManager.provider(&error), pluginPath);
+
+    qputenv("PODSTACK_DOCKER_COMPOSE_PLUGIN", QByteArray());
     PodStack::ComposeManager missingManager(&client);
     error = {};
     QVERIFY(missingManager.provider(&error).isEmpty());

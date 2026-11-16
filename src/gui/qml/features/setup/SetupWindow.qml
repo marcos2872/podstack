@@ -27,9 +27,11 @@ Item {
     readonly property bool caddyInstalled: caddyCheck.status === "ok"
     readonly property bool validated: backend.setup.mandatoryOk
 
-    // O overlay só fecha sozinho quando o setup foi concluído; reconfigurar
-    // abre via Settings e pode ser fechado pelo X.
-    visible: manuallyOpen || (backend.setup.loaded && !backend.setup.completed)
+    // O overlay fecha quando o setup foi concluído ou quando o usuário escolhe
+    // continuar mesmo assim (`skip` grava showOnboarding=false e mantém
+    // completed=false, exibindo o aviso de configuração pendente na Main).
+    // Reconfigurar abre via Settings e pode ser fechado pelo X.
+    visible: manuallyOpen || (backend.setup.loaded && backend.setup.pending)
 
     function checkFor(id) {
         for (let index = 0; index < checks.length; ++index) {
@@ -327,6 +329,19 @@ Item {
                             variant: "primary"
                             enabled: !setupWindow.jobActive
                             onClicked: setupWindow.next()
+                        }
+
+                        AppButton {
+                            visible: setupWindow.step === 6 && !backend.setup.completed
+                                     && !backend.setup.mandatoryOk
+                            Layout.alignment: Qt.AlignVCenter
+                            text: qsTr("Continuar mesmo assim")
+                            variant: "secondary"
+                            enabled: !setupWindow.jobActive
+                            onClicked: {
+                                setupWindow.manuallyOpen = false
+                                backend.setup.skip()
+                            }
                         }
 
                         AppButton {

@@ -93,6 +93,7 @@ private slots:
     void skipsWhenUnitIsMissing();
     void skipsWithCustomSocket();
     void throttlesRepeatedAttempts();
+    void startsEngineSocket();
 
 private:
     QString writeScript(const QString &name, const QString &body);
@@ -257,6 +258,52 @@ void DaemonBootstrapTest::reportsHungDaemon()
     QVERIFY(detail.contains(QStringLiteral("não respondeu")));
     QVERIFY(PodStack::DaemonBootstrap::manualRemedy().contains(
         QStringLiteral("systemctl --user restart podstack.service")));
+}
+
+void DaemonBootstrapTest::startsEngineSocket()
+{
+    const QString podmanSocket = m_unitDir.path() + QStringLiteral("/podman/podman.sock");
+    QDir().mkpath(QFileInfo(podmanSocket).absolutePath());
+    QFile::remove(podmanSocket);
+    QFile::remove(m_logPath);
+
+    const QString script =
+        writeScript(QStringLiteral("systemctl-engine.sh"),
+                    QStringLiteral("#!/bin/sh\n"
+                                   "echo \"$@\" >> '%1'\n"
+                                   "case \"$*\" in\n"
+                                   "  *\"--user start podman.socket\"*) : > '%2' ;;\n"
+                                   "esac\n"
+                                   "exit 0\n")
+                        .arg(m_logPath, podmanSocket));
+    QVERIFY(!script.isEmpty());
+    qputenv("PODSTACK_SYSTEMCTL", script.toUtf8());
+
+    QString detail;
+    auto status = PodStack::DaemonBootstrap::ensureEngineRunning(podmanSocket, true, &detail);
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::EngineStatus::Started));
+    QVERIFY(QFileInfo::exists(podmanSocket));
+    QCOMPARE(countInvocations(invocations(m_logPath), QStringLiteral("--user start podman.socket")),
+             1);
+
+    status = PodStack::DaemonBootstrap::ensureEngineRunning(podmanSocket, true, &detail);
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::EngineStatus::AlreadyRunning));
+
+    QFile::remove(podmanSocket);
+    status = PodStack::DaemonBootstrap::ensureEngineRunning(podmanSocket, false, &detail);
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::EngineStatus::Disabled));
+
+    const QString failing = writeScript(QStringLiteral("systemctl-engine-fail.sh"),
+                                        QStringLiteral("#!/bin/sh\nexit 1\n"));
+    QVERIFY(!failing.isEmpty());
+    qputenv("PODSTACK_SYSTEMCTL", failing.toUtf8());
+    status = PodStack::DaemonBootstrap::ensureEngineRunning(podmanSocket, true, &detail);
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::EngineStatus::Failed));
+    QVERIFY(!detail.isEmpty());
 }
 
 void DaemonBootstrapTest::restartRecoversHungDaemon()

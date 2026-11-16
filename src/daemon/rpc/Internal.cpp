@@ -2,6 +2,8 @@
 #include "daemon/rpc/Internal.h"
 #include "daemon/rpc/handlers/Common.h"
 
+#include "core/system/ContainerTrust.h"
+
 namespace PodStack::DaemonInternal {
 
 QString selectedPodmanSocket()
@@ -100,14 +102,29 @@ void applyCaTrustMount(ContainerCreateSpec &spec)
     if (!QFileInfo::exists(cert)) {
         return;
     }
-    const QString destination =
-        QStringLiteral("/etc/pki/ca-trust/source/anchors/podstack-local-ca.crt");
-    for (const MountMapping &mount : spec.mounts) {
-        if (mount.destination == destination) {
-            return;
+    // Fedora/RHEL e Debian/Ubuntu usam caminhos de âncora diferentes. Monta
+    // nos dois para a imagem enxergar a CA independentemente da distro base;
+    // a imagem ainda precisa rodar update-ca-trust/update-ca-certificates para
+    // regenerar o bundle do sistema (documentado).
+    const QStringList destinations = [&] {
+        QStringList paths;
+        for (const QString &anchor : ContainerTrust::caAnchorPaths()) {
+            paths.append(anchor + QStringLiteral("/podstack-local-ca.crt"));
+        }
+        return paths;
+    }();
+    for (const QString &destination : destinations) {
+        bool present = false;
+        for (const MountMapping &mount : spec.mounts) {
+            if (mount.destination == destination) {
+                present = true;
+                break;
+            }
+        }
+        if (!present) {
+            spec.mounts.append({cert, destination, true});
         }
     }
-    spec.mounts.append({cert, destination, true});
 }
 
 bool isWildcardHostIp(const QString &hostIp)

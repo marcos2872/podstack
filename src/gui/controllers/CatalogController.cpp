@@ -7,11 +7,13 @@ CatalogController::CatalogController(QObject *parent) : ControllerBase(parent) {
 
 void CatalogController::refresh()
 {
-    const quint64 generation = ++m_refreshGeneration;
-    if (!m_loading) {
-        m_loading = true;
-        emit loadingChanged();
+    if (m_loading) {
+        m_refreshPending = true;
+        return;
     }
+    m_loading = true;
+    emit loadingChanged();
+    const quint64 generation = ++m_refreshGeneration;
     callRpc(listMethod(), listParams(), [this, generation](const QJsonObject &result) {
         if (generation != m_refreshGeneration) {
             // Uma leitura mais nova já foi pedida; esta chegou atrasada.
@@ -21,9 +23,13 @@ void CatalogController::refresh()
         emit loadingChanged();
         if (isErrorResult(result)) {
             setLastError(errorMessage(result));
-            return;
+        } else {
+            setItems(parseItems(result.value(QStringLiteral("items")).toArray()));
         }
-        setItems(parseItems(result.value(QStringLiteral("items")).toArray()));
+        if (m_refreshPending) {
+            m_refreshPending = false;
+            refresh();
+        }
     });
 }
 

@@ -14,7 +14,7 @@
 | `podstack-helper` | helper root, unit system, polkit, módulo SELinux | systemd, polkit, policycoreutils |
 | `podstack-devel` (opcional) | headers/libs para plugins | — |
 
-**Recomenda (não exige):** `qemu-kvm`, `qemu-img`, `cloud-utils` (cloud-localds), `virtiofsd`, `caddy`, `k3s`, `docker-compose` (provider Compose).
+**Recomenda (não exige):** `qemu-kvm`, `qemu-img`, `cloud-utils` (cloud-localds), `virtiofsd`, `caddy`, `k3s`, `podman-compose`/`docker-compose`/`docker-compose-v2` (provider Compose; o daemon detecta o binário standalone e o plugin do CLI fora do PATH).
 
 ---
 

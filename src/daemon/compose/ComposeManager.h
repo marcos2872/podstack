@@ -8,6 +8,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include <mutex>
+
 namespace PodStack {
 
 struct ComposeServiceInfo {
@@ -46,9 +48,13 @@ public:
 private:
     bool runCompose(const QString &projectPath, const QStringList &args, int timeoutMs,
                     QString *output, Error *error);
-    bool resolveProvider(Error *error);
+    /// Resolve e devolve o provider (vazio em falha). Protegido por
+    /// `m_providerMutex`: handlers RPC chamam `resolveProvider` em threads
+    /// concorrentes.
+    QString resolveProvider(Error *error);
 
     PodmanClient *m_podman = nullptr;
+    mutable std::mutex m_providerMutex;
     QString m_provider;
 };
 

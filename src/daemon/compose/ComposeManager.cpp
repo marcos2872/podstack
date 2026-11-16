@@ -191,63 +191,96 @@ QVector<ComposeProjectInfo> ComposeManager::listProjects(Error *error)
     return result;
 }
 
-bool ComposeManager::resolveProvider(Error *error)
+QString ComposeManager::resolveProvider(Error *error)
 {
+    std::lock_guard<std::mutex> lock(m_providerMutex);
     if (!m_provider.isEmpty()) {
-        return true;
+        return m_provider;
     }
 
     const QString override = qEnvironmentVariable("PODSTACK_COMPOSE_PROVIDER");
     if (!override.isEmpty()) {
         const QString resolved = QStandardPaths::findExecutable(override);
         m_provider = resolved.isEmpty() ? override : resolved;
-        return true;
+        return m_provider;
     }
 
     const QString standalone = QStandardPaths::findExecutable(QStringLiteral("docker-compose"));
     if (!standalone.isEmpty()) {
         m_provider = standalone;
-        return true;
+        return m_provider;
     }
 
-    QProcess podmanCompose;
-    podmanCompose.setProcessEnvironment(QProcessEnvironment::systemEnvironment());
-    podmanCompose.start(QStringLiteral("podman"),
-                        {QStringLiteral("compose"), QStringLiteral("version")});
-    if (podmanCompose.waitForFinished(15000)
-        && podmanCompose.exitStatus() == QProcess::NormalExit
-        && podmanCompose.exitCode() == 0) {
+    const QString podmanCompose = QStandardPaths::findExecutable(QStringLiteral("podman-compose"));
+    if (!podmanCompose.isEmpty()) {
+        m_provider = podmanCompose;
+        return m_provider;
+    }
+
+    QProcess podmanComposeCheck;
+    podmanComposeCheck.setProcessEnvironment(QProcessEnvironment::systemEnvironment());
+    podmanComposeCheck.start(QStringLiteral("podman"),
+                             {QStringLiteral("compose"), QStringLiteral("version")});
+    if (podmanComposeCheck.waitForFinished(15000) &&
+        podmanComposeCheck.exitStatus() == QProcess::NormalExit &&
+        podmanComposeCheck.exitCode() == 0) {
         m_provider = QStringLiteral("podman compose");
-        return true;
+        return m_provider;
     }
 
-    QProcess dockerCompose;
-    dockerCompose.setProcessEnvironment(QProcessEnvironment::systemEnvironment());
-    dockerCompose.start(QStringLiteral("docker"),
-                        {QStringLiteral("compose"), QStringLiteral("version")});
-    if (dockerCompose.waitForFinished(15000)
-        && dockerCompose.exitStatus() == QProcess::NormalExit
-        && dockerCompose.exitCode() == 0) {
+    QProcess dockerComposeCheck;
+    dockerComposeCheck.setProcessEnvironment(QProcessEnvironment::systemEnvironment());
+    dockerComposeCheck.start(QStringLiteral("docker"),
+                             {QStringLiteral("compose"), QStringLiteral("version")});
+    if (dockerComposeCheck.waitForFinished(15000) &&
+        dockerComposeCheck.exitStatus() == QProcess::NormalExit &&
+        dockerComposeCheck.exitCode() == 0) {
         m_provider = QStringLiteral("docker compose");
-        return true;
+        return m_provider;
+    }
+
+    // O docker-compose-v2 do Ubuntu/Debian instala apenas o plugin do CLI
+    // (/usr/libexec/docker/cli-plugins/docker-compose), que não aparece no
+    // PATH. O binário do plugin também funciona standalone com DOCKER_HOST.
+    QStringList pluginCandidates;
+    if (qEnvironmentVariableIsSet("PODSTACK_DOCKER_COMPOSE_PLUGIN")) {
+        // Presente (mesmo vazio) torna o teste hermético: não vasculha o host.
+        const QString override = qEnvironmentVariable("PODSTACK_DOCKER_COMPOSE_PLUGIN");
+        if (!override.isEmpty()) {
+            pluginCandidates.append(override);
+        }
+    } else {
+        pluginCandidates = {
+            QStringLiteral("/usr/libexec/docker/cli-plugins/docker-compose"),
+            QStringLiteral("/usr/lib/docker/cli-plugins/docker-compose"),
+            QStringLiteral("/usr/local/lib/docker/cli-plugins/docker-compose"),
+        };
+    }
+    for (const QString &candidate : pluginCandidates) {
+        if (candidate.isEmpty()) {
+            continue;
+        }
+        const QFileInfo info(candidate);
+        if (info.isFile() && info.isExecutable()) {
+            m_provider = info.absoluteFilePath();
+            return m_provider;
+        }
     }
 
     if (error) {
-        *error = Error::make(
-            QStringLiteral("PODSTACK_COMPOSE_PROVIDER_MISSING"),
-            QStringLiteral("Nenhum provider Compose encontrado."),
-            QStringLiteral("Instale docker-compose ou podman-compose."),
-            QStringLiteral("sudo dnf install docker-compose"));
+        *error = Error::make(QStringLiteral("PODSTACK_COMPOSE_PROVIDER_MISSING"),
+                             QStringLiteral("Nenhum provider Compose encontrado."),
+                             QStringLiteral("Instale podman-compose ou docker-compose-v2."),
+                             QFileInfo::exists(QStringLiteral("/etc/debian_version"))
+                                 ? QStringLiteral("sudo apt install podman-compose")
+                                 : QStringLiteral("sudo dnf install docker-compose"));
     }
-    return false;
+    return {};
 }
 
 QString ComposeManager::provider(Error *error)
 {
-    if (!resolveProvider(error)) {
-        return {};
-    }
-    return m_provider;
+    return resolveProvider(error);
 }
 
 bool ComposeManager::runCompose(const QString &projectPath, const QStringList &args,
@@ -256,7 +289,8 @@ bool ComposeManager::runCompose(const QString &projectPath, const QStringList &a
     if (error) {
         *error = {};
     }
-    if (!resolveProvider(error)) {
+    const QString provider = resolveProvider(error);
+    if (provider.isEmpty()) {
         return false;
     }
     if (projectPath.isEmpty() || !QFileInfo(projectPath).isDir()) {
@@ -269,14 +303,14 @@ bool ComposeManager::runCompose(const QString &projectPath, const QStringList &a
 
     QString program;
     QStringList arguments;
-    if (m_provider == QStringLiteral("podman compose")) {
+    if (provider == QStringLiteral("podman compose")) {
         program = QStringLiteral("podman");
         arguments = {QStringLiteral("compose")};
-    } else if (m_provider == QStringLiteral("docker compose")) {
+    } else if (provider == QStringLiteral("docker compose")) {
         program = QStringLiteral("docker");
         arguments = {QStringLiteral("compose")};
     } else {
-        program = m_provider;
+        program = provider;
     }
 
     arguments += {QStringLiteral("--project-directory"), projectPath};

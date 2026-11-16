@@ -222,6 +222,7 @@ private slots:
     void setupCompletesOnboarding();
     void helperInstallsPackages();
     void helperRemovesDocker();
+    void helperRemovesDockerOnDebian();
     void setupApplyJobs();
     void setupApplyFailures();
     void setupRejectsUnavailableHelper();
@@ -1183,6 +1184,49 @@ void SetupTest::helperRemovesDocker()
     QVERIFY(reply.value(QStringLiteral("message"))
                 .toString()
                 .contains(QStringLiteral("Falha ao remover")));
+}
+
+void SetupTest::helperRemovesDockerOnDebian()
+{
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    const QString aptLog = bin.filePath(QStringLiteral("apt.log"));
+
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("apt-get")),
+                            QStringLiteral("echo \"$*\" >> '%1'\nexit 0").arg(aptLog).toUtf8()));
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("dpkg-query")),
+                            QStringLiteral("echo 'install ok installed'\nexit 0").toUtf8()));
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("systemctl")),
+                            QStringLiteral("exit 0").toUtf8()));
+
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", bin.path().toUtf8());
+    const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
+    AuthorizedHelper helper;
+    QVariantMap reply = helper.RemovePackages({QStringLiteral("docker.io")});
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("message"))
+                .toString()
+                .contains(QStringLiteral("Pacotes removidos")));
+    QVERIFY(readLog(aptLog).contains(QStringLiteral("remove -y docker.io")));
+
+    // Pacote ausente (dpkg-query sai 1) continua sendo operação idempotente.
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("dpkg-query")),
+                            QStringLiteral("exit 1").toUtf8()));
+    reply = helper.RemovePackages({QStringLiteral("docker.io")});
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("message"))
+                .toString()
+                .contains(QStringLiteral("Nenhum pacote")));
+
+    // Ferramenta de consulta ausente é erro explícito, nunca "nada instalado".
+    QFile::remove(bin.filePath(QStringLiteral("dpkg-query")));
+    reply = helper.RemovePackages({QStringLiteral("docker.io")});
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(reply.value(QStringLiteral("message"))
+                .toString()
+                .contains(QStringLiteral("não encontrada")));
 }
 
 void SetupTest::setupApplyJobs()

@@ -8,6 +8,7 @@
 #include "core/rpc/RpcStream.h"
 #include "core/setup/SetupActions.h"
 #include "core/setup/SetupPolicy.h"
+#include "core/system/ContainerTrust.h"
 #include "core/system/DiskSpace.h"
 #include "core/system/Emulation.h"
 #include "core/system/Proxy.h"
@@ -74,6 +75,7 @@ private slots:
     void proxyEnvironment();
     void setupActionsMapPodmanStatus();
     void setupPolicyMandatoryChecks();
+    void containerTrustAnchorPaths();
     void pathOverrides();
     void buildStorePlatforms();
     void buildStoreErrors();
@@ -851,20 +853,30 @@ void CoreTest::setupActionsMapPodmanStatus()
 void CoreTest::setupPolicyMandatoryChecks()
 {
     for (const QString &id :
-         {QStringLiteral("podman"), QStringLiteral("systemd-user"), QStringLiteral("sqlite"),
-          QStringLiteral("qemu"), QStringLiteral("ovmf"), QStringLiteral("virtiofsd")}) {
+         {QStringLiteral("podman"), QStringLiteral("systemd-user"), QStringLiteral("sqlite")}) {
         QVERIFY2(PodStack::SetupPolicy::isMandatoryCheck(id), qPrintable(id));
         QVERIFY2(PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("ok")), qPrintable(id));
         QVERIFY2(!PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("missing")),
                  qPrintable(id));
     }
 
-    for (const QString &id : {QStringLiteral("kvm"), QStringLiteral("docker"),
-                              QStringLiteral("caddy"), QStringLiteral("k3s")}) {
+    // QEMU/OVMF/virtiofsd só afetam machines; não podem bloquear o app.
+    for (const QString &id :
+         {QStringLiteral("kvm"), QStringLiteral("docker"), QStringLiteral("caddy"),
+          QStringLiteral("k3s"), QStringLiteral("qemu"), QStringLiteral("ovmf"),
+          QStringLiteral("virtiofsd")}) {
         QVERIFY2(!PodStack::SetupPolicy::isMandatoryCheck(id), qPrintable(id));
-        QVERIFY2(PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("warn")),
+        QVERIFY2(PodStack::SetupPolicy::isCheckSatisfied(id, QStringLiteral("missing")),
                  qPrintable(id));
     }
+}
+
+void CoreTest::containerTrustAnchorPaths()
+{
+    const QStringList paths = PodStack::ContainerTrust::caAnchorPaths();
+    QCOMPARE(paths.size(), 2);
+    QVERIFY(paths.contains(QStringLiteral("/etc/pki/ca-trust/source/anchors")));
+    QVERIFY(paths.contains(QStringLiteral("/usr/local/share/ca-certificates")));
 }
 
 void CoreTest::pathOverrides()

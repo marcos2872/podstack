@@ -105,7 +105,7 @@ flowchart LR
 - **`SetupManager`** (daemon) detecta Podman, Docker, QEMU/KVM, `/dev/kvm`, OVMF, virtiofsd, systemd de usuário, SQLite, Caddy e k3s; expõe `setup.status/check/apply/removeDocker/cancel/complete/subscribe/validate`.
 - Ações são **jobs** internos com progresso/log/cancelamento e eventos `setup.delta`/`setup.done`; o job continua se a janela fechar e pode ser retomado por `setup.subscribe`.
 - Ações privilegiadas (pacotes, remoção do Docker) passam pelo **`podstack-helper`** (`dev.podstack.Helper1`, polkit, allowlist); a GUI nunca executa `sudo`/shell. O socket do Podman de usuário é ativado pelo daemon.
-- **`SetupController`** (GUI) expõe `completed/pending/checks/progress/log/mandatoryOk` e os invokables `refreshStatus/check/validate/apply/complete`; **`SetupWindow.qml`** é um overlay modal dentro da `MainWindow` que conduz as 7 etapas e bloqueia o app enquanto `setup.completed=false`. A conclusão é recusada no `SetupController` se os checks obrigatórios não estiverem `ok` (`core/SetupPolicy.h`).
+- **`SetupController`** (GUI) expõe `completed/pending/checks/progress/log/mandatoryOk` e os invokables `refreshStatus/check/validate/apply/complete/skip`; **`SetupWindow.qml`** é um overlay modal dentro da `MainWindow` que conduz as 7 etapas e bloqueia o app enquanto `pending` (não concluído e `showOnboarding=true`). Só Podman, systemd de usuário e SQLite são obrigatórios (`core/SetupPolicy.h`); QEMU/OVMF/virtiofsd são avisos de machines. "Continuar mesmo assim" chama `skip`, que grava `showOnboarding=false` e deixa a Main utilizável com o aviso de configuração pendente.
 - O estado é persistido em `setup.completed`/`completedAt`/`dockerPolicy`/`lastValidation`; `app.showOnboarding=false` registra que o usuário optou por continuar depois.
 - Docker e Podman coexistem; a remoção do Docker é opt-in e não faz parte do fluxo principal.
 
@@ -414,7 +414,14 @@ enfileirado, fazendo o daemon parecer zumbi. O `backgroundPool` tem no mínimo
 para testes. No shutdown, `podstackd` espera os dois pools (com prazo de 3 s)
 depois de cancelar as subscriptions.
 
-**Backpressure:** cada assinatura tem fila limitada (ex.: 10k linhas ou 1 MB). Ao encher, descarta linhas antigas e envia `logs.dropped {count}`.
+**Readiness:** o `podstackd` chama `listen()` antes de qualquer trabalho
+lento. O ping do Podman (até 30 s) e o start do Caddy (alguns segundos) rodam
+depois que o event loop começa — o ping no `backgroundPool` e o Caddy com 500 ms
+de atraso — para o primeiro `system.hello` não competir com a inicialização.
+`BuildStore::open` e `MachineManager::reconcile` continuam no construtor porque
+são locais, rápidos e precisam preceder qualquer RPC de build/machine.
+
+**Backpressure:** cada assinatura tem fila limitada (ex.: 10k linhas ou 1 MB). Ao encher, descarta linhas antigas e envia `logs.dropped {count}`. Na GUI, cada controller de catálogo coalesce refreshes (uma leitura em voo + flag *pending*) e só emite a chamada seguinte quando a atual responde; a bandeja compara uma assinatura de containers/projects/machines e só reconstrói o menu (e reexporta o DBusMenu) quando algo muda.
 
 **Cancelamento:** `QAtomicInt`/`std::stop_token` verificado em callbacks do libcurl (`CURLOPT_XFERINFOFUNCTION`).
 
