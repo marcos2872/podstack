@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://marcos2872.github.io/podstack/index.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/docs.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/install.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/onboarding.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/containers.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/images.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/volumes.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/networks.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/pods.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/compose.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/builds.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/machines.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/kubernetes.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/domains.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/settings.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/cli.html</loc></url>
+  <url><loc>https://marcos2872.github.io/podstack/troubleshooting.html</loc></url>
+</urlset>

@@ -169,6 +169,61 @@ def page_description(source: str) -> str:
     return html.unescape(match.group(1)) if match else ""
 
 
+def render_meta(source: str, active_file: str, site: dict) -> str:
+    """Injeta canonical, Open Graph/Twitter, theme-color e ícones nas docs."""
+    base = str(site.get("url", "")).rstrip("/") + "/"
+    url = base + active_file
+    image = base + "assets/og-image.png"
+    title_match = re.search(r"<title>(.*?)</title>", source, re.S)
+    title = html.unescape(title_match.group(1)) if title_match else site["title"]
+    description = page_description(source)
+
+    def attr(value: str) -> str:
+        return html.escape(value, quote=True)
+
+    tags = [
+        f'<link rel="canonical" href="{attr(url)}">',
+        '<meta property="og:site_name" content="PodStack">',
+        '<meta property="og:locale" content="pt_BR">',
+        '<meta property="og:type" content="article">',
+        f'<meta property="og:title" content="{attr(title)}">',
+        f'<meta property="og:description" content="{attr(description)}">',
+        f'<meta property="og:url" content="{attr(url)}">',
+        f'<meta property="og:image" content="{attr(image)}">',
+        '<meta property="og:image:width" content="1200">',
+        '<meta property="og:image:height" content="630">',
+        '<meta property="og:image:alt" content="PodStack — documentação">',
+        '<meta name="twitter:card" content="summary_large_image">',
+        f'<meta name="twitter:title" content="{attr(title)}">',
+        f'<meta name="twitter:description" content="{attr(description)}">',
+        f'<meta name="twitter:image" content="{attr(image)}">',
+        '<meta name="twitter:image:alt" content="PodStack — documentação">',
+        '<meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)">',
+        '<meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">',
+        '<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">',
+        '<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">',
+    ]
+    block = "  <!-- dx:meta:start -->\n"
+    block += "\n".join(f"  {tag}" for tag in tags)
+    block += "\n  <!-- dx:meta:end -->"
+
+    source = re.sub(r"\s*<!-- dx:meta:start -->.*?<!-- dx:meta:end -->", "", source, flags=re.S)
+    return source.replace("</head>", block + "\n</head>", 1)
+
+
+def build_sitemap(nav: dict, site: dict) -> str:
+    base = str(site.get("url", "")).rstrip("/") + "/"
+    pages = [site.get("landing", "index.html")] + [page["file"] for page in published_pages(nav)]
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+    for page in pages:
+        lines.append(f"  <url><loc>{html.escape(base + page)}</loc></url>")
+    lines.append("</urlset>")
+    return "\n".join(lines) + "\n"
+
+
 def build_search_index(nav: dict, headings_by_page: dict[str, list[dict]], descriptions: dict[str, str]) -> str:
     entries = []
     for page in published_pages(nav):
@@ -220,13 +275,14 @@ def render_topbar(site: dict, nav: dict) -> str:
       <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
       <input id="site-search" type="search" role="combobox" aria-label="Buscar na documentação"
              aria-controls="search-results" aria-expanded="false" aria-autocomplete="list"
-             placeholder="Buscar na documentação…" autocomplete="off" spellcheck="false">
+             aria-keyshortcuts="/ Control+K Meta+K"
+             placeholder="Buscar…" autocomplete="off" spellcheck="false">
       <kbd aria-hidden="true">/</kbd>
       <div class="search-results" id="search-results" role="listbox" aria-label="Resultados da busca" hidden></div>
     </div>
 
     <div class="dx-topbar-actions">{cta}
-      <a class="dx-icon-btn" href="{html.escape(site["github"])}" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
+      <a class="dx-icon-btn dx-github-link" href="{html.escape(site["github"])}" target="_blank" rel="noopener noreferrer" aria-label="Repositório do PodStack no GitHub" title="Repositório no GitHub">
         <svg class="icon" aria-hidden="true"><use href="#i-github"></use></svg>
       </a>
       <button class="dx-icon-btn" id="theme-toggle" type="button" aria-label="Alternar tema">
@@ -287,6 +343,7 @@ def transform(
     site: dict,
     headings_by_page: dict[str, list[dict]],
 ) -> str:
+    source = render_meta(source, active_file, site)
     source = re.sub(
         r"<title>(.*?) · PodStack [^<]+</title>",
         lambda match: f'<title>{match.group(1)} · PodStack {html.escape(site["version"])}</title>',
@@ -524,6 +581,17 @@ def main() -> int:
         else:
             index_path.write_text(index_source, encoding="utf-8")
             print("updated assets/search-index.js")
+
+    sitemap_source = build_sitemap(nav, site)
+    sitemap_path = WEB / "sitemap.xml"
+    current_sitemap = sitemap_path.read_text(encoding="utf-8") if sitemap_path.exists() else ""
+    if current_sitemap != sitemap_source:
+        if args.check:
+            print("stale   sitemap.xml")
+            stale = True
+        else:
+            sitemap_path.write_text(sitemap_source, encoding="utf-8")
+            print("updated sitemap.xml")
 
     problems = validate_site()
     if problems:

@@ -6,12 +6,27 @@
   <title>PodStack — containers, machines Linux e Kubernetes no desktop</title>
   <meta name="description" content="PodStack é um app desktop Linux para containers, Compose, imagens, volumes, redes, machines QEMU/KVM, Kubernetes com k3s e domínios locais sobre o Podman nativo. Rootless por padrão, com CLI scriptable. Baixe o RPM ou o DEB.">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+  <link rel="canonical" href="https://marcos2872.github.io/podstack/">
+  <meta property="og:site_name" content="PodStack">
+  <meta property="og:locale" content="pt_BR">
   <meta property="og:title" content="PodStack — containers, machines Linux e Kubernetes no desktop">
   <meta property="og:description" content="Containers, Compose, machines Linux e Kubernetes em um app Qt 6 sobre o Podman nativo. Rootless por padrão, com CLI scriptable.">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="assets/og-image.png">
+  <meta property="og:url" content="https://marcos2872.github.io/podstack/">
+  <meta property="og:image" content="https://marcos2872.github.io/podstack/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="PodStack — containers, machines Linux e Kubernetes no desktop">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="PodStack — containers, machines Linux e Kubernetes no desktop">
+  <meta name="twitter:description" content="Containers, Compose, machines Linux e Kubernetes em um app Qt 6 sobre o Podman nativo.">
+  <meta name="twitter:image" content="https://marcos2872.github.io/podstack/assets/og-image.png">
   <link rel="icon" href="assets/podstack-capsule.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="preload" as="image" href="assets/img/app/containers.webp" fetchpriority="high">
   <link rel="stylesheet" href="assets/style.css">
   <link rel="stylesheet" href="assets/landing.css">
   <script>
@@ -23,6 +38,27 @@
         }
       } catch (_) {}
     })();
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "PodStack",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux",
+    "url": "https://marcos2872.github.io/podstack/",
+    "downloadUrl": "https://github.com/marcos2872/podstack/releases/latest",
+    "softwareVersion": "0.1.5",
+    "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+    "description": "App desktop Linux para containers, Compose, machines QEMU/KVM, Kubernetes e domínios locais sobre o Podman nativo.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "screenshot": "https://marcos2872.github.io/podstack/assets/img/app/containers.webp",
+    "sameAs": ["https://github.com/marcos2872/podstack"]
+  }
   </script>
   <script src="assets/landing.js" defer></script>
   <script src="assets/app.js" defer></script>
