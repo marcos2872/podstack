@@ -147,6 +147,14 @@ add_test(NAME update_exec
     COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-update-exec.sh
             $<TARGET_FILE:podstack-update-exec>)
 
+# Testes que usam QStandardPaths::setTestModeEnabled compartilham
+# ~/.qttest/config e removem o diretório; sem lock, rodar em paralelo faz um
+# apagar o config.json do outro (flake do autostart em -j4).
+set_tests_properties(
+    autostart core logging machines notifications setup tray
+    PROPERTIES RESOURCE_LOCK podstack_config
+)
+
 qt_add_executable(test_qml qml/main.cpp)
 target_link_libraries(test_qml PRIVATE podstack_qml podstack_qmlplugin
     podstack_qml_design podstack_qml_designplugin

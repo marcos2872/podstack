@@ -10,6 +10,7 @@ set -eu
 repo="${1:-$(pwd)}"
 service="$repo/packaging/systemd/podstack.service"
 socket="$repo/packaging/systemd/podstack.socket"
+helper="$repo/packaging/systemd-system/podstack-helper.service"
 
 fail() {
     echo "FAIL: $*" >&2
@@ -40,5 +41,10 @@ grep -Eq '^[[:space:]]*ListenStream=%t/podstack/control\.sock' "$socket" \
     || fail "podstack.socket deve escutar em %t/podstack/control.sock"
 grep -Eq '^[[:space:]]*SocketMode=0600' "$socket" || fail "SocketMode deve ser 0600"
 grep -Eq '^[[:space:]]*DirectoryMode=0700' "$socket" || fail "DirectoryMode deve ser 0700"
+
+# --- helper (system) ------------------------------------------------------
+[ -f "$helper" ] || fail "unit do helper não encontrada: $helper"
+grep -Eq '^[[:space:]]*Restart=(on-failure|always)' "$helper" \
+    || fail "podstack-helper.service deve reiniciar após falha"
 
 exit 0

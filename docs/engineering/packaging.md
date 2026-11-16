@@ -183,6 +183,8 @@ Type=dbus
 BusName=dev.podstack.Helper1
 ExecStart=/usr/libexec/podstack/podstack-helper
 User=root
+Restart=on-failure
+RestartSec=2
 PrivateTmp=yes
 ProtectHome=read-only
 ProtectKernelTunables=yes
@@ -191,13 +193,15 @@ ProtectControlGroups=yes
 
 - D-Bus policy (`share/dbus-1/system.d/dev.podstack.Helper1.conf`) permite que apenas
   `root` possua o nome; chamadas de usuários são autorizadas pelo polkit.
-- Ativação sob demanda via `dev.podstack.Helper1`.
+- Serviço habilitado no boot; `Type=dbus` só o considera iniciado quando o nome aparece no
+  barramento. `Restart=on-failure` cobre crash/OOM — sem ele, setup/firewall/CA/DNS/update
+  ficavam indisponíveis até reinstalar ou reiniciar.
 - **Sem** `ProtectSystem=strict`: o helper precisa escrever em `/usr` e `/var` para o gerenciador
   de pacotes. A proteção efetiva é a allowlist fechada de pacotes + polkit + auditoria no journal.
 - **Sem** `NoNewPrivileges=yes`: o `dnf` precisa da transição SELinux de `unconfined_service_t`
   para `rpm_script_t` ao executar scriptlets de RPM; com NNP o kernel nega `nnp_transition` e a
   instalação falha. A allowlist de pacotes continua sendo a fronteira de segurança.
-- O helper nunca recebe `Exec`/shell; cada método monta `dnf`/`apt-get`/`pacman` com argumentos fixos.
+- O helper nunca recebe `Exec`/shell; cada método monta `dnf`/`apt-get`/`pacman` com argumentos fixos. No Debian/Ubuntu o `InstallPackages` roda `apt-get update` antes e usa `DEBIAN_FRONTEND=noninteractive`, para não falhar em imagens com índices vazios nem parar em prompt de debconf.
 - **Update assistido:** `StageUpdate` valida assinatura/chave de release, SHA-256 e identidade do
   pacote e copia para `/run/podstack/update/<jobId>/` (`0700`/`0600`); `InstallUpdate` inicia a
   unidade transiente `podstack-update-<uuid>.service` com

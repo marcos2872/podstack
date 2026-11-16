@@ -318,9 +318,11 @@ customizados são preservados.
 Exemplos de firewall (use o que existir no seu sistema):
 
 ```bash
-# firewalld (regra runtime; um reload/restart a remove)
+# firewalld (runtime + permanente; sobrevive a reload/restart)
 sudo firewall-cmd --add-port=18080/tcp
+sudo firewall-cmd --permanent --add-port=18080/tcp
 sudo firewall-cmd --add-port=18443/tcp
+sudo firewall-cmd --permanent --add-port=18443/tcp
 
 # ufw
 sudo ufw allow 18080/tcp

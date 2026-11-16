@@ -245,9 +245,9 @@ Regras de normalização:
 > remove o container recém-criado e retorna `PODSTACK_IO_ERROR`. `containers.exposeLan`
 > só opera em containers já publicados em `0.0.0.0`; binds em `127.0.0.1`/IP específico
 > retornam `PODSTACK_UNSUPPORTED` com a remediação de recriar o container. No firewalld as
-> regras são runtime (sem `--permanent`) e não sobrevivem a reload/restart; no ufw são
-> persistentes até `ClosePorts`/`ufw delete allow`. Ver
-> [`security.md`](security.md) §4.2.
+> regras são aplicadas em runtime **e** `--permanent` (sobrevivem a reload/restart); no ufw
+> já são persistentes. `containers.remove` fecha as portas wildcard do container removido
+> (best-effort, sem bloquear a remoção). Ver [`security.md`](security.md) §4.2.
 
 ### 4.3 `images.*`
 
@@ -690,7 +690,9 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > devolve `{id, namespace, pod, localPort, remotePort}` e mantém
 > `kubectl port-forward -n <ns> pod/<pod> local:remote` ativo, emitindo
 > `k8s.portforward.delta {id, line}` e `k8s.portforward.done {id, error?}`;
-> `k8s.portforward.stop {id}` cancela o processo e responde `{id, stopped:true}`.
+> `k8s.portforward.stop {id}` cancela o processo e responde `{id, stopped:true}`. A
+> subscription do port-forward é registrada na conexão e cancelada automaticamente se o
+> cliente cair (ninguém fica vendo os logs), liberando a thread do `backgroundPool`.
 > O start aceita `resource: "pod"|"service"` (default `pod`); com
 > `kubernetes.exposeServices=true` o forward usa `--address 0.0.0.0`, senão
 > `127.0.0.1`.
@@ -709,7 +711,9 @@ Erros da área: `PODSTACK_INVALID_PARAMS` (parâmetros/ID ausente), `PODSTACK_NO
 > **Não implementado nesta versão.** O helper já tem as operações privilegiadas
 > (`InstallDnsZone`/`RemoveDnsZone`, `BindPorts`/`UnbindPorts`, `TrustCa`/`UntrustCa`) e o
 > daemon sobe `DnsServer`/Caddy quando `network.https=true`, mas os métodos RPC de domínio e
-> proxy ainda não existem. O contrato planejado está em §9.
+> proxy ainda não existem. O contrato planejado está em §9. Até lá, `network.https` e
+> `network.httpsPort` ficam ocultos em Configurações para não prometer um HTTPS sem bind
+> 80/443 nem CA/DNS.
 
 ### 4.10 `settings.*`
 

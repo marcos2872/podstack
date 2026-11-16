@@ -133,6 +133,39 @@ bool isWildcardHostIp(const QString &hostIp)
            hostIp == QStringLiteral("::");
 }
 
+PublishedPorts publishedPorts(const QJsonObject &inspect)
+{
+    PublishedPorts result;
+    const QJsonObject bindings = inspect.value(QStringLiteral("HostConfig"))
+                                     .toObject()
+                                     .value(QStringLiteral("PortBindings"))
+                                     .toObject();
+    for (auto it = bindings.constBegin(); it != bindings.constEnd(); ++it) {
+        const QStringList keyParts = it.key().split(QLatin1Char('/'));
+        if (keyParts.size() != 2) {
+            continue;
+        }
+        const QString protocol = keyParts.at(1).trimmed().toLower();
+        if (protocol != QStringLiteral("tcp") && protocol != QStringLiteral("udp")) {
+            result.unsupportedProtocol = true;
+            continue;
+        }
+        for (const QJsonValue &hostValue : it.value().toArray()) {
+            const QJsonObject host = hostValue.toObject();
+            const int hostPort = host.value(QStringLiteral("HostPort")).toString().toInt();
+            if (hostPort <= 0) {
+                continue;
+            }
+            result.any = true;
+            if (!isWildcardHostIp(host.value(QStringLiteral("HostIp")).toString())) {
+                result.wildcardOnly = false;
+            }
+            result.byProtocol[protocol].append(QString::number(hostPort));
+        }
+    }
+    return result;
+}
+
 qint64 consoleTailBytes(const QJsonObject &params)
 {
     qint64 tail = params.value(QStringLiteral("tailBytes")).toInteger(kMachineConsoleDefaultTail);

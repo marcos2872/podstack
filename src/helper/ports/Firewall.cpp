@@ -154,21 +154,38 @@ bool run(const Backend &backend, const QStringList &arguments, const QString &po
     return true;
 }
 
-QStringList openArguments(const Backend &backend, const QString &port, const QString &protocol)
+QStringList openArguments(const Backend &backend, const QString &port, const QString &protocol,
+                          bool permanent)
 {
     if (backend.id == QStringLiteral("firewalld")) {
-        return {QStringLiteral("--add-port=%1/%2").arg(port, protocol)};
+        QStringList arguments;
+        if (permanent) {
+            arguments.append(QStringLiteral("--permanent"));
+        }
+        arguments.append(QStringLiteral("--add-port=%1/%2").arg(port, protocol));
+        return arguments;
     }
     return {QStringLiteral("allow"), QStringLiteral("%1/%2").arg(port, protocol)};
 }
 
-QStringList closeArguments(const Backend &backend, const QString &port, const QString &protocol)
+QStringList closeArguments(const Backend &backend, const QString &port, const QString &protocol,
+                           bool permanent)
 {
     if (backend.id == QStringLiteral("firewalld")) {
-        return {QStringLiteral("--remove-port=%1/%2").arg(port, protocol)};
+        QStringList arguments;
+        if (permanent) {
+            arguments.append(QStringLiteral("--permanent"));
+        }
+        arguments.append(QStringLiteral("--remove-port=%1/%2").arg(port, protocol));
+        return arguments;
     }
     return {QStringLiteral("delete"), QStringLiteral("allow"),
             QStringLiteral("%1/%2").arg(port, protocol)};
+}
+
+bool persistentBackend(const Backend &backend)
+{
+    return backend.id == QStringLiteral("firewalld");
 }
 
 } // namespace
@@ -207,14 +224,32 @@ bool openPorts(const QStringList &ports, const QString &protocol, Error *error)
     }
 
     const QString normalizedProtocol = protocol.trimmed().toLower();
+    const bool persistent = persistentBackend(*backend);
     QStringList opened;
-    for (const QString &port : normalized) {
-        if (!run(*backend, openArguments(*backend, port, normalizedProtocol), port, error)) {
-            for (const QString &done : opened) {
-                Error ignored;
-                (void)run(*backend, closeArguments(*backend, done, normalizedProtocol), done,
-                          &ignored);
+    const auto rollback = [&] {
+        for (const QString &done : opened) {
+            Error ignored;
+            (void) run(*backend, closeArguments(*backend, done, normalizedProtocol, false), done,
+                       &ignored);
+            if (persistent) {
+                (void) run(*backend, closeArguments(*backend, done, normalizedProtocol, true), done,
+                           &ignored);
             }
+        }
+    };
+    for (const QString &port : normalized) {
+        if (!run(*backend, openArguments(*backend, port, normalizedProtocol, false), port, error)) {
+            rollback();
+            return false;
+        }
+        // firewalld: runtime para valer agora e permanent para sobreviver a
+        // reboot/reload; ufw já persiste com um único comando.
+        if (persistent &&
+            !run(*backend, openArguments(*backend, port, normalizedProtocol, true), port, error)) {
+            Error ignored;
+            (void) run(*backend, closeArguments(*backend, port, normalizedProtocol, false), port,
+                       &ignored);
+            rollback();
             return false;
         }
         opened.append(port);
@@ -241,8 +276,20 @@ bool closePorts(const QStringList &ports, const QString &protocol, Error *error)
     }
 
     const QString normalizedProtocol = protocol.trimmed().toLower();
+    const bool persistent = persistentBackend(*backend);
     for (const QString &port : normalized) {
-        if (!run(*backend, closeArguments(*backend, port, normalizedProtocol), port, error)) {
+        Error runtimeError;
+        const bool runtimeOk =
+            run(*backend, closeArguments(*backend, port, normalizedProtocol, false), port,
+                &runtimeError);
+        Error permanentError;
+        const bool permanentOk =
+            !persistent || run(*backend, closeArguments(*backend, port, normalizedProtocol, true),
+                               port, &permanentError);
+        if (!runtimeOk || !permanentOk) {
+            if (error) {
+                *error = runtimeOk ? permanentError : runtimeError;
+            }
             return false;
         }
     }

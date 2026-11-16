@@ -19,11 +19,11 @@ public:
     ///
     /// `error` recebe a mensagem devolvida pelo helper ou pelo barramento.
     bool call(const QString &method, const QVariantList &arguments, QString *error = nullptr,
-              int timeoutMs = 30000) const;
+              int timeoutMs = 120000) const;
 
     /// Igual a `call`, mas devolve o mapa completo (jobId, estado, etc.).
     bool callMap(const QString &method, const QVariantList &arguments, QVariantMap *reply,
-                 QString *error = nullptr, int timeoutMs = 30000) const;
+                 QString *error = nullptr, int timeoutMs = 120000) const;
 };
 
 } // namespace PodStack

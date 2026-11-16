@@ -7,6 +7,7 @@
 #include "podman/PodmanClient.h"
 
 #include <QJsonObject>
+#include <QMap>
 #include <QString>
 #include <QStringList>
 
@@ -24,6 +25,17 @@ QStringList proxyExcludesFromConfig(const Config &config);
 void applyProxyEnvironment(ContainerCreateSpec &spec);
 void applyCaTrustMount(ContainerCreateSpec &spec);
 bool isWildcardHostIp(const QString &hostIp);
+
+/// Portas publicadas no inspect do container (`HostConfig.PortBindings`),
+/// agrupadas por protocolo. Usado pelo expose LAN e para fechar as regras de
+/// firewall quando o container é removido.
+struct PublishedPorts {
+    QMap<QString, QStringList> byProtocol;
+    bool any = false;
+    bool wildcardOnly = true;
+    bool unsupportedProtocol = false;
+};
+PublishedPorts publishedPorts(const QJsonObject &inspect);
 qint64 consoleTailBytes(const QJsonObject &params);
 bool checkMachineConsoleFile(const QString &directory, bool *exists, Error *error);
 Error helperRequiredError();
