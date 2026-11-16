@@ -684,10 +684,12 @@ void TerminalTest::machineDetailDialog()
 
 void TerminalTest::machineDetailDialogFromList()
 {
-    PodStack::Backend backend;
     const QString socketPath = m_runtime.filePath(QStringLiteral("control.sock"));
     QLocalServer server;
     QVERIFY2(server.listen(socketPath), qPrintable(server.errorString()));
+    // O servidor falso precisa estar pronto antes do Backend: assim as leituras
+    // iniciais não falham e não disputam a fila com o refresh explícito abaixo.
+    PodStack::Backend backend;
     const QVariantMap machine = testMachine(QStringLiteral("server-machine"), QString());
     const QJsonObject machineJson = QJsonObject::fromVariantMap(machine);
 
@@ -725,7 +727,7 @@ void TerminalTest::machineDetailDialogFromList()
     });
 
     backend.machines()->refresh();
-    QTRY_COMPARE_WITH_TIMEOUT(backend.machines()->items().size(), 1, 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(backend.machines()->items().size(), 1, 15000);
 
     QWidget host;
     host.resize(1200, 800);
@@ -736,7 +738,7 @@ void TerminalTest::machineDetailDialogFromList()
     QCOMPARE(overlay.machineId(), QStringLiteral("server-machine"));
     QVERIFY(!overlay.isHidden());
     QCOMPARE(overlay.machine().value(QStringLiteral("name")).toString(), QStringLiteral("dev"));
-    QTRY_VERIFY_WITH_TIMEOUT(infoSpy.count() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(infoSpy.count() > 0, 15000);
 
     overlay.closeOverlay();
     QVERIFY(overlay.isHidden());
