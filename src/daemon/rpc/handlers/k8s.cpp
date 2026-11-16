@@ -283,14 +283,17 @@ QJsonObject Daemon::k8sPortForwardStart(const QJsonObject &params, const Notify 
         id = QStringLiteral("fwd-%1").arg(m_nextK8sForward++);
     }
     auto subscription = std::make_shared<Subscription>();
+    // Port-forward é interativo: se a conexão RPC cair, ninguém está vendo os
+    // logs e o `kubectl port-forward` não pode continuar ocupando uma thread.
+    const QString subscriptionId = createSubscription(subscription);
     {
         std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
         m_k8sForwards.insert(id, subscription);
     }
 
     (void) QtConcurrent::run(
-        PodStack::backgroundPool(),
-        [this, id, resource, ns, pod, localPort, remotePort, exposeLan, subscription, notify] {
+        PodStack::backgroundPool(), [this, id, subscriptionId, resource, ns, pod, localPort,
+                                     remotePort, exposeLan, subscription, notify] {
             const auto onLine = [&notify, &id](const QString &line) {
                 QJsonObject payload;
                 payload.insert(QStringLiteral("id"), id);
@@ -308,6 +311,7 @@ QJsonObject Daemon::k8sPortForwardStart(const QJsonObject &params, const Notify 
                 payload.insert(QStringLiteral("error"), forwardError.toJson());
             }
             notify(QStringLiteral("k8s.portforward.done"), payload);
+            removeSubscription(subscriptionId);
             {
                 std::lock_guard<std::mutex> lock(m_k8sJobsMutex);
                 m_k8sForwards.remove(id);

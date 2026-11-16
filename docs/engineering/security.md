@@ -82,6 +82,9 @@ flowchart TB
   de pacotes + polkit + auditoria é a fronteira de segurança.
 - D-Bus system bus, serviço `dev.podstack.Helper1`.
 - Polkit: cada método tem ação `dev.podstack.helper.<method>` com `auth_admin`/`auth_self`.
+  O `CheckAuthorization`, o cliente D-Bus e as ações privilegiadas da GUI usam orçamento de
+  2 min para o prompt de senha, em vez dos 30 s que faziam a GUI reportar falha enquanto o
+  usuário ainda autenticava.
 - Rate limit: 10 req/min por uid para stage/install; 120/min para `GetUpdateStatus` (polling).
 - Auditoria: journal com uid, método, parâmetros (sem segredos) e resultado.
 
@@ -98,8 +101,8 @@ flowchart TB
 | `SetSysctl` | `{key,value}` | Apenas allowlist (`ip_unprivileged_port_start`) |
 | `InstallPackages` | `{packages:[...], reason}` | Instala pacotes **allowlisted** (podman, qemu-kvm, virtiofsd, …) |
 | `RemovePackages` | `{packages:[...], reason}` | Remove pacotes **allowlisted** (ex.: docker-ce) |
-| `OpenPorts` | `{ports:[18080,18443], protocol:"tcp"\|"udp"}` | Abre portas no firewall em modo **runtime** (firewalld/ufw), reversível |
-| `ClosePorts` | `{ports:[...], protocol}` | Remove as regras runtime abertas por `OpenPorts` |
+| `OpenPorts` | `{ports:[18080,18443], protocol:"tcp"\|"udp"}` | Abre portas no firewalld em modo **runtime + permanente** (ufw já persiste), reversível |
+| `ClosePorts` | `{ports:[...], protocol}` | Remove as regras runtime e permanentes abertas por `OpenPorts`; `containers.remove` fecha as portas wildcard do container removido |
 | `StageUpdate` | `{manifest, signature, artifactPath, channel}` | Valida assinatura/chave de release, SHA-256 e identidade do pacote; copia para staging root-owned |
 | `InstallUpdate` | `{jobId}` | Recusa unidade ativa e inicia a unidade transiente com `systemd-run`/`flock` |
 | `GetUpdateStatus` | `{jobId}` | Lê `state.json` do job, escopado ao uid do chamador |

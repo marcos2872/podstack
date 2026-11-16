@@ -410,8 +410,9 @@ void SetupTest::firewallOpensAndClosesWithFirewalld()
     QVERIFY(error.isEmpty());
     const QStringList opened = readLog(log).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     QCOMPARE(opened, QStringList({QStringLiteral("--add-port=8080/tcp"),
-                                  QStringLiteral("--add-port=8443/tcp")}));
-    QVERIFY(!readLog(log).contains(QStringLiteral("--permanent")));
+                                  QStringLiteral("--permanent --add-port=8080/tcp"),
+                                  QStringLiteral("--add-port=8443/tcp"),
+                                  QStringLiteral("--permanent --add-port=8443/tcp")}));
 
     QFile::remove(log);
     QVERIFY2(PodStack::Firewall::closePorts({QStringLiteral("8080"), QStringLiteral("8443")},
@@ -419,7 +420,9 @@ void SetupTest::firewallOpensAndClosesWithFirewalld()
              qPrintable(error.message));
     const QStringList closed = readLog(log).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     QCOMPARE(closed, QStringList({QStringLiteral("--remove-port=8080/tcp"),
-                                  QStringLiteral("--remove-port=8443/tcp")}));
+                                  QStringLiteral("--permanent --remove-port=8080/tcp"),
+                                  QStringLiteral("--remove-port=8443/tcp"),
+                                  QStringLiteral("--permanent --remove-port=8443/tcp")}));
 }
 
 void SetupTest::firewallUsesUfw()
@@ -511,8 +514,10 @@ void SetupTest::firewallRollsBackPartialOpen()
 
     const QStringList lines = readLog(log).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     QCOMPARE(lines, QStringList({QStringLiteral("--add-port=8080/tcp"),
+                                 QStringLiteral("--permanent --add-port=8080/tcp"),
                                  QStringLiteral("--add-port=8443/tcp"),
-                                 QStringLiteral("--remove-port=8080/tcp")}));
+                                 QStringLiteral("--remove-port=8080/tcp"),
+                                 QStringLiteral("--permanent --remove-port=8080/tcp")}));
 }
 
 void SetupTest::firewallWithoutBackend()
@@ -1042,6 +1047,13 @@ void SetupTest::setupTracksActiveJob()
     QCOMPARE(manager.activeJob().value(QStringLiteral("jobId")).toString(), jobId);
     QCOMPARE(manager.jobStatus(jobId).value(QStringLiteral("jobId")).toString(), jobId);
 
+    // Um segundo job concorrente é recusado enquanto o primeiro roda.
+    PodStack::Error conflict;
+    const QJsonObject duplicate = manager.apply(
+        QJsonObject{{QStringLiteral("action"), QStringLiteral("enable-socket")}}, {}, &conflict);
+    QVERIFY(duplicate.isEmpty());
+    QCOMPARE(conflict.code, QStringLiteral("PODSTACK_CONFLICT"));
+
     bool subscribed = false;
     const QJsonObject snapshot = manager.jobStatus(jobId);
     manager.subscribe(jobId,
@@ -1417,9 +1429,8 @@ void SetupTest::setupApplyFailures()
     }
 
     {
-        // Instalação termina, mas o Podman não aparece no PATH.
+        // Instalar QEMU/componentes não depende do Podman nem do socket.
         const QByteArray savedPath = qgetenv("PATH");
-        qputenv("PATH", bin.path().toUtf8() + ":/nonexistent");
         QTemporaryDir noPodman;
         QVERIFY(noPodman.isValid());
         QVERIFY(writeExecutable(noPodman.filePath(QStringLiteral("systemctl")),
@@ -1432,6 +1443,36 @@ void SetupTest::setupApplyFailures()
         PodStack::Error error;
         const QJsonObject started = manager.apply(
             QJsonObject{{QStringLiteral("action"), QStringLiteral("install-qemu")}},
+            [&done](const QString &method, const QJsonObject &) {
+                if (method == QStringLiteral("setup.done")) {
+                    done = true;
+                }
+            },
+            &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error.message));
+        QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
+        const QJsonObject status =
+            manager.jobStatus(started.value(QStringLiteral("jobId")).toString());
+        QCOMPARE(status.value(QStringLiteral("state")).toString(), QStringLiteral("success"));
+    }
+
+    {
+        // install-podman sem o binário no PATH falha na validação final.
+        const QByteArray savedPath = qgetenv("PATH");
+        QTemporaryDir noPodman;
+        QVERIFY(noPodman.isValid());
+        QVERIFY(writeExecutable(noPodman.filePath(QStringLiteral("systemctl")),
+                                QByteArrayLiteral("exit 0")));
+        qputenv("PATH", noPodman.path().toUtf8());
+        const auto restoreNoPodman = qScopeGuard([savedPath] { qputenv("PATH", savedPath); });
+
+        FakeSetupManager manager;
+        bool done = false;
+        PodStack::Error error;
+        const QJsonObject started = manager.apply(
+            QJsonObject{{QStringLiteral("action"), QStringLiteral("install-podman")}},
             [&done](const QString &method, const QJsonObject &) {
                 if (method == QStringLiteral("setup.done")) {
                     done = true;

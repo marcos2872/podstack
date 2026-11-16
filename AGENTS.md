@@ -12,7 +12,7 @@ Arquitetura: `podstack-gui` + `podstack` (CLI) ↔ **JSON-RPC sobre Unix socket*
 
 **Licença:** GPL-3.0-or-later (ver [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE)).
 
-**Status atual:** containers, imagens, volumes, redes, pods, Compose, builds, machines QEMU/KVM (ciclo de vida, SSH/arquivos, virtiofs, export/import, clone/rename/default, CPU/memória/disco, port forwarding, SSH agent, modo isolado, console serial e snapshots), Kubernetes (k3s em VM dedicada), domínios `*.localhost`/`*.podstack.local` com HTTPS, bandeja SNI, settings, updates assinados, onboarding/setup e logging de debug estão implementados. **15 testes**, cobertura **~80%** com gate bloqueante de **80%**. Histórico em [`CHANGELOG.md`](CHANGELOG.md).
+**Status atual:** containers, imagens, volumes, redes, pods, Compose, builds, machines QEMU/KVM (ciclo de vida, SSH/arquivos, virtiofs, export/import, clone/rename/default, CPU/memória/disco, port forwarding, SSH agent, modo isolado, console serial e snapshots), Kubernetes (k3s em VM dedicada), proxy `*.localhost` (HTTP), bandeja SNI, settings, updates assinados, onboarding/setup e logging de debug estão implementados. Domínios `*.podstack.local` e HTTPS automático estão **planejados** (helper pronto, RPC de domínios pendente — ver `docs/engineering/api-rpc.md` §4.9). **25 testes** CTest, cobertura **~80%** com gate bloqueante de **80%**. Histórico em [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 

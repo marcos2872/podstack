@@ -91,6 +91,8 @@ private:
     QStringList actionPackages(const QString &action, const QJsonObject &options) const;
     bool enablePodmanSocket(QString *error) const;
     bool applyDockerPolicy(const QString &policy, QString *error);
+    /// Recusa um novo job enquanto outro está running/queued/cancelling.
+    bool rejectIfJobActive(Error *error) const;
 
     static QString podmanVersion();
     static QString dockerVersion();

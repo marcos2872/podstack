@@ -301,7 +301,8 @@ void ContainerController::createContainer(const QVariantMap &spec, bool start)
     }
     params.insert(QStringLiteral("mounts"), mounts);
 
-    runAction(QStringLiteral("containers.create"), params);
+    // Pode envolver OpenPorts (polkit); deixa tempo para o prompt de senha.
+    runAction(QStringLiteral("containers.create"), params, {}, 120000);
 }
 
 void ContainerController::exposeContainerLan(const QString &id, bool expose)
@@ -311,7 +312,8 @@ void ContainerController::exposeContainerLan(const QString &id, bool expose)
         return;
     }
     runAction(QStringLiteral("containers.exposeLan"),
-              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("expose"), expose}});
+              QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("expose"), expose}}, {},
+              120000);
 }
 
 void ContainerController::renameContainer(const QString &id, const QString &name)

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "daemon/rpc/handlers/Common.h"
 
+#include <utility>
+
 using namespace PodStack::DaemonInternal;
 
 namespace PodStack {
@@ -52,6 +54,7 @@ QJsonObject Daemon::settingsReset(const QJsonObject &params, Error *error)
     }
 
     std::lock_guard<std::mutex> lock(m_settingsMutex);
+    std::lock_guard<std::recursive_mutex> fileLock(Config::fileMutex());
     Config config = Config::load();
     bool restartRequired = false;
 
@@ -127,12 +130,13 @@ QJsonObject Daemon::settingsSet(const QJsonObject &params, Error *error)
     const QJsonValue value = params.value(QStringLiteral("value"));
 
     std::lock_guard<std::mutex> lock(m_settingsMutex);
+    std::lock_guard<std::recursive_mutex> fileLock(Config::fileMutex());
     Config config = Config::load();
 
     Error validation;
     if (!Config::validate(key, value, &validation)) {
         if (error) {
-            *error = validation;
+            *error = std::move(validation);
         }
         return {};
     }

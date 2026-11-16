@@ -170,8 +170,15 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
         buildArgs.insert(it.key(), it.value().toString());
     }
 
-    const QString buildId =
-        QStringLiteral("build-%1-%2").arg(QDateTime::currentSecsSinceEpoch()).arg(m_nextBuild++);
+    // `buildStart` roda em várias threads do rpcPool; o contador é protegido
+    // pelo mesmo mutex das subscriptions para não gerar IDs duplicados.
+    QString buildId;
+    {
+        std::lock_guard<std::mutex> lock(m_buildMutex);
+        buildId = QStringLiteral("build-%1-%2")
+                      .arg(QDateTime::currentSecsSinceEpoch())
+                      .arg(m_nextBuild++);
+    }
     const QString logDir = Paths::stateDir() + QStringLiteral("/builds");
     QDir().mkpath(logDir);
     const QString logPath = logDir + QLatin1Char('/') + buildId + QStringLiteral(".log");

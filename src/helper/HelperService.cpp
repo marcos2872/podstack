@@ -20,6 +20,7 @@
 #include <QHash>
 #include <QLoggingCategory>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QStringList>
 #include <QtGlobal>
@@ -93,10 +94,14 @@ QString packageManager()
     return {};
 }
 
-QString runProcess(const QString &program, const QStringList &arguments, int timeoutMs)
+QString runProcess(const QString &program, const QStringList &arguments, int timeoutMs,
+                   const QProcessEnvironment &environment = QProcessEnvironment())
 {
     QProcess process;
     process.setProcessChannelMode(QProcess::MergedChannels);
+    if (!environment.isEmpty()) {
+        process.setProcessEnvironment(environment);
+    }
     process.start(program, arguments);
     if (!process.waitForStarted(5000)) {
         return QStringLiteral("não foi possível iniciar %1").arg(program);
@@ -312,7 +317,25 @@ QVariantMap HelperService::install(const QStringList &packages, const QString &a
     }
     arguments += packages;
 
-    const QString failure = runProcess(manager, arguments, 900000);
+    QString failure;
+    if (manager == QStringLiteral("apt-get")) {
+        // Imagens novas podem ter índices vazios/velhos; sem o update o
+        // "apt-get install podman" falha com "Unable to locate package".
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(QStringLiteral("DEBIAN_FRONTEND"), QStringLiteral("noninteractive"));
+        const QString updateFailure =
+            runProcess(manager, {QStringLiteral("update")}, 300000, environment);
+        if (!updateFailure.isEmpty()) {
+            qCInfo(lcHelper, "apt update failed: uid=%u packages=%s", uid,
+                   qUtf8Printable(packages.join(',')));
+            return result(
+                false,
+                QStringLiteral("Falha ao atualizar os índices do apt: %1").arg(updateFailure));
+        }
+        failure = runProcess(manager, arguments, 900000, environment);
+    } else {
+        failure = runProcess(manager, arguments, 900000);
+    }
     if (!failure.isEmpty()) {
         qCInfo(lcHelper, "installation failed: uid=%u packages=%s", uid,
                qUtf8Printable(packages.join(',')));

@@ -281,6 +281,7 @@ QJsonObject Daemon::updatesCheck(const QJsonObject &params, Error *error)
     if (!error || error->isEmpty()) {
         if (result.value(QStringLiteral("status")).toString() == QStringLiteral("ok")) {
             std::lock_guard<std::mutex> lock(m_settingsMutex);
+            std::lock_guard<std::recursive_mutex> fileLock(Config::fileMutex());
             Config config = Config::load();
             config.set(QStringLiteral("updates.lastCheck"),
                        result.value(QStringLiteral("checkedAt")).toString());
