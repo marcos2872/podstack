@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "daemon/Pools.h"
 #include "daemon/rpc/handlers/Common.h"
 
 using namespace PodStack::DaemonInternal;
@@ -133,7 +134,8 @@ QJsonObject Daemon::machineClone(const QJsonObject &params, const Notify &notify
         m_machineSubscriptions.insert(jobId, subscriptionId);
     }
 
-    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, id, name, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, jobId, subscriptionId, subscription,
+                                                          id, name, notify] {
         const auto progress = [jobId, notify](const QString &stage, int value) {
             if (!notify) {
                 return;
@@ -302,7 +304,8 @@ QJsonObject Daemon::machineCreate(const QJsonObject &params, const Notify &notif
         m_machineSubscriptions.insert(jobId, subscriptionId);
     }
 
-    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, request, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, jobId, subscriptionId, subscription,
+                                                          request, notify] {
         const auto progress = [jobId, notify](const QString &stage, int value) {
             if (!notify) {
                 return;
@@ -424,7 +427,8 @@ QJsonObject Daemon::machineExport(const QJsonObject &params, const Notify &notif
         m_machineSubscriptions.insert(jobId, subscriptionId);
     }
 
-    (void) QtConcurrent::run([this, jobId, subscriptionId, subscription, id, path, force, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, jobId, subscriptionId, subscription,
+                                                          id, path, force, notify] {
         const auto progress = [jobId, notify](const QString &stage, int value) {
             if (!notify) {
                 return;
@@ -610,6 +614,7 @@ QJsonObject Daemon::machineImport(const QJsonObject &params, const Notify &notif
     }
 
     (void) QtConcurrent::run(
+        PodStack::backgroundPool(),
         [this, jobId, subscriptionId, subscription, path, name, force, notify] {
             const auto progress = [jobId, notify](const QString &stage, int value) {
                 if (!notify) {
@@ -1304,8 +1309,10 @@ QJsonObject Daemon::subscribeMachineConsole(const QJsonObject &params, const Not
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void) QtConcurrent::run([this, machineId = machine.id, path, offset, pendingReset, initial,
-                              subscriptionId, subscription, notify]() mutable {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, machineId = machine.id, path,
+                                                          offset, pendingReset, initial,
+                                                          subscriptionId, subscription,
+                                                          notify]() mutable {
         // O serial entrega bytes crus; um caractere UTF-8 pode ser dividido
         // entre dois chunks. O decoder mantém o estado entre deltas para não
         // produzir U+FFFD no meio de uma sequência.
@@ -1412,7 +1419,8 @@ QJsonObject Daemon::subscribeMachineStats(const QJsonObject &params, const Notif
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void) QtConcurrent::run([this, machine, info, interval, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, machine, info, interval,
+                                                          subscriptionId, subscription, notify] {
         MachineStatsCollector collector;
         while (!subscription->cancel.load()) {
             Error sampleError;

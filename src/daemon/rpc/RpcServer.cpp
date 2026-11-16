@@ -1,6 +1,7 @@
 #include "daemon/rpc/RpcServer.h"
 
 #include "core/logging/Logging.h"
+#include "daemon/Pools.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -262,7 +263,8 @@ void RpcServer::handleLine(QLocalSocket *socket, const QByteArray &line)
             Qt::QueuedConnection);
     };
 
-    (void) QtConcurrent::run([this, guard, id, method, params, notify, connectionId] {
+    (void) QtConcurrent::run(PodStack::rpcPool(), [this, guard, id, method, params, notify,
+                                                   connectionId] {
         Error error;
         const QJsonObject result = m_daemon->handle(method, params, notify, &error, connectionId);
 

@@ -91,27 +91,31 @@ Requires=podstack.socket
 After=podstack.socket
 
 [Service]
-Type=notify
-ExecStart=/usr/libexec/podstack/podstackd
+Type=simple
+ExecStart=/usr/bin/podstackd
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=20
 KillMode=process
-Environment=QT_LOGGING_RULES=podstack.*=false
 
-# hardening
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=%h/.config/podstack %h/.local/share/podstack %h/.local/state/podstack %h/.cache/podstack %t/podstack
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-SystemCallFilter=@system-service
+# hardening (sem ProtectHome/PrivateTmp — ver nota abaixo)
+ProtectSystem=full
+StateDirectory=podstack
+CacheDirectory=podstack
+ConfigurationDirectory=podstack
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
 LockPersonality=yes
-MemoryDenyWriteExecute=yes
 ```
 
-> Ajustar `ProtectHome`/`ReadWritePaths` para permitir mounts de projetos (ou relaxar para `read-only` + portal).
+> **Sem `ProtectHome` e sem `PrivateTmp`.** O daemon roda como o usuário e
+> precisa gravar `~/.ssh/config` (machines), downloads/exportações no caminho
+> escolhido no diálogo e servir diretórios compartilhados pelo virtiofsd.
+> QEMU/virtiofsd são iniciados em scopes transientes que herdam o mount
+> namespace do serviço, então restringir `$HOME` ou `/tmp` quebraria machines,
+> transferência de arquivos e shares. `ProtectSystem=full` mantém `/usr`,
+> `/boot` e `/etc` somente-leitura sem afetar `/var` (tmp do podman CLI) nem o
+> home. `NoNewPrivileges`/`SystemCallFilter` continuam fora porque impediriam a
+> transição SELinux do `podman` e syscalls usadas por ele.
 
 QEMU e virtiofsd não pertencem ao cgroup do serviço: são iniciados em scopes
 transientes (`systemd-run --user --scope`, units `podstack-machine-<id>.scope`

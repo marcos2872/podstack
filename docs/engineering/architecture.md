@@ -292,6 +292,13 @@ o `MachineManager::reconcile` os readota pelo cmdline. `KillMode=process` na
 unit é apenas defesa em profundidade para um filho que ainda esteja no cgroup
 do serviço — não move processos de cgroup.
 
+`systemd-run --user --scope` executa o comando no contexto do chamador, então
+QEMU/virtiofsd **herdam o mount namespace do `podstackd`**. Por isso a unit não
+aplica `ProtectHome`/`PrivateTmp`: o daemon precisa gravar `~/.ssh/config`,
+downloads/exportações em caminhos escolhidos pelo usuário e servir qualquer
+diretório compartilhado; restringir `$HOME` ou `/tmp` no serviço tornaria
+shares somente-leitura ou invisíveis dentro do guest.
+
 O `MachineManager` (`src/machines/MachineManager.{h,cpp}`) orquestra o
 provisionamento: valida nome RFC 1123 (1..63, `[a-z0-9-]`), CPUs (1..256),
 memória e disco (≥ 1 GiB), resolve a distro pelo `DistroRegistry` (injetável
@@ -389,12 +396,23 @@ sequenceDiagram
 | Contexto | Thread | Regras |
 |---|---|---|
 | Qt event loop (GUI/daemon) | principal | nunca bloquear > 16 ms |
-| RPC handlers | principal | operações rápidas; jobs em pool |
-| Jobs (pull/build/export/create) | `QThreadPool` | progresso via sinal; cancelável |
-| Streams libcurl | thread por stream (pool) | entrega via fila; backpressure |
+| RPC handlers | `rpcPool` (dedicado) | operações rápidas; cada requisição é um `QtConcurrent::run` no pool |
+| Jobs (pull/build/export/create) | `backgroundPool` | progresso via sinal; cancelável |
+| Streams libcurl | `backgroundPool` (1 thread por stream) | entrega via fila; backpressure |
 | SQLite | thread do job / pool | conexão por thread; WAL |
 | QMP | thread por máquina | comandos serializados; timeout |
 | DNS/proxy | thread dedicada / event loop | non-blocking |
+
+**Dois pools separados (`src/daemon/Pools.h`).** `rpcPool` atende os handlers
+JSON-RPC (4–16 threads, conforme os núcleos). `backgroundPool` atende tudo que
+é longo: streams de events/logs/stats/console, pull/push, builds, jobs de
+machine/k8s e setup. Antes ambos usavam o pool global do Qt, cujo limite é o
+número de núcleos; numa VM de 1–2 vCPU um stream de events (sempre aberto pela
+GUI) esgotava o pool e todo RPC — inclusive `system.hello` — ficava
+enfileirado, fazendo o daemon parecer zumbi. O `backgroundPool` tem no mínimo
+32 threads (8× núcleos, teto 512) e aceita `PODSTACK_BACKGROUND_POOL_SIZE`
+para testes. No shutdown, `podstackd` espera os dois pools (com prazo de 3 s)
+depois de cancelar as subscriptions.
 
 **Backpressure:** cada assinatura tem fila limitada (ex.: 10k linhas ou 1 MB). Ao encher, descarta linhas antigas e envia `logs.dropped {count}`.
 

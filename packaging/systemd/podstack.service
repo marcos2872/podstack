@@ -19,15 +19,19 @@ KillMode=process
 # Hardening básico. O daemon lança `podman` (Compose/builds) como filho:
 # NoNewPrivileges impediria a transição SELinux para container_runtime_t e
 # SystemCallFilter bloquearia fsopen/outras syscalls usadas pelo Podman.
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=read-only
-# Estas diretivas criam os diretórios antes do sandbox: ReadWritePaths não
-# pode apontar para um caminho que ainda não existe no primeiro start.
+#
+# Não use ProtectHome/PrivateTmp aqui. O daemon roda como o usuário e precisa:
+#   - gravar ~/.ssh/config ao criar/renomear machines;
+#   - gravar downloads/exportações no caminho escolhido pelo usuário;
+#   - servir diretórios compartilhados pelo virtiofsd.
+# QEMU/virtiofsd são lançados em scopes transientes que herdam o mount
+# namespace deste serviço, então restringir $HOME ou /tmp quebraria machines,
+# transfers de arquivos e shares. ProtectSystem=full mantém /usr, /boot e /etc
+# somente-leitura sem afetar /var (tmp do podman CLI) nem o home.
+ProtectSystem=full
 StateDirectory=podstack
 CacheDirectory=podstack
 ConfigurationDirectory=podstack
-ReadWritePaths=%h/.config %h/.local %h/.cache %t
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
 LockPersonality=yes
 

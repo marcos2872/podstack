@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "daemon/Pools.h"
 #include "daemon/rpc/handlers/Common.h"
 
 using namespace PodStack::DaemonInternal;
@@ -157,7 +158,7 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
         Error platformError;
         if (!ManifestBuilder::validatePlatforms(platforms, &platformError)) {
             if (error) {
-                *error = platformError;
+                *error = std::move(platformError);
             }
             return {};
         }
@@ -200,8 +201,10 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
 
     if (platforms.size() > 1) {
         // Manifest list: o Libpod REST não cria manifest lists, então usamos o CLI.
-        (void) QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs, platforms,
-                                  logPath, subscriptionId, subscription, notify] {
+        (void) QtConcurrent::run(PodStack::backgroundPool(), [this, buildId, contextPath,
+                                                              dockerfile, tag, buildArgs, platforms,
+                                                              logPath, subscriptionId, subscription,
+                                                              notify] {
             QElapsedTimer timer;
             timer.start();
 
@@ -265,8 +268,9 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
     }
 
     const QString platform = platforms.isEmpty() ? QString() : platforms.first();
-    (void) QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs, platform,
-                              logPath, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, buildId, contextPath, dockerfile,
+                                                          tag, buildArgs, platform, logPath,
+                                                          subscriptionId, subscription, notify] {
         QElapsedTimer timer;
         timer.start();
 
