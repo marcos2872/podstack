@@ -59,7 +59,7 @@ signals:
     void lastErrorCodeChanged();
     void logsChanged();
     void statsChanged();
-    void connectionChanged(bool connected, const QString &error);
+    void connectionChanged(bool connected, const QString &error, const QString &errorCode);
     void terminalRequested(const QString &title, const QString &program, const QStringList &args);
     /// Emitido logo depois de `containers.create` para a página selecionar e
     /// abrir o container recém-criado.

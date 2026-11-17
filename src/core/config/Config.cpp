@@ -137,8 +137,15 @@ Config Config::load()
     return config;
 }
 
+std::recursive_mutex &Config::fileMutex()
+{
+    static std::recursive_mutex mutex;
+    return mutex;
+}
+
 bool Config::save(QString *error) const
 {
+    std::lock_guard<std::recursive_mutex> lock(fileMutex());
     if (!Paths::ensureDirs(error)) {
         return false;
     }

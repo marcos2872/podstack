@@ -80,7 +80,9 @@ bool checkAuthorization(const QString &actionId, uint pid, QString *error)
 {
     const QDBusMessage request = checkAuthorizationRequest(actionId, pid);
     const QDBusMessage reply =
-        QDBusConnection::systemBus().call(request, QDBus::Block, 30000);
+        // O prompt de senha do polkit precisa de tempo; 30 s era apertado para
+        // auth_admin e fazia a GUI reportar falha com o usuário ainda digitando.
+        QDBusConnection::systemBus().call(request, QDBus::Block, 120000);
     if (reply.type() == QDBusMessage::ErrorMessage) {
         if (error) {
             *error = QStringLiteral("Polkit indisponível: %1").arg(reply.errorMessage());

@@ -20,6 +20,7 @@
 #include <QHash>
 #include <QLoggingCategory>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QStringList>
 #include <QtGlobal>
@@ -93,10 +94,14 @@ QString packageManager()
     return {};
 }
 
-QString runProcess(const QString &program, const QStringList &arguments, int timeoutMs)
+QString runProcess(const QString &program, const QStringList &arguments, int timeoutMs,
+                   const QProcessEnvironment &environment = QProcessEnvironment())
 {
     QProcess process;
     process.setProcessChannelMode(QProcess::MergedChannels);
+    if (!environment.isEmpty()) {
+        process.setProcessEnvironment(environment);
+    }
     process.start(program, arguments);
     if (!process.waitForStarted(5000)) {
         return QStringLiteral("não foi possível iniciar %1").arg(program);
@@ -205,18 +210,74 @@ QVariantMap HelperService::result(bool ok, const QString &message)
     return map;
 }
 
-QStringList HelperService::installedPackages(const QStringList &packages)
+bool HelperService::installedPackages(const QStringList &packages, QStringList *installed,
+                                      QString *error)
 {
-    QStringList installed;
+    if (installed) {
+        installed->clear();
+    }
+    if (error) {
+        error->clear();
+    }
+
+    const QString manager = packageManager();
+    QString tool;
+    QStringList queryArguments;
+    if (manager == QStringLiteral("dnf")) {
+        tool = QStringLiteral("rpm");
+        queryArguments = {QStringLiteral("-q")};
+    } else if (manager == QStringLiteral("apt-get")) {
+        tool = QStringLiteral("dpkg-query");
+        queryArguments = {QStringLiteral("-W"), QStringLiteral("-f=${Status}")};
+    } else if (manager == QStringLiteral("pacman")) {
+        tool = QStringLiteral("pacman");
+        queryArguments = {QStringLiteral("-Q")};
+    } else {
+        if (error) {
+            *error = QStringLiteral("Gerenciador de pacotes não suportado.");
+        }
+        return false;
+    }
+
+    if (QStandardPaths::findExecutable(tool).isEmpty()) {
+        if (error) {
+            *error =
+                QStringLiteral("Ferramenta de consulta de pacotes não encontrada: %1.").arg(tool);
+        }
+        return false;
+    }
+
     for (const QString &package : packages) {
         QProcess query;
         query.setProcessChannelMode(QProcess::MergedChannels);
-        query.start(QStringLiteral("rpm"), {QStringLiteral("-q"), package});
-        if (query.waitForFinished(5000) && query.exitCode() == 0) {
-            installed.append(package);
+        query.start(tool, queryArguments + QStringList{package});
+        if (!query.waitForFinished(5000)) {
+            query.kill();
+            query.waitForFinished(1000);
+            if (error) {
+                *error = QStringLiteral("Tempo esgotado ao consultar o pacote %1.").arg(package);
+            }
+            return false;
+        }
+        if (query.exitStatus() != QProcess::NormalExit) {
+            if (error) {
+                *error = QStringLiteral("Falha ao consultar o pacote %1.").arg(package);
+            }
+            return false;
+        }
+
+        // Exit != 0 significa "não instalado" em rpm/dpkg/pacman; no Debian a
+        // saída de dpkg-query também precisa indicar instalação concluída.
+        bool present = query.exitCode() == 0;
+        if (present && manager == QStringLiteral("apt-get")) {
+            present =
+                QString::fromUtf8(query.readAll()).contains(QStringLiteral("install ok installed"));
+        }
+        if (present && installed) {
+            installed->append(package);
         }
     }
-    return installed;
+    return true;
 }
 
 QVariantMap HelperService::install(const QStringList &packages, const QString &actionId,
@@ -256,7 +317,25 @@ QVariantMap HelperService::install(const QStringList &packages, const QString &a
     }
     arguments += packages;
 
-    const QString failure = runProcess(manager, arguments, 900000);
+    QString failure;
+    if (manager == QStringLiteral("apt-get")) {
+        // Imagens novas podem ter índices vazios/velhos; sem o update o
+        // "apt-get install podman" falha com "Unable to locate package".
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(QStringLiteral("DEBIAN_FRONTEND"), QStringLiteral("noninteractive"));
+        const QString updateFailure =
+            runProcess(manager, {QStringLiteral("update")}, 300000, environment);
+        if (!updateFailure.isEmpty()) {
+            qCInfo(lcHelper, "apt update failed: uid=%u packages=%s", uid,
+                   qUtf8Printable(packages.join(',')));
+            return result(
+                false,
+                QStringLiteral("Falha ao atualizar os índices do apt: %1").arg(updateFailure));
+        }
+        failure = runProcess(manager, arguments, 900000, environment);
+    } else {
+        failure = runProcess(manager, arguments, 900000);
+    }
     if (!failure.isEmpty()) {
         qCInfo(lcHelper, "installation failed: uid=%u packages=%s", uid,
                qUtf8Printable(packages.join(',')));
@@ -290,7 +369,13 @@ QVariantMap HelperService::RemovePackages(const QStringList &packages)
         return result(false, error);
     }
 
-    const QStringList installed = installedPackages(packages);
+    QStringList installed;
+    QString queryError;
+    if (!installedPackages(packages, &installed, &queryError)) {
+        qCWarning(lcHelper, "removal query failed: uid=%u packages=%s error=%s", uid,
+                  qUtf8Printable(packages.join(',')), qUtf8Printable(queryError));
+        return result(false, queryError);
+    }
     if (installed.isEmpty()) {
         qCInfo(lcHelper, "removal skipped: uid=%u packages=%s reason=not-installed", uid,
                qUtf8Printable(packages.join(',')));

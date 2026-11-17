@@ -98,6 +98,10 @@ private:
     QVariantList m_containers;
     QVariantList m_composeProjects;
     QVariantList m_machines;
+    /// Assinatura do último menu montado: evita recriar QActions e reexportar
+    /// o DBusMenu a cada refresh idêntico (eventos do engine chegam em rajada).
+    QString m_containersSignature;
+    QString m_machinesSignature;
     bool m_k8sEnabled = false;
     bool m_connected = true;
     bool m_setupPending = false;

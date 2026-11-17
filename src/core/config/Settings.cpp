@@ -523,7 +523,6 @@ const QVector<SettingDef> &definitions()
             QStringLiteral("app.waitForContainerStop"),
             QStringLiteral("app.confirmDestructive"),
             QStringLiteral("engine.socketPath"),
-            QStringLiteral("engine.autoStart"),
             QStringLiteral("engine.restartOnConfigChange"),
             QStringLiteral("docker.exposePortsToLan"),
             QStringLiteral("docker.enableContainerdImageStore"),
@@ -532,6 +531,10 @@ const QVector<SettingDef> &definitions()
             QStringLiteral("network.subnet4"),
             QStringLiteral("network.ipv6"),
             QStringLiteral("network.domainsMode"),
+            // RPC de domínios/proxy ainda não existe (§4.9 do api-rpc.md);
+            // expor network.https prometia HTTPS sem bind 80/443 nem CA/DNS.
+            QStringLiteral("network.https"),
+            QStringLiteral("network.httpsPort"),
             QStringLiteral("machines.forwardPorts"),
             QStringLiteral("machines.exposePortsToLan"),
             QStringLiteral("machines.sshPortStart"),

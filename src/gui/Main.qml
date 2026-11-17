@@ -70,7 +70,7 @@ Rectangle {
         target: backend.setup
 
         function onChanged() {
-            if (backend.setup.error.length > 0 && !backend.setup.completed) {
+            if (backend.setup.error.length > 0 && backend.setup.pending) {
                 appWindow.reveal()
             }
         }
@@ -151,13 +151,24 @@ Rectangle {
         return backend.settings.values["engine.mode"] === "rootful" ? "rootful" : "rootless"
     }
 
-    // Ação do banner de erro: só oferece reiniciar o serviço quando o
-    // podstackd está inacessível (não para erros de operação).
+    // Ação do banner de erro: distingue engine Podman parado (ativa o socket)
+    // de podstackd inacessível (reinicia o serviço).
     readonly property string serviceActionText: {
         if (backend.connected) {
             return ""
         }
-        return backend.serviceActivating ? qsTr("Reiniciando…") : qsTr("Reiniciar daemon")
+        if (backend.serviceActivating) {
+            return qsTr("Reiniciando…")
+        }
+        return backend.daemonReachable ? qsTr("Ativar engine") : qsTr("Reiniciar daemon")
+    }
+
+    function serviceAction() {
+        if (backend.daemonReachable) {
+            backend.startEngine()
+        } else {
+            backend.restartDaemonService()
+        }
     }
 
     function countFor(key) {
@@ -501,7 +512,7 @@ Rectangle {
                 Layout.fillWidth: true
                 message: backend.error
                 actionText: window.serviceActionText
-                onActionClicked: backend.restartDaemonService()
+                onActionClicked: window.serviceAction()
             }
 
             // Aviso de versão: GUI e daemon divergentes fazem a listagem
@@ -512,6 +523,17 @@ Rectangle {
                 message: backend.daemonMismatch
                 actionText: qsTr("Reiniciar daemon")
                 onActionClicked: backend.restartDaemonService()
+            }
+
+            // Setup pulado: a Main fica utilizável, mas o ambiente incompleto
+            // (p.ex. QEMU/OVMF ausentes) deve continuar visível no topo.
+            AppErrorBanner {
+                Layout.fillWidth: true
+                visible: backend.setup.loaded && !backend.setup.completed
+                tone: "warning"
+                message: qsTr("Configuração do ambiente pendente. Alguns recursos podem não funcionar.")
+                actionText: qsTr("Executar configuração")
+                onActionClicked: setupWindow.openSetup(true)
             }
 
             // Páginas
@@ -655,13 +677,18 @@ Rectangle {
                         Layout.preferredWidth: 6
                         Layout.preferredHeight: 6
                         radius: 3
-                        color: backend.connected ? Theme.success : Theme.danger
+                        color: backend.connected ? Theme.success
+                               : backend.daemonReachable ? Theme.warning : Theme.danger
                     }
 
                     Text {
-                        text: backend.connected ? qsTr("podstackd conectado")
-                                                : qsTr("podstackd desconectado")
-                        color: backend.connected ? Theme.success : Theme.danger
+                        readonly property string stateText:
+                            backend.connected ? qsTr("engine do Podman conectado")
+                            : backend.daemonReachable ? qsTr("engine do Podman desconectado")
+                                                      : qsTr("podstackd desconectado")
+                        text: stateText
+                        color: backend.connected ? Theme.success
+                               : backend.daemonReachable ? Theme.warning : Theme.danger
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMicro
                     }
@@ -917,18 +944,18 @@ Rectangle {
         }
         function onActivityMonitorRequested() {
             window.reveal()
-            if (backend.setup.completed) {
+            if (!setupWindow.visible) {
                 activityWindow.open()
             }
         }
         function onSettingsRequested() {
             window.reveal()
-            if (backend.setup.completed) {
+            if (!setupWindow.visible) {
                 settingsDialog.open()
             }
         }
         function onOpenContainerRequested(id, tab) {
-            if (!backend.setup.completed) {
+            if (setupWindow.visible) {
                 window.reveal()
                 return
             }
@@ -943,7 +970,7 @@ Rectangle {
             }
         }
         function onOpenComposeRequested(project, service, logs) {
-            if (!backend.setup.completed) {
+            if (setupWindow.visible) {
                 window.reveal()
                 return
             }
@@ -953,7 +980,7 @@ Rectangle {
         }
         function onOpenViewRequested(section) {
             window.reveal()
-            if (backend.setup.completed) {
+            if (!setupWindow.visible) {
                 window.section = section
             }
         }

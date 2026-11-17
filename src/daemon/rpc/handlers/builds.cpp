@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "daemon/Pools.h"
 #include "daemon/rpc/handlers/Common.h"
 
 using namespace PodStack::DaemonInternal;
@@ -157,7 +158,7 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
         Error platformError;
         if (!ManifestBuilder::validatePlatforms(platforms, &platformError)) {
             if (error) {
-                *error = platformError;
+                *error = std::move(platformError);
             }
             return {};
         }
@@ -169,8 +170,15 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
         buildArgs.insert(it.key(), it.value().toString());
     }
 
-    const QString buildId =
-        QStringLiteral("build-%1-%2").arg(QDateTime::currentSecsSinceEpoch()).arg(m_nextBuild++);
+    // `buildStart` roda em várias threads do rpcPool; o contador é protegido
+    // pelo mesmo mutex das subscriptions para não gerar IDs duplicados.
+    QString buildId;
+    {
+        std::lock_guard<std::mutex> lock(m_buildMutex);
+        buildId = QStringLiteral("build-%1-%2")
+                      .arg(QDateTime::currentSecsSinceEpoch())
+                      .arg(m_nextBuild++);
+    }
     const QString logDir = Paths::stateDir() + QStringLiteral("/builds");
     QDir().mkpath(logDir);
     const QString logPath = logDir + QLatin1Char('/') + buildId + QStringLiteral(".log");
@@ -200,8 +208,10 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
 
     if (platforms.size() > 1) {
         // Manifest list: o Libpod REST não cria manifest lists, então usamos o CLI.
-        (void) QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs, platforms,
-                                  logPath, subscriptionId, subscription, notify] {
+        (void) QtConcurrent::run(PodStack::backgroundPool(), [this, buildId, contextPath,
+                                                              dockerfile, tag, buildArgs, platforms,
+                                                              logPath, subscriptionId, subscription,
+                                                              notify] {
             QElapsedTimer timer;
             timer.start();
 
@@ -265,8 +275,9 @@ QJsonObject Daemon::buildStart(const QJsonObject &params, const Notify &notify, 
     }
 
     const QString platform = platforms.isEmpty() ? QString() : platforms.first();
-    (void) QtConcurrent::run([this, buildId, contextPath, dockerfile, tag, buildArgs, platform,
-                              logPath, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, buildId, contextPath, dockerfile,
+                                                          tag, buildArgs, platform, logPath,
+                                                          subscriptionId, subscription, notify] {
         QElapsedTimer timer;
         timer.start();
 

@@ -6,6 +6,7 @@
 #include "core/config/Paths.h"
 #include "core/logging/Logging.h"
 #include "core/setup/SetupPolicy.h"
+#include "daemon/Pools.h"
 #include "daemon/docker/DockerInventory.h"
 
 #include <QFileInfo>
@@ -533,6 +534,26 @@ QJsonObject SetupManager::activeJob() const
     return job ? jobToJsonLocked(*job) : QJsonObject{};
 }
 
+bool SetupManager::rejectIfJobActive(Error *error) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_activeJobId.isEmpty()) {
+        return false;
+    }
+    const auto active = m_jobs.value(m_activeJobId);
+    if (!active ||
+        (active->state != QStringLiteral("running") && active->state != QStringLiteral("queued") &&
+         active->state != QStringLiteral("cancelling"))) {
+        return false;
+    }
+    if (error) {
+        *error = Error::make(QStringLiteral("PODSTACK_CONFLICT"),
+                             QStringLiteral("Já existe um job de setup em andamento."), active->id,
+                             QStringLiteral("Aguarde a conclusão ou cancele o job atual."));
+    }
+    return true;
+}
+
 QJsonObject SetupManager::apply(const QJsonObject &params, const Notify &notify, Error *error)
 {
     QString action = params.value(QStringLiteral("action")).toString();
@@ -569,9 +590,14 @@ QJsonObject SetupManager::apply(const QJsonObject &params, const Notify &notify,
         return {};
     }
 
+    if (rejectIfJobActive(error)) {
+        return {};
+    }
+
     auto job = createJob(action, notify);
     const QJsonObject &options = params;
-    (void)QtConcurrent::run([this, job, options] { runJob(job, options); });
+    (void) QtConcurrent::run(PodStack::backgroundPool(),
+                             [this, job, options] { runJob(job, options); });
 
     QJsonObject result;
     result.insert(QStringLiteral("jobId"), job->id);
@@ -605,9 +631,14 @@ QJsonObject SetupManager::removeDocker(const QJsonObject &params, const Notify &
         return {};
     }
 
+    if (rejectIfJobActive(error)) {
+        return {};
+    }
+
     auto job = createJob(QStringLiteral("remove-docker"), notify);
     const QJsonObject &options = params;
-    (void)QtConcurrent::run([this, job, options] { runJob(job, options); });
+    (void) QtConcurrent::run(PodStack::backgroundPool(),
+                             [this, job, options] { runJob(job, options); });
 
     QJsonObject result;
     result.insert(QStringLiteral("jobId"), job->id);
@@ -743,6 +774,7 @@ bool SetupManager::enablePodmanSocket(QString *error) const
 
 bool SetupManager::applyDockerPolicy(const QString &policy, QString *error)
 {
+    std::lock_guard<std::recursive_mutex> lock(Config::fileMutex());
     Config config = Config::load();
     config.set(QStringLiteral("setup.dockerPolicy"), policy);
     return config.save(error);
@@ -828,6 +860,17 @@ void SetupManager::runJob(const std::shared_ptr<Job> &job, const QJsonObject &op
         return;
     }
 
+    // Só jobs de Podman ativam o socket e validam o binário. Instalar QEMU ou
+    // componentes opcionais não pode falhar por o Podman ainda não existir.
+    const bool podmanJob = job->action == QStringLiteral("install-podman") ||
+                           job->action == QStringLiteral("upgrade-podman");
+    if (!podmanJob) {
+        setProgress(job, 100);
+        appendLog(job, QStringLiteral("Concluído."));
+        finishJob(job, QStringLiteral("success"), {});
+        return;
+    }
+
     setProgress(job, 60);
     appendLog(job, QStringLiteral("Ativando podman.socket de usuário…"));
     QString socketError;
@@ -887,6 +930,7 @@ void SetupManager::finishJob(const std::shared_ptr<Job> &job, const QString &sta
 
 bool SetupManager::complete(bool skipped, Error *error)
 {
+    std::lock_guard<std::recursive_mutex> lock(Config::fileMutex());
     Config config = Config::load();
     config.set(QStringLiteral("setup.completed"), !skipped);
     config.set(QStringLiteral("setup.completedAt"),

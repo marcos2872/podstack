@@ -38,6 +38,8 @@
 #include <QVariantMap>
 #include <QtConcurrent>
 
+#include <utility>
+
 namespace PodStack {
 namespace {
 
@@ -194,23 +196,27 @@ Backend::Backend(QObject *parent) : QObject(parent)
     connect(&m_helloWatcher, &QFutureWatcher<QJsonObject>::finished, this,
             &Backend::onHelloFinished);
     connect(&m_containers, &ContainerController::connectionChanged, this,
-            [this](bool connected, const QString &error) {
-                if (connected) {
-                    if (m_connected && m_error.isEmpty()) {
-                        return;
-                    }
-                    m_connected = true;
-                    m_error.clear();
-                    emit stateChanged();
-                    refreshDaemonInfo();
+            [this](bool connected, const QString &error, const QString &errorCode) {
+                // `connected` é o engine Podman; `daemonReachable` separa uma
+                // falha do podstackd (socket de controle) de um Podman parado.
+                const bool daemonFault =
+                    !connected && (errorCode == QStringLiteral("PODSTACK_DAEMON_UNAVAILABLE") ||
+                                   errorCode == QStringLiteral("PODSTACK_TIMEOUT") ||
+                                   errorCode == QStringLiteral("PODSTACK_INVALID_RESPONSE") ||
+                                   errorCode == QStringLiteral("PODSTACK_IO_ERROR"));
+                const bool daemonReachable = connected || !daemonFault;
+                if (m_connected == connected && m_error == error &&
+                    m_daemonReachable == daemonReachable) {
                     return;
                 }
-                if (!m_connected && m_error == error) {
-                    return;
-                }
-                m_connected = false;
+                const bool becameConnected = connected && !m_connected;
+                m_connected = connected;
                 m_error = error;
+                m_daemonReachable = daemonReachable;
                 emit stateChanged();
+                if (becameConnected) {
+                    refreshDaemonInfo();
+                }
             });
     connect(&m_containers, &ContainerController::catalogDirty, this, &Backend::refreshCatalog);
     connect(&m_containers, &ContainerController::itemsChanged, this,
@@ -371,6 +377,7 @@ QString Backend::successText(const QString &method)
 {
     // Sem `containers.*`: os eventos do engine já viram toast (start/stop/die).
     static const QHash<QString, QString> texts{
+        {QStringLiteral("system.engineStart"), QStringLiteral("Engine do Podman iniciado")},
         {QStringLiteral("volumes.create"), QStringLiteral("Volume criado")},
         {QStringLiteral("volumes.remove"), QStringLiteral("Volume removido")},
         {QStringLiteral("volumes.clone"), QStringLiteral("Volume clonado")},
@@ -446,6 +453,11 @@ void Backend::restartDaemonService()
         QtConcurrent::run([] { return static_cast<int>(DaemonBootstrap::restart()); }));
 }
 
+void Backend::startEngine()
+{
+    runAction(QStringLiteral("system.engineStart"), {}, 20000);
+}
+
 void Backend::onServiceActivationFinished()
 {
     m_serviceActivating = false;
@@ -503,7 +515,7 @@ void Backend::onHelloFinished()
         return;
     }
     m_daemonVersion = daemonVersion;
-    m_daemonMismatch = mismatch;
+    m_daemonMismatch = std::move(mismatch);
     emit daemonInfoChanged();
 }
 
@@ -733,7 +745,7 @@ void Backend::onActionFinished()
         if (!remediation.isEmpty()) {
             message += QLatin1Char(' ') + remediation;
         }
-        m_lastError = message;
+        m_lastError = std::move(message);
         emit lastErrorChanged();
         emit actionFinished(false, m_lastError);
     } else {

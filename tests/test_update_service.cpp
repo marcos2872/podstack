@@ -29,6 +29,10 @@ namespace {
 
 using PodStack::UpdateService;
 
+/// Versão de fixture sempre acima da instalada. Fixar "0.1.6" aqui quebrava o
+/// teste a cada bump de versão (a fixture passava a ser "a versão atual").
+const QString kNewerVersion = QStringLiteral("99.0.0");
+
 bool writeExecutable(const QString &path, const QByteArray &body)
 {
     QFile file(path);
@@ -131,7 +135,7 @@ private:
         uid_t uid = 0;
     };
 
-    Fixture makeFixture(const QString &name, const QString &version = QStringLiteral("0.1.6"),
+    Fixture makeFixture(const QString &name, const QString &version = kNewerVersion,
                         bool valid = true);
     QString makeTool(const QString &root, const QString &format, const QString &name,
                      const QString &version, const QString &arch);
@@ -298,7 +302,7 @@ void UpdateServiceTest::stageAndStatus()
     QVERIFY(service.status(fixture.uid, result.value(QStringLiteral("jobId")).toString(), &status,
                            &error));
     QCOMPARE(status.value(QStringLiteral("phase")).toString(), QStringLiteral("staged"));
-    QCOMPARE(status.value(QStringLiteral("version")).toString(), QStringLiteral("0.1.6"));
+    QCOMPARE(status.value(QStringLiteral("version")).toString(), kNewerVersion);
 }
 
 void UpdateServiceTest::stageRejectsSignatureAndHash()

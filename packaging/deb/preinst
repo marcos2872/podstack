@@ -40,7 +40,7 @@ has_procps() {
 
 restore_runtime() {
     for uid in $touched_uids; do
-        systemctl --machine "user@${uid}.service" --user unmask --runtime \
+        systemctl --machine "${uid}@.host" --user unmask --runtime \
             "$SOCKET_UNIT" >/dev/null 2>&1 || true
     done
     systemctl start "$HELPER_UNIT" >/dev/null 2>&1 || true
@@ -77,11 +77,11 @@ stop_logged_users() {
         touched_uids="$touched_uids $uid"
         # A máscara runtime impede o socket activation de recriar o daemon
         # antigo durante o unpack; ela não persiste no boot.
-        systemctl --machine "user@${uid}.service" --user mask --runtime \
+        systemctl --machine "${uid}@.host" --user mask --runtime \
             "$SOCKET_UNIT" >/dev/null 2>&1 || true
-        systemctl --machine "user@${uid}.service" --user stop \
+        systemctl --machine "${uid}@.host" --user stop \
             "$SOCKET_UNIT" "$SERVICE_UNIT" >/dev/null 2>&1 || true
-        if systemctl --machine "user@${uid}.service" --user is-active --quiet \
+        if systemctl --machine "${uid}@.host" --user is-active --quiet \
             "$SERVICE_UNIT" 2>/dev/null; then
             pkill -TERM -u "$uid" -x podstackd >/dev/null 2>&1 || true
         fi
@@ -99,7 +99,7 @@ stop_logged_users() {
         if pgrep -u "$uid" -x podstackd >/dev/null 2>&1; then
             abort_upgrade "o daemon do uid ${uid} não encerrou; abortando o upgrade."
         fi
-        if systemctl --machine "user@${uid}.service" --user is-active --quiet \
+        if systemctl --machine "${uid}@.host" --user is-active --quiet \
             "$SERVICE_UNIT" 2>/dev/null; then
             abort_upgrade "o daemon do uid ${uid} continua ativo; abortando o upgrade."
         fi

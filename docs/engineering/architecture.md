@@ -105,7 +105,7 @@ flowchart LR
 - **`SetupManager`** (daemon) detecta Podman, Docker, QEMU/KVM, `/dev/kvm`, OVMF, virtiofsd, systemd de usuário, SQLite, Caddy e k3s; expõe `setup.status/check/apply/removeDocker/cancel/complete/subscribe/validate`.
 - Ações são **jobs** internos com progresso/log/cancelamento e eventos `setup.delta`/`setup.done`; o job continua se a janela fechar e pode ser retomado por `setup.subscribe`.
 - Ações privilegiadas (pacotes, remoção do Docker) passam pelo **`podstack-helper`** (`dev.podstack.Helper1`, polkit, allowlist); a GUI nunca executa `sudo`/shell. O socket do Podman de usuário é ativado pelo daemon.
-- **`SetupController`** (GUI) expõe `completed/pending/checks/progress/log/mandatoryOk` e os invokables `refreshStatus/check/validate/apply/complete`; **`SetupWindow.qml`** é um overlay modal dentro da `MainWindow` que conduz as 7 etapas e bloqueia o app enquanto `setup.completed=false`. A conclusão é recusada no `SetupController` se os checks obrigatórios não estiverem `ok` (`core/SetupPolicy.h`).
+- **`SetupController`** (GUI) expõe `completed/pending/checks/progress/log/mandatoryOk` e os invokables `refreshStatus/check/validate/apply/complete/skip`; **`SetupWindow.qml`** é um overlay modal dentro da `MainWindow` que conduz as 7 etapas e bloqueia o app enquanto `pending` (não concluído e `showOnboarding=true`). Só Podman, systemd de usuário e SQLite são obrigatórios (`core/SetupPolicy.h`); QEMU/OVMF/virtiofsd são avisos de machines. "Continuar mesmo assim" chama `skip`, que grava `showOnboarding=false` e deixa a Main utilizável com o aviso de configuração pendente.
 - O estado é persistido em `setup.completed`/`completedAt`/`dockerPolicy`/`lastValidation`; `app.showOnboarding=false` registra que o usuário optou por continuar depois.
 - Docker e Podman coexistem; a remoção do Docker é opt-in e não faz parte do fluxo principal.
 
@@ -292,6 +292,13 @@ o `MachineManager::reconcile` os readota pelo cmdline. `KillMode=process` na
 unit é apenas defesa em profundidade para um filho que ainda esteja no cgroup
 do serviço — não move processos de cgroup.
 
+`systemd-run --user --scope` executa o comando no contexto do chamador, então
+QEMU/virtiofsd **herdam o mount namespace do `podstackd`**. Por isso a unit não
+aplica `ProtectHome`/`PrivateTmp`: o daemon precisa gravar `~/.ssh/config`,
+downloads/exportações em caminhos escolhidos pelo usuário e servir qualquer
+diretório compartilhado; restringir `$HOME` ou `/tmp` no serviço tornaria
+shares somente-leitura ou invisíveis dentro do guest.
+
 O `MachineManager` (`src/machines/MachineManager.{h,cpp}`) orquestra o
 provisionamento: valida nome RFC 1123 (1..63, `[a-z0-9-]`), CPUs (1..256),
 memória e disco (≥ 1 GiB), resolve a distro pelo `DistroRegistry` (injetável
@@ -389,14 +396,32 @@ sequenceDiagram
 | Contexto | Thread | Regras |
 |---|---|---|
 | Qt event loop (GUI/daemon) | principal | nunca bloquear > 16 ms |
-| RPC handlers | principal | operações rápidas; jobs em pool |
-| Jobs (pull/build/export/create) | `QThreadPool` | progresso via sinal; cancelável |
-| Streams libcurl | thread por stream (pool) | entrega via fila; backpressure |
+| RPC handlers | `rpcPool` (dedicado) | operações rápidas; cada requisição é um `QtConcurrent::run` no pool |
+| Jobs (pull/build/export/create) | `backgroundPool` | progresso via sinal; cancelável |
+| Streams libcurl | `backgroundPool` (1 thread por stream) | entrega via fila; backpressure |
 | SQLite | thread do job / pool | conexão por thread; WAL |
 | QMP | thread por máquina | comandos serializados; timeout |
 | DNS/proxy | thread dedicada / event loop | non-blocking |
 
-**Backpressure:** cada assinatura tem fila limitada (ex.: 10k linhas ou 1 MB). Ao encher, descarta linhas antigas e envia `logs.dropped {count}`.
+**Dois pools separados (`src/daemon/Pools.h`).** `rpcPool` atende os handlers
+JSON-RPC (4–16 threads, conforme os núcleos). `backgroundPool` atende tudo que
+é longo: streams de events/logs/stats/console, pull/push, builds, jobs de
+machine/k8s e setup. Antes ambos usavam o pool global do Qt, cujo limite é o
+número de núcleos; numa VM de 1–2 vCPU um stream de events (sempre aberto pela
+GUI) esgotava o pool e todo RPC — inclusive `system.hello` — ficava
+enfileirado, fazendo o daemon parecer zumbi. O `backgroundPool` tem no mínimo
+32 threads (8× núcleos, teto 512) e aceita `PODSTACK_BACKGROUND_POOL_SIZE`
+para testes. No shutdown, `podstackd` espera os dois pools (com prazo de 3 s)
+depois de cancelar as subscriptions.
+
+**Readiness:** o `podstackd` chama `listen()` antes de qualquer trabalho
+lento. O ping do Podman (até 30 s) e o start do Caddy (alguns segundos) rodam
+depois que o event loop começa — o ping no `backgroundPool` e o Caddy com 500 ms
+de atraso — para o primeiro `system.hello` não competir com a inicialização.
+`BuildStore::open` e `MachineManager::reconcile` continuam no construtor porque
+são locais, rápidos e precisam preceder qualquer RPC de build/machine.
+
+**Backpressure:** cada assinatura tem fila limitada (ex.: 10k linhas ou 1 MB). Ao encher, descarta linhas antigas e envia `logs.dropped {count}`. Na GUI, cada controller de catálogo coalesce refreshes (uma leitura em voo + flag *pending*) e só emite a chamada seguinte quando a atual responde; a bandeja compara uma assinatura de containers/projects/machines e só reconstrói o menu (e reexporta o DBusMenu) quando algo muda.
 
 **Cancelamento:** `QAtomicInt`/`std::stop_token` verificado em callbacks do libcurl (`CURLOPT_XFERINFOFUNCTION`).
 

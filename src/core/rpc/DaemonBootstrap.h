@@ -56,6 +56,19 @@ Status ensureRunningThrottled(const QString &socketPath = {}, QString *detail = 
 /// Usado por StreamClient, que vive na thread da UI.
 void ensureRunningAsync(const QString &socketPath = {});
 
+/// Resultado da tentativa de ativar o `podman.socket` de usuário.
+enum class EngineStatus {
+    AlreadyRunning, ///< O socket do Podman já existia.
+    Started,        ///< `systemctl --user start podman.socket` criou o socket.
+    Disabled,       ///< `engine.autoStart=false`; nada foi executado.
+    Failed,         ///< Tentou ativar e o socket continuou ausente.
+};
+
+/// Garante o `podman.socket` rootless quando `engine.autoStart` está ligado.
+/// Bloqueante (até ~2 s após o start); use fora da thread da UI.
+EngineStatus ensureEngineRunning(const QString &podmanSocketPath, bool enabled,
+                                 QString *detail = nullptr);
+
 /// Comando exibido ao usuário quando a ativação automática falha.
 QString manualRemedy();
 

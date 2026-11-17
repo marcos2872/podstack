@@ -2,6 +2,8 @@
 #include "daemon/rpc/Internal.h"
 #include "daemon/rpc/handlers/Common.h"
 
+#include "core/system/ContainerTrust.h"
+
 namespace PodStack::DaemonInternal {
 
 QString selectedPodmanSocket()
@@ -100,20 +102,68 @@ void applyCaTrustMount(ContainerCreateSpec &spec)
     if (!QFileInfo::exists(cert)) {
         return;
     }
-    const QString destination =
-        QStringLiteral("/etc/pki/ca-trust/source/anchors/podstack-local-ca.crt");
-    for (const MountMapping &mount : spec.mounts) {
-        if (mount.destination == destination) {
-            return;
+    // Fedora/RHEL e Debian/Ubuntu usam caminhos de âncora diferentes. Monta
+    // nos dois para a imagem enxergar a CA independentemente da distro base;
+    // a imagem ainda precisa rodar update-ca-trust/update-ca-certificates para
+    // regenerar o bundle do sistema (documentado).
+    const QStringList destinations = [&] {
+        QStringList paths;
+        for (const QString &anchor : ContainerTrust::caAnchorPaths()) {
+            paths.append(anchor + QStringLiteral("/podstack-local-ca.crt"));
+        }
+        return paths;
+    }();
+    for (const QString &destination : destinations) {
+        bool present = false;
+        for (const MountMapping &mount : spec.mounts) {
+            if (mount.destination == destination) {
+                present = true;
+                break;
+            }
+        }
+        if (!present) {
+            spec.mounts.append({cert, destination, true});
         }
     }
-    spec.mounts.append({cert, destination, true});
 }
 
 bool isWildcardHostIp(const QString &hostIp)
 {
     return hostIp.isEmpty() || hostIp == QStringLiteral("0.0.0.0") ||
            hostIp == QStringLiteral("::");
+}
+
+PublishedPorts publishedPorts(const QJsonObject &inspect)
+{
+    PublishedPorts result;
+    const QJsonObject bindings = inspect.value(QStringLiteral("HostConfig"))
+                                     .toObject()
+                                     .value(QStringLiteral("PortBindings"))
+                                     .toObject();
+    for (auto it = bindings.constBegin(); it != bindings.constEnd(); ++it) {
+        const QStringList keyParts = it.key().split(QLatin1Char('/'));
+        if (keyParts.size() != 2) {
+            continue;
+        }
+        const QString protocol = keyParts.at(1).trimmed().toLower();
+        if (protocol != QStringLiteral("tcp") && protocol != QStringLiteral("udp")) {
+            result.unsupportedProtocol = true;
+            continue;
+        }
+        for (const QJsonValue &hostValue : it.value().toArray()) {
+            const QJsonObject host = hostValue.toObject();
+            const int hostPort = host.value(QStringLiteral("HostPort")).toString().toInt();
+            if (hostPort <= 0) {
+                continue;
+            }
+            result.any = true;
+            if (!isWildcardHostIp(host.value(QStringLiteral("HostIp")).toString())) {
+                result.wildcardOnly = false;
+            }
+            result.byProtocol[protocol].append(QString::number(hostPort));
+        }
+    }
+    return result;
 }
 
 qint64 consoleTailBytes(const QJsonObject &params)

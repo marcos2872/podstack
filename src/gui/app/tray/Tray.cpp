@@ -11,7 +11,10 @@
 #include <QPainter>
 #include <QPen>
 #include <QPixmap>
+#include <QStringList>
 #include <QSystemTrayIcon>
+
+#include <utility>
 
 namespace PodStack {
 namespace {
@@ -20,6 +23,39 @@ bool configBool(const QString &key, bool fallback)
 {
     const QJsonValue value = Config::load().get(key);
     return value.isBool() ? value.toBool() : fallback;
+}
+
+QString containerSignature(const QVariantList &containers, const QVariantList &projects)
+{
+    QStringList parts;
+    parts.reserve(containers.size() + projects.size());
+    for (const QVariant &value : containers) {
+        const QVariantMap item = value.toMap();
+        parts.append(item.value(QStringLiteral("id")).toString() + QLatin1Char('|') +
+                     item.value(QStringLiteral("name")).toString() + QLatin1Char('|') +
+                     item.value(QStringLiteral("state")).toString() + QLatin1Char('|') +
+                     item.value(QStringLiteral("health")).toString() + QLatin1Char('|') +
+                     item.value(QStringLiteral("project")).toString());
+    }
+    for (const QVariant &value : projects) {
+        const QVariantMap item = value.toMap();
+        parts.append(QStringLiteral("project|") + item.value(QStringLiteral("name")).toString() +
+                     QLatin1Char('|') + item.value(QStringLiteral("workingDir")).toString());
+    }
+    return parts.join(QLatin1Char('\n'));
+}
+
+QString machineSignature(const QVariantList &machines)
+{
+    QStringList parts;
+    parts.reserve(machines.size());
+    for (const QVariant &value : machines) {
+        const QVariantMap item = value.toMap();
+        parts.append(item.value(QStringLiteral("id")).toString() + QLatin1Char('|') +
+                     item.value(QStringLiteral("name")).toString() + QLatin1Char('|') +
+                     item.value(QStringLiteral("state")).toString());
+    }
+    return parts.join(QLatin1Char('\n'));
 }
 
 QIcon makeTrayIcon(const QString &status)
@@ -163,6 +199,12 @@ void TrayController::reloadConfig()
 
 void TrayController::setContainers(const QVariantList &containers)
 {
+    const QString signature = containerSignature(containers, m_composeProjects);
+    if (signature == m_containersSignature) {
+        m_containers = containers;
+        return;
+    }
+    m_containersSignature = signature;
     m_containers = containers;
     rebuildContainersMenu();
     updateStatus();
@@ -170,6 +212,12 @@ void TrayController::setContainers(const QVariantList &containers)
 
 void TrayController::setMachines(const QVariantList &machines)
 {
+    const QString signature = machineSignature(machines);
+    if (signature == m_machinesSignature) {
+        m_machines = machines;
+        return;
+    }
+    m_machinesSignature = signature;
     m_machines = machines;
     rebuildMachinesMenu();
 }
@@ -186,6 +234,11 @@ void TrayController::setKubernetes(bool enabled)
 void TrayController::setComposeProjects(const QVariantList &projects)
 {
     m_composeProjects = projects;
+    const QString signature = containerSignature(m_containers, m_composeProjects);
+    if (signature == m_containersSignature) {
+        return;
+    }
+    m_containersSignature = signature;
     rebuildContainersMenu();
 }
 
@@ -273,7 +326,7 @@ void TrayController::updateStatus()
     m_tray->setToolTip(tooltip);
 
     if (next != m_status) {
-        m_status = next;
+        m_status = std::move(next);
         updateIcon();
         emit statusChanged();
     }

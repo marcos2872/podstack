@@ -29,6 +29,12 @@ public:
 
     Daemon();
 
+    /// Trabalho de inicialização lento (auto-start do podman.socket, ping e
+    /// reconciliação de machines). Chamado depois que o event loop começa, em
+    /// thread de background, para o daemon aceitar/atender RPC imediatamente.
+    /// Idempotente.
+    void startBackground();
+
     /// `connectionId` identifica a conexão que originou a requisição. As
     /// subscriptions criadas durante a chamada ficam associadas a ela e são
     /// canceladas quando o cliente desconecta (evita thread presa no stream do
@@ -59,6 +65,7 @@ private:
     QJsonObject systemDoctor();
     QJsonObject systemReport(const QJsonObject &params, Error *error);
     QJsonObject systemDisk();
+    QJsonObject systemEngineStart(Error *error);
     QJsonObject systemEmulation();
     QJsonObject updatesCheck(const QJsonObject &params, Error *error);
     QJsonObject containersList(const QJsonObject &params, Error *error);
@@ -213,6 +220,7 @@ private:
     int m_nextMachineJob = 1;
     int m_nextK8sJob = 1;
     int m_nextK8sForward = 1;
+    std::atomic_bool m_backgroundStarted{false};
 };
 
 } // namespace PodStack

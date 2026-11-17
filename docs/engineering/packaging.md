@@ -14,7 +14,7 @@
 | `podstack-helper` | helper root, unit system, polkit, módulo SELinux | systemd, polkit, policycoreutils |
 | `podstack-devel` (opcional) | headers/libs para plugins | — |
 
-**Recomenda (não exige):** `qemu-kvm`, `qemu-img`, `cloud-utils` (cloud-localds), `virtiofsd`, `caddy`, `k3s`, `docker-compose` (provider Compose).
+**Recomenda (não exige):** `qemu-kvm`, `qemu-img`, `cloud-utils` (cloud-localds), `virtiofsd`, `caddy`, `k3s`, `podman-compose`/`docker-compose`/`docker-compose-v2` (provider Compose; o daemon detecta o binário standalone e o plugin do CLI fora do PATH).
 
 ---
 
@@ -91,27 +91,31 @@ Requires=podstack.socket
 After=podstack.socket
 
 [Service]
-Type=notify
-ExecStart=/usr/libexec/podstack/podstackd
+Type=simple
+ExecStart=/usr/bin/podstackd
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=20
 KillMode=process
-Environment=QT_LOGGING_RULES=podstack.*=false
 
-# hardening
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=%h/.config/podstack %h/.local/share/podstack %h/.local/state/podstack %h/.cache/podstack %t/podstack
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-SystemCallFilter=@system-service
+# hardening (sem ProtectHome/PrivateTmp — ver nota abaixo)
+ProtectSystem=full
+StateDirectory=podstack
+CacheDirectory=podstack
+ConfigurationDirectory=podstack
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
 LockPersonality=yes
-MemoryDenyWriteExecute=yes
 ```
 
-> Ajustar `ProtectHome`/`ReadWritePaths` para permitir mounts de projetos (ou relaxar para `read-only` + portal).
+> **Sem `ProtectHome` e sem `PrivateTmp`.** O daemon roda como o usuário e
+> precisa gravar `~/.ssh/config` (machines), downloads/exportações no caminho
+> escolhido no diálogo e servir diretórios compartilhados pelo virtiofsd.
+> QEMU/virtiofsd são iniciados em scopes transientes que herdam o mount
+> namespace do serviço, então restringir `$HOME` ou `/tmp` quebraria machines,
+> transferência de arquivos e shares. `ProtectSystem=full` mantém `/usr`,
+> `/boot` e `/etc` somente-leitura sem afetar `/var` (tmp do podman CLI) nem o
+> home. `NoNewPrivileges`/`SystemCallFilter` continuam fora porque impediriam a
+> transição SELinux do `podman` e syscalls usadas por ele.
 
 QEMU e virtiofsd não pertencem ao cgroup do serviço: são iniciados em scopes
 transientes (`systemd-run --user --scope`, units `podstack-machine-<id>.scope`
@@ -125,13 +129,20 @@ processos de cgroup nem substitui o scope.
 # no %post/%posttrans do RPM e no postinst do DEB
 systemctl --global enable podstack.socket
 for uid in $(loginctl list-sessions --no-legend | awk '{print $2}' | sort -u); do
-    systemctl --machine "user@${uid}.service" --user daemon-reload
-    systemctl --machine "user@${uid}.service" --user unmask --runtime podstack.socket
-    systemctl --machine "user@${uid}.service" --user start podstack.socket
+    systemctl --machine "${uid}@.host" --user daemon-reload
+    systemctl --machine "${uid}@.host" --user unmask --runtime podstack.socket
+    systemctl --machine "${uid}@.host" --user start podstack.socket
 done
 ```
 
 O daemon sobe sob demanda na primeira conexão da GUI/CLI.
+
+**Sintaxe do `--machine`:** `--machine UID@.host --user` é a única forma de o root alcançar o
+user bus de outro usuário. O `--machine` aceita apenas `[usuario]@[.host|container]`; a forma
+`user@UID.service` usada até a 0.1.5 era interpretada como nome de container inexistente e saía
+com código 1 **sempre**, o que fazia o `postinst` terminar em erro e deixava o pacote
+meio-configurado (o `start` do socket nunca rodava). O UID numérico é aceito desde o systemd 250
+(`VALID_USER_ALLOW_NUMERIC`), o que cobre o mínimo suportado (Ubuntu 24.04 / Fedora 43).
 
 **Por que o `start` é obrigatório no pacote:** `systemctl --global enable` só cria o symlink em
 `/etc/systemd/user/sockets.target.wants/`. Um user manager **já em execução** não inicia a unit
@@ -141,10 +152,13 @@ roda também no upgrade (o `%pre` para o socket e o `%post`/`%posttrans` religa)
 
 Limites aceitos:
 
-- O `%post` roda como root, sem `XDG_RUNTIME_DIR` do usuário; `systemctl --machine user@UID.service`
+- O `%post` roda como root, sem `XDG_RUNTIME_DIR` do usuário; `systemctl --machine UID@.host --user`
   depende do logind e do user manager vivo. Em container, `--installroot` ou CI sem sessão, o
-  caminho é o próximo login (que ativa pelo `--global enable`). A instalação nunca falha por isso
-  (`|| :`).
+  caminho é o próximo login (que ativa pelo `--global enable`). A instalação nunca falha por isso:
+  `daemon-reload`/`unmask`/`start` são `|| :`, e um `unmask` que não chega ao user bus gera **aviso**,
+  nunca erro do dpkg/dnf. O único motivo de saída não-zero do `postinst`/`%posttrans` é o helper
+  (restart, `is-active` ou `--version` divergente), porque sem ele setup/firewall/CA/update ficam
+  indisponíveis até reinstalar.
 - O pacote nunca escreve em `~/.config/systemd/user` de outro usuário nem usa `su - user -c`
   (menor privilégio).
 - Unit mascarada de propósito pelo usuário continua mascarada: o `start` falha em silêncio.
@@ -179,6 +193,8 @@ Type=dbus
 BusName=dev.podstack.Helper1
 ExecStart=/usr/libexec/podstack/podstack-helper
 User=root
+Restart=on-failure
+RestartSec=2
 PrivateTmp=yes
 ProtectHome=read-only
 ProtectKernelTunables=yes
@@ -187,13 +203,15 @@ ProtectControlGroups=yes
 
 - D-Bus policy (`share/dbus-1/system.d/dev.podstack.Helper1.conf`) permite que apenas
   `root` possua o nome; chamadas de usuários são autorizadas pelo polkit.
-- Ativação sob demanda via `dev.podstack.Helper1`.
+- Serviço habilitado no boot; `Type=dbus` só o considera iniciado quando o nome aparece no
+  barramento. `Restart=on-failure` cobre crash/OOM — sem ele, setup/firewall/CA/DNS/update
+  ficavam indisponíveis até reinstalar ou reiniciar.
 - **Sem** `ProtectSystem=strict`: o helper precisa escrever em `/usr` e `/var` para o gerenciador
   de pacotes. A proteção efetiva é a allowlist fechada de pacotes + polkit + auditoria no journal.
 - **Sem** `NoNewPrivileges=yes`: o `dnf` precisa da transição SELinux de `unconfined_service_t`
   para `rpm_script_t` ao executar scriptlets de RPM; com NNP o kernel nega `nnp_transition` e a
   instalação falha. A allowlist de pacotes continua sendo a fronteira de segurança.
-- O helper nunca recebe `Exec`/shell; cada método monta `dnf`/`apt-get`/`pacman` com argumentos fixos.
+- O helper nunca recebe `Exec`/shell; cada método monta `dnf`/`apt-get`/`pacman` com argumentos fixos. No Debian/Ubuntu o `InstallPackages` roda `apt-get update` antes e usa `DEBIAN_FRONTEND=noninteractive`, para não falhar em imagens com índices vazios nem parar em prompt de debconf.
 - **Update assistido:** `StageUpdate` valida assinatura/chave de release, SHA-256 e identidade do
   pacote e copia para `/run/podstack/update/<jobId>/` (`0700`/`0600`); `InstallUpdate` inicia a
   unidade transiente `podstack-update-<uuid>.service` com
@@ -601,8 +619,9 @@ rpmbuild -ba podstack.spec
   `QSocketNotifier`; ao receber o sinal, salva o `UiState` (geometria/seção/abas) e encerra, para a
   janela reabrir no mesmo lugar.
 - **Health check:** o `%posttrans` valida `systemctl is-active podstack-helper.service` e
-  `podstack-helper --version`, além do `unmask --runtime` por usuário; falha só retorna não-zero
-  quando não consegue restaurar.
+  `podstack-helper --version`; só o helper retorna não-zero. O `unmask --runtime` por usuário emite
+  aviso quando não alcança o user bus, porque derrubar a transação do gerenciador de pacotes por um
+  socket que o cliente reativa sozinho (`DaemonBootstrap`) é pior do que o problema.
 - Feed oficial: `podstack-update.json` anexado à release do GitHub + `podstack-update.json.minisig`
   (Ed25519/minisign). O manifesto assinado contém os canais `stable`/`beta` com versão, notas,
   `releaseUrl` e artefatos (`arch`, `format`, `url`, `sha256`).

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "daemon/Pools.h"
 #include "daemon/rpc/handlers/Common.h"
 
 using namespace PodStack::DaemonInternal;
@@ -10,6 +11,17 @@ QJsonObject Daemon::containerAction(const QString &method, const QJsonObject &pa
     const QString id = requireId(params, error);
     if (id.isEmpty()) {
         return {};
+    }
+
+    // Guarda as portas wildcard antes de remover: o inspect deixa de existir
+    // depois. Só fecha regras de containers que publicavam em 0.0.0.0 (as que
+    // o "Expor na LAN" pode ter aberto).
+    QMap<QString, QStringList> firewallPorts;
+    if (method == QStringLiteral("containers.remove")) {
+        const PublishedPorts published = publishedPorts(m_podman.inspectContainer(id, nullptr));
+        if (!published.unsupportedProtocol && published.any && published.wildcardOnly) {
+            firewallPorts = published.byProtocol;
+        }
     }
 
     bool ok = false;
@@ -43,6 +55,14 @@ QJsonObject Daemon::containerAction(const QString &method, const QJsonObject &pa
 
     if (!ok) {
         return {};
+    }
+
+    if (!firewallPorts.isEmpty() && m_helper.available()) {
+        for (auto it = firewallPorts.constBegin(); it != firewallPorts.constEnd(); ++it) {
+            QString ignored;
+            (void) m_helper.call(QStringLiteral("ClosePorts"),
+                                 QVariantList{QVariant::fromValue(it.value()), it.key()}, &ignored);
+        }
     }
 
     QJsonObject result;
@@ -509,47 +529,16 @@ QJsonObject Daemon::containerExposeLan(const QJsonObject &params, Error *error)
         return {};
     }
 
-    const QJsonObject bindings = json.value(QStringLiteral("HostConfig"))
-                                     .toObject()
-                                     .value(QStringLiteral("PortBindings"))
-                                     .toObject();
-
-    QMap<QString, QStringList> portsByProtocol;
-    QJsonArray portSpecs;
-    bool anyPort = false;
-    bool wildcardOnly = true;
-    for (auto it = bindings.constBegin(); it != bindings.constEnd(); ++it) {
-        const QStringList keyParts = it.key().split(QLatin1Char('/'));
-        if (keyParts.size() != 2) {
-            continue;
+    const PublishedPorts published = publishedPorts(json);
+    if (published.unsupportedProtocol) {
+        if (error) {
+            *error = Error::make(QStringLiteral("PODSTACK_UNSUPPORTED"),
+                                 QStringLiteral("O firewall da LAN só gerencia portas tcp e udp."));
         }
-        const QString protocol = keyParts.at(1).trimmed().toLower();
-        const QJsonArray hosts = it.value().toArray();
-        for (const QJsonValue &hostValue : hosts) {
-            const QJsonObject host = hostValue.toObject();
-            const int hostPort = host.value(QStringLiteral("HostPort")).toString().toInt();
-            if (hostPort <= 0) {
-                continue;
-            }
-            anyPort = true;
-            const QString hostIp = host.value(QStringLiteral("HostIp")).toString();
-            if (!isWildcardHostIp(hostIp)) {
-                wildcardOnly = false;
-            }
-            if (protocol != QStringLiteral("tcp") && protocol != QStringLiteral("udp")) {
-                if (error) {
-                    *error = Error::make(
-                        QStringLiteral("PODSTACK_UNSUPPORTED"),
-                        QStringLiteral("O firewall da LAN só gerencia portas tcp e udp."));
-                }
-                return {};
-            }
-            portsByProtocol[protocol].append(QString::number(hostPort));
-            portSpecs.append(QStringLiteral("%1/%2").arg(hostPort).arg(protocol));
-        }
+        return {};
     }
 
-    if (!anyPort) {
+    if (!published.any) {
         if (error) {
             *error = Error::make(QStringLiteral("PODSTACK_INVALID_PARAMS"),
                                  QStringLiteral("O container não publica portas."), QString(),
@@ -558,7 +547,7 @@ QJsonObject Daemon::containerExposeLan(const QJsonObject &params, Error *error)
         return {};
     }
 
-    if (!wildcardOnly) {
+    if (!published.wildcardOnly) {
         if (error) {
             *error = Error::make(
                 QStringLiteral("PODSTACK_UNSUPPORTED"),
@@ -570,6 +559,13 @@ QJsonObject Daemon::containerExposeLan(const QJsonObject &params, Error *error)
         return {};
     }
 
+    QJsonArray portSpecs;
+    for (auto it = published.byProtocol.constBegin(); it != published.byProtocol.constEnd(); ++it) {
+        for (const QString &port : it.value()) {
+            portSpecs.append(QStringLiteral("%1/%2").arg(port, it.key()));
+        }
+    }
+
     if (!m_helper.available()) {
         if (error) {
             *error = helperRequiredError();
@@ -579,7 +575,7 @@ QJsonObject Daemon::containerExposeLan(const QJsonObject &params, Error *error)
 
     const QString method = expose ? QStringLiteral("OpenPorts") : QStringLiteral("ClosePorts");
     QStringList changedProtocols;
-    for (auto it = portsByProtocol.constBegin(); it != portsByProtocol.constEnd(); ++it) {
+    for (auto it = published.byProtocol.constBegin(); it != published.byProtocol.constEnd(); ++it) {
         QString helperError;
         const bool ok = m_helper.call(
             method, QVariantList{QVariant::fromValue(it.value()), it.key()}, &helperError);
@@ -589,7 +585,7 @@ QJsonObject Daemon::containerExposeLan(const QJsonObject &params, Error *error)
                     QString ignored;
                     (void) m_helper.call(
                         QStringLiteral("ClosePorts"),
-                        QVariantList{QVariant::fromValue(portsByProtocol.value(protocol)),
+                        QVariantList{QVariant::fromValue(published.byProtocol.value(protocol)),
                                      protocol},
                         &ignored);
                 }
@@ -884,7 +880,8 @@ QJsonObject Daemon::subscribeEvents(const Notify &notify, Error *error)
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void) QtConcurrent::run([this, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, subscriptionId, subscription,
+                                                          notify] {
         QByteArray buffer;
         Error streamError;
 
@@ -927,7 +924,8 @@ QJsonObject Daemon::subscribeLogs(const QJsonObject &params, const Notify &notif
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void) QtConcurrent::run([this, id, tail, follow, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, id, tail, follow, subscriptionId,
+                                                          subscription, notify] {
         QByteArray buffer;
         Error streamError;
 
@@ -977,7 +975,8 @@ QJsonObject Daemon::subscribeStats(const QJsonObject &params, const Notify &noti
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void) QtConcurrent::run([this, id, interval, subscriptionId, subscription, notify] {
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, id, interval, subscriptionId,
+                                                          subscription, notify] {
         Error streamError;
         const auto onLine = [&](const QByteArray &line) {
             const QJsonDocument document = QJsonDocument::fromJson(line);
@@ -1015,31 +1014,32 @@ QJsonObject Daemon::subscribeSystemStats(const QJsonObject &params, const Notify
     auto subscription = std::make_shared<Subscription>();
     const QString subscriptionId = createSubscription(subscription);
 
-    (void) QtConcurrent::run([this, interval, subscriptionId, subscription, notify] {
-        StatsCollector collector;
-        while (!subscription->cancel.load()) {
-            Error sampleError;
-            QJsonObject sample = collector.sample(m_podman, &sampleError);
-            if (!sample.isEmpty()) {
-                sample.insert(QStringLiteral("subscriptionId"), subscriptionId);
-                notify(QStringLiteral("system.stats.delta"), sample);
-            } else if (!sampleError.isEmpty()) {
-                QJsonObject payload;
-                payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
-                payload.insert(QStringLiteral("error"), sampleError.toJson());
-                notify(QStringLiteral("system.stats.error"), payload);
-                break;
-            }
-
-            for (int tick = 0; tick < interval * 10; ++tick) {
-                if (subscription->cancel.load()) {
+    (void) QtConcurrent::run(
+        PodStack::backgroundPool(), [this, interval, subscriptionId, subscription, notify] {
+            StatsCollector collector;
+            while (!subscription->cancel.load()) {
+                Error sampleError;
+                QJsonObject sample = collector.sample(m_podman, &sampleError);
+                if (!sample.isEmpty()) {
+                    sample.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                    notify(QStringLiteral("system.stats.delta"), sample);
+                } else if (!sampleError.isEmpty()) {
+                    QJsonObject payload;
+                    payload.insert(QStringLiteral("subscriptionId"), subscriptionId);
+                    payload.insert(QStringLiteral("error"), sampleError.toJson());
+                    notify(QStringLiteral("system.stats.error"), payload);
                     break;
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                for (int tick = 0; tick < interval * 10; ++tick) {
+                    if (subscription->cancel.load()) {
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
             }
-        }
-        removeSubscription(subscriptionId);
-    });
+            removeSubscription(subscriptionId);
+        });
 
     QJsonObject result;
     result.insert(QStringLiteral("subscriptionId"), subscriptionId);

@@ -101,6 +101,10 @@ qt_add_executable(test_logging test_logging.cpp)
 target_link_libraries(test_logging PRIVATE podstack_core Qt6::Test)
 add_test(NAME logging COMMAND test_logging)
 
+qt_add_executable(test_pools test_pools.cpp)
+target_link_libraries(test_pools PRIVATE podstack_core Qt6::Concurrent Qt6::Test)
+add_test(NAME pools COMMAND test_pools)
+
 qt_add_executable(test_daemon_bootstrap test_daemon_bootstrap.cpp)
 target_link_libraries(test_daemon_bootstrap PRIVATE podstack_core Qt6::Test)
 add_test(NAME daemon_bootstrap COMMAND test_daemon_bootstrap)
@@ -134,9 +138,22 @@ add_test(NAME package_scriptlets
 set_tests_properties(package_scriptlets PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_test(NAME package_units
+    COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-units.sh ${CMAKE_SOURCE_DIR})
+set_tests_properties(package_units PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME update_exec
     COMMAND ${CMAKE_SOURCE_DIR}/tests/packaging/test-update-exec.sh
             $<TARGET_FILE:podstack-update-exec>)
+
+# Testes que usam QStandardPaths::setTestModeEnabled compartilham
+# ~/.qttest/config e removem o diretório; sem lock, rodar em paralelo faz um
+# apagar o config.json do outro (flake do autostart em -j4).
+set_tests_properties(
+    autostart core logging machines notifications setup tray
+    PROPERTIES RESOURCE_LOCK podstack_config
+)
 
 qt_add_executable(test_qml qml/main.cpp)
 target_link_libraries(test_qml PRIVATE podstack_qml podstack_qmlplugin

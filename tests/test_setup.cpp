@@ -2,6 +2,7 @@
 #include "core/config/Config.h"
 #include "core/config/Paths.h"
 #include "core/helper/DbusUtils.h"
+#include "daemon/Pools.h"
 #include "daemon/docker/DockerInventory.h"
 #include "daemon/setup/SetupManager.h"
 #include "helper/HelperService.h"
@@ -221,6 +222,7 @@ private slots:
     void setupCompletesOnboarding();
     void helperInstallsPackages();
     void helperRemovesDocker();
+    void helperRemovesDockerOnDebian();
     void setupApplyJobs();
     void setupApplyFailures();
     void setupRejectsUnavailableHelper();
@@ -237,6 +239,7 @@ void SetupTest::cleanupTestCase()
     // Os jobs do SetupManager rodam em QtConcurrent; espere antes de destruir
     // o manager/processo para não deixar uma thread usando o objeto.
     QThreadPool::globalInstance()->waitForDone(20000);
+    PodStack::backgroundPool()->waitForDone(20000);
     QDir(PodStack::Paths::configDir()).removeRecursively();
     QStandardPaths::setTestModeEnabled(false);
 }
@@ -407,8 +410,9 @@ void SetupTest::firewallOpensAndClosesWithFirewalld()
     QVERIFY(error.isEmpty());
     const QStringList opened = readLog(log).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     QCOMPARE(opened, QStringList({QStringLiteral("--add-port=8080/tcp"),
-                                  QStringLiteral("--add-port=8443/tcp")}));
-    QVERIFY(!readLog(log).contains(QStringLiteral("--permanent")));
+                                  QStringLiteral("--permanent --add-port=8080/tcp"),
+                                  QStringLiteral("--add-port=8443/tcp"),
+                                  QStringLiteral("--permanent --add-port=8443/tcp")}));
 
     QFile::remove(log);
     QVERIFY2(PodStack::Firewall::closePorts({QStringLiteral("8080"), QStringLiteral("8443")},
@@ -416,7 +420,9 @@ void SetupTest::firewallOpensAndClosesWithFirewalld()
              qPrintable(error.message));
     const QStringList closed = readLog(log).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     QCOMPARE(closed, QStringList({QStringLiteral("--remove-port=8080/tcp"),
-                                  QStringLiteral("--remove-port=8443/tcp")}));
+                                  QStringLiteral("--permanent --remove-port=8080/tcp"),
+                                  QStringLiteral("--remove-port=8443/tcp"),
+                                  QStringLiteral("--permanent --remove-port=8443/tcp")}));
 }
 
 void SetupTest::firewallUsesUfw()
@@ -508,8 +514,10 @@ void SetupTest::firewallRollsBackPartialOpen()
 
     const QStringList lines = readLog(log).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     QCOMPARE(lines, QStringList({QStringLiteral("--add-port=8080/tcp"),
+                                 QStringLiteral("--permanent --add-port=8080/tcp"),
                                  QStringLiteral("--add-port=8443/tcp"),
-                                 QStringLiteral("--remove-port=8080/tcp")}));
+                                 QStringLiteral("--remove-port=8080/tcp"),
+                                 QStringLiteral("--permanent --remove-port=8080/tcp")}));
 }
 
 void SetupTest::firewallWithoutBackend()
@@ -1015,6 +1023,7 @@ void SetupTest::setupRunsSocketJob()
     QVERIFY(lastPayload.value(QStringLiteral("checks")).toArray().size() >= 9);
     QVERIFY(manager.activeJob().isEmpty());
     QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+    QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
 }
 
 void SetupTest::setupTracksActiveJob()
@@ -1038,6 +1047,13 @@ void SetupTest::setupTracksActiveJob()
     QCOMPARE(manager.activeJob().value(QStringLiteral("jobId")).toString(), jobId);
     QCOMPARE(manager.jobStatus(jobId).value(QStringLiteral("jobId")).toString(), jobId);
 
+    // Um segundo job concorrente é recusado enquanto o primeiro roda.
+    PodStack::Error conflict;
+    const QJsonObject duplicate = manager.apply(
+        QJsonObject{{QStringLiteral("action"), QStringLiteral("enable-socket")}}, {}, &conflict);
+    QVERIFY(duplicate.isEmpty());
+    QCOMPARE(conflict.code, QStringLiteral("PODSTACK_CONFLICT"));
+
     bool subscribed = false;
     const QJsonObject snapshot = manager.jobStatus(jobId);
     manager.subscribe(jobId,
@@ -1055,6 +1071,7 @@ void SetupTest::setupTracksActiveJob()
                 QStringLiteral("failed"),
         20000);
     QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+    QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
 }
 
 void SetupTest::setupCompletesOnboarding()
@@ -1181,6 +1198,49 @@ void SetupTest::helperRemovesDocker()
                 .contains(QStringLiteral("Falha ao remover")));
 }
 
+void SetupTest::helperRemovesDockerOnDebian()
+{
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    const QString aptLog = bin.filePath(QStringLiteral("apt.log"));
+
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("apt-get")),
+                            QStringLiteral("echo \"$*\" >> '%1'\nexit 0").arg(aptLog).toUtf8()));
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("dpkg-query")),
+                            QStringLiteral("echo 'install ok installed'\nexit 0").toUtf8()));
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("systemctl")),
+                            QStringLiteral("exit 0").toUtf8()));
+
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", bin.path().toUtf8());
+    const auto restore = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+
+    AuthorizedHelper helper;
+    QVariantMap reply = helper.RemovePackages({QStringLiteral("docker.io")});
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("message"))
+                .toString()
+                .contains(QStringLiteral("Pacotes removidos")));
+    QVERIFY(readLog(aptLog).contains(QStringLiteral("remove -y docker.io")));
+
+    // Pacote ausente (dpkg-query sai 1) continua sendo operação idempotente.
+    QVERIFY(writeExecutable(bin.filePath(QStringLiteral("dpkg-query")),
+                            QStringLiteral("exit 1").toUtf8()));
+    reply = helper.RemovePackages({QStringLiteral("docker.io")});
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("message"))
+                .toString()
+                .contains(QStringLiteral("Nenhum pacote")));
+
+    // Ferramenta de consulta ausente é erro explícito, nunca "nada instalado".
+    QFile::remove(bin.filePath(QStringLiteral("dpkg-query")));
+    reply = helper.RemovePackages({QStringLiteral("docker.io")});
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(reply.value(QStringLiteral("message"))
+                .toString()
+                .contains(QStringLiteral("não encontrada")));
+}
+
 void SetupTest::setupApplyJobs()
 {
     QTemporaryDir bin;
@@ -1210,6 +1270,7 @@ void SetupTest::setupApplyJobs()
         QVERIFY(!started.value(QStringLiteral("jobId")).toString().isEmpty());
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         const QString state = manager.jobStatus(started.value(QStringLiteral("jobId")).toString())
                                   .value(QStringLiteral("state"))
                                   .toString();
@@ -1233,6 +1294,7 @@ void SetupTest::setupApplyJobs()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         const QJsonObject status =
             manager.jobStatus(started.value(QStringLiteral("jobId")).toString());
         QCOMPARE(status.value(QStringLiteral("state")).toString(), QStringLiteral("failed"));
@@ -1262,6 +1324,7 @@ void SetupTest::setupApplyJobs()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QVERIFY(manager.calls.contains(QStringLiteral("InstallPackages:caddy")));
     }
 
@@ -1280,6 +1343,7 @@ void SetupTest::setupApplyJobs()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         const QString state = manager.jobStatus(started.value(QStringLiteral("jobId")).toString())
                                   .value(QStringLiteral("state"))
                                   .toString();
@@ -1318,6 +1382,7 @@ void SetupTest::setupApplyFailures()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QCOMPARE(manager.jobStatus(started.value(QStringLiteral("jobId")).toString())
                      .value(QStringLiteral("state"))
                      .toString(),
@@ -1339,6 +1404,7 @@ void SetupTest::setupApplyFailures()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QVERIFY(manager.calls.contains(QStringLiteral("InstallPackages:podman")));
     }
 
@@ -1358,13 +1424,13 @@ void SetupTest::setupApplyFailures()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QVERIFY(manager.calls.isEmpty());
     }
 
     {
-        // Instalação termina, mas o Podman não aparece no PATH.
+        // Instalar QEMU/componentes não depende do Podman nem do socket.
         const QByteArray savedPath = qgetenv("PATH");
-        qputenv("PATH", bin.path().toUtf8() + ":/nonexistent");
         QTemporaryDir noPodman;
         QVERIFY(noPodman.isValid());
         QVERIFY(writeExecutable(noPodman.filePath(QStringLiteral("systemctl")),
@@ -1386,6 +1452,37 @@ void SetupTest::setupApplyFailures()
         QVERIFY2(error.isEmpty(), qPrintable(error.message));
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
+        const QJsonObject status =
+            manager.jobStatus(started.value(QStringLiteral("jobId")).toString());
+        QCOMPARE(status.value(QStringLiteral("state")).toString(), QStringLiteral("success"));
+    }
+
+    {
+        // install-podman sem o binário no PATH falha na validação final.
+        const QByteArray savedPath = qgetenv("PATH");
+        QTemporaryDir noPodman;
+        QVERIFY(noPodman.isValid());
+        QVERIFY(writeExecutable(noPodman.filePath(QStringLiteral("systemctl")),
+                                QByteArrayLiteral("exit 0")));
+        qputenv("PATH", noPodman.path().toUtf8());
+        const auto restoreNoPodman = qScopeGuard([savedPath] { qputenv("PATH", savedPath); });
+
+        FakeSetupManager manager;
+        bool done = false;
+        PodStack::Error error;
+        const QJsonObject started = manager.apply(
+            QJsonObject{{QStringLiteral("action"), QStringLiteral("install-podman")}},
+            [&done](const QString &method, const QJsonObject &) {
+                if (method == QStringLiteral("setup.done")) {
+                    done = true;
+                }
+            },
+            &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error.message));
+        QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         const QJsonObject status =
             manager.jobStatus(started.value(QStringLiteral("jobId")).toString());
         QCOMPARE(status.value(QStringLiteral("state")).toString(), QStringLiteral("failed"));
@@ -1463,6 +1560,7 @@ void SetupTest::qemuPackagesForPackageManagers()
         QVERIFY(!started.value(QStringLiteral("jobId")).toString().isEmpty());
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY(QThreadPool::globalInstance()->waitForDone(20000));
+        QVERIFY(PodStack::backgroundPool()->waitForDone(20000));
         QVERIFY(setup.calls.contains(QStringLiteral("InstallPackages:") +
                                      expected.join(QLatin1Char(','))));
         QFile::remove(bin.filePath(manager));

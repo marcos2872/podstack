@@ -82,6 +82,9 @@ flowchart TB
   de pacotes + polkit + auditoria é a fronteira de segurança.
 - D-Bus system bus, serviço `dev.podstack.Helper1`.
 - Polkit: cada método tem ação `dev.podstack.helper.<method>` com `auth_admin`/`auth_self`.
+  O `CheckAuthorization`, o cliente D-Bus e as ações privilegiadas da GUI usam orçamento de
+  2 min para o prompt de senha, em vez dos 30 s que faziam a GUI reportar falha enquanto o
+  usuário ainda autenticava.
 - Rate limit: 10 req/min por uid para stage/install; 120/min para `GetUpdateStatus` (polling).
 - Auditoria: journal com uid, método, parâmetros (sem segredos) e resultado.
 
@@ -98,8 +101,8 @@ flowchart TB
 | `SetSysctl` | `{key,value}` | Apenas allowlist (`ip_unprivileged_port_start`) |
 | `InstallPackages` | `{packages:[...], reason}` | Instala pacotes **allowlisted** (podman, qemu-kvm, virtiofsd, …) |
 | `RemovePackages` | `{packages:[...], reason}` | Remove pacotes **allowlisted** (ex.: docker-ce) |
-| `OpenPorts` | `{ports:[18080,18443], protocol:"tcp"\|"udp"}` | Abre portas no firewall em modo **runtime** (firewalld/ufw), reversível |
-| `ClosePorts` | `{ports:[...], protocol}` | Remove as regras runtime abertas por `OpenPorts` |
+| `OpenPorts` | `{ports:[18080,18443], protocol:"tcp"\|"udp"}` | Abre portas no firewalld em modo **runtime + permanente** (ufw já persiste), reversível |
+| `ClosePorts` | `{ports:[...], protocol}` | Remove as regras runtime e permanentes abertas por `OpenPorts`; `containers.remove` fecha as portas wildcard do container removido |
 | `StageUpdate` | `{manifest, signature, artifactPath, channel}` | Valida assinatura/chave de release, SHA-256 e identidade do pacote; copia para staging root-owned |
 | `InstallUpdate` | `{jobId}` | Recusa unidade ativa e inicia a unidade transiente com `systemd-run`/`flock` |
 | `GetUpdateStatus` | `{jobId}` | Lê `state.json` do job, escopado ao uid do chamador |
@@ -140,7 +143,7 @@ container em `127.0.0.1`.
 
 - A detecção do setup é **read-only** (`podman --version`, `podman info`, socket, `/dev/kvm`, binários); não altera o sistema.
 - Instalar/atualizar Podman, instalar QEMU/KVM/componentes e remover Docker passam pelo helper allowlisted; **nunca** `sudo`/shell na GUI.
-- Remover o Docker é **opt-in**: exige `confirm: true`, lista containers/imagens/redes/volumes afetados e avisa que não há migração automática. O padrão é coexistência (`dockerPolicy: keep`).
+- Remover o Docker é **opt-in**: exige `confirm: true`, lista containers/imagens/redes/volumes afetados e avisa que não há migração automática. O padrão é coexistência (`dockerPolicy: keep`). A consulta de pacotes instalados é distro-aware (`rpm`, `dpkg-query` ou `pacman`); se a ferramenta não existir, o helper retorna erro em vez de reportar "nada instalado".
 - `DOCKER_HOST` apontando para o socket do Podman é uma configuração do usuário, não uma operação privilegiada; não confundir com remoção.
 - Logs do setup não incluem tokens/senhas; a auditoria registra uid, método, parâmetros allowlisted e resultado.
 
@@ -232,7 +235,7 @@ encerra a janela da instância já em execução.
 - `*.podstack.local` via helper: drop-in gerenciado, reversível, com backup.
 - Não usar mDNS/Avahi por padrão (conflito na LAN e spoofing).
 - HTTPS: CA local com chave protegida; certificados on-the-fly; remoção fácil.
-- Containers recebem a CA apenas se opt-in; documentar implicações.
+- Containers recebem a CA por padrão (opt-out com label `dev.podstack.ca=false`), montada read-only nos dois anchors: `/etc/pki/ca-trust/source/anchors/podstack-local-ca.crt` (Fedora/RHEL) e `/usr/local/share/ca-certificates/podstack-local-ca.crt` (Debian/Ubuntu). A imagem precisa rodar `update-ca-trust`/`update-ca-certificates` para regenerar o bundle; o PodStack não executa comandos no container.
 
 ### 7.1 Modo isolado de machines (T4-14)
 

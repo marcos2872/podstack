@@ -2,6 +2,7 @@
 #include "core/config/Paths.h"
 #include "core/logging/Logging.h"
 #include "daemon/Daemon.h"
+#include "daemon/Pools.h"
 #include "daemon/domains/CaddyProxy.h"
 #include "daemon/domains/DnsServer.h"
 #include "daemon/domains/HttpProxy.h"
@@ -12,6 +13,8 @@
 #include <QCoreApplication>
 #include <QSocketNotifier>
 #include <QThreadPool>
+#include <QTimer>
+#include <QtConcurrent>
 
 #include <csignal>
 #include <memory>
@@ -101,18 +104,6 @@ int main(int argc, char *argv[])
 
     std::unique_ptr<PodStack::CaddyProxy> caddyProxy;
     const int httpsPort = config.get(QStringLiteral("network.httpsPort")).toInt(18443);
-    if (httpProxy && config.get(QStringLiteral("network.https")).toBool(false) && httpsPort >= 1 &&
-        httpsPort <= 65535) {
-        caddyProxy = std::make_unique<PodStack::CaddyProxy>();
-        caddyProxy->setExposeLan(exposeLan);
-        PodStack::Error caddyError;
-        if (!caddyProxy->start(static_cast<quint16>(httpsPort), static_cast<quint16>(httpPort),
-                               &caddyError)) {
-            qCWarning(lcRpc) << "HTTPS de *.localhost/*.podstack.local indisponível:"
-                             << caddyError.message << caddyError.detail;
-            caddyProxy.reset();
-        }
-    }
 
     std::unique_ptr<PodStack::DnsServer> dnsServer;
     if (config.get(QStringLiteral("network.bridge")).toBool(true)) {
@@ -126,6 +117,30 @@ int main(int argc, char *argv[])
     }
 
     qInfo("podstackd %s pronto", PODSTACK_VERSION);
+
+    // O socket já está escutando e os handlers podem rodar antes do ping do
+    // Podman (até 30 s) e do start do Caddy (alguns segundos). Adiar o
+    // trabalho lento evita o falso "daemon indisponível" no primeiro request.
+    QTimer::singleShot(0, &app, [&daemon] {
+        QtConcurrent::run(PodStack::backgroundPool(), [&daemon] { daemon.startBackground(); });
+    });
+    QTimer::singleShot(
+        500, &app, [&httpProxy, &caddyProxy, config, exposeLan, httpPort, httpsPort] {
+            if (!httpProxy || !config.get(QStringLiteral("network.https")).toBool(false) ||
+                httpsPort < 1 || httpsPort > 65535) {
+                return;
+            }
+            caddyProxy = std::make_unique<PodStack::CaddyProxy>();
+            caddyProxy->setExposeLan(exposeLan);
+            PodStack::Error caddyError;
+            if (!caddyProxy->start(static_cast<quint16>(httpsPort), static_cast<quint16>(httpPort),
+                                   &caddyError)) {
+                qCWarning(lcRpc) << "HTTPS de *.localhost/*.podstack.local indisponível:"
+                                 << caddyError.message << caddyError.detail;
+                caddyProxy.reset();
+            }
+        });
+
     // Shutdown determinístico: sem cancelar as subscriptions, um stream
     // infinito do Podman (eventos/logs/stats) mantém o pool vivo e o daemon
     // nunca termina — fica um socket que aceita conexões e não responde.
@@ -138,9 +153,14 @@ int main(int argc, char *argv[])
     // restart de machine em andamento). Espera antes de destruir os objetos,
     // mas com prazo: um worker preso não pode impedir o encerramento.
     // `waitForDone(int)` em vez de `QDeadlineTimer`: o Qt 6.4 do DEB ainda não
-    // tem a sobrecarga com deadline.
-    if (!QThreadPool::globalInstance()->waitForDone(3000)) {
-        qCWarning(lcRpc) << "workers ainda ativos no shutdown; encerrando mesmo assim";
+    // tem a sobrecarga com deadline. Os dois pools são independentes; streams
+    // longos vivem no backgroundPool e handlers curtos no rpcPool.
+    if (!PodStack::rpcPool()->waitForDone(3000)) {
+        qCWarning(lcRpc) << "handlers RPC ainda ativos no shutdown; encerrando mesmo assim";
+    }
+    if (!PodStack::backgroundPool()->waitForDone(3000)) {
+        qCWarning(lcRpc)
+            << "tarefas de background ainda ativas no shutdown; encerrando mesmo assim";
     }
     return exitCode;
 }

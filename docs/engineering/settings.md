@@ -46,7 +46,7 @@ Para `advanced.logLevel`, `PODSTACK_LOG_LEVEL` e `--verbose` são atalhos de dia
 |---|---|---|---|---|
 | `engine.mode` | enum `rootless\|rootful` | `rootless` | sim | Modo de conexão com Podman |
 | `engine.socketPath` | string? | `null` | sim | Override do socket (null = autodetectar) |
-| `engine.autoStart` | bool | `true` | não | Habilita `podman.socket` se necessário (com consentimento) |
+| `engine.autoStart` | bool | `true` | não | Inicia o `podman.socket` rootless ao abrir o app (operação de systemd do usuário, sem helper) |
 | `engine.restartOnConfigChange` | bool | `true` | não | Reinicia engine ao mudar config do Docker |
 
 ### 2.3 Docker/Engine config
@@ -62,7 +62,7 @@ Para `advanced.logLevel`, `PODSTACK_LOG_LEVEL` e `--verbose` são atalhos de dia
 
 | Chave | Tipo | Default | Reinício | Descrição |
 |---|---|---|---|---|
-| `network.https` | bool | `false` | sim | HTTPS automático para domínios |
+| `network.https` | bool | `false` | sim | **Experimental/oculto**: sobe o Caddy em `httpsPort`; o pipeline de domínios (bind 80/443, DNS e CA) depende do RPC planejado em api-rpc §4.9 |
 | `network.proxy` | enum/URL | `auto` | não | `none`, `auto`, `http://`, `https://`, `socks5://`, `socks5h://` |
 | `network.proxyExclude` | string[] | `[]` | não | Hosts/CIDRs fora do proxy |
 | `network.subnet4` | CIDR | `192.168.127.0/24` | sim | Subnet da bridge PodStack |

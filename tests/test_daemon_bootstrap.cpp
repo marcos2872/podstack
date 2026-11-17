@@ -90,9 +90,12 @@ private slots:
     void reportsHungDaemon();
     void restartRecoversHungDaemon();
     void retriesAndReportsFailure();
+    void unmasksRuntimeMaskBeforeRetrying();
+    void restartUnmasksRuntimeMask();
     void skipsWhenUnitIsMissing();
     void skipsWithCustomSocket();
     void throttlesRepeatedAttempts();
+    void startsEngineSocket();
 
 private:
     QString writeScript(const QString &name, const QString &body);
@@ -259,6 +262,52 @@ void DaemonBootstrapTest::reportsHungDaemon()
         QStringLiteral("systemctl --user restart podstack.service")));
 }
 
+void DaemonBootstrapTest::startsEngineSocket()
+{
+    const QString podmanSocket = m_unitDir.path() + QStringLiteral("/podman/podman.sock");
+    QDir().mkpath(QFileInfo(podmanSocket).absolutePath());
+    QFile::remove(podmanSocket);
+    QFile::remove(m_logPath);
+
+    const QString script =
+        writeScript(QStringLiteral("systemctl-engine.sh"),
+                    QStringLiteral("#!/bin/sh\n"
+                                   "echo \"$@\" >> '%1'\n"
+                                   "case \"$*\" in\n"
+                                   "  *\"--user start podman.socket\"*) : > '%2' ;;\n"
+                                   "esac\n"
+                                   "exit 0\n")
+                        .arg(m_logPath, podmanSocket));
+    QVERIFY(!script.isEmpty());
+    qputenv("PODSTACK_SYSTEMCTL", script.toUtf8());
+
+    QString detail;
+    auto status = PodStack::DaemonBootstrap::ensureEngineRunning(podmanSocket, true, &detail);
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::EngineStatus::Started));
+    QVERIFY(QFileInfo::exists(podmanSocket));
+    QCOMPARE(countInvocations(invocations(m_logPath), QStringLiteral("--user start podman.socket")),
+             1);
+
+    status = PodStack::DaemonBootstrap::ensureEngineRunning(podmanSocket, true, &detail);
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::EngineStatus::AlreadyRunning));
+
+    QFile::remove(podmanSocket);
+    status = PodStack::DaemonBootstrap::ensureEngineRunning(podmanSocket, false, &detail);
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::EngineStatus::Disabled));
+
+    const QString failing = writeScript(QStringLiteral("systemctl-engine-fail.sh"),
+                                        QStringLiteral("#!/bin/sh\nexit 1\n"));
+    QVERIFY(!failing.isEmpty());
+    qputenv("PODSTACK_SYSTEMCTL", failing.toUtf8());
+    status = PodStack::DaemonBootstrap::ensureEngineRunning(podmanSocket, true, &detail);
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::EngineStatus::Failed));
+    QVERIFY(!detail.isEmpty());
+}
+
 void DaemonBootstrapTest::restartRecoversHungDaemon()
 {
     QFile::remove(m_socketPath);
@@ -327,6 +376,85 @@ void DaemonBootstrapTest::retriesAndReportsFailure()
     const QStringList lines = invocations(m_logPath);
     QCOMPARE(countInvocations(lines, QStringLiteral("--user start podstack.socket")), 2);
     QCOMPARE(countInvocations(lines, QStringLiteral("--user daemon-reload")), 2);
+}
+
+void DaemonBootstrapTest::unmasksRuntimeMaskBeforeRetrying()
+{
+    // O preinst/%pre do pacote mascara o socket com `--runtime` e o postinst
+    // pode não alcançar o user bus do usuário. A GUI precisa se recuperar
+    // sozinha: `start` falha enquanto a máscara existir.
+    QFile::remove(m_socketPath);
+    QFile::remove(m_logPath);
+    QFile::remove(m_markerPath);
+    writeUnit();
+    const QString maskPath = m_unitDir.path() + QStringLiteral("/mask");
+    const QString script = writeScript(
+        QStringLiteral("systemctl-masked.sh"),
+        QStringLiteral("#!/bin/sh\n"
+                       "echo \"$@\" >> '%1'\n"
+                       "masked='%3'\n"
+                       "case \"$*\" in\n"
+                       "  *\"--user unmask --runtime podstack.socket\"*) rm -f \"$masked\" ;;\n"
+                       "  *\"--user start podstack.socket\"*)\n"
+                       "    if [ -e \"$masked\" ]; then\n"
+                       "      echo 'Unit podstack.socket is masked.' >&2\n"
+                       "      exit 1\n"
+                       "    fi\n"
+                       "    : > '%2' ;;\n"
+                       "esac\n"
+                       "exit 0\n")
+            .arg(m_logPath, m_markerPath, maskPath));
+    QVERIFY(!script.isEmpty());
+    QFile mask(maskPath);
+    QVERIFY(mask.open(QIODevice::WriteOnly));
+    mask.close();
+
+    qputenv("PODSTACK_SYSTEMCTL", script.toUtf8());
+    FakeControlServer listener(m_socketPath, m_markerPath, true, true, false);
+    listener.start();
+
+    const auto status = PodStack::DaemonBootstrap::ensureRunning({});
+
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::Status::Started));
+    const QStringList lines = invocations(m_logPath);
+    QCOMPARE(countInvocations(lines, QStringLiteral("--user unmask --runtime podstack.socket")), 1);
+    // Só a segunda tentativa funciona: a primeira precisa ser bloqueada pela máscara.
+    QCOMPARE(countInvocations(lines, QStringLiteral("--user start podstack.socket")), 2);
+    listener.stop();
+}
+
+void DaemonBootstrapTest::restartUnmasksRuntimeMask()
+{
+    QFile::remove(m_socketPath);
+    QFile::remove(m_logPath);
+    QFile::remove(m_markerPath);
+    writeUnit();
+    const QString script =
+        writeScript(QStringLiteral("systemctl-restart-masked.sh"),
+                    QStringLiteral("#!/bin/sh\n"
+                                   "echo \"$@\" >> '%1'\n"
+                                   "case \"$*\" in\n"
+                                   "  *\"--user restart podstack.service\"*) : > '%2' ;;\n"
+                                   "esac\n"
+                                   "exit 0\n")
+                        .arg(m_logPath, m_markerPath));
+    QVERIFY(!script.isEmpty());
+    qputenv("PODSTACK_SYSTEMCTL", script.toUtf8());
+
+    FakeControlServer listener(m_socketPath, m_markerPath, true, true, false);
+    listener.start();
+
+    QString detail;
+    const auto status = PodStack::DaemonBootstrap::restart({}, &detail);
+
+    QCOMPARE(static_cast<int>(status),
+             static_cast<int>(PodStack::DaemonBootstrap::Status::Started));
+    // O botão do banner precisa conseguir tirar a máscara deixada pelo upgrade.
+    QCOMPARE(countInvocations(invocations(m_logPath),
+                              QStringLiteral("--user unmask --runtime podstack.socket")),
+             1);
+    listener.stop();
 }
 
 void DaemonBootstrapTest::skipsWhenUnitIsMissing()

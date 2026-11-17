@@ -6,6 +6,8 @@
 #include <QJsonValue>
 #include <QString>
 
+#include <mutex>
+
 namespace PodStack {
 
 /// Configuração do daemon/CLI. O schema completo (86 chaves) vive em
@@ -16,6 +18,10 @@ public:
     /// Carrega do disco e aplica migrações de schema (ex.: portas antigas do proxy).
     static Config load();
     bool save(QString *error = nullptr) const;
+
+    /// Serializa load-modify-save entre componentes do daemon (settings, setup,
+    /// dockerPolicy). Recursivo para `save()` poder ser chamado já sob o lock.
+    static std::recursive_mutex &fileMutex();
 
     QJsonValue get(const QString &key) const;
     void set(const QString &key, const QJsonValue &value);

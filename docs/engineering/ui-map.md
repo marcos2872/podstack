@@ -403,8 +403,8 @@ Janela separada, aberta no primeiro uso, por `podstack setup` ou Settings → �
 2. **Diagnóstico**: checks read-only de Docker, Podman, QEMU/KVM, `/dev/kvm`, virtiofsd, systemd de usuário, SQLite, Caddy e k3s.
 3. **Podman**: instalar/atualizar e ativar `podman.socket` rootless; **o Docker não é removido por padrão**. A remoção é uma ação separada, opt-in, com confirmação e aviso de perda.
 4. **QEMU/KVM**: instalar QEMU, OVMF, virtiofsd e libvirt opcional; sem `/dev/kvm`, avisar e permitir TCG.
-5. **Componentes**: socket/rootless/SQLite obrigatórios; Caddy e k3s opcionais (k3s desmarcado).
-6. **Validação**: checklist final; obrigatórios vs. opcionais; permite abrir com avisos.
+5. **Componentes**: apenas Podman, systemd de usuário e SQLite são obrigatórios para abrir o app; QEMU/OVMF/virtiofsd são avisos (necessários só para machines), Caddy e k3s opcionais (k3s desmarcado).
+6. **Validação**: checklist final; obrigatórios vs. avisos; "Continuar mesmo assim" grava `showOnboarding=false` e abre a Main com o aviso de configuração pendente.
 7. **Pronto**: resumo e abertura do app.
 
 - Pode ser pulado; reexecutável em Settings → Setup.

@@ -54,6 +54,7 @@ run_script() {
         FAKE_HELPER_STOP_FAIL="${FAKE_HELPER_STOP_FAIL:-0}" \
         FAKE_HELPER_RESTART_FAIL="${FAKE_HELPER_RESTART_FAIL:-0}" \
         FAKE_HELPER_START_FAIL="${FAKE_HELPER_START_FAIL:-0}" \
+        FAKE_UNMASK_FAIL="${FAKE_UNMASK_FAIL:-0}" \
         "$@" 2>>"$log"
 }
 
@@ -71,7 +72,11 @@ while [ $# -gt 0 ]; do
         --machine)
             machine=1
             shift
-            uid="$(printf '%s' "${1:-}" | sed -n 's/^user@\([0-9][0-9]*\)\.service$/\1/p')"
+            machine_arg="${1:-}"
+            ;;
+        --machine=*)
+            machine=1
+            machine_arg="${1#--machine=}"
             ;;
         --user)
             user_mode=1
@@ -84,6 +89,28 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+# `--machine` real só aceita `[user]@[.host|container]`. A forma antiga
+# `user@UID.service` é lida como nome de container inexistente e falha sempre
+# (foi o que quebrou o postinst da 0.1.5); aqui ela precisa falhar também.
+if [ "$machine" = 1 ]; then
+    case "$machine_arg" in
+        @.host|.host)
+            uid="$(id -u)"
+            ;;
+        *@.host)
+            uid="${machine_arg%@.host}"
+            case "$uid" in
+                ''|*[!0-9]*) uid="$(id -u "$uid" 2>/dev/null || true)" ;;
+            esac
+            ;;
+        *)
+            echo "Failed to connect to system scope bus via machine transport" >&2
+            exit 1
+            ;;
+    esac
+    [ -n "$uid" ] || exit 1
+fi
 
 has() {
     for word in $args; do
@@ -99,6 +126,10 @@ if [ "$user_mode" = 1 ]; then
         exit 0
     fi
     if has unmask; then
+        if [ "${FAKE_UNMASK_FAIL:-0}" = 1 ]; then
+            echo "Failed to connect to system scope bus via machine transport" >&2
+            exit 1
+        fi
         echo unmasked >"$state/uid-$uid-mask"
         exit 0
     fi
@@ -243,8 +274,8 @@ run_nosd() {
 # --- Debian: preinst encerra app/helper ------------------------------------
 reset_state
 run_script "$repo/packaging/deb/preinst" upgrade || fail "preinst upgrade falhou"
-expect_log "systemctl --machine user@1000.service --user mask --runtime podstack.socket"
-expect_log "systemctl --machine user@1001.service --user stop podstack.socket podstack.service"
+expect_log "systemctl --machine 1000@.host --user mask --runtime podstack.socket"
+expect_log "systemctl --machine 1001@.host --user stop podstack.socket podstack.service"
 expect_log "pkill -TERM -u 1000 -x podstack-gui"
 expect_log "pkill -TERM -u 1001 -x podstack-gui"
 expect_log "systemctl stop podstack-helper.service"
@@ -255,7 +286,7 @@ reset_state
 FAKE_GUI_IGNORE_KILL=1 run_script "$repo/packaging/deb/preinst" upgrade && \
     fail "preinst deveria abortar com GUI viva"
 grep -F 'a GUI do uid 1000 não encerrou' "$log" >/dev/null || fail "mensagem de aborto ausente"
-expect_log "systemctl --machine user@1000.service --user unmask --runtime podstack.socket"
+expect_log "systemctl --machine 1000@.host --user unmask --runtime podstack.socket"
 expect_log "systemctl start podstack-helper.service"
 
 # --- Debian: sem systemd usa pkill/pgrep e não toca no runner --------------
@@ -273,11 +304,11 @@ echo inactive >"$state/helper"
 run_script "$repo/packaging/deb/postinst" configure || fail "postinst falhou"
 expect_log "systemctl --global enable podstack.socket"
 expect_log "systemctl restart podstack-helper.service"
-expect_log "systemctl --machine user@1000.service --user unmask --runtime podstack.socket"
-expect_log "systemctl --machine user@1001.service --user unmask --runtime podstack.socket"
+expect_log "systemctl --machine 1000@.host --user unmask --runtime podstack.socket"
+expect_log "systemctl --machine 1001@.host --user unmask --runtime podstack.socket"
 # O socket precisa ficar ativo sem passo manual (issue #65).
-expect_log "systemctl --machine user@1000.service --user start podstack.socket"
-expect_log "systemctl --machine user@1001.service --user start podstack.socket"
+expect_log "systemctl --machine 1000@.host --user start podstack.socket"
+expect_log "systemctl --machine 1001@.host --user start podstack.socket"
 
 # --- Debian: postinst falha alto quando não consegue religar o helper ------
 reset_state
@@ -287,18 +318,40 @@ FAKE_HELPER_RESTART_FAIL=1 run_script "$repo/packaging/deb/postinst" configure &
 expect_log "systemctl start podstack-helper.service"
 grep -F 'falha ao religar o helper' "$log" >/dev/null || fail "remediação do helper ausente"
 
+# --- Debian: unmask inacessível é aviso, não erro do dpkg ------------------
+# Regressão da 0.1.5: `systemctl --machine user@UID.service` falhava sempre e
+# o postinst saía 1, deixando o pacote meio-configurado. O contrato é não
+# falhar a instalação por socket/helper inacessível.
+reset_state
+echo inactive >"$state/helper"
+FAKE_UNMASK_FAIL=1 run_script "$repo/packaging/deb/postinst" configure || \
+    fail "postinst não pode falhar por unmask inacessível"
+grep -F 'não foi possível remover a máscara do socket' "$log" >/dev/null || \
+    fail "aviso do unmask inacessível ausente"
+# O start do socket é o que entrega o app funcionando; deve ser tentado mesmo assim.
+expect_log "systemctl --machine 1000@.host --user start podstack.socket"
+
+# --- Sintaxe de --machine válida em todos os scriptlets -------------------
+# O fake rejeita qualquer coisa que não seja [user]@[.host|container], como o
+# systemctl real. Um --machine inválido derruba o script: se voltar, falha aqui.
+for script in "$repo"/packaging/deb/preinst "$repo"/packaging/deb/postinst \
+    "$repo"/packaging/deb/prerm "$repo"/packaging/deb/postrm; do
+    grep -F -- 'user@${uid}.service' "$script" >/dev/null 2>&1 && \
+        fail "$script ainda usa --machine user@UID.service (inválido)"
+done
+
 # --- Debian: postrm abort-upgrade restaura helper/socket -------------------
 reset_state
 run_script "$repo/packaging/deb/postrm" abort-upgrade || fail "postrm abort-upgrade falhou"
 expect_log "systemctl restart podstack-helper.service"
-expect_log "systemctl --machine user@1000.service --user unmask --runtime podstack.socket"
+expect_log "systemctl --machine 1000@.host --user unmask --runtime podstack.socket"
 # A versão antiga volta a funcionar ao fim do aborto, sem start manual.
-expect_log "systemctl --machine user@1000.service --user start podstack.socket"
+expect_log "systemctl --machine 1000@.host --user start podstack.socket"
 
 # --- Debian: prerm remove encerra o app e desabilita o helper --------------
 reset_state
 run_script "$repo/packaging/deb/prerm" remove || fail "prerm remove falhou"
-expect_log "systemctl --machine user@1000.service --user stop podstack.socket podstack.service"
+expect_log "systemctl --machine 1000@.host --user stop podstack.socket podstack.service"
 expect_log "pkill -TERM -u 1000 -x podstack-gui"
 expect_log "systemctl disable --now podstack-helper.service"
 
@@ -335,24 +388,24 @@ sed -i \
 
 reset_state
 run_script /bin/sh "$pre_script" 2 || fail "%pre do RPM falhou"
-expect_log "systemctl --machine user@1000.service --user mask --runtime podstack.socket"
+expect_log "systemctl --machine 1000@.host --user mask --runtime podstack.socket"
 expect_log "pkill -TERM -u 1000 -x podstack-gui"
 
 reset_state
 echo inactive >"$state/helper"
 run_script /bin/sh "$post_script" 1 || fail "%post do RPM falhou"
 expect_log "systemctl restart podstack-helper.service"
-expect_log "systemctl --machine user@1000.service --user unmask --runtime podstack.socket"
-expect_log "systemctl --machine user@1000.service --user start podstack.socket"
+expect_log "systemctl --machine 1000@.host --user unmask --runtime podstack.socket"
+expect_log "systemctl --machine 1000@.host --user start podstack.socket"
 
 reset_state
 echo inactive >"$state/helper"
 run_script /bin/sh "$posttrans_script" || fail "%posttrans do RPM falhou"
 expect_log "systemctl restart podstack-helper.service"
-expect_log "systemctl --machine user@1001.service --user unmask --runtime podstack.socket"
+expect_log "systemctl --machine 1001@.host --user unmask --runtime podstack.socket"
 expect_log "is-active --quiet podstack-helper.service"
 # Upgrade com o app aberto: o socket parado no %pre volta ativo aqui.
-expect_log "systemctl --machine user@1001.service --user start podstack.socket"
+expect_log "systemctl --machine 1001@.host --user start podstack.socket"
 
 reset_state
 echo inactive >"$state/helper"

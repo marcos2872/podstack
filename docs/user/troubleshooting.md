@@ -1,4 +1,4 @@
-# Troubleshooting — PodStack 0.1.5
+# Troubleshooting — PodStack 0.1.6
 
 Comece pelos diagnósticos que não alteram nada:
 
@@ -94,7 +94,7 @@ podstack status
 ```
 
 Se o Podman estiver instalado mas desatualizado, atualize-o pelo gerenciador de pacotes. O PodStack
-0.1.5 espera Podman 5.8 ou mais novo.
+0.1.6 espera Podman 5.8 ou mais novo.
 
 No modo rootful (`engine.mode=rootful`), o socket é `/run/podman/podman.sock` e o seu usuário precisa
 ter acesso ao grupo correspondente. Rootful é opt-in explícito; a GUI mostra o badge e o aviso. Se o
@@ -119,7 +119,7 @@ pkaction --action-id dev.podstack.helper.install-packages --verbose
 Instale o subpacote e habilite o serviço:
 
 ```bash
-sudo dnf install ./podstack-helper-0.1.5-1.fc44.x86_64.rpm
+sudo dnf install ./podstack-helper-0.1.6-1.fc44.x86_64.rpm
 sudo systemctl enable --now podstack-helper.service
 ```
 
@@ -256,7 +256,7 @@ podman ps -a
 
 Se o container foi criado fora do PodStack, ele deve aparecer na reconciliação. Se a imagem não
 existir localmente, o create falha: faça o pull antes (**Images → Pull** ou
-`podstack images pull <imagem>`). O CLI 0.1.5 não cria containers; use a GUI.
+`podstack images pull <imagem>`). O CLI 0.1.6 não cria containers; use a GUI.
 
 ### Compose não sobe
 
@@ -318,16 +318,18 @@ customizados são preservados.
 Exemplos de firewall (use o que existir no seu sistema):
 
 ```bash
-# firewalld (regra runtime; um reload/restart a remove)
+# firewalld (runtime + permanente; sobrevive a reload/restart)
 sudo firewall-cmd --add-port=18080/tcp
+sudo firewall-cmd --permanent --add-port=18080/tcp
 sudo firewall-cmd --add-port=18443/tcp
+sudo firewall-cmd --permanent --add-port=18443/tcp
 
 # ufw
 sudo ufw allow 18080/tcp
 sudo ufw allow 18443/tcp
 ```
 
-As portas 80/443 não são ativadas automaticamente pela GUI/CLI em 0.1.5. O helper tem a API de
+As portas 80/443 não são ativadas automaticamente pela GUI/CLI em 0.1.6. O helper tem a API de
 `BindPorts`, mas a fiação do app ainda não a chama; use 18080/18443. Se `network.bridge=false`, o proxy
 HTTP e o DNS ficam desligados.
 
@@ -412,7 +414,7 @@ curl -I http://web.localhost:18080/
 ```
 
 `*.podstack.local` usa o DNS userspace do PodStack em `127.0.0.1:5353` e um drop-in do
-`systemd-resolved`. Em 0.1.5 a instalação desse drop-in ainda não está ligada à GUI/CLI; sem ele, o
+`systemd-resolved`. Em 0.1.6 a instalação desse drop-in ainda não está ligada à GUI/CLI; sem ele, o
 nome não resolve. Verifique se o DNS está escutando:
 
 ```bash
@@ -562,7 +564,7 @@ defaults.
 
 ## Limitações relacionadas
 
-As limitações completas do 0.1.5 estão em [`README.md`](README.md#limitações-conhecidas-do-015).
+As limitações completas do 0.1.6 estão em [`README.md`](README.md#limitações-conhecidas-do-016).
 As mais relevantes para diagnóstico são: console serial sem VNC, export/clone sem snapshots
 internos, portas não publicadas não suportadas em rootless (T6-10), T5-07/T5-08 parciais, Flatpak
 como cliente de um daemon/helper no host e ausência de fiação automática para CA/`*.podstack.local`

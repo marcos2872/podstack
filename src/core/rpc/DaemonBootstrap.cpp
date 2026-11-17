@@ -231,6 +231,18 @@ Status ensureRunning(const QString &socketPath, QString *detail)
             lastFailure = start.error;
             qCWarning(lcRpc) << "systemctl --user start podstack.socket falhou (exit"
                              << start.exitCode << "):" << start.error;
+            // O preinst/pre do pacote mascara o socket com `--runtime` durante o
+            // upgrade. Se o postinst não conseguiu desmascarar (user manager
+            // fora do alcance do root), o app fica sem socket até alguém rodar
+            // o unmask. `--runtime` não toca na máscara persistente que o
+            // usuário tenha criado, então é seguro tentar de dentro da sessão.
+            const CommandResult unmask =
+                runSystemctl({QStringLiteral("--user"), QStringLiteral("unmask"),
+                              QStringLiteral("--runtime"), QStringLiteral("podstack.socket")});
+            if (!unmask.ok) {
+                qCWarning(lcRpc) << "systemctl --user unmask --runtime podstack.socket falhou:"
+                                 << unmask.error;
+            }
             continue;
         }
         if (waitForResponsive(path, 2000)) {
@@ -262,6 +274,15 @@ Status restart(const QString &socketPath, QString *detail)
         runSystemctl({QStringLiteral("--user"), QStringLiteral("daemon-reload")});
     if (!reload.ok) {
         qCWarning(lcRpc) << "systemctl --user daemon-reload falhou:" << reload.error;
+    }
+    // Botão "Reiniciar daemon": a unit pode continuar mascarada com --runtime
+    // desde o upgrade. Sem isso o restart falha e o banner não tem remediação.
+    const CommandResult unmask =
+        runSystemctl({QStringLiteral("--user"), QStringLiteral("unmask"),
+                      QStringLiteral("--runtime"), QStringLiteral("podstack.socket")});
+    if (!unmask.ok) {
+        qCWarning(lcRpc) << "systemctl --user unmask --runtime podstack.socket falhou:"
+                         << unmask.error;
     }
 
     // Timeout maior: o stop de um daemon travado pode esperar o TimeoutStopSec
@@ -328,6 +349,54 @@ void ensureRunningAsync(const QString &socketPath)
         QMutexLocker locker(&g_throttleMutex);
         g_asyncRunning = false;
     }));
+}
+
+EngineStatus ensureEngineRunning(const QString &podmanSocketPath, bool enabled, QString *detail)
+{
+    if (detail) {
+        detail->clear();
+    }
+    if (podmanSocketPath.isEmpty()) {
+        if (detail) {
+            *detail = QStringLiteral("caminho do socket do Podman vazio");
+        }
+        return EngineStatus::Failed;
+    }
+    if (QFileInfo::exists(podmanSocketPath)) {
+        return EngineStatus::AlreadyRunning;
+    }
+    if (!enabled) {
+        if (detail) {
+            *detail = QStringLiteral("engine.autoStart desativado");
+        }
+        return EngineStatus::Disabled;
+    }
+
+    const CommandResult start = runSystemctl(
+        {QStringLiteral("--user"), QStringLiteral("start"), QStringLiteral("podman.socket")});
+    if (!start.ok) {
+        if (detail) {
+            *detail = start.error;
+        }
+        qCWarning(lcRpc) << "systemctl --user start podman.socket falhou:" << start.error;
+        return EngineStatus::Failed;
+    }
+
+    // O systemd cria o socket de forma assíncrona; espera curta para o ping do
+    // Podman não falhar logo após o start.
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 2000) {
+        if (QFileInfo::exists(podmanSocketPath)) {
+            return EngineStatus::Started;
+        }
+        QThread::msleep(50);
+    }
+    if (detail) {
+        *detail = QStringLiteral("podman.socket iniciado, mas o socket não apareceu");
+    }
+    qCWarning(lcRpc) << "podman.socket iniciado, mas" << podmanSocketPath << "não apareceu";
+    return EngineStatus::Failed;
 }
 
 QString manualRemedy()
