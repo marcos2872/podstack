@@ -23,7 +23,7 @@ documentação, e o resultado é commitado em `web/`.
 web/
 ├── _data/
 │   ├── nav.json          # árvore: grupos, páginas, ícones, ordem e estados
-│   └── site.json         # versão, URL do GitHub, licença, landing e entrada de docs
+│   └── site.json         # versão, URL do GitHub, URL pública, licença, landing e docs
 ├── index.html            # landing page (escrita à mão, fora do gerador)
 ├── docs.html             # visão geral e entrada da documentação (gerado)
 ├── install.html          # instalação (gerado)
@@ -32,14 +32,17 @@ web/
 ├── compose.html          # + builds (gerados)
 ├── machines.html         # + kubernetes, domains (gerados)
 ├── settings.html         # + cli, troubleshooting (gerados)
+├── sitemap.xml           # gerado: landing + páginas publicadas
 └── assets/
     ├── style.css         # tokens de tema (claro/escuro) e componentes
     ├── landing.css       # layout da landing page
     ├── landing.js        # resolve a última release (RPM/DEB) no GitHub
-    ├── docs-next.css     # shell de 3 colunas, sidebar, TOC e onboarding
+    ├── docs-next.css     # shell de 3 colunas, sidebar, TOC, permalinks e onboarding
     ├── app.js            # tema, busca, copiar código
-    ├── docs-next.js      # drawer, accordion e scrollspy
+    ├── docs-next.js      # drawer com foco preso, accordion, permalinks e scrollspy
     ├── search-index.js   # gerado a partir de nav.json + headings
+    ├── favicon-32.png    # fallback PNG do favicon SVG
+    ├── apple-touch-icon.png
     ├── img/setup/        # 7 capturas WebP do SetupWindow
     ├── img/app/          # capturas da GUI usadas na landing (containers, machines, compose, images)
     └── podstack-capsule.svg
@@ -56,6 +59,7 @@ Regras que o site já cumpre e que **não devem ser quebradas**:
 | HTML gerado e commitado | O Pages publica `web/` estático; `scripts/web_build.py` roda local/CI e `--check` impede divergência. Sem `node_modules`, sem CDN, sem fontes remotas. |
 | A landing **não** é gerada | `site.json` marca `landing: index.html`; ela fica fora de `nav.json`, então o gerador não injeta topbar/sidebar/TOC (e `--pages index.html` imprime `skip`). Links e âncoras dela continuam validados por `validate_site`. |
 | `nav.json` é a fonte da árvore | Sidebar, pager e índice de busca saem do mesmo arquivo; não edite a navegação à mão nas 16 páginas. |
+| Head/SEO é gerado | `canonical`, Open Graph/Twitter, `theme-color`, ícones e `sitemap.xml` saem de `site.json.url` + páginas; o bloco `dx:meta` das docs não deve ser editado à mão. |
 | Sem backend | Não há `<form>` nem endpoint próprio. O único `fetch` do site é o de `assets/landing.js`, que lê a release pública no GitHub para apontar os botões de download. |
 
 ### 1.1 Landing page e downloads
@@ -81,6 +85,33 @@ Detalhes do download:
 - Os comandos de instalação usam continuação de linha (`\`) para caber na coluna do card sem
   rolagem horizontal; o texto copiado continua sendo um comando de shell válido.
 
+### 1.2 Metadados, social e sitemap
+
+| Item | Onde | Regra |
+|---|---|---|
+| `canonical` | landing (manual) + docs (gerado) | Sempre absoluto, a partir de `site.json.url`; a landing usa a raiz. |
+| Open Graph/Twitter | landing + docs | `og:image`/`twitter:image` absolutos (consumidores não resolvem caminho relativo), `og:url`/`og:title`/`og:description` por página, `og:locale=pt_BR`. |
+| `theme-color` | landing + docs | Dois valores com `media`: `#f7f8fb` (claro) e `#0b0d12` (escuro), espelhando `--bg` de `style.css`. |
+| Ícones | landing + docs | SVG da cápsula + `favicon-32.png` (fallback) + `apple-touch-icon.png` (256 px). |
+| JSON-LD | landing | `SoftwareApplication` com categoria, OS, licença, oferta gratuita, screenshot e `sameAs` do GitHub. |
+| `sitemap.xml` | gerado | Landing + todas as páginas publicadas; `scripts/web_build.py --check` falha se estiver desatualizado. |
+
+O bloco `<!-- dx:meta:start --> … <!-- dx:meta:end -->` é propriedade do gerador; edite o
+gerador (não o HTML) para mudar metadados das docs.
+
+### 1.3 Interações e acessibilidade
+
+- **Drawer mobile (docs):** `Escape` fecha, `aria-expanded` acompanha o estado, o `<main>`
+  recebe `inert` enquanto o menu está aberto, o foco fica preso entre o toggle e a sidebar
+  (`Tab`/`Shift+Tab` dão a volta) e volta ao toggle ao fechar por overlay/`Escape`.
+- **Permalinks:** todo `h2`/`h3` com `id` ganha um `#` acessível que aparece no hover/foco;
+  o `#` é removido dos resultados da busca local.
+- **Busca:** `/` e `Ctrl/Cmd+K` focam o campo; setas percorrem os resultados, `Enter` abre,
+  `Escape` fecha. O `kbd` do topbar mostra `/`.
+- **Copiar código:** todo `pre` vira um bloco com botão; falha de clipboard cai no
+  `execCommand` e o estado "Copiado!" é temporário.
+- **Sem animação agressiva:** `prefers-reduced-motion` desliga transições; cores e foco usam
+  os tokens de `style.css`/`docs-next.css`; links e botões têm `:focus-visible`.
 
 ---
 
@@ -194,11 +225,18 @@ python3 -m http.server -d web 8080
 
 Checklist antes de publicar:
 
-- [ ] Rodar `python3 scripts/web_build.py --check` (HTML e `search-index.js` em dia).
+- [ ] Rodar `python3 scripts/web_build.py --check` (HTML, `search-index.js` e `sitemap.xml` em dia).
+- [ ] Conferir em `web/docs.html` que `canonical`, `og:url`, `og:image` e `twitter:image` são absolutos
+      e que `theme-color` tem as variantes clara/escura.
 - [ ] Abrir a landing e conferir que os botões de RPM/DEB apontam para o asset da última release;
       simular a falha da API (bloqueio de rede no DevTools) e confirmar o fallback para `/releases/latest`.
 - [ ] Abrir todas as páginas de docs pelo menu e conferir navegação/âncoras.
 - [ ] Testar a busca (`app.js`) em pelo menos duas páginas; buscar `Instalação` e `Onboarding` e conferir as subseções.
+      Testar `/` e `Ctrl/Cmd+K`, setas, `Enter` e `Escape`.
+- [ ] Em viewport ≤ 1023 px, abrir o drawer: `Tab`/`Shift+Tab` devem circular só entre toggle/sidebar,
+      o conteúdo atrás deve ficar inerte, `Escape`/overlay fecham e devolvem o foco ao toggle.
+- [ ] Passar o mouse e o teclado por um `h2`/`h3`: o permalink `#` aparece no hover/foco e copia a âncora.
+- [ ] Conferir que `web/sitemap.xml` lista a landing e todas as 16 páginas com URL absoluta.
 - [ ] Conferir as 7 capturas em `web/assets/img/setup/`, as da landing em `web/assets/img/app/` e o link de abrir em tamanho real.
 - [ ] Conferir tema claro/escuro e layout em 1280 px e 390 px de largura.
 - [ ] Verificar que nenhum link relativo ficou quebrado:

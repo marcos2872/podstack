@@ -52,6 +52,13 @@ body.landing h3 code {
   font-size: 0.9em;
 }
 
+/* Evita viúvas/palavras soltas em títulos longos; fallback inofensivo. */
+body.landing h1,
+body.landing h2,
+body.landing h3 {
+  text-wrap: balance;
+}
+
 .lp-wrap {
   width: 100%;
   max-width: var(--lp-wrap);

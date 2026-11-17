@@ -653,6 +653,12 @@ body.docs-next .dx-page h2:first-of-type {
   margin-top: 36px;
 }
 
+body.docs-next .dx-page h1,
+body.docs-next .dx-page h2,
+body.docs-next .dx-page h3 {
+  text-wrap: balance;
+}
+
 body.docs-next .dx-page h3 {
   margin: 28px 0 8px;
   font-size: 17px;
@@ -660,6 +666,27 @@ body.docs-next .dx-page h3 {
   letter-spacing: -0.01em;
   line-height: 1.4;
   scroll-margin-top: 84px;
+}
+
+/* Permalink dos headings: aparece no hover/foco para copiar a âncora. */
+body.docs-next .heading-anchor {
+  margin-left: 0.35em;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+body.docs-next .dx-page h2:hover .heading-anchor,
+body.docs-next .dx-page h3:hover .heading-anchor,
+body.docs-next .heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+body.docs-next .heading-anchor:hover {
+  color: var(--accent);
+  text-decoration: none;
 }
 
 body.docs-next .dx-page p,
@@ -841,6 +868,15 @@ body.docs-next .shot figcaption {
 
   body.docs-next .dx-brand-name {
     display: none;
+  }
+
+  /* Libera espaço para a busca no topbar estreito; o GitHub continua no rodapé. */
+  body.docs-next .dx-github-link {
+    display: none;
+  }
+
+  body.docs-next .dx-topbar-actions {
+    gap: 4px;
   }
 
   body.docs-next .dx-search input {

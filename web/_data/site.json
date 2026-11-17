@@ -1,6 +1,7 @@
 {
   "title": "PodStack Docs",
   "version": "0.1.5",
+  "url": "https://marcos2872.github.io/podstack/",
   "github": "https://github.com/marcos2872/podstack",
   "license": "GPL-3.0-or-later",
   "landing": "index.html",

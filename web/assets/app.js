@@ -133,7 +133,8 @@
   function localHeadings(query) {
     const items = [];
     document.querySelectorAll(".page h2[id], .page h3[id]").forEach((heading) => {
-      const text = heading.textContent.replace(/\s+/g, " ").trim();
+      // O docs-next.js injeta um permalink "#" no heading; remove-o da busca.
+      const text = heading.textContent.replace(/\s*#\s*$/, "").replace(/\s+/g, " ").trim();
       if (normalize(text).includes(query)) {
         items.push({
           title: text,
@@ -357,6 +358,11 @@
       if (event.key === "/" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault();
         searchInput.focus();
+      } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        // Atalho comum de busca; funciona de qualquer lugar da página.
+        event.preventDefault();
+        searchInput.focus();
+        searchInput.select();
       }
     });
   }
