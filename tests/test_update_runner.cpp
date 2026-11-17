@@ -22,6 +22,18 @@
 
 namespace {
 
+/// Versão de fixture sempre acima da instalada (ver test_update_service.cpp).
+const QString kNewerVersion = QStringLiteral("99.0.0");
+
+/// Estado persistido pelo helper com o job já em fase de instalação.
+QByteArray installingState()
+{
+    const QString pattern = QStringLiteral(
+        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake",)"
+        R"("unit":"podstack-update-fake.service","version":"%1","channel":"stable"})");
+    return pattern.arg(kNewerVersion).toUtf8();
+}
+
 class FakeUpdateHelper : public PodStack::UpdateHelper {
 public:
     bool call(const QString &method, const QVariantList &arguments, QVariantMap *reply,
@@ -206,7 +218,7 @@ private:
         PodStack::UpdateRunnerOptions options;
     };
 
-    std::unique_ptr<Fixture> makeFixture(const QString &version = QStringLiteral("0.1.6"));
+    std::unique_ptr<Fixture> makeFixture(const QString &version = kNewerVersion);
 };
 
 void UpdateRunnerTest::initTestCase()
@@ -271,7 +283,7 @@ void UpdateRunnerTest::prepareDownloadsAndVerifies()
     PodStack::Error error;
     QVERIFY2(runner.prepare(&error),
              qPrintable(error.message + QStringLiteral(" ") + error.detail));
-    QCOMPARE(runner.version(), QStringLiteral("0.1.6"));
+    QCOMPARE(runner.version(), kNewerVersion);
     QCOMPARE(runner.channel(), QStringLiteral("stable"));
     QVERIFY(!runner.statePath().isEmpty());
     QVERIFY(QFileInfo::exists(runner.artifactPath()));
@@ -499,7 +511,7 @@ void UpdateRunnerTest::prepareRejectsArtifactHash()
 {
     auto fixture = makeFixture();
     QVERIFY(fixture != nullptr);
-    fixture->server.setResponse(QStringLiteral("/podstack-") + QStringLiteral("0.1.6.") +
+    fixture->server.setResponse(QStringLiteral("/podstack-") + kNewerVersion + QStringLiteral(".") +
                                     hostArch() + QStringLiteral(".") + hostFormat(),
                                 200, QByteArrayLiteral("conteúdo divergente"));
     FakeUpdateHelper helper;
@@ -828,8 +840,7 @@ void UpdateRunnerTest::resumeFailedRestartsServices()
     QDir().mkpath(fixture->options.stateDir);
     QFile state(fixture->options.stateDir + QStringLiteral("/state.json"));
     QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    state.write(QByteArrayLiteral(
-        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.6","channel":"stable"})"));
+    state.write(installingState());
     state.close();
     FakeUpdateHelper helper;
     helper.failed = true;
@@ -900,8 +911,7 @@ void UpdateRunnerTest::resumeRestartFails()
     QDir().mkpath(fixture->options.stateDir);
     QFile state(fixture->options.stateDir + QStringLiteral("/state.json"));
     QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    state.write(QByteArrayLiteral(
-        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.6","channel":"stable"})"));
+    state.write(installingState());
     state.close();
     FakeUpdateHelper helper;
     PodStack::UpdateRunner runner(&helper, fixture->options);
@@ -929,8 +939,7 @@ void UpdateRunnerTest::resumeInstallingJob()
     QDir().mkpath(fixture->options.stateDir);
     QFile state(fixture->options.stateDir + QStringLiteral("/state.json"));
     QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    state.write(QByteArrayLiteral(
-        R"({"phase":"installing","jobId":"update-fake","stateDir":"/tmp/fake","unit":"podstack-update-fake.service","version":"0.1.6","channel":"stable"})"));
+    state.write(installingState());
     state.close();
 
     FakeUpdateHelper helper;
@@ -1051,7 +1060,7 @@ void UpdateRunnerTest::prepareFromManifestCache()
 
     PodStack::UpdateRunner cached(&helper, fixture->options);
     QVERIFY2(cached.prepareFromManifest(manifestPath, &error), qPrintable(error.message));
-    QCOMPARE(cached.version(), QStringLiteral("0.1.6"));
+    QCOMPARE(cached.version(), kNewerVersion);
 }
 
 QTEST_GUILESS_MAIN(UpdateRunnerTest)
