@@ -5,7 +5,36 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
-## [Não lançado]
+## [0.1.6] - 2026-11-18
+
+### Corrigido
+
+- **Instalação do DEB falhava no `postinst` (0.1.5):** todos os scriptlets usavam
+  `systemctl --machine user@UID.service --user`, sintaxe que o systemd não aceita — `--machine`
+  só entende `[usuário]@[.host|container]`, então o comando saía com código 1 sempre. O
+  `postinst` interpretava isso como máscara persistente e terminava em erro, deixando o pacote
+  meio-configurado e **sem iniciar o `podstack.socket`** (a GUI abria com "podstackd
+  desconectado"). Agora os scriptlets do DEB e do RPM usam `--machine UID@.host`, e um `unmask`
+  inacessível vira aviso em vez de erro do gerenciador de pacotes — só o helper pode derrubar a
+  transação.
+- **Teste de scriptlets aceitava a sintaxe inválida:** o `systemctl` falso do teste parseava
+  `user@UID.service`, por isso o CI ficou verde com o bug. O fake agora rejeita qualquer
+  `--machine` fora do formato real, e há caso de regressão para o `unmask` inacessível.
+- **Recuperação da máscara runtime no cliente:** se o upgrade deixar o `podstack.socket`
+  mascarado, `DaemonBootstrap` remove a máscara (`--runtime`, sem tocar na máscara persistente
+  do usuário) antes de desistir, tanto no `ensureRunning` quanto no botão **Reiniciar daemon**.
+
+### Incluído da branch de correções
+
+- **Engine e setup:** `engine.autoStart` passou a ter efeito (o daemon ativa o `podman.socket`
+  rootless), o daemon aceita RPC antes do ping/reconcile, o helper é distro-aware
+  (`dpkg-query`/`apt-get` no Debian), o setup deixa de exigir QEMU/Caddy para concluir e o
+  Compose detecta o provider instalado.
+- **Concorrência:** pools de threads isolados (`rpcPool`/`backgroundPool`), `buildId` sob lock,
+  `Config::fileMutex`, port-forward de k8s cancelado no disconnect e backpressure nos refreshes.
+- **Machines e firewall:** unit do daemon sem `ProtectHome`/`PrivateTmp` (corrige a escrita em
+  `~/.ssh` e os shares do virtiofsd), regras de firewall persistentes e fechadas na remoção do
+  container, CA local nos dois anchors (`/etc/pki` e `/usr/local/share`).
 
 ## [0.1.5] - 2026-11-15
 
