@@ -231,6 +231,18 @@ Status ensureRunning(const QString &socketPath, QString *detail)
             lastFailure = start.error;
             qCWarning(lcRpc) << "systemctl --user start podstack.socket falhou (exit"
                              << start.exitCode << "):" << start.error;
+            // O preinst/pre do pacote mascara o socket com `--runtime` durante o
+            // upgrade. Se o postinst não conseguiu desmascarar (user manager
+            // fora do alcance do root), o app fica sem socket até alguém rodar
+            // o unmask. `--runtime` não toca na máscara persistente que o
+            // usuário tenha criado, então é seguro tentar de dentro da sessão.
+            const CommandResult unmask =
+                runSystemctl({QStringLiteral("--user"), QStringLiteral("unmask"),
+                              QStringLiteral("--runtime"), QStringLiteral("podstack.socket")});
+            if (!unmask.ok) {
+                qCWarning(lcRpc) << "systemctl --user unmask --runtime podstack.socket falhou:"
+                                 << unmask.error;
+            }
             continue;
         }
         if (waitForResponsive(path, 2000)) {
@@ -262,6 +274,15 @@ Status restart(const QString &socketPath, QString *detail)
         runSystemctl({QStringLiteral("--user"), QStringLiteral("daemon-reload")});
     if (!reload.ok) {
         qCWarning(lcRpc) << "systemctl --user daemon-reload falhou:" << reload.error;
+    }
+    // Botão "Reiniciar daemon": a unit pode continuar mascarada com --runtime
+    // desde o upgrade. Sem isso o restart falha e o banner não tem remediação.
+    const CommandResult unmask =
+        runSystemctl({QStringLiteral("--user"), QStringLiteral("unmask"),
+                      QStringLiteral("--runtime"), QStringLiteral("podstack.socket")});
+    if (!unmask.ok) {
+        qCWarning(lcRpc) << "systemctl --user unmask --runtime podstack.socket falhou:"
+                         << unmask.error;
     }
 
     // Timeout maior: o stop de um daemon travado pode esperar o TimeoutStopSec

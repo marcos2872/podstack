@@ -79,7 +79,7 @@ if [ "$1" -ge 1 ]; then
     log_update "rpm %pre iniciado"
     restore_rpm() {
         for touched in $touched_uids; do
-            systemctl --machine "user@${touched}.service" --user unmask --runtime \
+            systemctl --machine "${touched}@.host" --user unmask --runtime \
                 podstack.socket >/dev/null 2>&1 || :
         done
         systemctl start podstack-helper.service >/dev/null 2>&1 || :
@@ -88,11 +88,11 @@ if [ "$1" -ge 1 ]; then
         uids="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u)"
         for uid in $uids; do
             touched_uids="$touched_uids $uid"
-            systemctl --machine "user@${uid}.service" --user mask --runtime \
+            systemctl --machine "${uid}@.host" --user mask --runtime \
                 podstack.socket >/dev/null 2>&1 || :
-            systemctl --machine "user@${uid}.service" --user stop \
+            systemctl --machine "${uid}@.host" --user stop \
                 podstack.socket podstack.service >/dev/null 2>&1 || :
-            if systemctl --machine "user@${uid}.service" --user is-active --quiet \
+            if systemctl --machine "${uid}@.host" --user is-active --quiet \
                 podstack.service 2>/dev/null; then
                 pkill -TERM -u "$uid" -x podstackd >/dev/null 2>&1 || :
             fi
@@ -112,7 +112,7 @@ if [ "$1" -ge 1 ]; then
                 restore_rpm
                 exit 1
             fi
-            if systemctl --machine "user@${uid}.service" --user is-active --quiet \
+            if systemctl --machine "${uid}@.host" --user is-active --quiet \
                 podstack.service 2>/dev/null; then
                 echo "PodStack: o daemon do uid ${uid} continua ativo; abortando o upgrade." >&2
                 restore_rpm
@@ -175,10 +175,10 @@ log_update "rpm %post: helper reiniciado"
 # sozinho. O start por uid é o que deixa o socket ativo sem passo manual.
 # Start em socket ativo é no-op, então é seguro no upgrade.
 for uid in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u); do
-    systemctl --machine "user@${uid}.service" --user daemon-reload >/dev/null 2>&1 || :
-    systemctl --machine "user@${uid}.service" --user unmask --runtime \
+    systemctl --machine "${uid}@.host" --user daemon-reload >/dev/null 2>&1 || :
+    systemctl --machine "${uid}@.host" --user unmask --runtime \
         podstack.socket >/dev/null 2>&1 || :
-    systemctl --machine "user@${uid}.service" --user start \
+    systemctl --machine "${uid}@.host" --user start \
         podstack.socket >/dev/null 2>&1 || :
 done
 
@@ -188,7 +188,7 @@ if [ "$1" -eq 0 ]; then
     # binários e desabilita o helper.
     if command -v systemctl >/dev/null 2>&1; then
         for uid in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u); do
-            systemctl --machine "user@${uid}.service" --user stop \
+            systemctl --machine "${uid}@.host" --user stop \
                 podstack.socket podstack.service >/dev/null 2>&1 || :
             pkill -TERM -u "$uid" -x podstack-gui >/dev/null 2>&1 || :
             pkill -TERM -u "$uid" -x podstackd >/dev/null 2>&1 || :
@@ -212,29 +212,25 @@ fi
 %posttrans
 # Recuperação do RPM: o %preun antigo pode parar o helper depois do %post do
 # pacote novo, e o gerenciador de sistema não desmascara unit de usuário.
-# Valida por usuário, faz o health check do helper e só falha se não
-# conseguir restaurar.
+# Valida por usuário e faz o health check do helper; o unmask é aviso, não erro
+# (`--machine UID@.host --user` depende de um user manager alcançável).
 semodule -i %{_datadir}/selinux/packages/podstack.pp >/dev/null 2>&1 || :
 restorecon -R /usr/libexec/podstack/podstack-helper /run/podstack >/dev/null 2>&1 || :
 helper_rc=0
-unmask_rc=0
 systemctl daemon-reload >/dev/null 2>&1 || helper_rc=1
 systemctl enable podstack-helper.service >/dev/null 2>&1 || helper_rc=1
 systemctl restart podstack-helper.service >/dev/null 2>&1 || helper_rc=1
 for uid in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | sort -u); do
-    systemctl --machine "user@${uid}.service" --user daemon-reload >/dev/null 2>&1 || :
-    if ! systemctl --machine "user@${uid}.service" --user unmask --runtime \
+    systemctl --machine "${uid}@.host" --user daemon-reload >/dev/null 2>&1 || :
+    if ! systemctl --machine "${uid}@.host" --user unmask --runtime \
         podstack.socket >/dev/null 2>&1; then
-        if ! systemctl --machine "user@${uid}.service" --user unmask --runtime \
-            podstack.socket >/dev/null 2>&1; then
-            unmask_rc=1
-            echo "PodStack: o socket do uid ${uid} continua mascarado; execute" \
-                "'systemctl --user unmask --runtime podstack.socket'." >&2
-        fi
+        echo "PodStack: não foi possível remover a máscara do socket do uid ${uid}." \
+            "Se o app não conectar, execute 'systemctl --user unmask --runtime" \
+            "podstack.socket' na sessão desse usuário." >&2
     fi
     # O %pre parou o socket no upgrade; religa para o app continuar/voltar a
     # funcionar ao fim da transação.
-    systemctl --machine "user@${uid}.service" --user start \
+    systemctl --machine "${uid}@.host" --user start \
         podstack.socket >/dev/null 2>&1 || :
 done
 if ! systemctl is-active --quiet podstack-helper.service 2>/dev/null; then
@@ -250,11 +246,6 @@ fi
 if [ "$helper_rc" -ne 0 ]; then
     echo "PodStack: falha ao restaurar o helper (versão '${helper_version}', esperada '%{version}');" \
         "execute 'systemctl restart podstack-helper.service' e reabra o app." >&2
-    exit 1
-fi
-if [ "$unmask_rc" -ne 0 ]; then
-    echo "PodStack: um ou mais sockets de usuário continuam mascarados;" \
-        "execute 'systemctl --user unmask --runtime podstack.socket' e reabra o app." >&2
     exit 1
 fi
 

@@ -129,13 +129,20 @@ processos de cgroup nem substitui o scope.
 # no %post/%posttrans do RPM e no postinst do DEB
 systemctl --global enable podstack.socket
 for uid in $(loginctl list-sessions --no-legend | awk '{print $2}' | sort -u); do
-    systemctl --machine "user@${uid}.service" --user daemon-reload
-    systemctl --machine "user@${uid}.service" --user unmask --runtime podstack.socket
-    systemctl --machine "user@${uid}.service" --user start podstack.socket
+    systemctl --machine "${uid}@.host" --user daemon-reload
+    systemctl --machine "${uid}@.host" --user unmask --runtime podstack.socket
+    systemctl --machine "${uid}@.host" --user start podstack.socket
 done
 ```
 
 O daemon sobe sob demanda na primeira conexão da GUI/CLI.
+
+**Sintaxe do `--machine`:** `--machine UID@.host --user` é a única forma de o root alcançar o
+user bus de outro usuário. O `--machine` aceita apenas `[usuario]@[.host|container]`; a forma
+`user@UID.service` usada até a 0.1.5 era interpretada como nome de container inexistente e saía
+com código 1 **sempre**, o que fazia o `postinst` terminar em erro e deixava o pacote
+meio-configurado (o `start` do socket nunca rodava). O UID numérico é aceito desde o systemd 250
+(`VALID_USER_ALLOW_NUMERIC`), o que cobre o mínimo suportado (Ubuntu 24.04 / Fedora 43).
 
 **Por que o `start` é obrigatório no pacote:** `systemctl --global enable` só cria o symlink em
 `/etc/systemd/user/sockets.target.wants/`. Um user manager **já em execução** não inicia a unit
@@ -145,10 +152,13 @@ roda também no upgrade (o `%pre` para o socket e o `%post`/`%posttrans` religa)
 
 Limites aceitos:
 
-- O `%post` roda como root, sem `XDG_RUNTIME_DIR` do usuário; `systemctl --machine user@UID.service`
+- O `%post` roda como root, sem `XDG_RUNTIME_DIR` do usuário; `systemctl --machine UID@.host --user`
   depende do logind e do user manager vivo. Em container, `--installroot` ou CI sem sessão, o
-  caminho é o próximo login (que ativa pelo `--global enable`). A instalação nunca falha por isso
-  (`|| :`).
+  caminho é o próximo login (que ativa pelo `--global enable`). A instalação nunca falha por isso:
+  `daemon-reload`/`unmask`/`start` são `|| :`, e um `unmask` que não chega ao user bus gera **aviso**,
+  nunca erro do dpkg/dnf. O único motivo de saída não-zero do `postinst`/`%posttrans` é o helper
+  (restart, `is-active` ou `--version` divergente), porque sem ele setup/firewall/CA/update ficam
+  indisponíveis até reinstalar.
 - O pacote nunca escreve em `~/.config/systemd/user` de outro usuário nem usa `su - user -c`
   (menor privilégio).
 - Unit mascarada de propósito pelo usuário continua mascarada: o `start` falha em silêncio.
@@ -609,8 +619,9 @@ rpmbuild -ba podstack.spec
   `QSocketNotifier`; ao receber o sinal, salva o `UiState` (geometria/seção/abas) e encerra, para a
   janela reabrir no mesmo lugar.
 - **Health check:** o `%posttrans` valida `systemctl is-active podstack-helper.service` e
-  `podstack-helper --version`, além do `unmask --runtime` por usuário; falha só retorna não-zero
-  quando não consegue restaurar.
+  `podstack-helper --version`; só o helper retorna não-zero. O `unmask --runtime` por usuário emite
+  aviso quando não alcança o user bus, porque derrubar a transação do gerenciador de pacotes por um
+  socket que o cliente reativa sozinho (`DaemonBootstrap`) é pior do que o problema.
 - Feed oficial: `podstack-update.json` anexado à release do GitHub + `podstack-update.json.minisig`
   (Ed25519/minisign). O manifesto assinado contém os canais `stable`/`beta` com versão, notas,
   `releaseUrl` e artefatos (`arch`, `format`, `url`, `sha256`).
