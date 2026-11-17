@@ -22,7 +22,7 @@ logged_uids() {
 
 unmask_all() {
     for uid in $(logged_uids); do
-        systemctl --machine "user@${uid}.service" --user unmask --runtime \
+        systemctl --machine "${uid}@.host" --user unmask --runtime \
             "$SOCKET_UNIT" >/dev/null 2>&1 || true
     done
 }
@@ -31,7 +31,7 @@ unmask_all() {
 # funcionar sem passo manual.
 start_all() {
     for uid in $(logged_uids); do
-        systemctl --machine "user@${uid}.service" --user start \
+        systemctl --machine "${uid}@.host" --user start \
             "$SOCKET_UNIT" >/dev/null 2>&1 || true
     done
 }

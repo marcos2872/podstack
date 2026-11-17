@@ -152,11 +152,14 @@ falhar, rode o fallback manual:
 
 ```bash
 systemctl --user daemon-reload
+systemctl --user unmask --runtime podstack.socket
 systemctl --user start podstack.socket
 systemctl --user status podstack.socket
 ```
 
-O estado esperado é `active (listening)`. O `podstack.service` não é habilitado para iniciar no
+O estado esperado é `active (listening)`. O `unmask` é necessário quando uma instalação anterior
+(0.1.5) deixou a unit mascarada: o `postinst` daquela versão falhava antes de remover a máscara.
+Rodar o comando sem máscara ativa é inofensivo. O `podstack.service` não é habilitado para iniciar no
 boot; ele é ativado na primeira conexão ao socket e permanece ativo até o fim da sessão.
 
 > Instalação sem sessão detectável (container, `--installroot`, automação sem login): a instalação

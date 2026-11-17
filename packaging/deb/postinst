@@ -10,7 +10,6 @@ SOCKET_UNIT=podstack.socket
 HELPER_UNIT=podstack-helper.service
 
 helper_rc=0
-unmask_rc=0
 
 log() {
     echo "PodStack: $*" >&2
@@ -38,22 +37,23 @@ if command -v systemctl >/dev/null 2>&1; then
     log_update "postinst: helper reiniciado"
 
     for uid in $(logged_uids); do
-        systemctl --machine "user@${uid}.service" --user daemon-reload \
+        systemctl --machine "${uid}@.host" --user daemon-reload \
             >/dev/null 2>&1 || true
-        if ! systemctl --machine "user@${uid}.service" --user unmask --runtime \
+        # `--machine UID@.host --user` é a forma válida de chegar ao user bus
+        # de outro usuário a partir do root (a antiga `user@UID.service` era
+        # lida como nome de container e falhava sempre, deixando o pacote
+        # meio-configurado). Falha aqui é aviso, nunca erro do dpkg: o user
+        # manager pode não estar acessível (container, CI, sessão sem
+        # lingering), e a ativação acontece no próximo login.
+        if ! systemctl --machine "${uid}@.host" --user unmask --runtime \
             "$SOCKET_UNIT" >/dev/null 2>&1; then
-            # Uma tentativa extra; se ainda falhar, informe a remediação do
-            # socket, não apenas a do helper.
-            if ! systemctl --machine "user@${uid}.service" --user unmask --runtime \
-                "$SOCKET_UNIT" >/dev/null 2>&1; then
-                unmask_rc=1
-                log "o socket do uid ${uid} continua mascarado; execute" \
-                    "'systemctl --user unmask --runtime ${SOCKET_UNIT}' e reabra o app."
-            fi
+            log "não foi possível remover a máscara do socket do uid ${uid}." \
+                "Se o app não conectar, execute 'systemctl --user unmask --runtime" \
+                "${SOCKET_UNIT}' na sessão desse usuário."
         fi
         # `enable` só cria o symlink: um user manager já em execução não sobe
         # a unit sozinho. Start em socket ativo é no-op, seguro no upgrade.
-        systemctl --machine "user@${uid}.service" --user start "$SOCKET_UNIT" \
+        systemctl --machine "${uid}@.host" --user start "$SOCKET_UNIT" \
             >/dev/null 2>&1 || true
     done
 
@@ -64,7 +64,7 @@ if command -v systemctl >/dev/null 2>&1; then
     fi
 fi
 
-if [ "$helper_rc" -ne 0 ] || [ "$unmask_rc" -ne 0 ]; then
+if [ "$helper_rc" -ne 0 ]; then
     exit 1
 fi
 exit 0

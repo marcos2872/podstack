@@ -28,7 +28,7 @@ case "${1:-}" in
     remove|purge)
         if command -v systemctl >/dev/null 2>&1; then
             for uid in $(logged_uids); do
-                systemctl --machine "user@${uid}.service" --user stop \
+                systemctl --machine "${uid}@.host" --user stop \
                     "$SOCKET_UNIT" "$SERVICE_UNIT" >/dev/null 2>&1 || true
                 if has_procps; then
                     pkill -TERM -u "$uid" -x podstack-gui >/dev/null 2>&1 || true
