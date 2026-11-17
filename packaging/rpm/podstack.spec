@@ -1,5 +1,5 @@
 Name:           podstack
-Version:        0.1.5
+Version:        0.1.6
 Release:        1%{?dist}
 Summary:        Native desktop for Podman containers, VMs and Kubernetes
 License:        GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.0-or-later
@@ -278,6 +278,17 @@ fi
 %{_datadir}/selinux/packages/podstack.pp
 
 %changelog
+* Tue Nov 18 2026 PodStack contributors <dev@podstack.dev> - 0.1.6-1
+- Fix DEB/RPM install failing in the maintainer scripts: systemctl --machine
+  user@UID.service is invalid and always exited 1, failing postinst and leaving
+  the package half-configured with the socket not started. Now UID@.host; an
+  unmask that cannot reach the user bus is a warning, not a package error.
+- Client unmasks the runtime mask left by the upgrade before giving up, so the
+  GUI recovers with the existing "Reiniciar daemon" action.
+- Setup/engine: podman.socket auto-start (engine.autoStart), daemon accepts RPC
+  before the Podman ping, thread pools isolated, distro-aware helper, Compose
+  provider detection, persistent firewall rules and machine bootstrap fixes.
+
 * Sun Nov 15 2026 PodStack contributors <dev@podstack.dev> - 0.1.5-1
 - Fix empty container list, zombie daemon and socket diagnostics; GUI/daemon
   version mismatch warning.
