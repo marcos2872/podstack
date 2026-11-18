@@ -72,6 +72,9 @@ private:
         int progress = 0;
         QStringList log;
         QString error;
+        /// PID do cliente RPC que pediu o job. O `runJob` roda em outra thread e
+        /// precisa repassá-lo ao helper para o polkit achar a sessão do usuário.
+        uint callerPid = 0;
         QDateTime startedAt;
         QDateTime finishedAt;
         std::atomic_bool cancel{false};

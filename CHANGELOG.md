@@ -5,6 +5,26 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.1.7] - 2026-11-18
+
+### Corrigido
+
+- **Setup não instalava componentes por "Autorização negada pelo polkit":** o helper pedia
+  autorização para o PID do `podstackd`, que roda em `user@<uid>.service`, fora da sessão
+  gráfica. O polkit não encontra agente de autenticação a partir de um processo sem sessão, então
+  a primeira tentativa voltava "negada" e as seguintes "cancelada" — sem nunca abrir o diálogo de
+  senha. Instalar o Caddy (ou Podman/QEMU) pelo assistente falhava sempre, inclusive no desktop.
+  Agora o daemon repassa ao helper o **PID do cliente** (GUI/CLI), obtido por `SO_PEERCRED` no
+  socket de controle, e o polkit autoriza a sessão de quem pediu a ação. O helper só aceita o PID
+  informado se o UID real em `/proc/<pid>/status` for o do remetente D-Bus, e **falha fechada**
+  quando é de outro usuário (não tenta autorizar a sessão alheia). Corrige de uma vez setup,
+  firewall (`OpenPorts`/`ClosePorts`), CA, DNS e logs de update, que sofriam do mesmo problema.
+  A assinatura D-Bus dos métodos que autorizam ganhou um `callerPid` opcional no fim, então
+  chamadas de dentro da sessão (GUI/CLI lendo logs) continuam válidas sem alteração.
+- **Painel de progresso do setup não mostrava o estado do job:** `SetupJobPanel.qml` chamava
+  `control.statusLabel(...)`, mas o id do componente é `root`. O `ReferenceError` se repetia a
+  cada atualização (59 vezes em 12 s no relatório de diagnóstico) e o texto ficava vazio.
+
 ## [0.1.6] - 2026-11-18
 
 ### Corrigido

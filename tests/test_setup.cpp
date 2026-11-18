@@ -97,7 +97,24 @@ public:
     using HelperService::HelperService;
 
 protected:
-    bool authorize(const QString &, QString *) const override { return true; }
+    bool authorize(const QString &, uint, QString *) const override { return true; }
+};
+
+/// Registra o PID que foi para o polkit, para provar que o daemon repassa a
+/// sessão do cliente em vez da própria. Nega a autorização de propósito: o
+/// teste nunca deve chegar ao gerenciador de pacotes de verdade.
+class RecordingAuthHelper : public PodStack::HelperService {
+public:
+    using HelperService::HelperService;
+
+    mutable QList<uint> authorizedPids;
+
+protected:
+    bool authorize(const QString &, uint callerPid, QString *) const override
+    {
+        authorizedPids.append(callerPid);
+        return false;
+    }
 };
 
 class DnsZoneHelper : public PodStack::HelperService {
@@ -107,7 +124,7 @@ public:
     mutable bool avahi = false;
 
 protected:
-    bool authorize(const QString &, QString *) const override { return true; }
+    bool authorize(const QString &, uint, QString *) const override { return true; }
     QString resolvedDirectory() const override { return directory; }
     bool reloadResolved(QString *) const override
     {
@@ -123,7 +140,7 @@ public:
     mutable int trustUpdates = 0;
 
 protected:
-    bool authorize(const QString &, QString *) const override { return true; }
+    bool authorize(const QString &, uint, QString *) const override { return true; }
     QString caAnchorsDirectory() const override { return anchorsDirectory; }
     bool runTrustUpdate(QString *) const override
     {
@@ -138,7 +155,7 @@ public:
     mutable QStringList systemctlCalls;
 
 protected:
-    bool authorize(const QString &, QString *) const override { return true; }
+    bool authorize(const QString &, uint, QString *) const override { return true; }
     QString systemUnitDirectory() const override { return directory; }
     bool runSystemctl(const QStringList &arguments, QString *) const override
     {
@@ -193,6 +210,9 @@ private slots:
     void jobLookupsAreSafe();
     void demarshalsHelperReply();
     void polkitRequestSignature();
+    void helperForwardsCallerPidToPolkit();
+    void helperCallerPidScopeIsScoped();
+    void helperAcceptsCallsWithAndWithoutPid();
     void firewallAvailablePrefersFirewalld();
     void firewallOpensAndClosesWithFirewalld();
     void firewallUsesUfw();
@@ -354,6 +374,45 @@ void SetupTest::demarshalsHelperReply()
              QStringLiteral("Autorização negada."));
 }
 
+void SetupTest::helperAcceptsCallsWithAndWithoutPid()
+{
+    // A GUI e a CLI leem os logs do helper chamando `GetLogs(jobId)` direto,
+    // sem PID; o daemon passou a chamar `GetLogs(jobId, callerPid)`. As duas
+    // formas precisam continuar válidas no barramento — o slot tem argumento
+    // com valor padrão, e o QDBus precisa aceitar a chamada sem ele.
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        QSKIP("Barramento de sessão indisponível");
+    }
+
+    const QString service = QStringLiteral("dev.podstack.HelperServiceTest.p%1")
+                                .arg(QCoreApplication::applicationPid());
+    const QString path = QStringLiteral("/test");
+    PodStack::HelperService helper;
+    QVERIFY2(bus.registerService(service), qPrintable(bus.lastError().message()));
+    QVERIFY(bus.registerObject(path, &helper, QDBusConnection::ExportAllSlots));
+    const auto cleanup = qScopeGuard([&bus, &path, &service] {
+        bus.unregisterObject(path);
+        bus.unregisterService(service);
+    });
+
+    QDBusInterface interface(service, path, QStringLiteral("dev.podstack.Helper1"), bus);
+    QVERIFY(interface.isValid());
+
+    // Um argumento: forma usada pela GUI/CLI.
+    const QDBusMessage oneArgument =
+        interface.call(QStringLiteral("GetLogs"), QStringLiteral("missing"));
+    QCOMPARE(oneArgument.type(), QDBusMessage::ReplyMessage);
+    QVERIFY(!oneArgument.errorMessage().contains(QStringLiteral("argument")));
+
+    // Dois argumentos: forma usada pelo daemon (repasse do PID).
+    const QDBusMessage twoArguments =
+        interface.call(QStringLiteral("GetLogs"), QStringLiteral("missing"),
+                       QVariant::fromValue<uint>(QCoreApplication::applicationPid()));
+    QCOMPARE(twoArguments.type(), QDBusMessage::ReplyMessage);
+    QVERIFY(!twoArguments.errorMessage().contains(QStringLiteral("argument")));
+}
+
 void SetupTest::polkitRequestSignature()
 {
     const QDBusMessage request = PodStack::checkAuthorizationRequest(
@@ -363,6 +422,38 @@ void SetupTest::polkitRequestSignature()
     QCOMPARE(request.arguments().size(), 5);
     QCOMPARE(QDBusMetaType::typeToSignature(request.arguments().at(2).metaType()),
              QStringLiteral("a{ss}"));
+}
+
+void SetupTest::helperForwardsCallerPidToPolkit()
+{
+    // A GUI roda na sessão gráfica; o daemon, não. O PID repassado precisa
+    // chegar à autorização, senão o polkit nunca acha o agente e o prompt não
+    // abre — foi a causa do "Autorização negada pelo polkit" no setup do Caddy.
+    RecordingAuthHelper helper;
+    const uint guiPid = static_cast<uint>(QCoreApplication::applicationPid());
+
+    const QVariantMap reply = helper.InstallPackages({QStringLiteral("caddy")}, guiPid);
+
+    // A autorização é negada de propósito, então nada é instalado; o que o
+    // teste prova é que o PID do cliente chega até o ponto de autorização.
+    QVERIFY(!helper.authorizedPids.isEmpty());
+    QCOMPARE(helper.authorizedPids.constFirst(), guiPid);
+    QVERIFY(!reply.value(QStringLiteral("ok")).toBool());
+}
+
+void SetupTest::helperCallerPidScopeIsScoped()
+{
+    QCOMPARE(PodStack::helperCallerPid(), 0u);
+    {
+        const PodStack::HelperCallerScope scope(4242);
+        QCOMPARE(PodStack::helperCallerPid(), 4242u);
+        PodStack::HelperClient client;
+        QCOMPARE(client.callerPid(), 4242u);
+        // Um PID explícito no cliente vence o escopo da thread.
+        client.setCallerPid(777);
+        QCOMPARE(client.callerPid(), 777u);
+    }
+    QCOMPARE(PodStack::helperCallerPid(), 0u);
 }
 
 void SetupTest::firewallAvailablePrefersFirewalld()

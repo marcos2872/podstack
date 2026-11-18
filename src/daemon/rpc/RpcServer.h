@@ -31,12 +31,18 @@ private:
     void onDisconnected();
     void handleLine(QLocalSocket *socket, const QByteArray &line);
     bool authenticate(QLocalSocket *socket) const;
+    /// PID do cliente no outro lado do socket (SO_PEERCRED), usado como subject
+    /// do polkit quando o daemon repassa uma ação privilegiada ao helper.
+    uint peerPid(QLocalSocket *socket) const;
     void send(QLocalSocket *socket, const QJsonObject &message);
 
     Daemon *m_daemon;
     QLocalServer m_server;
     QHash<QLocalSocket *, QByteArray> m_buffers;
     QHash<QLocalSocket *, quint64> m_connections;
+    /// PID do cliente (SO_PEERCRED) por conexão; repassado ao helper para o
+    /// polkit autorizar a sessão do cliente em vez do daemon.
+    QHash<QLocalSocket *, uint> m_peerPids;
     quint64 m_nextConnection = 1;
 };
 

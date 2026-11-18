@@ -1,5 +1,5 @@
 Name:           podstack
-Version:        0.1.6
+Version:        0.1.7
 Release:        1%{?dist}
 Summary:        Native desktop for Podman containers, VMs and Kubernetes
 License:        GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.0-or-later
@@ -278,6 +278,17 @@ fi
 %{_datadir}/selinux/packages/podstack.pp
 
 %changelog
+* Wed Nov 18 2026 PodStack contributors <dev@podstack.dev> - 0.1.7-1
+- Fix "Authorization denied by polkit" when the setup installs components
+  (Caddy, Podman, QEMU). The helper authorized the daemon's PID, which runs in
+  user@UID.service outside the graphical session, so polkit never found an
+  authentication agent and the password prompt never appeared. The daemon now
+  forwards the RPC client PID (SO_PEERCRED) and the helper uses it as the polkit
+  subject, validating that the PID belongs to the sender's UID and failing
+  closed otherwise. Also fixes firewall, CA, DNS and update-log actions.
+- Fix setup job panel logging "ReferenceError: control is not defined" and never
+  rendering the job status label.
+
 * Tue Nov 18 2026 PodStack contributors <dev@podstack.dev> - 0.1.6-1
 - Fix DEB/RPM install failing in the maintainer scripts: systemctl --machine
   user@UID.service is invalid and always exited 1, failing postinst and leaving
