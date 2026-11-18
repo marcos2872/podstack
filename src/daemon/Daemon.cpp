@@ -39,9 +39,13 @@ private:
 } // namespace
 
 QJsonObject Daemon::handle(const QString &method, const QJsonObject &params, const Notify &notify,
-                           Error *error, quint64 connectionId)
+                           Error *error, quint64 connectionId, uint peerPid)
 {
     const ConnectionScope connectionScope(connectionId);
+    // O polkit precisa autorizar a sessão do cliente interativo, não o daemon
+    // (que roda em `user@uid.service`, fora da sessão gráfica). O PID vem do
+    // SO_PEERCRED do socket de controle e o helper revalida o UID.
+    const HelperCallerScope helperCallerScope(peerPid);
 
     if (error) {
         *error = {};

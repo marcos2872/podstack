@@ -785,6 +785,11 @@ privilegiadas passam pelo helper allowlisted e nunca por shell na GUI.
   retomado com `setup.subscribe`. `setup.done` inclui os checks recalculados.
 - Ações que instalam pacotes exigem o helper (`dev.podstack.Helper1` no barramento de sistema) e
   retornam `PODSTACK_HELPER_UNAVAILABLE` quando ele não está instalado.
+- O `podstackd` chama o helper com o **PID do cliente RPC** (obtido por `SO_PEERCRED` no socket de
+  controle) como último argumento dos métodos que autorizam; o helper valida que o PID pertence ao
+  mesmo UID do remetente antes de usá-lo como subject do polkit. Sem isso o polkit autorizaria o
+  daemon — que roda em `user@<uid>.service`, fora da sessão gráfica — e o prompt de senha nunca
+  apareceria. Chamadas feitas de dentro da sessão (GUI/CLI direto ao helper) podem omitir o PID.
 
 ### 4.13 `updates.*`
 

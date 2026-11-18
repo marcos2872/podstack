@@ -123,6 +123,50 @@ QString runProcess(const QString &program, const QStringList &arguments, int tim
     return {};
 }
 
+/// Confirma que `pid` existe, pertence a `uid` e não foi reciclado. `/proc/<pid>`
+/// expõe o UID real em `status`; o `start-time` em `stat` não é confiável para
+/// detectar reciclagem quando o PID foi informado pelo chamador, então o polkit
+/// também recebe um subject com `start-time` (ver `checkAuthorization`).
+bool ownsProcess(uint pid, uint uid, QString *error)
+{
+    if (pid == 0 || uid == 0) {
+        if (error) {
+            *error = QStringLiteral("Processo ou UID inválido para autorização.");
+        }
+        return false;
+    }
+
+    QFile status(QStringLiteral("/proc/%1/status").arg(pid));
+    if (!status.open(QIODevice::ReadOnly)) {
+        if (error) {
+            *error = QStringLiteral("O processo %1 não existe mais.").arg(pid);
+        }
+        return false;
+    }
+
+    // Formato: "Uid:\t1000\t1000\t1000\t1000" (real, efetivo, salvo, fs).
+    for (const QByteArray &line : status.readAll().split('\n')) {
+        if (!line.startsWith("Uid:")) {
+            continue;
+        }
+        const QList<QByteArray> fields = line.mid(4).simplified().split(' ');
+        bool ok = false;
+        const uint realUid = fields.isEmpty() ? 0 : fields.constFirst().toUInt(&ok);
+        if (!ok || realUid != uid) {
+            if (error) {
+                *error = QStringLiteral("O processo %1 não pertence ao chamador.").arg(pid);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    if (error) {
+        *error = QStringLiteral("Não foi possível ler o dono do processo %1.").arg(pid);
+    }
+    return false;
+}
+
 bool updateRateLimit(uint uid, const QString &method, int limit, QString *error)
 {
     static std::mutex mutex;
@@ -152,7 +196,36 @@ HelperService::HelperService(QObject *parent)
 {
 }
 
-bool HelperService::authorize(const QString &actionId, QString *error) const
+bool HelperService::authorizationPid(uint callerPid, uint *pid, QString *error) const
+{
+    const uint sender = senderPid();
+    if (callerPid == 0 || callerPid == sender) {
+        if (sender == 0) {
+            if (error) {
+                *error = QStringLiteral("Não foi possível identificar o processo chamador.");
+            }
+            return false;
+        }
+        *pid = sender;
+        return true;
+    }
+
+    // O daemon repassa o PID da GUI porque ele mesmo roda fora da sessão e o
+    // polkit não encontra agente a partir dele. Só aceitamos o PID informado se
+    // ele pertencer ao mesmo UID do remetente: isso impede que qualquer processo
+    // faça o polkit autorizar a sessão de outro usuário.
+    //
+    // Falha fechada, sem cair para o remetente: um PID alheio é tentativa de
+    // autorizar outra sessão, e insistir com o subject do remetente esconderia
+    // o problema atrás de uma recusa genérica do polkit.
+    if (!ownsProcess(callerPid, callerUid(), error)) {
+        return false;
+    }
+    *pid = callerPid;
+    return true;
+}
+
+bool HelperService::authorize(const QString &actionId, uint callerPid, QString *error) const
 {
     if (!calledFromDBus()) {
         if (error) {
@@ -161,24 +234,22 @@ bool HelperService::authorize(const QString &actionId, QString *error) const
         return false;
     }
 
-    const QString sender = message().service();
-    QDBusConnectionInterface *bus = QDBusConnection::systemBus().interface();
-    if (!bus) {
+    if (!QDBusConnection::systemBus().interface()) {
         if (error) {
             *error = QStringLiteral("Barramento de sistema indisponível.");
         }
         return false;
     }
 
-    const QDBusReply<uint> pidReply = bus->servicePid(sender);
-    if (!pidReply.isValid() || pidReply.value() == 0) {
-        if (error) {
+    uint pid = 0;
+    if (!authorizationPid(callerPid, &pid, error)) {
+        if (error && error->isEmpty()) {
             *error = QStringLiteral("Não foi possível identificar o processo chamador.");
         }
         return false;
     }
 
-    return checkAuthorization(actionId, pidReply.value(), error);
+    return checkAuthorization(actionId, pid, error);
 }
 
 bool HelperService::validatePackages(const QStringList &packages, const QStringList &allowed,
@@ -281,7 +352,7 @@ bool HelperService::installedPackages(const QStringList &packages, QStringList *
 }
 
 QVariantMap HelperService::install(const QStringList &packages, const QString &actionId,
-                                   const QStringList &allowed)
+                                   const QStringList &allowed, uint callerPid)
 {
     QString error;
     if (!validatePackages(packages, allowed, &error)) {
@@ -292,7 +363,7 @@ QVariantMap HelperService::install(const QStringList &packages, const QString &a
     qCInfo(lcHelper, "installation requested: uid=%u packages=%s", uid,
            qUtf8Printable(packages.join(',')));
 
-    if (!authorize(actionId, &error)) {
+    if (!authorize(actionId, callerPid, &error)) {
         qCInfo(lcHelper, "installation denied: uid=%u packages=%s", uid,
                qUtf8Printable(packages.join(',')));
         return result(false, error);
@@ -347,12 +418,12 @@ QVariantMap HelperService::install(const QStringList &packages, const QString &a
                             .arg(packages.join(QStringLiteral(", "))));
 }
 
-QVariantMap HelperService::InstallPackages(const QStringList &packages)
+QVariantMap HelperService::InstallPackages(const QStringList &packages, uint callerPid)
 {
-    return install(packages, QString::fromLatin1(kInstallAction), installAllowlist());
+    return install(packages, QString::fromLatin1(kInstallAction), installAllowlist(), callerPid);
 }
 
-QVariantMap HelperService::RemovePackages(const QStringList &packages)
+QVariantMap HelperService::RemovePackages(const QStringList &packages, uint callerPid)
 {
     QString error;
     if (!validatePackages(packages, removeAllowlist(), &error)) {
@@ -363,7 +434,7 @@ QVariantMap HelperService::RemovePackages(const QStringList &packages)
     qCInfo(lcHelper, "removal requested: uid=%u packages=%s", uid,
            qUtf8Printable(packages.join(',')));
 
-    if (!authorize(QString::fromLatin1(kRemoveAction), &error)) {
+    if (!authorize(QString::fromLatin1(kRemoveAction), callerPid, &error)) {
         qCInfo(lcHelper, "removal denied: uid=%u packages=%s", uid,
                qUtf8Printable(packages.join(',')));
         return result(false, error);
@@ -416,6 +487,19 @@ QVariantMap HelperService::RemovePackages(const QStringList &packages)
                             .arg(installed.join(QStringLiteral(", "))));
 }
 
+uint HelperService::senderPid() const
+{
+    if (!calledFromDBus()) {
+        return 0;
+    }
+    QDBusConnectionInterface *bus = QDBusConnection::systemBus().interface();
+    if (!bus) {
+        return 0;
+    }
+    const QDBusReply<uint> reply = bus->servicePid(message().service());
+    return reply.isValid() ? reply.value() : 0;
+}
+
 uint HelperService::callerUid() const
 {
     if (!calledFromDBus()) {
@@ -430,7 +514,7 @@ uint HelperService::callerUid() const
 }
 
 QVariantMap HelperService::changePorts(const QStringList &ports, const QString &protocol,
-                                       const QString &actionId, bool open)
+                                       const QString &actionId, bool open, uint callerPid)
 {
     QStringList normalized;
     Error validationError;
@@ -440,7 +524,7 @@ QVariantMap HelperService::changePorts(const QStringList &ports, const QString &
     const QString normalizedProtocol = protocol.trimmed().toLower();
 
     QString error;
-    if (!authorize(actionId, &error)) {
+    if (!authorize(actionId, callerPid, &error)) {
         qCWarning(lcHelper, "%s uid=%u ports=%s protocol=%s result=denied",
                   open ? "OpenPorts" : "ClosePorts", callerUid(),
                   qUtf8Printable(normalized.join(QLatin1Char(','))),
@@ -474,14 +558,16 @@ QVariantMap HelperService::changePorts(const QStringList &ports, const QString &
                                    .arg(normalized.join(QStringLiteral(", ")), normalizedProtocol));
 }
 
-QVariantMap HelperService::OpenPorts(const QStringList &ports, const QString &protocol)
+QVariantMap HelperService::OpenPorts(const QStringList &ports, const QString &protocol,
+                                     uint callerPid)
 {
-    return changePorts(ports, protocol, QString::fromLatin1(kOpenPortsAction), true);
+    return changePorts(ports, protocol, QString::fromLatin1(kOpenPortsAction), true, callerPid);
 }
 
-QVariantMap HelperService::ClosePorts(const QStringList &ports, const QString &protocol)
+QVariantMap HelperService::ClosePorts(const QStringList &ports, const QString &protocol,
+                                      uint callerPid)
 {
-    return changePorts(ports, protocol, QString::fromLatin1(kClosePortsAction), false);
+    return changePorts(ports, protocol, QString::fromLatin1(kClosePortsAction), false, callerPid);
 }
 
 QString HelperService::resolvedDirectory() const
@@ -578,7 +664,7 @@ bool HelperService::runTrustUpdate(QString *error) const
 }
 
 QVariantMap HelperService::changeCaTrust(const QString &certPath, const QString &fingerprint,
-                                         bool trustCa)
+                                         bool trustCa, uint callerPid)
 {
     QString error;
     if (!CaTrust::validateFingerprint(fingerprint, &error)) {
@@ -608,7 +694,7 @@ QVariantMap HelperService::changeCaTrust(const QString &certPath, const QString 
         }
     }
 
-    if (!authorize(QString::fromLatin1(kTrustCaAction), &error)) {
+    if (!authorize(QString::fromLatin1(kTrustCaAction), callerPid, &error)) {
         qCWarning(lcHelper, "%s uid=%u result=denied", trustCa ? "TrustCa" : "UntrustCa",
                   callerUid());
         return result(false, error);
@@ -640,7 +726,7 @@ QVariantMap HelperService::changeCaTrust(const QString &certPath, const QString 
 }
 
 QVariantMap HelperService::changePortBindings(const QStringList &ports, const QString &httpTarget,
-                                              const QString &httpsTarget, bool bind)
+                                              const QString &httpsTarget, bool bind, uint callerPid)
 {
     QString validationError;
     if (!PortBinding::validatePorts(ports, &validationError)) {
@@ -657,7 +743,7 @@ QVariantMap HelperService::changePortBindings(const QStringList &ports, const QS
     }
 
     QString error;
-    if (!authorize(QString::fromLatin1(kBindPortsAction), &error)) {
+    if (!authorize(QString::fromLatin1(kBindPortsAction), callerPid, &error)) {
         qCWarning(lcHelper, "%s uid=%u ports=%s result=denied", bind ? "BindPorts" : "UnbindPorts",
                   callerUid(), qUtf8Printable(ports.join(QLatin1Char(','))));
         return result(false, error);
@@ -714,7 +800,7 @@ QVariantMap HelperService::changePortBindings(const QStringList &ports, const QS
 }
 
 QVariantMap HelperService::changeDnsZone(const QString &zone, const QString &upstream,
-                                         bool installZone)
+                                         bool installZone, uint callerPid)
 {
     QString validationError;
     const QString checkedUpstream =
@@ -724,7 +810,7 @@ QVariantMap HelperService::changeDnsZone(const QString &zone, const QString &ups
     }
 
     QString error;
-    if (!authorize(QString::fromLatin1(kDnsZoneAction), &error)) {
+    if (!authorize(QString::fromLatin1(kDnsZoneAction), callerPid, &error)) {
         qCWarning(lcHelper, "%s uid=%u zone=%s result=denied",
                   installZone ? "InstallDnsZone" : "RemoveDnsZone", callerUid(),
                   qUtf8Printable(zone));
@@ -771,35 +857,37 @@ QVariantMap HelperService::changeDnsZone(const QString &zone, const QString &ups
     return result(true, QStringLiteral("Drop-in do resolved removido para %1.").arg(zone));
 }
 
-QVariantMap HelperService::InstallDnsZone(const QString &zone, const QString &upstream)
+QVariantMap HelperService::InstallDnsZone(const QString &zone, const QString &upstream,
+                                          uint callerPid)
 {
-    return changeDnsZone(zone, upstream, true);
+    return changeDnsZone(zone, upstream, true, callerPid);
 }
 
-QVariantMap HelperService::RemoveDnsZone(const QString &zone)
+QVariantMap HelperService::RemoveDnsZone(const QString &zone, uint callerPid)
 {
-    return changeDnsZone(zone, QString(), false);
+    return changeDnsZone(zone, QString(), false, callerPid);
 }
 
 QVariantMap HelperService::BindPorts(const QStringList &ports, const QString &httpTarget,
-                                     const QString &httpsTarget)
+                                     const QString &httpsTarget, uint callerPid)
 {
-    return changePortBindings(ports, httpTarget, httpsTarget, true);
+    return changePortBindings(ports, httpTarget, httpsTarget, true, callerPid);
 }
 
-QVariantMap HelperService::UnbindPorts(const QStringList &ports)
+QVariantMap HelperService::UnbindPorts(const QStringList &ports, uint callerPid)
 {
-    return changePortBindings(ports, QString(), QString(), false);
+    return changePortBindings(ports, QString(), QString(), false, callerPid);
 }
 
-QVariantMap HelperService::TrustCa(const QString &certPath, const QString &fingerprint)
+QVariantMap HelperService::TrustCa(const QString &certPath, const QString &fingerprint,
+                                   uint callerPid)
 {
-    return changeCaTrust(certPath, fingerprint, true);
+    return changeCaTrust(certPath, fingerprint, true, callerPid);
 }
 
-QVariantMap HelperService::UntrustCa(const QString &fingerprint)
+QVariantMap HelperService::UntrustCa(const QString &fingerprint, uint callerPid)
 {
-    return changeCaTrust(QString(), fingerprint, false);
+    return changeCaTrust(QString(), fingerprint, false, callerPid);
 }
 
 UpdateService *HelperService::updateService()
@@ -819,11 +907,12 @@ QVariantMap HelperService::updateFailure(const Error &error)
 }
 
 QVariantMap HelperService::StageUpdate(const QByteArray &manifest, const QByteArray &signature,
-                                       const QString &artifactPath, const QString &channel)
+                                       const QString &artifactPath, const QString &channel,
+                                       uint callerPid)
 {
     const uint uid = callerUid();
     QString error;
-    if (!authorize(QString::fromLatin1(kStageUpdateAction), &error)) {
+    if (!authorize(QString::fromLatin1(kStageUpdateAction), callerPid, &error)) {
         qCWarning(lcHelper, "StageUpdate uid=%u result=denied", uid);
         return result(false, error);
     }
@@ -844,11 +933,11 @@ QVariantMap HelperService::StageUpdate(const QByteArray &manifest, const QByteAr
     return reply;
 }
 
-QVariantMap HelperService::InstallUpdate(const QString &jobId)
+QVariantMap HelperService::InstallUpdate(const QString &jobId, uint callerPid)
 {
     const uint uid = callerUid();
     QString error;
-    if (!authorize(QString::fromLatin1(kInstallUpdateAction), &error)) {
+    if (!authorize(QString::fromLatin1(kInstallUpdateAction), callerPid, &error)) {
         qCWarning(lcHelper, "InstallUpdate uid=%u job=%s result=denied", uid,
                   qUtf8Printable(jobId));
         return result(false, error);
@@ -869,11 +958,11 @@ QVariantMap HelperService::InstallUpdate(const QString &jobId)
     return reply;
 }
 
-QVariantMap HelperService::GetUpdateStatus(const QString &jobId)
+QVariantMap HelperService::GetUpdateStatus(const QString &jobId, uint callerPid)
 {
     const uint uid = callerUid();
     QString error;
-    if (!authorize(QString::fromLatin1(kUpdateStatusAction), &error)) {
+    if (!authorize(QString::fromLatin1(kUpdateStatusAction), callerPid, &error)) {
         qCWarning(lcHelper, "GetUpdateStatus uid=%u job=%s result=denied", uid,
                   qUtf8Printable(jobId));
         return result(false, error);
@@ -890,11 +979,11 @@ QVariantMap HelperService::GetUpdateStatus(const QString &jobId)
     return reply;
 }
 
-QVariantMap HelperService::GetLogs(const QString &jobId)
+QVariantMap HelperService::GetLogs(const QString &jobId, uint callerPid)
 {
     const uint uid = callerUid();
     QString error;
-    if (!authorize(QString::fromLatin1(kGetLogsAction), &error)) {
+    if (!authorize(QString::fromLatin1(kGetLogsAction), callerPid, &error)) {
         qCWarning(lcHelper, "GetLogs uid=%u job=%s result=denied", uid, qUtf8Printable(jobId));
         return result(false, error);
     }

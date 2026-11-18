@@ -1,6 +1,6 @@
-# Instalação e primeiro start — PodStack 0.1.6
+# Instalação e primeiro start — PodStack 0.1.7
 
-Este guia cobre a instalação do PodStack 0.1.6 em Fedora 43/44 e Ubuntu 24.04/26.04, o
+Este guia cobre a instalação do PodStack 0.1.7 em Fedora 43/44 e Ubuntu 24.04/26.04, o
 primeiro start, o setup em 7 etapas, o helper privilegiado e a desinstalação. Para o
 fluxo de uso depois da instalação, veja [`quickstart.md`](quickstart.md).
 
@@ -38,7 +38,7 @@ systemctl --user enable --now podman.socket
 Com o RPM baixado ou gerado localmente:
 
 ```bash
-sudo dnf install ./podstack-0.1.6-1.fc44.x86_64.rpm
+sudo dnf install ./podstack-0.1.7-1.fc44.x86_64.rpm
 ```
 
 Ajuste `fc44`/`x86_64` para a release e a arquitetura do seu Fedora (por exemplo, `fc43`).
@@ -81,13 +81,13 @@ cmake -S . -B build/ubuntu -G Ninja \
   -DPODSTACK_USE_VENDORED_QTERMWIDGET=ON
 cmake --build build/ubuntu
 PODSTACK_BUILD_DIR=build/ubuntu ./scripts/build-deb.sh
-# saída: build/deb/podstack_0.1.6_amd64.deb
+# saída: build/deb/podstack_0.1.7_amd64.deb
 ```
 
 Instale o arquivo publicado para a sua arquitetura:
 
 ```bash
-sudo apt install ./podstack_0.1.6_amd64.deb
+sudo apt install ./podstack_0.1.7_amd64.deb
 ```
 
 O pacote inclui o binário, as units do helper e os dados do terminal em
@@ -265,7 +265,7 @@ sessão gráfica), a autorização falha; rode o setup a partir do desktop.
 
 | Verificação | Comando | Resultado esperado |
 |---|---|---|
-| Versão | `podstack version` | `PodStack 0.1.6` |
+| Versão | `podstack version` | `PodStack 0.1.7` |
 | Socket de usuário | `systemctl --user status podstack.socket` | `active (listening)` |
 | Daemon e engine | `podstack status` | `estado: ok` e `engine: running` |
 | Diagnóstico rápido | `podstack doctor` | checks `[ok]`; exit 0 |
@@ -361,7 +361,7 @@ Logs do update e do app: `podstack system logs --component update` e
 
 - O Flatpak é um cliente: o daemon e o helper precisam estar instalados no host.
 - A validação de instalação limpa (T7-07/T7-14) ainda está em andamento; trate o checklist acima
-  como a verificação mínima da versão 0.1.6.
+  como a verificação mínima da versão 0.1.7.
 - Esta documentação não fixa uma URL de repositório; use o arquivo RPM/DEB gerado localmente ou o
   repositório que você configurou.
 

@@ -39,8 +39,13 @@ public:
     /// subscriptions criadas durante a chamada ficam associadas a ela e são
     /// canceladas quando o cliente desconecta (evita thread presa no stream do
     /// Podman depois que a GUI fecha). `0` = sem dono (testes).
+    ///
+    /// `peerPid` é o PID do cliente (obtido por `SO_PEERCRED` no socket) e é
+    /// repassado ao helper privilegiado: o polkit autoriza a **sessão do
+    /// cliente**, não o daemon, que roda fora da sessão gráfica. `0` = usa o
+    /// remetente D-Bus.
     QJsonObject handle(const QString &method, const QJsonObject &params, const Notify &notify,
-                       Error *error, quint64 connectionId = 0);
+                       Error *error, quint64 connectionId = 0, uint peerPid = 0);
 
     /// Cancela e remove as subscriptions criadas pela conexão informada.
     void cancelSubscriptionsForConnection(quint64 connectionId);

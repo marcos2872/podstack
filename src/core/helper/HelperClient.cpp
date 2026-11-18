@@ -17,7 +17,19 @@ constexpr auto kHelperService = "dev.podstack.Helper1";
 constexpr auto kHelperPath = "/dev/podstack/Helper1";
 constexpr auto kHelperInterface = "dev.podstack.Helper1";
 
+thread_local uint t_callerPid = 0;
+
 } // namespace
+
+void setHelperCallerPid(uint pid)
+{
+    t_callerPid = pid;
+}
+
+uint helperCallerPid()
+{
+    return t_callerPid;
+}
 
 bool HelperClient::available() const
 {
@@ -63,7 +75,16 @@ bool HelperClient::callMap(const QString &method, const QVariantList &arguments,
     }
 
     interface.setTimeout(timeoutMs);
-    const QDBusMessage message = interface.callWithArgumentList(QDBus::Block, method, arguments);
+    // Todos os métodos que autorizam recebem `callerPid` como último argumento;
+    // os que não recebem ignoram o valor extra e o D-Bus os rejeitaria, então só
+    // anexamos quando quem chamou definiu um PID.
+    QVariantList effectiveArguments = arguments;
+    const uint callerPid = this->callerPid();
+    if (callerPid != 0) {
+        effectiveArguments.append(QVariant::fromValue<uint>(callerPid));
+    }
+    const QDBusMessage message =
+        interface.callWithArgumentList(QDBus::Block, method, effectiveArguments);
     if (message.type() == QDBusMessage::ErrorMessage) {
         if (error) {
             *error = message.errorMessage();

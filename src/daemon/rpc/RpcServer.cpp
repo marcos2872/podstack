@@ -134,6 +134,7 @@ void RpcServer::onNewConnection()
         connect(socket, &QLocalSocket::disconnected, this, &RpcServer::onDisconnected);
         m_buffers.insert(socket, {});
         m_connections.insert(socket, m_nextConnection++);
+        m_peerPids.insert(socket, peerPid(socket));
         qCInfo(lcRpc) << "cliente conectado";
     }
 }
@@ -179,6 +180,7 @@ void RpcServer::onDisconnected()
     }
     m_buffers.remove(socket);
     const quint64 connectionId = m_connections.take(socket);
+    m_peerPids.remove(socket);
     // Sem isso, um stream infinito (eventos/logs/stats) continua rodando numa
     // thread do pool depois que a GUI fecha, até esgotar o pool e travar o
     // daemon. O cancelamento interrompe o curl mesmo com o stream ocioso.
@@ -202,6 +204,22 @@ bool RpcServer::authenticate(QLocalSocket *socket) const
 #else
     Q_UNUSED(socket);
     return true;
+#endif
+}
+
+uint RpcServer::peerPid(QLocalSocket *socket) const
+{
+#ifdef Q_OS_LINUX
+    struct ucred credentials{};
+    socklen_t length = sizeof(credentials);
+    if (getsockopt(static_cast<int>(socket->socketDescriptor()), SOL_SOCKET, SO_PEERCRED,
+                   &credentials, &length) != 0) {
+        return 0;
+    }
+    return static_cast<uint>(credentials.pid);
+#else
+    Q_UNUSED(socket);
+    return 0;
 #endif
 }
 
@@ -241,6 +259,7 @@ void RpcServer::handleLine(QLocalSocket *socket, const QByteArray &line)
 
     QPointer<QLocalSocket> guard(socket);
     const quint64 connectionId = m_connections.value(socket);
+    const uint clientPid = m_peerPids.value(socket);
     const Daemon::Notify notify = [this, guard](const QString &notificationMethod,
                                                 const QJsonObject &notificationParams) {
         if (!guard) {
@@ -263,34 +282,37 @@ void RpcServer::handleLine(QLocalSocket *socket, const QByteArray &line)
             Qt::QueuedConnection);
     };
 
-    (void) QtConcurrent::run(PodStack::rpcPool(), [this, guard, id, method, params, notify,
-                                                   connectionId] {
-        Error error;
-        const QJsonObject result = m_daemon->handle(method, params, notify, &error, connectionId);
+    (void) QtConcurrent::run(
+        PodStack::rpcPool(), [this, guard, id, method, params, notify, connectionId, clientPid] {
+            Error error;
+            // O PID do cliente vai junto: o polkit autoriza a sessão dele, não o
+            // daemon, que roda em user@<uid>.service.
+            const QJsonObject result =
+                m_daemon->handle(method, params, notify, &error, connectionId, clientPid);
 
-        QJsonObject response;
-        response.insert(QStringLiteral("jsonrpc"), QStringLiteral("2.0"));
-        response.insert(QStringLiteral("id"), id);
+            QJsonObject response;
+            response.insert(QStringLiteral("jsonrpc"), QStringLiteral("2.0"));
+            response.insert(QStringLiteral("id"), id);
 
-        if (!error.isEmpty()) {
-            QJsonObject errorObject;
-            errorObject.insert(QStringLiteral("code"), kInternalError);
-            errorObject.insert(QStringLiteral("message"), error.message);
-            errorObject.insert(QStringLiteral("data"), error.toJson());
-            response.insert(QStringLiteral("error"), errorObject);
-        } else {
-            response.insert(QStringLiteral("result"), result);
-        }
+            if (!error.isEmpty()) {
+                QJsonObject errorObject;
+                errorObject.insert(QStringLiteral("code"), kInternalError);
+                errorObject.insert(QStringLiteral("message"), error.message);
+                errorObject.insert(QStringLiteral("data"), error.toJson());
+                response.insert(QStringLiteral("error"), errorObject);
+            } else {
+                response.insert(QStringLiteral("result"), result);
+            }
 
-        QMetaObject::invokeMethod(
-            this,
-            [this, guard, response] {
-                if (guard) {
-                    send(guard, response);
-                }
-            },
-            Qt::QueuedConnection);
-    });
+            QMetaObject::invokeMethod(
+                this,
+                [this, guard, response] {
+                    if (guard) {
+                        send(guard, response);
+                    }
+                },
+                Qt::QueuedConnection);
+        });
 }
 
 void RpcServer::send(QLocalSocket *socket, const QJsonObject &message)

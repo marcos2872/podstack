@@ -69,7 +69,7 @@ Rectangle {
                 text: backend.setup.error.length > 0
                       ? backend.setup.error
                       : (backend.setup.status.length > 0
-                         ? control.statusLabel(backend.setup.status)
+                         ? root.statusLabel(backend.setup.status)
                          : qsTr("Trabalhando…"))
                 color: backend.setup.error.length > 0 ? Theme.danger : Theme.textSecondary
                 font.family: Theme.fontFamily

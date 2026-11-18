@@ -434,6 +434,7 @@ std::shared_ptr<SetupManager::Job> SetupManager::createJob(const QString &action
 {
     auto job = std::make_shared<Job>();
     job->action = action;
+    job->callerPid = helperCallerPid();
     job->state = QStringLiteral("running");
     job->startedAt = QDateTime::currentDateTimeUtc();
     if (notify) {
@@ -596,8 +597,13 @@ QJsonObject SetupManager::apply(const QJsonObject &params, const Notify &notify,
 
     auto job = createJob(action, notify);
     const QJsonObject &options = params;
-    (void) QtConcurrent::run(PodStack::backgroundPool(),
-                             [this, job, options] { runJob(job, options); });
+    const uint callerPid = job->callerPid;
+    // A thread de trabalho não herda o thread-local do handler; o PID precisa
+    // viajar com o job para o helper autorizar a sessão certa.
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, job, options, callerPid] {
+        const HelperCallerScope callerScope(callerPid);
+        runJob(job, options);
+    });
 
     QJsonObject result;
     result.insert(QStringLiteral("jobId"), job->id);
@@ -637,8 +643,11 @@ QJsonObject SetupManager::removeDocker(const QJsonObject &params, const Notify &
 
     auto job = createJob(QStringLiteral("remove-docker"), notify);
     const QJsonObject &options = params;
-    (void) QtConcurrent::run(PodStack::backgroundPool(),
-                             [this, job, options] { runJob(job, options); });
+    const uint callerPid = job->callerPid;
+    (void) QtConcurrent::run(PodStack::backgroundPool(), [this, job, options, callerPid] {
+        const HelperCallerScope callerScope(callerPid);
+        runJob(job, options);
+    });
 
     QJsonObject result;
     result.insert(QStringLiteral("jobId"), job->id);

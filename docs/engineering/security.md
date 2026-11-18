@@ -58,6 +58,7 @@ flowchart TB
 | T12 | Rootful acidental | Config | Escopo ampliado | Opt-in explícito, aviso, badge |
 | T13 | SELinux bloqueando/contornando | Política | Falha/abertura | Política mínima e testes em enforcing |
 | T14 | Supply chain de dependências | Qt/libcurl/Caddy | RCE | Dependências pinadas, SBOM, builds reproduzíveis |
+| T15 | PID forjado no `callerPid` do helper | Chamador D-Bus informa PID de outro usuário | Polkit autorizaria a sessão alheia | Helper exige `/proc/<pid>/status` com UID real igual ao do remetente D-Bus |
 
 ---
 
@@ -85,6 +86,16 @@ flowchart TB
   O `CheckAuthorization`, o cliente D-Bus e as ações privilegiadas da GUI usam orçamento de
   2 min para o prompt de senha, em vez dos 30 s que faziam a GUI reportar falha enquanto o
   usuário ainda autenticava.
+- **Subject do polkit:** o `podstackd` roda em `user@<uid>.service`, fora da sessão gráfica, e o
+  polkit só encontra o agente de autenticação a partir de um processo da sessão. Por isso os
+  métodos que autorizam recebem um `callerPid` opcional: o daemon repassa o PID do cliente RPC
+  (capturado por `SO_PEERCRED` no socket de controle) e o helper o usa como subject
+  `unix-process`. Antes disso, o subject era o próprio daemon, o polkit não achava sessão e o
+  prompt nunca abria — o setup falhava com "Autorização negada pelo polkit".
+- **Validação do `callerPid` (T15):** o helper só aceita o PID informado se `/proc/<pid>/status`
+  mostrar o UID real igual ao UID do remetente D-Bus; caso contrário cai para o remetente. Isso
+  impede que um processo faça o polkit autorizar a sessão de outro usuário. Sem PID (chamadas
+  feitas de dentro da sessão, como a leitura de logs pela GUI) o subject é o próprio remetente.
 - Rate limit: 10 req/min por uid para stage/install; 120/min para `GetUpdateStatus` (polling).
 - Auditoria: journal com uid, método, parâmetros (sem segredos) e resultado.
 
